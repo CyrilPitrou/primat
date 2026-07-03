@@ -11,12 +11,40 @@ breaks them fails a test instead of just leaving stale prose.
 """
 import ast
 import os
+import re
 
 import pytest
 
 from primat.config import PRIMATConfig
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+
+def test_cprimat_version_matches_pyproject():
+    """primat-c/include/config.h's CPRIMAT_VERSION must track pyproject.toml's version.
+
+    CLAUDE.md documents this sync as manual ("update CPRIMAT_VERSION by hand
+    in the same commit") with no automated check. Parse both files directly
+    (no import of a built/installed package) so this test only depends on
+    the two source files staying in the same commit.
+    """
+    pyproject_path = os.path.join(REPO_ROOT, "pyproject.toml")
+    pyproject_text = open(pyproject_path).read()
+    pyproject_match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject_text)
+    assert pyproject_match, "version field not found in pyproject.toml"
+    pyproject_version = pyproject_match.group(1)
+
+    config_h_path = os.path.join(REPO_ROOT, "primat-c", "include", "config.h")
+    config_h_text = open(config_h_path).read()
+    config_h_match = re.search(r'#define\s+CPRIMAT_VERSION\s+"([^"]+)"', config_h_text)
+    assert config_h_match, "CPRIMAT_VERSION macro not found in primat-c/include/config.h"
+    config_h_version = config_h_match.group(1)
+
+    assert config_h_version == pyproject_version, (
+        f"CPRIMAT_VERSION ({config_h_version!r}) in primat-c/include/config.h "
+        f"is out of sync with pyproject.toml's version ({pyproject_version!r}); "
+        "update both in the same commit (see CLAUDE.md)."
+    )
 
 
 def test_save_nTOp_defaults_match_readme():
