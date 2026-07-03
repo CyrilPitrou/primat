@@ -536,9 +536,32 @@ class PRIMATConfig:
     # Constructor: merge user params over defaults
     # ------------------------------------------------------------------
     def __init__(self, params: dict | None = None):
-        # Initialise every default as an instance attribute
-        # We bypass our own __setattr__ for the initial dict setup to avoid
-        # interference before the base dicts are even created.
+        self._init_defaults_and_nuclide_data(params)
+        user_keys = self._apply_user_overrides(params)
+        self._validate_fEDE()
+        self._validate_custom_background()
+        self._validate_data_dirs()
+        self._validate_network()
+        valid_rxns = self._setup_rate_variation_defaults()
+        self._warn_unknown_rate_variations(user_keys, valid_rxns)
+        self._detect_optional_libraries()
+        self._validate_amax()
+        self._validate_nevo_files()
+        self._validate_physics_flag_combos()
+
+        # Derived cosmological quantity (depends on Omegabh2)
+        self._update_derived()
+
+    def _init_defaults_and_nuclide_data(self, params: dict | None):
+        """Seed every ``DEFAULT_PARAMS`` key as an instance attribute, apply
+        an early ``data_dir`` override, and load the nuclide CSV data.
+
+        Bypasses ``__setattr__`` for the initial dict setup to avoid
+        interference before the base dicts (``p_rxn``/``delta_rxn``) even
+        exist. ``data_dir`` is applied before ``_load_nuclide_data`` so
+        ``nuclides.csv`` is read from the user-supplied root when one is
+        provided.
+        """
         for key, value in DEFAULT_PARAMS.items():
             # Deep copy dictionaries to avoid shared state between instances
             if isinstance(value, dict):
@@ -546,26 +569,31 @@ class PRIMATConfig:
             else:
                 object.__setattr__(self, key, value)
 
-        # Apply data_dir early (before _load_nuclide_data) so nuclides.csv is
-        # read from the user-supplied root when one is provided.
         if params and "data_dir" in params:
             object.__setattr__(self, "data_dir", _expanduser_path(params["data_dir"]))
 
-        # Load nuclide data from CSV
         self._load_nuclide_data()
 
         # Initialize nuclear rate variation dicts as empty for now.  They are
         # populated with the configured network's reactions *after* user
-        # overrides are applied below (self.network may itself be one of
-        # those overrides), so that the per-reaction defaults match the
-        # network actually requested by the caller.
+        # overrides are applied (self.network may itself be one of those
+        # overrides), so that the per-reaction defaults match the network
+        # actually requested by the caller -- see _setup_rate_variation_defaults.
         object.__setattr__(self, "p_rxn", {})
         object.__setattr__(self, "delta_rxn", {})
         object.__setattr__(self, "_init_messages", [])
 
-        user_keys = set(params.keys()) if params else set()
+    def _apply_user_overrides(self, params: dict | None) -> set:
+        """Apply caller-supplied ``params`` on top of the defaults.
 
-        # Apply user overrides
+        Any key in ``DEFAULT_PARAMS``, or starting with the ``p_``/``delta_``
+        rate-variation prefixes, is set via ``setattr`` (routed through the
+        class's ``__setattr__``); anything else triggers an "unknown
+        parameter" warning. Returns the raw set of user-supplied keys (used
+        later by :meth:`_warn_unknown_rate_variations` to catch p_*/delta_*
+        typos against the *finalised* network's reaction list).
+        """
+        user_keys = set(params.keys()) if params else set()
         if params:
             known_prefixes = ('p_', 'delta_')
             unknown = set()
@@ -574,27 +602,32 @@ class PRIMATConfig:
                     setattr(self, key, value)
                 else:
                     unknown.add(key)
-            
+
             if unknown:
                 warnings.warn(
                     f"PRIMATConfig: unknown parameter keys ignored: {unknown}",
                     stacklevel=2,
                 )
+        return user_keys
 
-        # fEDE is a fraction of the total energy density at its peak, so it
-        # must satisfy 0 ≤ fEDE < 1.  The formula in background._setup_ede()
-        # has (1 - fEDE) in the denominator, which diverges at fEDE = 1.
+    def _validate_fEDE(self):
+        """fEDE is a fraction of the total energy density at its peak, so it
+        must satisfy 0 <= fEDE < 1.  The formula in background._setup_ede()
+        has (1 - fEDE) in the denominator, which diverges at fEDE = 1.
+        """
         if not (0. <= self.fEDE < 1.):
             raise ValueError(
                 f"fEDE={self.fEDE!r} is out of range: must satisfy 0 ≤ fEDE < 1 "
                 "(fEDE is the EDE fraction of the total energy density at its peak)."
             )
 
-        # custom_background: force instantaneous decoupling and no spectral
-        # distortions (the custom-background driver does not load NEVO tables
-        # and uses the analytic T_ν(T_γ) formula instead).  Must be checked
-        # before the external_scale_factor / spectral_distortions validations
-        # below so those see the corrected flag values.
+    def _validate_custom_background(self):
+        """custom_background: force instantaneous decoupling and no spectral
+        distortions (the custom-background driver does not load NEVO tables
+        and uses the analytic T_ν(T_γ) formula instead).  Must run before
+        :meth:`_validate_physics_flag_combos` (external_scale_factor /
+        spectral_distortions) so those see the corrected flag values.
+        """
         if self.custom_background is not None:
             if self.external_scale_factor:
                 raise ValueError(
@@ -617,9 +650,12 @@ class PRIMATConfig:
                     stacklevel=2,
                 )
 
-        # data_dir/user_nuclear_dir: eagerly validate (mirrors the nevo_file
-        # pattern above) so a typo'd override path fails fast at construction
-        # time rather than surfacing as a confusing "network not found" later.
+    def _validate_data_dirs(self):
+        """data_dir/user_nuclear_dir: eagerly validate (mirrors the
+        nevo_file pattern in :meth:`_validate_nevo_files`) so a typo'd
+        override path fails fast at construction time rather than surfacing
+        as a confusing "network not found" later.
+        """
         for _field in ("data_dir", "user_nuclear_dir"):
             _value = getattr(self, _field)
             if _value is not None and not os.path.isdir(_value):
@@ -627,6 +663,12 @@ class PRIMATConfig:
             if _value is not None:
                 self._init_messages.append(_rates_overlay_notice(_field, _value))
 
+    def _validate_network(self):
+        """Check that a non-``"small"`` ``network`` name resolves to an
+        existing ``data/nuclear/networks/<name>.txt`` file (including any
+        ``user_nuclear_dir`` overlay), raising a clear error listing every
+        path searched otherwise.
+        """
         if self.network != "small":
             path = self.resolve_rates_path("nuclear", "networks", f"{self.network}.txt")
             if not os.path.exists(path):
@@ -643,10 +685,14 @@ class PRIMATConfig:
                     + (f" (searched: {', '.join(repr(p) for p in searched)})" if searched else "")
                 )
 
-        # Default every reaction of the *configured* network (self.network,
-        # finalised by the overrides above) to p_<rxn>=0 / delta_<rxn>=0,
-        # i.e. "no rate variation".  Use setdefault so any p_<rxn>/delta_<rxn>
-        # override already applied above is not clobbered.
+    def _setup_rate_variation_defaults(self) -> set:
+        """Default every reaction of the *configured* network (self.network,
+        finalised by :meth:`_apply_user_overrides`) to p_<rxn>=0 /
+        delta_<rxn>=0, i.e. "no rate variation".  Uses ``setdefault`` so any
+        p_<rxn>/delta_<rxn> override already applied is not clobbered.
+        Returns the set of valid bare reaction names for this network (used
+        by :meth:`_warn_unknown_rate_variations` to catch typos).
+        """
         from .network_data import load_reaction_names, reaction_category
         reactions_with_tables = load_reaction_names(self, self.network)
         # Each entry is "bare_name" or "bare_name, filename.txt"; only the
@@ -663,15 +709,19 @@ class PRIMATConfig:
         for rxn in valid_rxns:
             self.p_rxn.setdefault(rxn, 0.0)
             self.delta_rxn.setdefault(rxn, 0.0)
+        return valid_rxns
 
-        # Catch p_<rxn>/delta_<rxn> typos in the constructor params. This
-        # has to happen here rather than in __setattr__ at the time those
-        # overrides were applied (above): the override loop runs before this
-        # network's reaction list is known (self.network may itself be one of
-        # the overrides), and by the time we reach this point __setattr__'s
-        # routing has already inserted the (possibly bogus) key into
-        # self.p_rxn/self.delta_rxn -- so we must check against
-        # ``valid_rxns`` computed just above, not against those dicts.
+    def _warn_unknown_rate_variations(self, user_keys: set, valid_rxns: set):
+        """Catch p_<rxn>/delta_<rxn> typos in the constructor params. This
+        has to happen after the network's reaction list is known (rather
+        than in ``__setattr__`` at override time in
+        :meth:`_apply_user_overrides`, which runs before ``self.network`` is
+        finalised -- ``self.network`` may itself be one of the overrides),
+        and by this point ``__setattr__``'s routing has already inserted the
+        (possibly bogus) key into self.p_rxn/self.delta_rxn -- so we must
+        check against ``valid_rxns`` (from :meth:`_setup_rate_variation_defaults`),
+        not against those dicts.
+        """
         for key in user_keys:
             if key.startswith('p_') and key[2:] not in valid_rxns:
                 warnings.warn(
@@ -686,9 +736,11 @@ class PRIMATConfig:
                     stacklevel=2,
                 )
 
-        # Detect optional libraries for flags not explicitly set by the caller.
-        # Messages are stored for deferred printing (after the banner).
-
+    def _detect_optional_libraries(self):
+        """Detect optional libraries (numba) for flags not explicitly set by
+        the caller.  Messages are stored in ``_init_messages`` for deferred
+        printing (after the banner).
+        """
         if self.numba_installed:
             try:
                 import numba  # noqa: F401
@@ -697,17 +749,25 @@ class PRIMATConfig:
                 self.numba_installed = False
                 self._init_messages.append('[init]  numba not detected: running without JIT compilation.')
 
-        # Validate amax: must be None or a positive integer.
+    def _validate_amax(self):
+        """amax must be None or a positive integer."""
         if self.amax is not None:
             if not (isinstance(self.amax, int) and self.amax >= 1):
                 raise ValueError(
                     f"amax must be None or a positive integer (got {self.amax!r})."
                 )
 
-        # Validate any custom NEVO table overrides: check the file exists and
-        # has the column count expected by neutrino_history.NEVOTable, so a
-        # typo or malformed file is caught here with a clear message rather
-        # than as a confusing shape mismatch deep inside an interpolant.
+    def _validate_nevo_files(self):
+        """Validate any custom NEVO table overrides: check each file exists
+        and has the column/length count expected by
+        ``neutrino_history.NEVOTable``, so a typo or malformed file is
+        caught here with a clear message rather than as a confusing shape
+        mismatch deep inside an interpolant. Covers ``nevo_file``,
+        ``nevo_spectral_file``, ``nevo_grid_file``, and ``nevo_file_prefix``
+        (which derives its filenames from the other three's naming
+        convention and validates only the ones not already overridden
+        individually).
+        """
         from .neutrino_history import resolve_nevo_path
         if self.nevo_file is not None:
             path = resolve_nevo_path(self, self.nevo_file, "")
@@ -781,6 +841,13 @@ class PRIMATConfig:
                                       f"{fname!r} has {ncols} columns; "
                                       f"expected > 6")
 
+    def _validate_physics_flag_combos(self):
+        """Validate flag combinations that depend on ``incomplete_decoupling``:
+        ``external_scale_factor`` (reads a(T) from the NEVO table, so
+        requires it to be loaded) and ``spectral_distortions`` (analytic
+        distortions require instantaneous decoupling; full-spectrum
+        distortions require the NEVO table).
+        """
         # external_scale_factor reads a(T) directly from the NEVO table's x
         # column (NEVOTable.x_of_Tg), so it requires the NEVO table to be
         # loaded in the first place.
@@ -806,9 +873,6 @@ class PRIMATConfig:
                         "requires incomplete_decoupling=True (the full NEVO spectrum "
                         "file is only available in the non-instantaneous decoupling mode)."
                     )
-
-        # Derived cosmological quantity (depends on Omegabh2)
-        self._update_derived()
 
     def __getattr__(self, name: str):
         """Dynamic lookup for nuclear rate variations p_* and delta_*."""
