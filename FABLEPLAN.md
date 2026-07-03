@@ -1,5 +1,9 @@
 # FABLEPLAN.md — Improvement plan for primat / primat-c
 
+> **Status (2026-07-03): all actionable items complete.** 1.1, 1.3, 1.5, 2.1,
+> 3.1, 3.2, 3.3 are done (commit refs on each heading); 1.2 was dropped by the
+> author and 1.4 was already moot. Nothing outstanding.
+
 Scope agreed with the author (2026-07-03): the plan retains the **structural
 cleanups** and the **investigation of the un-root-caused C-vs-Python D/H
 difference**, plus a short list of cheap hygiene/safety items. Explicitly
@@ -100,7 +104,7 @@ external imports (`from primat.network_data import load_network`) keep
 working. Pure code motion → Sonnet; the module's `__all__` (42 names) is
 the checklist that nothing was dropped.
 
-### 1.3 Deduplicate the MC `prev`-reuse guard — **Sonnet** (S)
+### 1.3 Deduplicate the MC `prev`-reuse guard — **Sonnet** (S) — **DONE** (commit `3e9d217`)
 
 The seed/quantities/params/custom_network compatibility check exists both
 in `primat.main.mc_uncertainty` and in `primat.backend.run_mc` (which adds
@@ -119,7 +123,7 @@ back-edges, and importing each submodule independently (and via
 kill scalar/_v Fermi-Dirac kernel duplication, split into subpackage"),
 before this plan was written — the description above was stale.
 
-### 1.5 Repo hygiene — **Sonnet** (S)
+### 1.5 Repo hygiene — **Sonnet** (S) — **DONE** (commit `27c7f4d`)
 
 - Delete the committed editor backup `.github/workflows/build_linux.yml~`.
 - The runtime weak-rate caches stay in `primat/data/weak/` (author's
@@ -202,21 +206,21 @@ the measured tolerance-scaling that proves it is controller noise.
 
 ## 3. Cheap safety items (optional, kept for their cost/benefit)
 
-### 3.1 Automated `CPRIMAT_VERSION` vs `pyproject.toml` sync test — **Sonnet** (S)
+### 3.1 Automated `CPRIMAT_VERSION` vs `pyproject.toml` sync test — **Sonnet** (S) — **DONE** (commit `020dbd8`)
 
 CLAUDE.md notes there is no automated check for the version-macro sync. A
 five-line test in `tests/test_docs_consistency.py` (regex the macro out of
 `primat-c/include/config.h`, compare to the pyproject `version`) closes
 that gap permanently.
 
-### 3.2 Run the C unit tests under ASan/UBSan in CI — **Sonnet** (S)
+### 3.2 Run the C unit tests under ASan/UBSan in CI — **Sonnet** (S) — **DONE** (commit `eb890b8`)
 
 `make debug` already builds with `-fsanitize=address,undefined`; nothing
 runs it automatically. Add a CI job building the unit-test binaries with
 the debug flags and running them. Cheapest possible memory-bug detector
 for a C codebase with ~250 manual allocation sites and few NULL checks.
 
-### 3.3 Pytest markers for the slow tests — **Sonnet** (S)
+### 3.3 Pytest markers for the slow tests — **Sonnet** (S) — **DONE** (commit `2ff287c`)
 
 Mark the wheel-install smoke test, notebook executions, and full
 large-network solves `@pytest.mark.slow`; document `pytest -m "not slow"`
