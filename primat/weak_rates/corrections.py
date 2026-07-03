@@ -853,6 +853,418 @@ def _L_SD_FMNoCCR(ctx, T_arr, sgnq, dFDneu_moments):
 _T_CCRTH_MIN = 10**8.2  # [K]
 
 
+class _ThermalIntegOpts:
+    """Bundles the Monte-Carlo (vegas) vs. deterministic (scipy.dblquad)
+    integration choice and its parameters, shared by the L_CCRTh sub-term
+    integrators below (:func:`_L_ThermalTruePhoton`,
+    :func:`_L_ThermalDiffBremsstrahlung`, :func:`_L_Thermal_2_3`) so each
+    stays a short, self-contained integral without re-deriving this choice.
+    """
+    __slots__ = ("use_vegas", "n_eval", "n_itn", "epsrel")
+
+    def __init__(self, use_vegas, n_eval, n_itn, epsrel):
+        self.use_vegas = use_vegas
+        self.n_eval = n_eval
+        self.n_itn = n_itn
+        self.epsrel = epsrel
+
+
+def _ccrth_A(E, k):
+    """Bremsstrahlung kernel A(E,k): appears in both the true-photon
+    (:func:`_ccrth_IPENCCRT`) and differential-bremsstrahlung
+    (:func:`_ccrth_IPENCCRDiffBremsstrahlung`) L_CCRTh sub-terms below.
+    """
+    pE = np.sqrt(E**2 - 1.)
+    return (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E
+
+
+def _ccrth_B(E):
+    """Bremsstrahlung kernel B(E), the k-linear companion of :func:`_ccrth_A`."""
+    pE = np.sqrt(E**2 - 1.)
+    return 2. * E * np.log((E + pE) / (E - pE)) - 4. * pE
+
+
+def _ccrth_IPENCCRT(ctx, E, k, x, znu, sgnq):
+    """Integrand of the "true photon" thermal-bremsstrahlung L_CCRTh
+    sub-term: real photon absorption/emission off the thermal photon bath
+    (:func:`_L_ThermalTruePhoton` integrates this over E and k).
+    """
+    me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
+    cfg = ctx.cfg
+    pE = np.sqrt(E**2 - 1.)
+
+    def BE(EkBT):
+        resvec = np.zeros(len(EkBT))
+        my_index = np.where(np.abs(EkBT) < exp_cutoff)[0]
+        resvec[my_index] = 1. / (np.exp(EkBT[my_index]) - 1.)
+        return resvec
+
+    def FD2_vec(en, xval):
+        resvec = np.zeros(len(en))
+        argvec = en * xval
+        idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
+        resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
+        idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
+        resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
+        return resvec
+
+    def Chitilde_vec(en, znuval, sgnq):
+        q = Q / me
+        resvec = np.zeros(len(en))
+        argvec = znuval * (en - sgnq * q) - sgnq * xi_nu
+        my_index = np.where(np.abs(argvec) < exp_cutoff)[0]
+        resvec[my_index] = 1. / (np.exp(argvec[my_index]) + 1.)
+        return resvec * (en - sgnq * q)**2
+
+    return (cfg.alphaem / (2 * np.pi) * (BE(x * k) / k)
+            * (_ccrth_A(E, k) * (FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
+                          * (Chitilde_vec(E - k, znu, sgnq) + Chitilde_vec(E + k, znu, sgnq)
+                             - 2 * Chitilde_vec(E, znu, sgnq))
+                          + FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
+                          * (Chitilde_vec(-E + k, znu, sgnq) + Chitilde_vec(-E - k, znu, sgnq)
+                             - 2 * Chitilde_vec(-E, znu, sgnq)))
+               - k * _ccrth_B(E) * (FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
+                             * (Chitilde_vec(E - k, znu, sgnq) - Chitilde_vec(E + k, znu, sgnq))
+                             + FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
+                             * (Chitilde_vec(-E + k, znu, sgnq) - Chitilde_vec(-E - k, znu, sgnq)))))
+
+
+def _ccrth_IPENCCRDiffBremsstrahlung(ctx, E, k, x, znu, sgnq):
+    """Integrand of the differential-bremsstrahlung L_CCRTh sub-term (soft
+    subtraction of the true-photon piece; :func:`_L_ThermalDiffBremsstrahlung`
+    integrates this over E and k).
+    """
+    me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
+    cfg = ctx.cfg
+    q  = Q / me
+    pE = np.sqrt(E**2 - 1.)
+    Fp = (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E + k * (2. * E * np.log((E + pE) / (E - pE)) - 4. * pE)
+    Fm = (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E - k * (2. * E * np.log((E + pE) / (E - pE)) - 4. * pE)
+
+    def FD2_vec(en, xval):
+        resvec = np.zeros(len(en))
+        argvec = en * xval
+        idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
+        resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
+        idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
+        resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
+        return resvec
+
+    def Chitilde_vec(en, znuval, sgnq):
+        q = Q / me
+        resvec = np.zeros(len(en))
+        argvec = znuval * (en - sgnq * q) - sgnq * xi_nu
+        my_index = np.where(np.abs(argvec) < exp_cutoff)[0]
+        resvec[my_index] = 1. / (np.exp(argvec[my_index]) + 1.)
+        return resvec * (en - sgnq * q)**2
+
+    res_fac  = cfg.alphaem / (2. * np.pi * k)
+    res1_fac = FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
+    res1vec  = Fp * Chitilde_vec(E + k, znu, sgnq)
+    argvec   = k
+    my_index = np.where(np.abs(argvec) < np.abs(E - sgnq * q))[0]
+    res1vec[my_index] -= Fp[my_index] * FD2_vec(E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] - sgnq * q) - k[my_index])**2
+    res1vec *= res1_fac
+    res2_fac = FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
+    res2vec  = Fm * Chitilde_vec(-E + k, znu, sgnq)
+    my_index = np.where(np.abs(argvec) < np.abs(E + sgnq * q))[0]
+    res2vec[my_index] -= Fp[my_index] * FD2_vec(-E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] + sgnq * q) - k[my_index])**2
+    res2vec *= res2_fac
+    return res_fac * (res1vec + res2vec)
+
+
+def _ccrth_C1dE(ctx, E, x, znu, sgnq):
+    """Integrand of L_CCRTh's single-integral sub-term (:func:`_L_Thermal_1`),
+    built from the zero-temperature chi function :func:`_chi_func`.
+    """
+    cfg = ctx.cfg
+    pE = np.sqrt(E**2 - 1.)
+    return (-(cfg.alphaem * E) / (2. * np.pi * pE) * (2. * np.pi**2) / (3. * x**2)
+            * (_chi_func(ctx, E, x, znu, sgnq) + _chi_func(ctx, -E, x, znu, sgnq)))
+
+
+def _ccrth_C2dE1dE2(ctx, e1v, e2v, x, znu, sgnq):
+    """Integrand of L_CCRTh's double-integral sub-term
+    (:func:`_L_Thermal_2_3`), the two-electron-energy piece of the
+    finite-temperature radiative correction.
+    """
+    me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
+    cfg = ctx.cfg
+    resvec       = np.zeros(len(e1v))
+    e1pe2        = e1v + e2v
+    e1me2        = e1v - e2v
+    min_e1pe2    = 2. + np.abs(e1me2)
+    max_e1pe2    = 2. + max(10., 15. / x) + np.abs(e1me2)
+    index_limits = np.where(((e1pe2 - min_e1pe2) > 0) * ((max_e1pe2 - e1pe2) > 0))[0]
+
+    def FD2_vec(en, xval):
+        resvec = np.zeros(len(en))
+        argvec = en * xval
+        idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
+        resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
+        idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
+        resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
+        return resvec
+
+    def D_FD2_vec(en, xval):
+        resvec = np.zeros(len(en))
+        argvec = en * xval
+        idx = np.where(np.abs(argvec) < exp_cutoff)[0]
+        resvec[idx] = -xval * np.exp(argvec[idx]) / (np.exp(argvec[idx]) + 1.)**2
+        return resvec
+
+    def FD_nu3_vec(en, phi, xval):
+        resvec = np.zeros(len(en))
+        argvec = en * xval - phi
+        idx = np.where(np.abs(argvec) < exp_cutoff)[0]
+        resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
+        return resvec
+
+    def ChiFunc_vec(E, p, x, znu, sgnq):
+        return (FD_nu3_vec(E - sgnq * (Q / me), sgnq * xi_nu, znu)
+                * FD2_vec(-E, x) * (E - sgnq * (Q / me))**2)
+
+    e1 = e1v[index_limits]
+    e2 = e2v[index_limits]
+    p1 = np.sqrt(e1**2 - 1.)
+    p2 = np.sqrt(e2**2 - 1.)
+    L_fac = np.log((e1 * e2 + p1 * p2 + 1.) / (e1 * e2 - p1 * p2 + 1.))
+    resvec_limits = (cfg.alphaem / (2. * np.pi)
+                     * (ChiFunc_vec(e1, p1, x, znu, sgnq) + ChiFunc_vec(-e1, p1, x, znu, sgnq))
+                     * (-(1. / 4.) * np.log(((p1 + p2) / (p1 - p2))**2)**2
+                        * (D_FD2_vec(e2, x) * p2 / p1 * e1**2 / e2 * (e1 + e2)
+                           + FD2_vec(e2, x) * e1**2 / (p1 * p2) * (e2 + e1 / e2**2))
+                        + np.log(((p1 + p2) / (p1 - p2))**2)
+                        * (D_FD2_vec(e2, x) * (p2**2 * e1 / e2 * (1. / p1**2 + 2.) - e1**2 * p2 / p1 * L_fac)
+                           + FD2_vec(e2, x) * (e1 / (p1**2 * e2**2) * (e2**2 + 2 * p1**2 + 1.)
+                                               - (e1**2 + e2**2) / (e1 + e2)
+                                               - (e1**2 * e2) / (p1 * p2) * L_fac))
+                        - FD2_vec(e2, x) * (4. * e1 * p2 / p1 + 2. * e2 * L_fac)))
+    resvec[index_limits] = resvec_limits
+    return resvec
+
+
+def _L_ThermalTruePhoton(ctx, T, sgnq, opts):
+    """"True photon" thermal-bremsstrahlung sub-term of L_CCRTh: integrates
+    :func:`_ccrth_IPENCCRT` over photon energy k and electron energy E, via
+    vegas Monte-Carlo or scipy.dblquad per ``opts``.
+    """
+    cfg, me, T_nuOverT = ctx.cfg, ctx.me, ctx.T_nuOverT
+    x     = me / (cfg.kB * T)
+    E_max = max(10., 20. / x)
+    k_max = max(10., 20. / x)
+
+    def _int(E, k):
+        xnu = me / (cfg.kB * T * T_nuOverT(T))
+        return _ccrth_IPENCCRT(ctx, E, k, x, xnu, sgnq)
+
+    if opts.use_vegas:
+        import vegas
+        integ = vegas.Integrator([[1.001, E_max], [0.001, k_max]])
+        @vegas.batchintegrand
+        def f_batch(xv):
+            E_val, k_val = np.transpose(xv)
+            return {'myres': _int(E_val, k_val)}
+        integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval)
+        result = integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval, adapt=True)
+        return result['myres'].mean
+    else:
+        from scipy.integrate import dblquad
+        return dblquad(
+            lambda k, E: float(_int(np.atleast_1d(E), np.atleast_1d(k))[0]),
+            1.001, E_max, 0.001, k_max, epsrel=opts.epsrel)[0]
+
+
+def _L_ThermalDiffBremsstrahlung(ctx, T, sgnq, opts):
+    """Differential-bremsstrahlung sub-term of L_CCRTh: integrates
+    :func:`_ccrth_IPENCCRDiffBremsstrahlung` over photon energy k and
+    electron energy E, via vegas Monte-Carlo or scipy.dblquad per ``opts``.
+    """
+    cfg, me, T_nuOverT = ctx.cfg, ctx.me, ctx.T_nuOverT
+    x     = me / (cfg.kB * T)
+    E_max = max(10., 20. / x)
+    k_max = max(10., 20. / x)
+
+    def _int(E, k):
+        xnu = me / (cfg.kB * T * T_nuOverT(T))
+        return _ccrth_IPENCCRDiffBremsstrahlung(ctx, E, k, x, xnu, sgnq)
+
+    if opts.use_vegas:
+        import vegas
+        integ = vegas.Integrator([[1.001, E_max], [0.001, k_max]])
+        @vegas.batchintegrand
+        def f_batch(xv):
+            E_val, k_val = np.transpose(xv)
+            return {'myres': _int(E_val, k_val)}
+        integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval)
+        result = integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval, adapt=True)
+        return result['myres'].mean
+    else:
+        from scipy.integrate import dblquad
+        return dblquad(
+            lambda k, E: float(_int(np.atleast_1d(E), np.atleast_1d(k))[0]),
+            1.001, E_max, 0.001, k_max, epsrel=opts.epsrel)[0]
+
+
+def _L_Thermal_1_int(E, ctx, T, sgnq):
+    """Integrand of :func:`_L_Thermal_1` (E first, per scipy.integrate.quad's
+    ``f(x, *args)`` convention).
+    """
+    cfg, me, T_nuOverT = ctx.cfg, ctx.me, ctx.T_nuOverT
+    return _ccrth_C1dE(ctx, E, me / (cfg.kB * T), me / (cfg.kB * T * T_nuOverT(T)), sgnq)
+
+
+def _L_Thermal_1(ctx, T, sgnq):
+    """Single-integral sub-term of L_CCRTh, via :func:`_ccrth_C1dE`. Always
+    uses scipy.integrate.quad (1-D, no vegas/dblquad dispatch needed).
+    """
+    cfg, me = ctx.cfg, ctx.me
+    return quad(_L_Thermal_1_int, 1., max(25., 150. * (cfg.kB * T) / me),
+                args=(ctx, T, sgnq), epsrel=1.e-2)[0]
+
+
+def _L_Thermal_2_3(ctx, T, sgnq, opts):
+    """Double-integral sub-term of L_CCRTh, via :func:`_ccrth_C2dE1dE2`,
+    split over the two ``e1me2`` sign regions (each integrated separately
+    via vegas Monte-Carlo or scipy.dblquad per ``opts``) and summed.
+    """
+    cfg, me, T_nuOverT = ctx.cfg, ctx.me, ctx.T_nuOverT
+
+    def _int(e1pe2, e1me2):
+        x   = me / (cfg.kB * T)
+        xnu = me / (cfg.kB * T * T_nuOverT(T))
+        return 0.5 * _ccrth_C2dE1dE2(ctx, (e1pe2 + e1me2) / 2., (e1pe2 - e1me2) / 2., x, xnu, sgnq)
+
+    x    = me / (cfg.kB * T)
+    half = max(10., 15. / x)
+    res_2 = res_3 = 0.
+    for min_e1me2, max_e1me2 in [(-half, -0.001), (0.001, half)]:
+        lims = [2.001 + min(np.abs(min_e1me2), np.abs(max_e1me2)),
+                2.   + max(np.abs(min_e1me2), np.abs(max_e1me2))]
+        if opts.use_vegas:
+            import vegas
+            integ = vegas.Integrator([lims, [min_e1me2, max_e1me2]])
+            @vegas.batchintegrand
+            def f_batch(xv):
+                e1pe2, e1me2 = np.transpose(xv)
+                return {'myres': _int(e1pe2, e1me2)}
+            integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval)
+            result = integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval, adapt=True)
+            val = result['myres'].mean
+        else:
+            from scipy.integrate import dblquad
+            val = dblquad(
+                lambda e1me2, e1pe2: float(_int(
+                    np.atleast_1d(e1pe2), np.atleast_1d(e1me2))[0]),
+                lims[0], lims[1], min_e1me2, max_e1me2, epsrel=opts.epsrel)[0]
+        if min_e1me2 < 0:
+            res_2 = val
+        else:
+            res_3 = val
+    return res_2 + res_3
+
+
+def _L_CCRTh_compute(ctx, T, sgnq, opts):
+    """Sum L_CCRTh's four sub-terms: true-photon bremsstrahlung
+    (:func:`_L_ThermalTruePhoton`), differential bremsstrahlung
+    (:func:`_L_ThermalDiffBremsstrahlung`), and the single/double-integral
+    pieces (:func:`_L_Thermal_1` / :func:`_L_Thermal_2_3`).
+
+    Clamps the finite-temperature correction to 0 below ~10^8.2 K in BOTH
+    directions.  Two independent reasons coincide there:
+     (i) Physics: the e+/e-/photon bath is exp(-m_e/kB T)-dilute, so
+         the thermal radiative correction is negligible (the
+         well-behaved sub-terms are already <1e-7 by ~7e7 K).
+     (ii) Numerics: the differential-bremsstrahlung sub-term
+         (_ccrth_IPENCCRDiffBremsstrahlung) carries an alpha/(2 pi k) infrared
+         pole that is meant to cancel against its soft subtraction.
+         That cancellation breaks once the neutrino Fermi-Dirac
+         threshold width 1/znu (= kB T Tnu/(me T)) shrinks toward the
+         hard-coded lower photon-momentum cutoff k_min=1e-3, leaving an
+         uncancelled ln(k_min) residual that the n->p integral
+         converges to (~ -1.2e-2 at 1.16e7 K, growing logarithmically
+         as k_min is lowered).  Below ~10^8.2 K this residual would
+         otherwise spuriously pull the n->p rate ~0.7% below the free
+         neutron-decay value it must approach as T -> 0.
+    PRIMAT-Main.m already applies this clamp to p->n (sgnq=-1) only
+    (lines 1639/1644/1650); here it is extended to n->p because
+    primat now tabulates the rates down to T_end ~ 1.16e7 K, well
+    into the regime where the unclamped n->p bremsstrahlung misbehaves.
+    """
+    if T < _T_CCRTH_MIN:
+        return 0.
+    return (_L_ThermalTruePhoton(ctx, T, sgnq, opts)
+            + _L_ThermalDiffBremsstrahlung(ctx, T, sgnq, opts)
+            + _L_Thermal_1(ctx, T, sgnq)
+            + _L_Thermal_2_3(ctx, T, sgnq, opts))
+
+
+def _compute_or_load_L_CCRTh_grid(ctx):
+    """Compute the L_CCRTh grid ``(T_th, L_nTOpCCRTh, L_pTOnCCRTh)`` via the
+    four physics sub-terms of :func:`_L_CCRTh_compute` (a multi-minute
+    Monte-Carlo/quadrature integration), or load it from the fingerprinted
+    cache in rates/weak/ when present -- see :func:`_L_CCRTh_interpolants`'s
+    docstring for the caching policy.
+    """
+    cfg = ctx.cfg
+    my_dir = ctx.my_dir
+
+    _td        = my_dir + "/weak/"
+    _th_fp     = _thermal_fingerprint(cfg)
+    _th_hash   = fingerprint_hash(_th_fp)
+    _th_path   = _td + "nTOp_thermal_" + _th_hash + ".txt"
+
+    if os.path.exists(_th_path):
+        if cfg.verbose:
+            print("[weak-py] n <--> p thermal corrections loaded from cache.")
+        tab = np.loadtxt(_th_path)
+        return tab[:, 0], tab[:, 1], tab[:, 2]
+
+    try:
+        import vegas   # noqa: F401 (availability probe only)
+        use_vegas = True
+        n_eval = cfg.vegas_n_eval
+        n_itn  = cfg.vegas_n_itn
+    except ImportError:
+        use_vegas = False
+        n_eval = n_itn = None
+        import warnings
+        warnings.warn(
+            "vegas not found: falling back to scipy.integrate.dblquad for thermal "
+            "radiative corrections (epsrel={:.0e}).  Install vegas for better "
+            "performance.".format(cfg.epsrel_thermal),
+            ImportWarning, stacklevel=2)
+    opts = _ThermalIntegOpts(use_vegas, n_eval, n_itn, cfg.epsrel_thermal)
+
+    #if cfg.verbose:
+    print(f"[weak-py] Re-evaluating n <--> p thermal corrections "
+          f"({'vegas' if use_vegas else 'scipy.dblquad'}). This may take a while ...")
+
+    # Grid floor is the fixed clamp _T_CCRTH_MIN, not cfg.T_end: every
+    # point below it evaluates to exactly 0 anyway (see
+    # _L_CCRTh_compute), so anchoring the grid to T_end_MeV only made the
+    # cache fingerprint -- and thus a cold, multi-minute recompute --
+    # depend on a parameter the integral never actually uses.
+    _n_th_pts  = n_points_per_decade(cfg.sampling_nTOp_thermal_per_decade, _T_CCRTH_MIN, cfg.T_start)
+    _T_th      = np.logspace(np.log10(_T_CCRTH_MIN), np.log10(cfg.T_start), _n_th_pts)
+    L_nTh_data = np.vectorize(lambda T: _L_CCRTh_compute(ctx, T, +1, opts))(_T_th)
+    L_pTh_data = np.vectorize(lambda T: _L_CCRTh_compute(ctx, T, -1, opts))(_T_th)
+
+    if cfg.save_nTOp_thermal:
+        os.makedirs(_td, exist_ok=True)
+        _algo = "vegas" if use_vegas else "scipy.dblquad"
+        write_cache_with_fingerprint(
+            _th_path, _th_fp, [_T_th, L_nTh_data, L_pTh_data],
+            col_header="T[K] L_nTOpCCRTh L_pTOnCCRTh",
+            provenance=f"backend=python algorithm={_algo} "
+                       f"vegas_n_eval={cfg.vegas_n_eval} vegas_n_itn={cfg.vegas_n_itn}")
+
+    if cfg.verbose:
+        print("[weak-py] n <--> p thermal corrections computed")
+
+    return _T_th, L_nTh_data, L_pTh_data
+
+
 def _L_CCRTh_interpolants(ctx):
     """Build interpolants for the finite-temperature radiative correction L_CCRTh.
 
@@ -871,330 +1283,19 @@ def _L_CCRTh_interpolants(ctx):
     computation.  Set cfg.thermal_corrections=False to skip this term, or
     delete the cache files and re-run with save_nTOp_thermal=True to force
     a refresh stamped with the current configuration's fingerprint.
+
+    The actual physics (four correction sub-terms, each its own
+    Monte-Carlo/quadrature integral -- see :func:`_L_CCRTh_compute`) or the
+    cache load is delegated to :func:`_compute_or_load_L_CCRTh_grid`; this
+    function only handles the thermal_corrections=False short-circuit and
+    builds the clamped interpolants from the resulting grid.
     """
     cfg = ctx.cfg
-    me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
-    T_nuOverT = ctx.T_nuOverT
-    my_dir = ctx.my_dir
 
     if not cfg.thermal_corrections:
         return (lambda T: 0.0), (lambda T: 0.0)
 
-    _td        = my_dir + "/weak/"
-    _th_fp     = _thermal_fingerprint(cfg)
-    _th_hash   = fingerprint_hash(_th_fp)
-    _th_path   = _td + "nTOp_thermal_" + _th_hash + ".txt"
-    _have_thermal_cache = os.path.exists(_th_path)
-
-    if not _have_thermal_cache:
-        try:
-            import vegas
-            _have_vegas = True
-            n_eval = cfg.vegas_n_eval
-            n_itn  = cfg.vegas_n_itn
-        except ImportError:
-            _have_vegas = False
-            from scipy.integrate import dblquad
-            _epsrel_th = cfg.epsrel_thermal
-            import warnings
-            warnings.warn(
-                "vegas not found: falling back to scipy.integrate.dblquad for thermal "
-                "radiative corrections (epsrel={:.0e}).  Install vegas for better "
-                "performance.".format(_epsrel_th),
-                ImportWarning, stacklevel=2)
-
-        def A(E, k):
-            pE = np.sqrt(E**2 - 1.)
-            return (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E
-
-        def B(E):
-            pE = np.sqrt(E**2 - 1.)
-            return 2. * E * np.log((E + pE) / (E - pE)) - 4. * pE
-
-        def IPENCCRT(E, k, x, znu, sgnq):
-            pE = np.sqrt(E**2 - 1.)
-
-            def BE(EkBT):
-                resvec = np.zeros(len(EkBT))
-                my_index = np.where(np.abs(EkBT) < exp_cutoff)[0]
-                resvec[my_index] = 1. / (np.exp(EkBT[my_index]) - 1.)
-                return resvec
-
-            def FD2_vec(en, xval):
-                resvec = np.zeros(len(en))
-                argvec = en * xval
-                idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
-                resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
-                idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
-                resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
-                return resvec
-
-            def Chitilde_vec(en, znuval, sgnq):
-                q = Q / me
-                resvec = np.zeros(len(en))
-                argvec = znuval * (en - sgnq * q) - sgnq * xi_nu
-                my_index = np.where(np.abs(argvec) < exp_cutoff)[0]
-                resvec[my_index] = 1. / (np.exp(argvec[my_index]) + 1.)
-                return resvec * (en - sgnq * q)**2
-
-            return (cfg.alphaem / (2 * np.pi) * (BE(x * k) / k)
-                    * (A(E, k) * (FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
-                                  * (Chitilde_vec(E - k, znu, sgnq) + Chitilde_vec(E + k, znu, sgnq)
-                                     - 2 * Chitilde_vec(E, znu, sgnq))
-                                  + FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
-                                  * (Chitilde_vec(-E + k, znu, sgnq) + Chitilde_vec(-E - k, znu, sgnq)
-                                     - 2 * Chitilde_vec(-E, znu, sgnq)))
-                       - k * B(E) * (FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
-                                     * (Chitilde_vec(E - k, znu, sgnq) - Chitilde_vec(E + k, znu, sgnq))
-                                     + FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
-                                     * (Chitilde_vec(-E + k, znu, sgnq) - Chitilde_vec(-E - k, znu, sgnq)))))
-
-        def IPENCCRDiffBremsstrahlung(E, k, x, znu, sgnq):
-            q  = Q / me
-            pE = np.sqrt(E**2 - 1.)
-            Fp = (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E + k * (2. * E * np.log((E + pE) / (E - pE)) - 4. * pE)
-            Fm = (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E - k * (2. * E * np.log((E + pE) / (E - pE)) - 4. * pE)
-
-            def FD2_vec(en, xval):
-                resvec = np.zeros(len(en))
-                argvec = en * xval
-                idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
-                resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
-                idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
-                resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
-                return resvec
-
-            def Chitilde_vec(en, znuval, sgnq):
-                q = Q / me
-                resvec = np.zeros(len(en))
-                argvec = znuval * (en - sgnq * q) - sgnq * xi_nu
-                my_index = np.where(np.abs(argvec) < exp_cutoff)[0]
-                resvec[my_index] = 1. / (np.exp(argvec[my_index]) + 1.)
-                return resvec * (en - sgnq * q)**2
-
-            res_fac  = cfg.alphaem / (2. * np.pi * k)
-            res1_fac = FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
-            res1vec  = Fp * Chitilde_vec(E + k, znu, sgnq)
-            argvec   = k
-            my_index = np.where(np.abs(argvec) < np.abs(E - sgnq * q))[0]
-            res1vec[my_index] -= Fp[my_index] * FD2_vec(E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] - sgnq * q) - k[my_index])**2
-            res1vec *= res1_fac
-            res2_fac = FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
-            res2vec  = Fm * Chitilde_vec(-E + k, znu, sgnq)
-            my_index = np.where(np.abs(argvec) < np.abs(E + sgnq * q))[0]
-            res2vec[my_index] -= Fp[my_index] * FD2_vec(-E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] + sgnq * q) - k[my_index])**2
-            res2vec *= res2_fac
-            return res_fac * (res1vec + res2vec)
-
-        def C1dE(E, x, znu, sgnq):
-            pE = np.sqrt(E**2 - 1.)
-            return (-(cfg.alphaem * E) / (2. * np.pi * pE) * (2. * np.pi**2) / (3. * x**2)
-                    * (_chi_func(ctx, E, x, znu, sgnq) + _chi_func(ctx, -E, x, znu, sgnq)))
-
-        def C2dE1dE2(e1v, e2v, x, znu, sgnq):
-            resvec       = np.zeros(len(e1v))
-            e1pe2        = e1v + e2v
-            e1me2        = e1v - e2v
-            min_e1pe2    = 2. + np.abs(e1me2)
-            max_e1pe2    = 2. + max(10., 15. / x) + np.abs(e1me2)
-            index_limits = np.where(((e1pe2 - min_e1pe2) > 0) * ((max_e1pe2 - e1pe2) > 0))[0]
-
-            def FD2_vec(en, xval):
-                resvec = np.zeros(len(en))
-                argvec = en * xval
-                idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
-                resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
-                idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
-                resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
-                return resvec
-
-            def D_FD2_vec(en, xval):
-                resvec = np.zeros(len(en))
-                argvec = en * xval
-                idx = np.where(np.abs(argvec) < exp_cutoff)[0]
-                resvec[idx] = -xval * np.exp(argvec[idx]) / (np.exp(argvec[idx]) + 1.)**2
-                return resvec
-
-            def FD_nu3_vec(en, phi, xval):
-                resvec = np.zeros(len(en))
-                argvec = en * xval - phi
-                idx = np.where(np.abs(argvec) < exp_cutoff)[0]
-                resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
-                return resvec
-
-            def ChiFunc_vec(E, p, x, znu, sgnq):
-                return (FD_nu3_vec(E - sgnq * (Q / me), sgnq * xi_nu, znu)
-                        * FD2_vec(-E, x) * (E - sgnq * (Q / me))**2)
-
-            e1 = e1v[index_limits]
-            e2 = e2v[index_limits]
-            p1 = np.sqrt(e1**2 - 1.)
-            p2 = np.sqrt(e2**2 - 1.)
-            L_fac = np.log((e1 * e2 + p1 * p2 + 1.) / (e1 * e2 - p1 * p2 + 1.))
-            resvec_limits = (cfg.alphaem / (2. * np.pi)
-                             * (ChiFunc_vec(e1, p1, x, znu, sgnq) + ChiFunc_vec(-e1, p1, x, znu, sgnq))
-                             * (-(1. / 4.) * np.log(((p1 + p2) / (p1 - p2))**2)**2
-                                * (D_FD2_vec(e2, x) * p2 / p1 * e1**2 / e2 * (e1 + e2)
-                                   + FD2_vec(e2, x) * e1**2 / (p1 * p2) * (e2 + e1 / e2**2))
-                                + np.log(((p1 + p2) / (p1 - p2))**2)
-                                * (D_FD2_vec(e2, x) * (p2**2 * e1 / e2 * (1. / p1**2 + 2.) - e1**2 * p2 / p1 * L_fac)
-                                   + FD2_vec(e2, x) * (e1 / (p1**2 * e2**2) * (e2**2 + 2 * p1**2 + 1.)
-                                                       - (e1**2 + e2**2) / (e1 + e2)
-                                                       - (e1**2 * e2) / (p1 * p2) * L_fac))
-                                - FD2_vec(e2, x) * (4. * e1 * p2 / p1 + 2. * e2 * L_fac)))
-            resvec[index_limits] = resvec_limits
-            return resvec
-
-        def _L_ThermalTruePhoton_int(E, k, T, sgnq):
-            x   = me / (cfg.kB * T)
-            xnu = me / (cfg.kB * T * T_nuOverT(T))
-            return IPENCCRT(E, k, x, xnu, sgnq)
-
-        def _L_ThermalTruePhoton(T, sgnq):
-            x     = me / (cfg.kB * T)
-            E_max = max(10., 20. / x)
-            k_max = max(10., 20. / x)
-            if _have_vegas:
-                integ = vegas.Integrator([[1.001, E_max], [0.001, k_max]])
-                @vegas.batchintegrand
-                def f_batch(xv):
-                    E_val, k_val = np.transpose(xv)
-                    return {'myres': _L_ThermalTruePhoton_int(E_val, k_val, T, sgnq)}
-                integ(f_batch, nitn=n_itn, neval=n_eval)
-                result = integ(f_batch, nitn=n_itn, neval=n_eval, adapt=True)
-                return result['myres'].mean
-            else:
-                return dblquad(
-                    lambda k, E: float(_L_ThermalTruePhoton_int(
-                        np.atleast_1d(E), np.atleast_1d(k), T, sgnq)[0]),
-                    1.001, E_max, 0.001, k_max, epsrel=_epsrel_th)[0]
-
-        def _L_ThermalDiffBremsstrahlung_int(E, k, T, sgnq):
-            x   = me / (cfg.kB * T)
-            xnu = me / (cfg.kB * T * T_nuOverT(T))
-            return IPENCCRDiffBremsstrahlung(E, k, x, xnu, sgnq)
-
-        def _L_ThermalDiffBremsstrahlung(T, sgnq):
-            x     = me / (cfg.kB * T)
-            E_max = max(10., 20. / x)
-            k_max = max(10., 20. / x)
-            if _have_vegas:
-                integ = vegas.Integrator([[1.001, E_max], [0.001, k_max]])
-                @vegas.batchintegrand
-                def f_batch(xv):
-                    E_val, k_val = np.transpose(xv)
-                    return {'myres': _L_ThermalDiffBremsstrahlung_int(E_val, k_val, T, sgnq)}
-                integ(f_batch, nitn=n_itn, neval=n_eval)
-                result = integ(f_batch, nitn=n_itn, neval=n_eval, adapt=True)
-                return result['myres'].mean
-            else:
-                return dblquad(
-                    lambda k, E: float(_L_ThermalDiffBremsstrahlung_int(
-                        np.atleast_1d(E), np.atleast_1d(k), T, sgnq)[0]),
-                    1.001, E_max, 0.001, k_max, epsrel=_epsrel_th)[0]
-
-        def _L_Thermal_1_int(E, T, sgnq):
-            return C1dE(E, me / (cfg.kB * T), me / (cfg.kB * T * T_nuOverT(T)), sgnq)
-
-        def _L_Thermal_1(T, sgnq):
-            return quad(_L_Thermal_1_int, 1., max(25., 150. * (cfg.kB * T) / me),
-                        args=(T, sgnq), epsrel=1.e-2)[0]
-
-        def _L_Thermal_2_3_int(e1pe2, e1me2, T, sgnq):
-            x   = me / (cfg.kB * T)
-            xnu = me / (cfg.kB * T * T_nuOverT(T))
-            return 0.5 * C2dE1dE2((e1pe2 + e1me2) / 2., (e1pe2 - e1me2) / 2., x, xnu, sgnq)
-
-        def _L_Thermal_2_3(T, sgnq):
-            x    = me / (cfg.kB * T)
-            half = max(10., 15. / x)
-            res_2 = res_3 = 0.
-            for min_e1me2, max_e1me2 in [(-half, -0.001), (0.001, half)]:
-                lims = [2.001 + min(np.abs(min_e1me2), np.abs(max_e1me2)),
-                        2.   + max(np.abs(min_e1me2), np.abs(max_e1me2))]
-                if _have_vegas:
-                    integ = vegas.Integrator([lims, [min_e1me2, max_e1me2]])
-                    @vegas.batchintegrand
-                    def f_batch(xv):
-                        e1pe2, e1me2 = np.transpose(xv)
-                        return {'myres': _L_Thermal_2_3_int(e1pe2, e1me2, T, sgnq)}
-                    integ(f_batch, nitn=n_itn, neval=n_eval)
-                    result = integ(f_batch, nitn=n_itn, neval=n_eval, adapt=True)
-                    val = result['myres'].mean
-                else:
-                    val = dblquad(
-                        lambda e1me2, e1pe2: float(_L_Thermal_2_3_int(
-                            np.atleast_1d(e1pe2), np.atleast_1d(e1me2), T, sgnq)[0]),
-                        lims[0], lims[1], min_e1me2, max_e1me2, epsrel=_epsrel_th)[0]
-                if min_e1me2 < 0:
-                    res_2 = val
-                else:
-                    res_3 = val
-            return res_2 + res_3
-
-        def _L_CCRTh_compute(T, sgnq):
-            # Clamp the finite-temperature correction to 0 below ~10^8.2 K in
-            # BOTH directions.  Two independent reasons coincide there:
-            #  (i) Physics: the e+/e-/photon bath is exp(-m_e/kB T)-dilute, so
-            #      the thermal radiative correction is negligible (the
-            #      well-behaved sub-terms are already <1e-7 by ~7e7 K).
-            #  (ii) Numerics: the differential-bremsstrahlung sub-term
-            #      (IPENCCRDiffBremsstrahlung) carries an alpha/(2 pi k) infrared
-            #      pole that is meant to cancel against its soft subtraction.
-            #      That cancellation breaks once the neutrino Fermi-Dirac
-            #      threshold width 1/znu (= kB T Tnu/(me T)) shrinks toward the
-            #      hard-coded lower photon-momentum cutoff k_min=1e-3, leaving an
-            #      uncancelled ln(k_min) residual that the n->p integral
-            #      converges to (~ -1.2e-2 at 1.16e7 K, growing logarithmically
-            #      as k_min is lowered).  Below ~10^8.2 K this residual would
-            #      otherwise spuriously pull the n->p rate ~0.7% below the free
-            #      neutron-decay value it must approach as T -> 0.
-            # PRIMAT-Main.m already applies this clamp to p->n (sgnq=-1) only
-            # (lines 1639/1644/1650); here it is extended to n->p because
-            # primat now tabulates the rates down to T_end ~ 1.16e7 K, well
-            # into the regime where the unclamped n->p bremsstrahlung misbehaves.
-            if T < _T_CCRTH_MIN:
-                return 0.
-            return (_L_ThermalTruePhoton(T, sgnq)
-                    + _L_ThermalDiffBremsstrahlung(T, sgnq)
-                    + _L_Thermal_1(T, sgnq)
-                    + _L_Thermal_2_3(T, sgnq))
-
-        #if cfg.verbose:
-        print(f"[weak-py] Re-evaluating n <--> p thermal corrections "
-              f"({'vegas' if _have_vegas else 'scipy.dblquad'}). This may take a while ...")
-
-        # Grid floor is the fixed clamp _T_CCRTH_MIN, not cfg.T_end: every
-        # point below it evaluates to exactly 0 anyway (see
-        # _L_CCRTh_compute), so anchoring the grid to T_end_MeV only made the
-        # cache fingerprint -- and thus a cold, multi-minute recompute --
-        # depend on a parameter the integral never actually uses.
-        _n_th_pts  = n_points_per_decade(cfg.sampling_nTOp_thermal_per_decade, _T_CCRTH_MIN, cfg.T_start)
-        _T_th      = np.logspace(np.log10(_T_CCRTH_MIN), np.log10(cfg.T_start), _n_th_pts)
-        L_nTh_data = np.vectorize(lambda T: _L_CCRTh_compute(T, +1))(_T_th)
-        L_pTh_data = np.vectorize(lambda T: _L_CCRTh_compute(T, -1))(_T_th)
-
-        if cfg.save_nTOp_thermal:
-            os.makedirs(_td, exist_ok=True)
-            _algo = "vegas" if _have_vegas else "scipy.dblquad"
-            write_cache_with_fingerprint(
-                _th_path, _th_fp, [_T_th, L_nTh_data, L_pTh_data],
-                col_header="T[K] L_nTOpCCRTh L_pTOnCCRTh",
-                provenance=f"backend=python algorithm={_algo} "
-                           f"vegas_n_eval={cfg.vegas_n_eval} vegas_n_itn={cfg.vegas_n_itn}")
-
-        if cfg.verbose:
-            print("[weak-py] n <--> p thermal corrections computed")
-
-        T_th, L_nTh, L_pTh = _T_th, L_nTh_data, L_pTh_data
-
-    else:
-        if cfg.verbose:
-            print("[weak-py] n <--> p thermal corrections loaded from cache.")
-        tab   = np.loadtxt(_th_path)
-        T_th  = tab[:, 0]
-        L_nTh = tab[:, 1]
-        L_pTh = tab[:, 2]
+    T_th, L_nTh, L_pTh = _compute_or_load_L_CCRTh_grid(ctx)
 
     _interp_n = interp1d(T_th, L_nTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
     _interp_p = interp1d(T_th, L_pTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
