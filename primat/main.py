@@ -809,6 +809,65 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
     return np.array(all_rows)
 
 
+def mc_prev_is_reusable(prev, seed, quantities, params, custom_network, backend):
+    """Decide whether a previous MC result ``prev`` may be reused (extended)
+    for a new :func:`mc_uncertainty`/:func:`primat.backend.run_mc` call,
+    instead of being silently discarded and recomputed from scratch.
+
+    Because MC sample ``i`` is fully determined by ``seed + i`` (see
+    ``mc_uncertainty``'s docstring), ``prev`` is sample-for-sample
+    compatible with a new call -- so its first ``min(len(prev), num_mc)``
+    samples can be reused untouched -- iff *all* of the following hold:
+
+    - ``prev`` was computed by the same ``backend`` ('python' or 'c') that
+      will service this call.  The C and Python backends draw MC samples
+      from different, non-interchangeable RNG streams (NumPy vs
+      xoshiro256**), so mixing them would silently corrupt the sample
+      statistics rather than raise -- this is the one condition that
+      differs between the two call sites this helper replaces (the Python
+      path also accepts a legacy ``prev.backend is None``, i.e. a
+      :class:`MCResult` predating the ``backend`` attribute).
+    - ``prev.seed == seed`` (same base seed -> same per-sample draws).
+    - ``prev``'s stored quantity keys start with ``quantities`` in the same
+      order (so the stacked sample columns line up column-for-column).
+    - ``prev.params == params`` and ``prev.custom_network == custom_network``
+      (a different network, physics flags, or reaction customisation must
+      never silently reuse stale samples).
+
+    Parameters
+    ----------
+    prev : MCResult or None
+        The previous result to test, or ``None`` (never reusable).
+    seed : int
+        Base seed of the new call.
+    quantities : list of str
+        Quantity keys requested for the new call, in order.
+    params : dict
+        The new call's (already-defaulted) base parameters.
+    custom_network : dict or None
+        The new call's "Customise Reactions" override.
+    backend : {'python', 'c'}
+        Which backend will service the new call.
+
+    Returns
+    -------
+    bool
+        ``True`` iff ``prev`` may be reused as described above.
+    """
+    if prev is None:
+        return False
+    prev_backend = getattr(prev, 'backend', None)
+    if backend == 'python':
+        backend_ok = prev_backend in (None, 'python')
+    else:
+        backend_ok = prev_backend == 'c'
+    return (backend_ok
+            and getattr(prev, 'seed', None) == seed
+            and list(prev)[:len(quantities)] == quantities
+            and getattr(prev, 'params', None) == params
+            and getattr(prev, 'custom_network', None) == custom_network)
+
+
 def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
                     custom_network=None, progress=None):
     """Estimate nuclear-rate and neutron-lifetime uncertainties on BBN
@@ -951,18 +1010,12 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     else:
         quantities = explicit_quantities  # refined below once central_inst is solved
 
-    # Reuse a previous result only when it is sample-for-sample compatible with
-    # this call: same base seed, same quantities (in the same order, so the
-    # stacked sample columns line up), and the same params/custom_network (so
-    # a different network or rate customisation never silently reuses stale
-    # samples).  ``list(prev)`` iterates all keys in their stored order;
-    # check that the requested quantities match the first len(quantities) keys.
-    reuse = (prev is not None
-             and getattr(prev, 'backend', None) in (None, 'python')
-             and getattr(prev, 'seed', None) == seed
-             and prev_all_keys[:len(quantities)] == quantities
-             and getattr(prev, 'params', None) == base_params
-             and getattr(prev, 'custom_network', None) == custom_network)
+    # Reuse a previous result only when it is sample-for-sample compatible
+    # with this call -- see mc_prev_is_reusable's docstring for the exact
+    # conditions (same seed/quantities-order/params/custom_network, and a
+    # Python-origin backend).
+    reuse = mc_prev_is_reusable(prev, seed, quantities, base_params,
+                                 custom_network, backend='python')
 
     if reuse:
         # The central value (all p_* = 0) does not depend on num_mc, so take it

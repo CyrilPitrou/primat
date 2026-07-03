@@ -289,18 +289,17 @@ def _assemble_c_mc_result(raw, quantities, seed, params, custom_network):
 
 def _c_prev_reuse(prev, seed, quantities, base_params, custom_network):
     """The C-path counterpart of ``mc_uncertainty``'s internal ``reuse``
-    check (``primat/main.py``): same seed/quantities-order/params/
-    custom_network guard, plus ``prev.backend == "c"`` (the C and Python
-    backends draw samples from different, non-interchangeable RNG streams,
-    so a Python-origin ``prev`` must never be fed to the C side as if its
-    samples were resumable -- see this module's docstring).
+    check (``primat/main.py``): delegates to the shared
+    :func:`primat.main.mc_prev_is_reusable` guard with ``backend='c'``, so
+    the two call sites (this one and ``mc_uncertainty``'s own) can never
+    drift apart -- see that function's docstring for the exact conditions,
+    in particular why a Python-origin ``prev`` must never be fed to the C
+    side as if its samples were resumable (different, non-interchangeable
+    RNG streams -- see this module's docstring).
     """
-    return (prev is not None
-            and getattr(prev, 'backend', None) == 'c'
-            and getattr(prev, 'seed', None) == seed
-            and list(prev) == quantities
-            and getattr(prev, 'params', None) == base_params
-            and getattr(prev, 'custom_network', None) == custom_network)
+    from .main import mc_prev_is_reusable
+    return mc_prev_is_reusable(prev, seed, quantities, base_params,
+                                custom_network, backend='c')
 
 
 def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
