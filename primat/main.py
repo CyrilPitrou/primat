@@ -957,8 +957,6 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     >>> mc['YPBBN'].std
     >>> mc['DoH'].values   # full sample array
     """
-    from .network_data import load_reaction_names
-
     # quantity=None means "all standard observables + every tracked nuclide":
     # resolved below from the central solve, so no extra probe run is needed.
     explicit_quantities = ([] if quantity is None
@@ -972,26 +970,7 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     if progress is None:
         progress = base_params.get('show_progress', True)
 
-    # Rate offsets to vary: all thermonuclear reactions in the selected network.
-    # We construct a temporary config just to resolve the working directory
-    # and selected network filename correctly.
-    tmp_cfg = PRIMATConfig(base_params)
-    reactions = load_reaction_names(tmp_cfg)
-    
-    # Each entry is "bare_name" or "bare_name, filename.txt".
-    # Extract only the bare_name for rate variation.
-    # Reactions dropped by custom_network["removed"] no longer exist in the
-    # network (mirrors the filter UpdateNuclearRates.__init__ applies to
-    # cfg.network's reaction list), so they must not be sampled either.
-    removed = set(custom_network.get("removed", [])) if custom_network else set()
-    bare_reactions = []
-    for line in reactions:
-        parts = re.split(r'[, ]+', line, maxsplit=1)
-        bare_name = parts[0]
-        if bare_name not in removed:
-            bare_reactions.append(bare_name)
-
-    rate_keys = [f'p_{rxn}' for rxn in bare_reactions]
+    rate_keys = _mc_resolve_rate_keys(base_params, custom_network)
 
     # The standard observables (_DEFAULT_MC_OBSERVABLES) are always merged in
     # on top of whatever the caller explicitly requested, so the returned
@@ -1017,6 +996,71 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     reuse = mc_prev_is_reusable(prev, seed, quantities, base_params,
                                  custom_network, backend='python')
 
+    (quantities, centrals, nuclide_names, nuclide_centrals,
+     prev_samples, prev_nuclide_samples, n_prev) = _mc_resolve_centrals(
+        reuse, prev, prev_all_keys, quantities, explicit_quantities,
+        base_params, custom_network, num_mc)
+
+    new_qty_samples, new_nucl_samples = _mc_run_new_samples(
+        base_params, rate_keys, quantities, nuclide_names,
+        n_prev, num_mc, seed, n_jobs, custom_network, progress)
+
+    qty_samples = np.vstack([prev_samples, new_qty_samples])   # (num_mc, n_q)
+    nucl_samples = np.vstack([prev_nuclide_samples, new_nucl_samples])  # (num_mc, n_nuclides)
+
+    return _mc_assemble_result(quantities, centrals, qty_samples,
+                               nuclide_names, nuclide_centrals, nucl_samples,
+                               seed, base_params, custom_network)
+
+
+def _mc_resolve_rate_keys(base_params, custom_network):
+    """Rate offsets to vary: all thermonuclear reactions in the selected network.
+
+    Constructs a temporary config just to resolve the working directory and
+    selected network filename correctly, then strips any reaction dropped by
+    ``custom_network["removed"]`` (mirrors the filter
+    ``UpdateNuclearRates.__init__`` applies to ``cfg.network``'s reaction
+    list, since those reactions no longer exist in the network).
+
+    Returns the list of ``p_<reaction>`` parameter names to vary.
+    """
+    from .network_data import load_reaction_names
+    tmp_cfg = PRIMATConfig(base_params)
+    reactions = load_reaction_names(tmp_cfg)
+
+    # Each entry is "bare_name" or "bare_name, filename.txt".
+    # Extract only the bare_name for rate variation.
+    removed = set(custom_network.get("removed", [])) if custom_network else set()
+    bare_reactions = []
+    for line in reactions:
+        parts = re.split(r'[, ]+', line, maxsplit=1)
+        bare_name = parts[0]
+        if bare_name not in removed:
+            bare_reactions.append(bare_name)
+
+    return [f'p_{rxn}' for rxn in bare_reactions]
+
+
+def _mc_resolve_centrals(reuse, prev, prev_all_keys, quantities, explicit_quantities,
+                          base_params, custom_network, num_mc):
+    """Resolve the MC central values, finalised quantity list, and any
+    reusable ``prev`` sample columns.
+
+    When ``reuse`` is True (see :func:`mc_prev_is_reusable`), centrals and
+    sample columns are pulled straight from ``prev`` instead of re-solving
+    them (the central value, all p_*=0, does not depend on ``num_mc``).
+    Otherwise runs one central :class:`PRIMAT` solve (all p_*=0) to get the
+    centrals, and finalises ``quantities`` by merging in every
+    ``_DEFAULT_MC_OBSERVABLES`` entry this network/``custom_network``
+    actually produces (an explicitly requested but unknown quantity still
+    raises via ``get_quantity``; a merged-in default observable that is
+    unavailable is silently dropped).
+
+    Returns
+    -------
+    (quantities, centrals, nuclide_names, nuclide_centrals,
+     prev_samples, prev_nuclide_samples, n_prev)
+    """
     if reuse:
         # The central value (all p_* = 0) does not depend on num_mc, so take it
         # straight from prev instead of re-solving it.
@@ -1058,7 +1102,20 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         prev_nuclide_samples = np.empty((0, len(nuclide_names)))
         n_prev = 0
 
-    # Only the samples beyond the reused prefix need solving.
+    return (quantities, centrals, nuclide_names, nuclide_centrals,
+            prev_samples, prev_nuclide_samples, n_prev)
+
+
+def _mc_run_new_samples(base_params, rate_keys, quantities, nuclide_names,
+                         n_prev, num_mc, seed, n_jobs, custom_network, progress):
+    """Solve only the samples beyond any reused prefix (seeds ``seed+n_prev``
+    through ``seed+num_mc-1``), printing an optional progress banner, and
+    split the resulting column-stacked samples into quantity samples and
+    nuclide samples.
+
+    Returns ``(new_qty_samples, new_nucl_samples)``, shaped
+    ``(num_mc - n_prev, n_q)`` and ``(num_mc - n_prev, n_nuclides)``.
+    """
     new_seeds = [seed + i for i in range(n_prev, num_mc)]
     n_new     = len(new_seeds)
 
@@ -1087,10 +1144,15 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         new_qty_samples = np.empty((0, len(quantities)))
         new_nucl_samples = np.empty((0, len(nuclide_names)))
 
-    qty_samples = np.vstack([prev_samples, new_qty_samples])   # (num_mc, n_q)
-    nucl_samples = np.vstack([prev_nuclide_samples, new_nucl_samples])  # (num_mc, n_nuclides)
+    return new_qty_samples, new_nucl_samples
 
-    # Build MCQuantityResults for both requested quantities and all nuclides
+
+def _mc_assemble_result(quantities, centrals, qty_samples, nuclide_names,
+                        nuclide_centrals, nucl_samples, seed, base_params,
+                        custom_network):
+    """Build the :class:`MCResult` dict-like object from the (possibly
+    reused+new-concatenated) quantity and nuclide sample matrices.
+    """
     result_dict = {
         q: MCQuantityResult(centrals[j], qty_samples[:, j])
         for j, q in enumerate(quantities)
