@@ -1557,22 +1557,41 @@ def render_sidebar_form():
         than that is too slow for an interactive "quick" estimate.  Also a
         GUI-only value, returned separately.
     """
-    # Apply a pending "select this synthetic custom-network entry" request
-    # from the previous run (see _render_dialog_footer/_import_dialog) before
-    # the "network" widget below is instantiated -- Streamlit forbids setting
-    # an already-instantiated widget's session_state value directly.
+    _reconcile_pending_network_selection()
+    _reconcile_distortion_decoupling_flags()
+
+    params = {}
+
+    st.sidebar.header("Parameters")
+
+    _render_curated_groups(params)
+    _render_constants_group(params)
+    quick_mc, mc_samples = _render_uncertainty_group()
+
+    return params, quick_mc, mc_samples
+
+
+def _reconcile_pending_network_selection():
+    """Apply a pending "select this synthetic custom-network entry" request
+    from the previous run (see _render_dialog_footer/_import_dialog) before
+    the "network" widget is instantiated -- Streamlit forbids setting an
+    already-instantiated widget's session_state value directly.
+    """
     pending_network = st.session_state.pop(SessionKeys.pending_network_label, None)
     if pending_network is not None:
         st.session_state[SessionKeys.network] = pending_network
 
-    # Same constraint, applied the same way: analytic_distortions requires
-    # incomplete_decoupling=False (PRIMATConfig enforces/validates this
-    # combination). Reconcile it here -- before either widget is
-    # instantiated below -- because Streamlit forbids setting
-    # st.session_state["incomplete_decoupling"] once that widget exists, and
-    # both keys already persist their *previous* run's value in
-    # st.session_state at this point even though neither widget has been
-    # (re)created yet this run.
+
+def _reconcile_distortion_decoupling_flags():
+    """Reconcile the two constraints between the distortion/decoupling flags
+    before their widgets are instantiated -- Streamlit forbids setting
+    st.session_state["incomplete_decoupling"] once that widget exists, and
+    both keys already persist their *previous* run's value in
+    st.session_state at this point even though neither widget has been
+    (re)created yet this run.
+    """
+    # analytic_distortions requires incomplete_decoupling=False (PRIMATConfig
+    # enforces/validates this combination).
     if (st.session_state.get("analytic_distortions", DEFAULT_PARAMS["analytic_distortions"])
             and st.session_state.get("incomplete_decoupling", DEFAULT_PARAMS["incomplete_decoupling"])):
         st.session_state["incomplete_decoupling"] = False
@@ -1602,11 +1621,20 @@ def render_sidebar_form():
             "decoupling** has been turned on for you.",
         )
 
-    params = {}
 
-    st.sidebar.header("Parameters")
+def _render_curated_groups(params):
+    """Render the curated parameter groups (``GROUP_ORDER``) in sidebar
+    expanders, mutating ``params`` in place with every widget value that
+    differs from its default.
 
-    # ---- Curated groups -----------------------------------------------------
+    Handles three widgets that need special-casing beyond the generic
+    ``_widget_for``/``_display_default`` pattern: the ``amax``
+    enable/disable checkbox (its default ``None`` can't be represented by a
+    bare number input), the ``_CONDITIONAL`` skip-if-control-not-set logic,
+    and the ``network`` dropdown's custom-network handling (selecting a
+    synthetic entry drives the run via ``custom_network`` instead of a plain
+    network name).
+    """
     by_group = {g: [] for g in GROUP_ORDER}
     for key, (group, label, help_text) in _FORM_METADATA.items():
         by_group[group].append((key, label, help_text))
@@ -1697,28 +1725,39 @@ def render_sidebar_form():
                 if key == "analytic_distortions" and value and st.session_state.get(
                         "incomplete_decoupling", DEFAULT_PARAMS["incomplete_decoupling"]):
                     # The reconciliation already happened before this loop
-                    # started (see render_sidebar_form's top), so by the time
-                    # we get here incomplete_decoupling's widget should
-                    # already reflect False. If it still doesn't (e.g. the
-                    # user just flipped analytic_distortions on this very
-                    # run, after incomplete_decoupling's widget already
-                    # rendered earlier in this same pass), force a rerun so
-                    # the pre-loop reconciliation can take effect on the next
-                    # pass -- without touching the now-instantiated widget's
+                    # started (see _reconcile_distortion_decoupling_flags,
+                    # called at render_sidebar_form's top), so by the time we
+                    # get here incomplete_decoupling's widget should already
+                    # reflect False. If it still doesn't (e.g. the user just
+                    # flipped analytic_distortions on this very run, after
+                    # incomplete_decoupling's widget already rendered earlier
+                    # in this same pass), force a rerun so the pre-loop
+                    # reconciliation can take effect on the next pass --
+                    # without touching the now-instantiated widget's
                     # session_state directly, which Streamlit forbids.
                     st.rerun()
 
             if group == "Nuclear reactions":
                 _render_network_management_button(params)
 
-    # ---- Constants: GN and tau_n only ----------------------------------------
+
+def _render_constants_group(params):
+    """Render the "Constants" sidebar expander (GN and tau_n only), mutating
+    ``params`` in place with every value that differs from its default.
+    """
     with st.sidebar.expander("Constants", expanded=False):
         for key, (label, help_text) in _CONSTANTS_METADATA.items():
             value = _widget_for(key, label, help_text)
             if value != _display_default(key):
                 params[key] = value
 
-    # ---- Uncertainty: optional quick MC error bars ---------------------------
+
+def _render_uncertainty_group():
+    """Render the "Uncertainty" sidebar expander (optional quick MC error
+    bars). Returns ``(quick_mc, mc_samples)`` -- GUI-only values, not
+    ``PRIMATConfig``/``DEFAULT_PARAMS`` keys, hence returned separately
+    rather than folded into ``params``.
+    """
     with st.sidebar.expander("Uncertainty", expanded=False):
         quick_mc = st.toggle(
             "Quick MC uncertainty",
@@ -1748,4 +1787,4 @@ def render_sidebar_form():
             disabled=not quick_mc,
         ))
 
-    return params, quick_mc, mc_samples
+    return quick_mc, mc_samples
