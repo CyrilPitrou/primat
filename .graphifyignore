@@ -1,0 +1,15 @@
+primat/data/
+.claude
+.codex
+biblio
+build
+wheels
+doc
+results
+notebooks
+FASTER.md
+SPEED.md
+*.md
+*.pdf
+*.rst
+**/*.md

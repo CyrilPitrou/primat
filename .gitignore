@@ -36,3 +36,11 @@ AGENTS.md
 
 # Local Claude Code tooling settings
 .claude/
+
+# Local Codex CLI tooling settings (machine-specific paths, e.g. hooks.json)
+.codex/
+
+# Runtime-generated n<->p weak-rate cache files (fingerprinted, one per
+# background config). The shipped set under primat/data/weak/ stays tracked
+# (already committed); this only ignores new files a local run regenerates.
+primat/data/weak/nTOp_*.txt
