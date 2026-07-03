@@ -12,13 +12,23 @@ OBJ := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
 UNIT_SRC := $(wildcard tests/unit/*.c)
 UNIT_BIN := $(patsubst tests/unit/%.c,$(BUILD)/unit/%,$(UNIT_SRC))
 
-.PHONY: all debug test bench clean
+.PHONY: all debug test debug-test bench clean
 
 all: $(BUILD)/primat-c
 
 debug: CFLAGS := -std=c11 -Wall -Wextra -O0 -g -fsanitize=address,undefined -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
 debug: LDFLAGS := -lm -pthread -fsanitize=address,undefined
 debug: all
+
+# Builds and runs the unit-test suite instrumented with ASan+UBSan (same
+# flags as the `debug` target, applied to the unit binaries rather than
+# $(BUILD)/primat-c). Target-specific CFLAGS/LDFLAGS propagate to the
+# $(UNIT_BIN) prerequisites of `test`, so this is the cheapest memory-bug
+# detector available for a C codebase with ~250 manual allocation sites and
+# few NULL checks (see CI job `c-sanitizers.yml`).
+debug-test: CFLAGS := -std=c11 -Wall -Wextra -O0 -g -fsanitize=address,undefined -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
+debug-test: LDFLAGS := -lm -pthread -fsanitize=address,undefined
+debug-test: test
 
 $(BUILD)/%.o: src/%.c
 	@mkdir -p $(BUILD)

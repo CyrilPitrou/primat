@@ -1,0 +1,21 @@
+name: C unit tests (ASan/UBSan)
+
+# Cheapest available memory-bug detector for primat-c (~250 manual
+# allocation sites, few NULL checks): builds the unit-test binaries with
+# `make debug-test` (-O0 -g -fsanitize=address,undefined) and runs them,
+# so any out-of-bounds access, use-after-free, leak, or UB trips the job.
+on:
+  push:
+  pull_request:
+
+jobs:
+  sanitizers:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: primat-c
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run unit tests under ASan/UBSan
+        run: make debug-test
