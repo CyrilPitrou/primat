@@ -134,14 +134,41 @@ before this plan was written — the description above was stale.
 
 ## 2. C-vs-Python D/H gap investigation
 
-### 2.1 Root-cause the ~1.7e-8 small-network D/H discrepancy — **Opus** (M)
+### 2.1 Root-cause the ~1.7e-8 small-network D/H discrepancy — **Opus** (M) — **DONE (2026-07-03)**
 
-`tests/test_backend_parity.py` budgets a ~1.7e-8 absolute (~7e-4 relative)
-C-vs-Python D/H gap for `network="small"` as an unexplained cross-backend
-tolerance — larger in spirit than the ±3e-9 same-backend regression
-tolerance CLAUDE.md enforces. This is genuine numerical detective work
-(two solver stacks, several plausible culprits, no single failing assert),
-hence **Opus**.
+**Root cause: a weak-rate interpolation-*scheme* mismatch.** Python interpolated
+the cached n↔p rate table with a linear-space quadratic spline
+(scipy `interp1d(kind='quadratic')`); the C backend used a local 3-point
+Lagrange quadratic (`cpr_interp_quadratic_local`). On the *same* cached nodes
+the two curves differed by up to ~1e-4 relative through the n/p freeze-out
+window (T ~ 0.2–2 MeV), C systematically above Python — propagating to a
+systematic ~2.5e-5 YP / ~1.8e-5 D/H offset (Neff always identical). Ruled out
+BDF controller noise: the gap *plateaued* (didn't scale) as
+`numerical_precision` tightened 1e-7 → 1e-10. Measured (subsampling the shipped
+80-pt/decade table) that log10-log10 cubic is the most accurate scheme at every
+density and that more points/decade is the wrong lever — the fix is a better
+*scheme*, not a denser grid.
+
+**Fix (mirrored, both backends):** both now interpolate the weak rates with the
+same log10-log10 not-a-knot cubic spline — Python
+`weak_rates.api._weak_rate_loglog_interp`, C `cpr_weak_rate_nTOp`/`cpr_weak_rate_pTOn`
+via a new `CPRWeakInterp` (`cpr_cubic_spline_fit_notaknot`) — the scheme the
+nuclear rate tables already share, and ~1–2 orders more accurate than either old
+scheme at the shipped density. The backward p→n rate's exp(−Q/T)-suppressed
+zero prefix is handled by splining only the positive suffix and returning 0
+below it (forward rate is positive throughout and extrapolates). This collapsed
+the YP gap to ~1e-6 and the D/H gap to ~1e-6 (`small`) / ~6e-6 (`large`+amax=8);
+the residual is the separate, smaller nuclear-rate-interpolation + BDF
+step-sequence difference (doesn't touch YP). `test_backend_parity.py`'s
+cross-backend D/H tolerance tightened 1e-3 → 5e-5; CLAUDE.md and the test
+docstring updated. Both reference configs stay within the CLAUDE.md tolerances.
+
+*Historical framing (superseded by the finding above):* `tests/test_backend_parity.py`
+budgeted a ~1.7e-8 absolute (~7e-4 relative) C-vs-Python D/H gap for
+`network="small"` as an unexplained cross-backend tolerance — larger in spirit
+than the ±3e-9 same-backend regression tolerance CLAUDE.md enforces. Genuine
+numerical detective work (two solver stacks, several plausible culprits, no
+single failing assert), hence **Opus**.
 
 Suggested bisection strategy:
 

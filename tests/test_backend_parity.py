@@ -11,18 +11,37 @@ This file is that check: it pins down (1) the result-dict *shape* exactly,
 and (2) the numerical agreement *level* the two backends currently achieve,
 so a future change that silently widens the gap is caught.
 
-Known gap (not yet root-caused)
---------------------------------
-For ``network="small"`` at default settings, the C and Python backends
-agree on Neff/YP to ~1e-5 but differ in D/H by ~1.7e-8 absolute (~7e-4
-relative) -- *outside* CLAUDE.md's stated +/-3e-9 D/H regression tolerance
-for the Python backend's own reference values. That tolerance exists to
-resolve flag-level effects (e.g. incomplete_decoupling, QED_corrections) at
-the 1e-2..1e-3 level in Neff; the C/Python gap checked here is a distinct,
-coarser cross-backend budget (1e-3 relative in D/H) until the discrepancy is
-diagnosed. Tightening this bound is a fair signal that the discrepancy has
-been understood/fixed; loosening it should not happen without updating this
-docstring.
+Residual gap (root-caused, FABLEPLAN 2.1)
+-----------------------------------------
+The dominant C-vs-Python parity gap used to be a weak-rate *interpolation
+scheme* mismatch: Python interpolated the cached n<->p rate table with a
+linear-space quadratic spline (scipy ``interp1d(kind='quadratic')``), while
+the C backend used a local 3-point Lagrange quadratic. On the same cached
+nodes the two curves differed by up to ~1e-4 relative through the n/p
+freeze-out window (T ~ 0.2..2 MeV), C systematically above Python -- which
+propagated to a systematic ~2.5e-5 YP and ~1.8e-5 D/H offset (Neff was always
+identical, since the background agrees exactly). It was *not* BDF controller
+noise: the gap plateaued rather than shrank as ``numerical_precision`` was
+tightened 1e-7 -> 1e-10.
+
+Both backends now interpolate the weak rates with the *same* log10-log10
+not-a-knot cubic spline (Python ``_weak_rate_loglog_interp``, C
+``cpr_weak_rate_nTOp`` via ``cpr_cubic_spline_fit_notaknot``) -- the scheme the
+nuclear rate tables already share -- which also happens to be ~1-2 orders of
+magnitude more accurate than either old scheme at the shipped node density.
+This collapsed the YP gap to ~1e-6 and the D/H gap to <~1e-5. The small
+residual D/H gap (~1e-6 for 'small', ~6e-6 for 'large'+amax=8) is the
+*separate*, smaller nuclear-rate-table interpolation + BDF step-sequence
+difference between the two solver stacks (it does not touch YP, which is set
+purely by n/p freeze-out) -- BDF controller noise that shrinks with tighter
+``numerical_precision``, not a scheme mismatch.
+
+The cross-backend budget below (``rel=5e-5`` in D/H) is therefore ~40x tighter
+than the pre-fix ``1e-3`` -- still a distinct, coarser budget than CLAUDE.md's
++/-3e-9 *same-backend* D/H regression tolerance, leaving headroom for the
+BDF-noise residual to vary across platforms. Tightening it further tracks any
+future unification of the nuclear-rate/solver residual; loosening it should
+not happen without updating this docstring.
 """
 import numpy as np
 import pytest
@@ -73,9 +92,10 @@ def test_backend_small_network_numerical_agreement():
 
     assert r_c["YPBBN"] == pytest.approx(r_py["YPBBN"], abs=1e-5)
     assert r_c["Neff"] == pytest.approx(r_py["Neff"], abs=1e-3)
-    # Known ~1.7e-8 absolute (~7e-4 relative) gap (see module docstring);
-    # budgeted well above CLAUDE.md's tighter +/-3e-9 same-backend tolerance.
-    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=1e-3)
+    # Post-fix residual is ~1e-6 relative (see module docstring: the weak-rate
+    # interpolation scheme is now shared; what remains is nuclear-rate/BDF
+    # noise). Budgeted at 5e-5 for cross-platform headroom.
+    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=5e-5)
 
 
 @requires_c_backend
@@ -88,7 +108,8 @@ def test_backend_large_amax8_numerical_agreement():
 
     assert r_c["YPBBN"] == pytest.approx(r_py["YPBBN"], abs=1e-5)
     assert r_c["Neff"] == pytest.approx(r_py["Neff"], abs=1e-3)
-    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=1e-3)
+    # ~6e-6 residual for large+amax=8 (see module docstring); same 5e-5 budget.
+    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=5e-5)
 
 
 @requires_c_backend
@@ -479,6 +500,6 @@ def test_backend_custom_network_numerical_agreement():
     r_py_plain = run_bbn(params, force_backend="python")
 
     assert r_c["YPBBN"] == pytest.approx(r_py["YPBBN"], abs=1e-5)
-    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=1e-3)
+    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=5e-5)
     assert r_c["DoH"] != pytest.approx(r_c_plain["DoH"], rel=1e-6)
     assert r_py["DoH"] != pytest.approx(r_py_plain["DoH"], rel=1e-6)

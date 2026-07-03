@@ -99,18 +99,17 @@ int main(void)
      * already in units of 1/tau_n, matching cpr_weak_rate_nTOp/pTOn.
      *
      * Tolerances: at low T the rate is dominated by the cache-loaded
-     * nonthermal table (no thermal contribution there), interpolated by
-     * cpr_interp_quadratic_local -- a local 3-point stand-in for scipy's
-     * global quadratic B-spline (interp1d(kind='quadratic'); see the
-     * trade-off documented in spline.h). At higher T the rate spans many
-     * orders of magnitude across the table and that interpolation
-     * difference, while still small, is no longer negligible at the 1e-6
-     * level claimed for smoother tables -- empirically ~1e-4 relative
-     * across this table's full T range (verified against the same Python
-     * reference at the 11 T-points spanning the whole table, not just
-     * the ones checked below); 3e-3 is a comfortable margin above that
-     * while still catching any real (orders-of-magnitude, sign, or
-     * missing-term) regression. */
+     * nonthermal table (no thermal contribution there), now interpolated by
+     * the shared log10-log10 not-a-knot cubic spline (CPRWeakInterp, matching
+     * Python's _weak_rate_loglog_interp -- see weak_rates.h). The reference
+     * values below were captured from the *earlier* linear-space-quadratic
+     * Python interpolant, so at off-node T they differ from the new scheme by
+     * up to ~1e-4 relative (both schemes agree to <~1e-6 with the true rate,
+     * but with each other only to the coarser of their two interpolation
+     * errors); 3e-3 is a comfortable margin above that while still catching
+     * any real (orders-of-magnitude, sign, or missing-term) regression. The
+     * low-T points stay at 1e-6 because the rate is ~flat (~1) there, so the
+     * interpolation scheme barely moves it. */
     CHECK(close_rel(cpr_weak_rate_nTOp(&wr, 1.16e7), 0.9999983396745395, 1e-6),
           "Gamma_nTOp(1.16e7 K) matches Python");
     CHECK(fabs(cpr_weak_rate_pTOn(&wr, 1.16e7)) < 1e-40,

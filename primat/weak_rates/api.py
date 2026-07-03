@@ -28,6 +28,86 @@ from ..cache_utils import fingerprint_hash, write_cache_with_fingerprint
 
 __all__ = ['ComputeWeakRates', 'InterpolateWeakRates', 'RecomputeWeakRates']
 
+
+def _weak_rate_loglog_interp(T, rate):
+    """Interpolant for a tabulated n<->p weak rate, in log10-log10 space.
+
+    Physics/numerics rationale
+    --------------------------
+    The forward (n->p) and backward (p->n) rates span ~5 orders of magnitude
+    across the BBN temperature grid and are smooth, nearly power-law functions
+    of T, so a cubic spline in ``(log10 T, log10 Gamma)`` space is far more
+    accurate than a spline in linear (T, Gamma) space at a fixed node density
+    (measured: ~1e-6 vs ~1e-5..1e-4 relative around n/p freeze-out for the
+    shipped 80-points/decade grid). Crucially this is the *same* scheme the
+    shipped nuclear rate tables already use (:func:`network_data._resample_rate_table`)
+    and that the C backend uses for the weak rates
+    (``cpr_weak_rate_nTOp``/``cpr_resample_rate_table``, both log10-log10
+    not-a-knot cubic via ``cpr_cubic_spline_fit_notaknot``). Using it here
+    replaces the previous ``interp1d(kind='quadratic')`` in linear space, whose
+    curve between nodes differed from the C backend's local 3-point quadratic
+    by up to ~1e-4 in the freeze-out window and was the dominant cause of the
+    C-vs-Python D/H parity gap (see ``tests/test_backend_parity.py``).
+
+    ``interp1d(kind='cubic')`` is scipy's not-a-knot cubic spline, matching the
+    C ``cpr_cubic_spline_fit_notaknot`` boundary condition, so the two backends
+    now agree to the spline's own accuracy rather than to the ~1e-4 gap between
+    two unrelated "quadratic" schemes.
+
+    Non-positive prefix (backward rate)
+    -----------------------------------
+    The backward p->n rate is ``exp(-Q/T)``-suppressed and is clamped to exact
+    0 (below the ~1e-28 noise floor of ``ComputeWeakRates``) in a low-temperature
+    prefix of the grid, where ``log10`` is undefined. The spline is therefore
+    built only over the contiguous all-positive *suffix* of the table, and the
+    rate is returned as 0 for ``T`` below that suffix -- physically the rate is
+    negligible there and the caller
+    (:meth:`background.Background.weak_nTOp_bkwrd`) clamps it to 0 anyway. The
+    forward rate is strictly positive over the whole grid, so its suffix is the
+    full table.
+
+    Parameters
+    ----------
+    T    : array of temperatures [K], strictly increasing.
+    rate : array of rates [1/tau_n] at those temperatures (>= 0).
+
+    Returns
+    -------
+    callable ``f(T_K) -> rate`` accepting a scalar or array of temperatures [K]
+    and returning the rate in units of 1/tau_n, log10-log10 cubic-interpolated
+    (log10-log10 linear if the positive suffix has fewer than the 4 knots a
+    not-a-knot cubic needs -- an edge case that never arises for the default
+    grids, kept only so a pathologically short custom grid still works and
+    still matches the C backend's identical fallback).
+    """
+    T = np.asarray(T, dtype=float)
+    rate = np.asarray(rate, dtype=float)
+    # Largest index carrying a non-positive value: everything strictly above it
+    # is the contiguous positive suffix we can take log10 of (the zeros sit in
+    # a low-T prefix for the backward rate; the forward rate has none).
+    nonpos = np.nonzero(rate <= 0.0)[0]
+    i0 = int(nonpos[-1]) + 1 if nonpos.size else 0
+    logT = np.log10(T[i0:])
+    logR = np.log10(rate[i0:])
+    # Pin the rate to 0 only below a genuine non-positive (clamped-to-zero)
+    # prefix (the backward p->n rate). When the whole grid is positive (the
+    # forward n->p rate, i0 == 0) there is no such region and we extrapolate
+    # the spline below the first node, matching the old fill_value="extrapolate".
+    T_zero_below = T[i0] if i0 > 0 else -np.inf
+    kind = 'cubic' if logT.size >= 4 else 'linear'
+    spline = interp1d(logT, logR, kind=kind, bounds_error=False,
+                      fill_value='extrapolate')
+
+    def _eval(T_K):
+        Tq = np.asarray(T_K, dtype=float)
+        # log10 is undefined at/below 0; clamp the argument (values there are
+        # masked back to 0 below anyway) to avoid a spurious warning.
+        val = np.power(10.0, spline(np.log10(np.maximum(Tq, 1e-300))))
+        val = np.where(Tq >= T_zero_below, val, 0.0)
+        return val if val.ndim else float(val)
+
+    return _eval
+
 def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     """Compute the non-thermal n↔p weak rate tables over the BBN T range.
 
@@ -162,10 +242,10 @@ def InterpolateWeakRates(cfg):
     fp_hash = fingerprint_hash(_weak_rate_fingerprint(cfg))
     path    = nd + "nTOp_" + fp_hash + ".txt"
     tab     = np.loadtxt(path)
-    frwrd   = interp1d(tab[:, 0], tab[:, 1], bounds_error=False,
-                       fill_value="extrapolate", kind='quadratic')
-    bkwrd   = interp1d(tab[:, 0], tab[:, 2], bounds_error=False,
-                       fill_value="extrapolate", kind='quadratic')
+    # log10-log10 cubic (matching the C backend and the nuclear rate tables);
+    # see _weak_rate_loglog_interp for why linear-space quadratic was replaced.
+    frwrd   = _weak_rate_loglog_interp(tab[:, 0], tab[:, 1])
+    bkwrd   = _weak_rate_loglog_interp(tab[:, 0], tab[:, 2])
     return [frwrd, bkwrd]
 
 
@@ -249,11 +329,11 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
                 path, fp, [T_all, frwrd, bkwrd],
                 col_header="T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]")
 
-        def _interp(v):
-            return interp1d(T_all, v, bounds_error=False,
-                            fill_value="extrapolate", kind='quadratic')
-
-        nonthermal = [_interp(frwrd), _interp(bkwrd)]
+        # Same log10-log10 cubic scheme as the cache-load path above (and the
+        # C backend), so a freshly recomputed run and a cache-reloaded run of
+        # the same configuration interpolate identically.
+        nonthermal = [_weak_rate_loglog_interp(T_all, frwrd),
+                      _weak_rate_loglog_interp(T_all, bkwrd)]
 
     # ---- Thermal correction (CCRTh): cached separately, recombined here. ----
     # Both halves are in units of 1/τ_n, so the physical rate the solver uses

@@ -542,9 +542,67 @@ static void panel_point(int i, double lo, double hi, double *p, double *w)
 typedef enum { L_BORN, L_CCR, L_FMCCR, L_FMNOCCR, L_SD, L_SD_CCR,
                L_SD_FMCCR, L_SD_FMNOCCR } LKind;
 
+/* Evaluate a nonthermal rate's log10-log10 interpolant at T_K [K], returning
+ * the rate in units of 1/tau_n. Below the positive suffix's lowest T the rate
+ * is 0 (the backward p->n rate is exp(-Q/T)-suppressed to the noise floor
+ * there; see CPRWeakInterp). Mirrors _weak_rate_loglog_interp's _eval. */
+static double weak_interp_eval(const CPRWeakInterp *it, double T_K)
+{
+    if (T_K < it->Tmin) return 0.0;
+    double lx = log10(T_K);
+    double ly = it->cubic
+        ? cpr_cubic_spline_eval(&it->sp, lx)
+        : cpr_interp_linear(it->logT, it->logR, it->n, lx, CPR_EXTRAP_LINEAR);
+    return pow(10.0, ly);
+}
+
+/* Build the log10-log10 interpolant over the contiguous positive suffix of a
+ * (T, rate) table. i0 is one past the last non-positive entry (0 if all
+ * positive), so the suffix is exactly the tail Python's _weak_rate_loglog_interp
+ * takes log10 of. Uses a not-a-knot cubic (matching Python's interp1d
+ * kind='cubic') when the suffix has >= 4 knots, else a log-log linear
+ * interpolant. Returns 0 on success, nonzero with *errmsg set otherwise. */
+static int weak_interp_build(CPRWeakInterp *it, const double *T,
+                             const double *rate, size_t n, char **errmsg)
+{
+    size_t i0 = 0;
+    for (size_t i = 0; i < n; i++)
+        if (!(rate[i] > 0.0)) i0 = i + 1;   /* one past the last non-positive */
+    size_t ns = n - i0;
+    it->n = ns;
+    /* Pin the rate to 0 only below a genuine clamped-to-zero prefix (the
+     * backward p->n rate, i0 > 0). A fully-positive grid (the forward n->p
+     * rate, i0 == 0) has no such region, so extrapolate the spline below the
+     * first node instead of flooring -- matches Python's _weak_rate_loglog_interp
+     * and the old fill_value="extrapolate". */
+    it->Tmin = (i0 > 0) ? T[i0] : -INFINITY;
+    it->logT = malloc(ns * sizeof(double));
+    it->logR = malloc(ns * sizeof(double));
+    for (size_t i = 0; i < ns; i++) {
+        it->logT[i] = log10(T[i0 + i]);
+        it->logR[i] = log10(rate[i0 + i]);
+    }
+    it->cubic = 0;
+    if (ns >= 4) {
+        if (cpr_cubic_spline_fit_notaknot(it->logT, it->logR, ns, &it->sp, errmsg)) {
+            free(it->logT); free(it->logR); it->logT = it->logR = NULL;
+            return 1;
+        }
+        it->cubic = 1;
+    }
+    return 0;
+}
+
+static void weak_interp_free(CPRWeakInterp *it)
+{
+    free(it->logT); free(it->logR);
+    if (it->cubic) cpr_cubic_spline_free(&it->sp);
+    memset(it, 0, sizeof(*it));
+}
+
 double cpr_weak_rate_nTOp(const CPRWeakRates *wr, double T_K)
 {
-    double v = cpr_interp_quadratic_local(wr->T, wr->frwrd, wr->n, T_K);
+    double v = weak_interp_eval(&wr->frwrd_i, T_K);
     /* wr->T_th's lowest knot is CCRTH_T_MIN, not T_end: below that floor the
      * correction is pinned to 0 here rather than left to
      * cpr_interp_quadratic_local's quadratic extrapolation, which is
@@ -556,7 +614,7 @@ double cpr_weak_rate_nTOp(const CPRWeakRates *wr, double T_K)
 
 double cpr_weak_rate_pTOn(const CPRWeakRates *wr, double T_K)
 {
-    double v = cpr_interp_quadratic_local(wr->T, wr->bkwrd, wr->n, T_K);
+    double v = weak_interp_eval(&wr->bkwrd_i, T_K);
     if (wr->has_thermal && T_K >= CCRTH_T_MIN)
         v += cpr_interp_quadratic_local(wr->T_th, wr->Lpth, wr->n_th, T_K);
     return v;
@@ -565,6 +623,8 @@ double cpr_weak_rate_pTOn(const CPRWeakRates *wr, double T_K)
 void cpr_weak_rates_free(CPRWeakRates *wr)
 {
     free(wr->T); free(wr->frwrd); free(wr->bkwrd);
+    weak_interp_free(&wr->frwrd_i);
+    weak_interp_free(&wr->bkwrd_i);
     free(wr->T_th); free(wr->Lnth); free(wr->Lpth);
     memset(wr, 0, sizeof(*wr));
 }
@@ -1211,6 +1271,17 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
         }
     }
     free(fp_hash);
+
+    /* Build the log10-log10 forward/backward interpolants over the raw table
+     * just loaded/computed (both branches above populate wr->T/frwrd/bkwrd).
+     * Done once here so cpr_weak_rate_nTOp/pTOn are cheap pointwise evals
+     * during BDF integration. */
+    if (weak_interp_build(&wr->frwrd_i, wr->T, wr->frwrd, wr->n, errmsg) ||
+        weak_interp_build(&wr->bkwrd_i, wr->T, wr->bkwrd, wr->n, errmsg)) {
+        free(Tg_K); free(ratio);
+        cpr_weak_rates_free(wr);
+        return 1;
+    }
 
     /* ---- Thermal correction (CCRTh): load from cache if present, else
      * compute from scratch via L_CCRTh_compute (Phase 3b). ---- */

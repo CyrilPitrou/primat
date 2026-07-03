@@ -43,8 +43,10 @@ double cpr_interp_linear(const double *x, const double *y, size_t n, double xq,
 /* Local quadratic interpolant: the Lagrange quadratic through the 3
  * consecutive data points {x[k],x[k+1],x[k+2]} whose middle segment
  * brackets (or, outside the table, is nearest to) xq -- a stand-in for
- * scipy.interpolate.interp1d(kind='quadratic') (a global FITPACK B-spline)
- * used by weak_rates.c's n<->p rate-table interpolants. On the smooth,
+ * scipy.interpolate.interp1d(kind='quadratic') (a global FITPACK B-spline).
+ * Used by weak_rates.c's CCRTh thermal-correction table (the main n<->p
+ * forward/backward rates now use a log10-log10 cubic spline instead, see
+ * CPRWeakInterp in weak_rates.h). On the smooth,
  * densely-sampled grids those tables use (one point per
  * 1/sampling_nTOp_per_decade of a T-decade), a local quadratic through the
  * nearest 3 points agrees with the global B-spline to <~1e-6 relative in

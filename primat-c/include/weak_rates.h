@@ -30,6 +30,7 @@
 
 #include "config.h"
 #include "neutrino_history.h"
+#include "spline.h"
 #include <stddef.h>
 
 /* Fermi-Coulomb factor F(b) (Phys. Rep. S III.D); see corrections.FermiCoulomb. */
@@ -48,10 +49,38 @@ double cpr_compute_fn(const CPRConfig *cfg);
  * return value, but stored as raw arrays (quadratic-interpolated on
  * evaluation, see cpr_interp_quadratic_local) rather than closures. Both
  * tables are in units of 1/tau_n (the caller multiplies by 1/cfg->tau_n,
- * or by the corresponding K, to get the physical rate in s^-1). */
+ * or by the corresponding K, to get the physical rate in s^-1).
+ *
+ * The nonthermal forward/backward rates are evaluated through log10-log10
+ * not-a-knot cubic splines (frwrd_sp/bkwrd_sp), matching Python's
+ * _weak_rate_loglog_interp and the nuclear rate tables' cpr_resample_rate_table
+ * -- see cpr_weak_rate_nTOp. This replaced the earlier linear-space local
+ * 3-point quadratic, which differed from Python's interpolant by ~1e-4 in the
+ * n/p freeze-out window and was the dominant C-vs-Python D/H parity gap
+ * (tests/test_backend_parity.py). The backward rate is exp(-Q/T)-suppressed to
+ * exact 0 in a low-T prefix where log10 is undefined, so its interpolant
+ * covers only the contiguous positive suffix and the rate is pinned to 0 below
+ * that suffix's lowest T (frwrd is positive throughout, so its suffix is the
+ * full grid). */
+
+/* One nonthermal rate's log10-log10 interpolant over its positive suffix,
+ * mirroring Python's _weak_rate_loglog_interp: a not-a-knot cubic spline of
+ * log10(Gamma) vs log10(T) when the suffix has >= 4 knots, else a log-log
+ * linear interpolant (the same <4-knot fallback Python uses -- unreachable for
+ * the default grids, kept only for a pathologically short custom grid). */
+typedef struct {
+    double *logT, *logR; /* log10(T[K]), log10(Gamma[1/tau_n]) of the suffix */
+    size_t n;            /* suffix length */
+    double Tmin;         /* below this raw T[K], rate == 0; -INFINITY when the
+                          * whole grid is positive (forward rate: extrapolate) */
+    CPRCubicSpline sp;   /* valid iff cubic != 0 */
+    int cubic;           /* 1 iff the not-a-knot spline was built (n >= 4) */
+} CPRWeakInterp;
+
 typedef struct {
     double *T, *frwrd, *bkwrd; /* nonthermal table: T[K], Gamma_nTOp, Gamma_pTOn */
     size_t n;
+    CPRWeakInterp frwrd_i, bkwrd_i; /* log10-log10 interpolants, see above */
     double *T_th, *Lnth, *Lpth; /* thermal correction table, only if has_thermal */
     size_t n_th;
     int has_thermal;
@@ -90,8 +119,9 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
 void cpr_weak_rates_free(CPRWeakRates *wr);
 
 /* Gamma_{n->p}(T)/Gamma_{p->n}(T) in units of 1/tau_n, the sum of the
- * (quadratic-interpolated) nonthermal table and, when present, the thermal
- * correction table -- mirrors RecomputeWeakRates's returned closures. */
+ * nonthermal rate (log10-log10 cubic-interpolated, see CPRWeakInterp) and,
+ * when present, the thermal correction table -- mirrors RecomputeWeakRates's
+ * returned closures. */
 double cpr_weak_rate_nTOp(const CPRWeakRates *wr, double T_K);
 double cpr_weak_rate_pTOn(const CPRWeakRates *wr, double T_K);
 
