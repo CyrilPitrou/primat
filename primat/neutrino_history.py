@@ -484,52 +484,76 @@ class AnalyticDistortion(NeutrinoHistory):
         self._build_analytic_distortion()
 
     def _build_analytic_distortion(self):
+        """Build the y/gray analytic spectral distortion (dFDneu_func,
+        dFDneu_moments, rho_nu_SD), delegating each physics piece to its own
+        helper: :meth:`_build_dFDneu_func` (the distortion itself and its
+        en/sgnq dispatch), :meth:`_build_dFDneu_moments` (the eight
+        en-moment derivatives needed by the SD-FM weak-rate correction), and
+        :meth:`_build_rho_nu_SD` (the extra neutrino energy density).
+        """
         cfg = self.cfg
-        xi_nu = cfg.munuOverTnu   # reduced chemical potential ξ = μ/T_ν
+        # Cache the three continuous knobs as instance state so every helper
+        # below can read them without re-deriving from cfg.
+        self._xi_nu  = cfg.munuOverTnu   # reduced chemical potential ξ = μ/T_ν
+        self._y_sz   = cfg.y_SZ
+        self._y_gray = cfg.y_gray
 
-        # ---- y-type (SZ/Compton) and gray-type analytic distortions ----
-        # There is deliberately NO μ-type distortion: a neutrino chemical
-        # potential is not a spectral distortion. A genuine chemical potential
-        # (cfg.munuOverTnu) is treated exactly -- in the n<->p weak rates via
-        # the FD_nu3(sgnq*xi_nu) integrand, and in the energy density via
-        # NeutrinoHistory.rho_nu -- so the old, linearised μ-type "distortion"
-        # (delta_xi_nu) has been removed.
-        #
-        # y-type: the SZ/Compton spectral shape is the energy derivative of
-        # the Fermi-Dirac weighted by y²:
-        #   δf_y^ν(y)   = (1/y²) d/dy(y⁴ df_FD/dy)
-        #               = f_FD(1−f_FD)[4 − y(1−2f_FD)]  (analytic)
-        # Ref: PRIMAT-Main.m, YDistortionNeutrinos.
-        #
-        # gray-type: a third, independent distortion -- not the Compton/SZ
-        # shape above despite generate_rates/PRIMAT-Main-gray.m naming its
-        # equivalent parameter "YSZ" (a misnomer kept only in that file's
-        # comments; see cfg.y_gray's docstring in config.py). It rescales the
-        # spectrum as if the neutrino temperature shifted by a factor
-        # (1+y_gray), with the (1+y_gray)^-3 prefactor chosen so the rescaled
-        # piece's number density exactly cancels against the unperturbed
-        # Fermi-Dirac it is subtracted from (the y^2-moment integral of
-        # δf_gray vanishes exactly, for any y_gray -- verified in
-        # scratch/derive_sd_fm_distortions.py):
-        #   δf_gray(y) = -1/(e^y+1) + 1/(e^{y/(1+γ)}+1) / (1+γ)³,  γ=y_gray
-        # Same shape for neutrinos and antineutrinos (no ξ dependence), per
-        # PRIMAT-Main-gray.m's dFDneuRawy/dFDantineuRawy.
-        y_sz   = cfg.y_SZ
-        y_gray = cfg.y_gray
+        self._build_dFDneu_func()
+        self._build_dFDneu_moments()
+        self._build_rho_nu_SD()
 
-        def _fd(arg):
-            # Safe Fermi-Dirac, elementwise over scalars or arrays: clamp the
-            # exponent before exp() (avoids overflow) and mask the result to
-            # 0 above _EXP_CUT. np.where-based (not a Python if/else) so this
-            # -- and everything built from it below (dFDneu_func, the M_*p*
-            # moment closures) -- stays array-vectorised: the SD-FM
-            # correction (_L_SD_FMCCR/_NoCCR in weak_rates/corrections.py)
-            # evaluates these over O(1e4-1e5)-point quadrature grids, and a
-            # scalar-only _fd previously forced np.vectorize to fall back to
-            # a million-plus individual Python calls (~20 s; see git log for
-            # the profiling that found this).
-            arg = np.asarray(arg)
-            return np.where(arg > _EXP_CUT, 0., 1. / (np.exp(np.minimum(arg, _EXP_CUT)) + 1.))
+    @staticmethod
+    def _fd(arg):
+        """Safe Fermi-Dirac, elementwise over scalars or arrays.
+
+        Clamps the exponent before exp() (avoids overflow) and masks the
+        result to 0 above ``_EXP_CUT``. np.where-based (not a Python
+        if/else) so this -- and everything built from it in
+        :meth:`_build_dFDneu_func`/:meth:`_build_dFDneu_moments` -- stays
+        array-vectorised: the SD-FM correction (_L_SD_FMCCR/_NoCCR in
+        weak_rates/corrections.py) evaluates these over O(1e4-1e5)-point
+        quadrature grids, and a scalar-only _fd previously forced
+        np.vectorize to fall back to a million-plus individual Python calls
+        (~20 s; see git log for the profiling that found this).
+        """
+        arg = np.asarray(arg)
+        return np.where(arg > _EXP_CUT, 0., 1. / (np.exp(np.minimum(arg, _EXP_CUT)) + 1.))
+
+    def _build_dFDneu_func(self):
+        """y-type (SZ/Compton) and gray-type analytic distortions: builds
+        ``self.dFDneu_func``, the n<->p weak-rate distortion correction.
+
+        There is deliberately NO μ-type distortion: a neutrino chemical
+        potential is not a spectral distortion. A genuine chemical potential
+        (cfg.munuOverTnu) is treated exactly -- in the n<->p weak rates via
+        the FD_nu3(sgnq*xi_nu) integrand, and in the energy density via
+        NeutrinoHistory.rho_nu -- so the old, linearised μ-type "distortion"
+        (delta_xi_nu) has been removed.
+
+        y-type: the SZ/Compton spectral shape is the energy derivative of
+        the Fermi-Dirac weighted by y²:
+          δf_y^ν(y)   = (1/y²) d/dy(y⁴ df_FD/dy)
+                      = f_FD(1−f_FD)[4 − y(1−2f_FD)]  (analytic)
+        Ref: PRIMAT-Main.m, YDistortionNeutrinos.
+
+        gray-type: a third, independent distortion -- not the Compton/SZ
+        shape above despite generate_rates/PRIMAT-Main-gray.m naming its
+        equivalent parameter "YSZ" (a misnomer kept only in that file's
+        comments; see cfg.y_gray's docstring in config.py). It rescales the
+        spectrum as if the neutrino temperature shifted by a factor
+        (1+y_gray), with the (1+y_gray)^-3 prefactor chosen so the rescaled
+        piece's number density exactly cancels against the unperturbed
+        Fermi-Dirac it is subtracted from (the y^2-moment integral of
+        δf_gray vanishes exactly, for any y_gray -- verified in
+        scratch/derive_sd_fm_distortions.py):
+          δf_gray(y) = -1/(e^y+1) + 1/(e^{y/(1+γ)}+1) / (1+γ)³,  γ=y_gray
+        Same shape for neutrinos and antineutrinos (no ξ dependence), per
+        PRIMAT-Main-gray.m's dFDneuRawy/dFDantineuRawy.
+        """
+        xi_nu  = self._xi_nu
+        y_sz   = self._y_sz
+        y_gray = self._y_gray
+        _fd    = self._fd
 
         def _dFDneu_analytic(en, x, znu, sgnq):
             """Analytic y/gray spectral distortion of neutrinos/antineutrinos.
@@ -602,41 +626,53 @@ class AnalyticDistortion(NeutrinoHistory):
         dFDneu_func.vectorized = True
         self.dFDneu_func = dFDneu_func
 
-        # ---- en-moment derivatives of δf, for the SD-FM (finite-nucleon- ----
-        # ---- mass) weak-rate correction (weak_rates._L_SD_FMCCR/_NoCCR) ----
-        # Mirrors PRIMAT-Main-gray.m's delta_chi_FM (lines ~1712-1725), which
-        # needs eight energy-moment functions of δf: e2p0/e3p0 (value,
-        # weighted by en^2/en^3 -- no new derivation needed, just
-        # en^n*dFDneu_func, which already implements the en<0 dispatch above)
-        # and e2p1/e3p1/e4p1/e2p2/e3p2/e4p2 (1st/2nd en-derivatives of
-        # en^n*δf), exactly mirroring the eight plain-Fermi-Dirac moments
-        # already hand-coded in weak_rates.py (_FD_nu_e{2,3,4}p{1,2}_v).
-        #
-        # The six derivative moments are derived in
-        # scratch/derive_sd_fm_distortions.py (closed forms in terms of the
-        # logistic function fd and its standard derivative recursion
-        # fd'=-fd(1-fd), so no bare exp() ever appears and nothing can
-        # overflow; numerically self-checked there against finite
-        # differences for all 18 piece x (n,order) combinations) and reused
-        # here via the SAME antisymmetric-dispatch identity as dFDneu_func:
-        #   en >= 0:  M[n,k](en) = d^k/den^k[en^n*H(en,sgnq)]  ("_raw_M{n}p{k}"
-        #             below, sgnq unflipped)
-        #   en <  0:  u = -en; M[n,k](en) = sign(n,k) * _raw_M{n}p{k}(u, -sgnq)
-        #             with sign(n,1) = (-1)^n, sign(n,2) = -(-1)^n -- derived
-        #             from F(en,sgnq) = -H(-en,-sgnq) the same way
-        #             dFDneu_func's en<0 branch is (see neutrino_history.py
-        #             module-level commit message / PR description for the
-        #             chain-rule derivation; the (-1)^n alternation is the
-        #             parity of d/d(-en) = -d/du applied k times).
-        # The functions below are transcribed VERBATIM (no hand algebra) from
-        # the auto-generated combiner output of
-        # scratch/derive_sd_fm_distortions.py (each mu/y/gray piece written
-        # to its own helper by sympy's cse()+str() printer, then summed by a
-        # plain f-string template -- see that script's `to_pycode`/combiner
-        # block), after re-running it and confirming "0 mismatch(es) out of
-        # 54 self-checks" against finite differences (h=1e-6, threshold
-        # 1e-7). This avoids the earlier hand-merge transcription bug (a
-        # `x1**3` mistyped as `x1**4` in the y-piece) by construction.
+    def _build_dFDneu_moments(self):
+        """en-moment derivatives of δf, for the SD-FM (finite-nucleon-mass)
+        weak-rate correction (weak_rates._L_SD_FMCCR/_NoCCR). Builds
+        ``self.dFDneu_moments``.
+
+        Mirrors PRIMAT-Main-gray.m's delta_chi_FM (lines ~1712-1725), which
+        needs eight energy-moment functions of δf: e2p0/e3p0 (value,
+        weighted by en^2/en^3 -- no new derivation needed, just
+        en^n*dFDneu_func, which already implements the en<0 dispatch in
+        :meth:`_build_dFDneu_func`) and e2p1/e3p1/e4p1/e2p2/e3p2/e4p2
+        (1st/2nd en-derivatives of en^n*δf), exactly mirroring the eight
+        plain-Fermi-Dirac moments already hand-coded in weak_rates.py
+        (_FD_nu_e{2,3,4}p{1,2}_v).
+
+        The six derivative moments are derived in
+        scratch/derive_sd_fm_distortions.py (closed forms in terms of the
+        logistic function fd and its standard derivative recursion
+        fd'=-fd(1-fd), so no bare exp() ever appears and nothing can
+        overflow; numerically self-checked there against finite
+        differences for all 18 piece x (n,order) combinations) and reused
+        here via the SAME antisymmetric-dispatch identity as dFDneu_func:
+          en >= 0:  M[n,k](en) = d^k/den^k[en^n*H(en,sgnq)]  ("_raw_M{n}p{k}"
+                    below, sgnq unflipped)
+          en <  0:  u = -en; M[n,k](en) = sign(n,k) * _raw_M{n}p{k}(u, -sgnq)
+                    with sign(n,1) = (-1)^n, sign(n,2) = -(-1)^n -- derived
+                    from F(en,sgnq) = -H(-en,-sgnq) the same way
+                    dFDneu_func's en<0 branch is (see neutrino_history.py
+                    module-level commit message / PR description for the
+                    chain-rule derivation; the (-1)^n alternation is the
+                    parity of d/d(-en) = -d/du applied k times).
+
+        The functions below are transcribed VERBATIM (no hand algebra) from
+        the auto-generated combiner output of
+        scratch/derive_sd_fm_distortions.py (each mu/y/gray piece written
+        to its own helper by sympy's cse()+str() printer, then summed by a
+        plain f-string template -- see that script's `to_pycode`/combiner
+        block), after re-running it and confirming "0 mismatch(es) out of
+        54 self-checks" against finite differences (h=1e-6, threshold
+        1e-7). This avoids the earlier hand-merge transcription bug (a
+        `x1**3` mistyped as `x1**4` in the y-piece) by construction.
+        """
+        xi_nu  = self._xi_nu
+        y_sz   = self._y_sz
+        y_gray = self._y_gray
+        _fd    = self._fd
+        dFDneu_func = self.dFDneu_func
+
         def _M_2_p1_y(en, znu, xi):
             x0 = en * znu
             x1 = _fd(x0 - xi)
@@ -813,28 +849,35 @@ class AnalyticDistortion(NeutrinoHistory):
             "e4p2": _make_moment(4, 2, _raw_M4p2),
         }
 
-        # Extra neutrino energy density from the distortion (Friedmann eq.)
-        # Analytic integrals ∫₀^∞ y³ δf dy for each distortion type.
-        # Ref: PRIMAT-Main.m, Inty3MuDistortion and Inty3SZdistortion.
-        #
-        # Inty3Mu(ξ, δξ)  = (δξ/4)(δξ+2ξ)(δξ²+2δξξ+2(π²+ξ²))
-        # Inty3SZ(ξ)      = 7π⁴/15 + 2π²ξ² + ξ⁴
-        # Inty3Gray(γ)    = γ × 7π⁴/120   (exact; see scratch/derive_sd_fm_distortions.py:
-        #   substituting w=y/(1+γ) in ∫y³[fd(y/(1+γ))/(1+γ)³ - fd(y)]dy gives
-        #   (1+γ)∫w³fd(w)dw - ∫y³fd(y)dy = γ × Inty3_FD exactly, no expansion)
-        # ρ_νSD = N_ν (kT_ν)⁴/(2π²ℏ³c⁵) × [Inty3Mu + y_SZ×Inty3SZ + 2×Inty3Gray]
-        # (the factor 2 on Inty3Gray sums the neutrino+antineutrino
-        # contributions, identical shapes since δf_gray has no ξ dependence;
-        # Inty3Mu/Inty3SZ already are the summed neutrino+antineutrino forms.)
-        # The overall normalisation (N_ν=3, single-particle prefactor) lives in
-        # the module-level helper _rho_nu_SD_from_int (see PRIMAT-Main-gray.m
-        # line 832); the historical bug that put N_ν=2 there is documented
-        # in that helper's docstring.
-        Inty3_FD = _INTY3_FD   # ∫₀^∞ y³ f_FD dy (zero μ)
+    def _build_rho_nu_SD(self):
+        """Extra neutrino energy density from the distortion (Friedmann
+        eq.). Builds ``self.rho_nu_SD``.
 
-        # The genuine chemical-potential energy (cfg.munuOverTnu) is carried by
-        # the neutrino energy density itself (NeutrinoHistory.rho_nu), NOT here:
-        # rho_nu_SD is reserved for the genuine spectral distortions (y/gray).
+        Analytic integrals ∫₀^∞ y³ δf dy for each distortion type.
+        Ref: PRIMAT-Main.m, Inty3MuDistortion and Inty3SZdistortion.
+
+        Inty3Mu(ξ, δξ)  = (δξ/4)(δξ+2ξ)(δξ²+2δξξ+2(π²+ξ²))
+        Inty3SZ(ξ)      = 7π⁴/15 + 2π²ξ² + ξ⁴
+        Inty3Gray(γ)    = γ × 7π⁴/120   (exact; see scratch/derive_sd_fm_distortions.py:
+          substituting w=y/(1+γ) in ∫y³[fd(y/(1+γ))/(1+γ)³ - fd(y)]dy gives
+          (1+γ)∫w³fd(w)dw - ∫y³fd(y)dy = γ × Inty3_FD exactly, no expansion)
+        ρ_νSD = N_ν (kT_ν)⁴/(2π²ℏ³c⁵) × [Inty3Mu + y_SZ×Inty3SZ + 2×Inty3Gray]
+        (the factor 2 on Inty3Gray sums the neutrino+antineutrino
+        contributions, identical shapes since δf_gray has no ξ dependence;
+        Inty3Mu/Inty3SZ already are the summed neutrino+antineutrino forms.)
+        The overall normalisation (N_ν=3, single-particle prefactor) lives in
+        the module-level helper _rho_nu_SD_from_int (see PRIMAT-Main-gray.m
+        line 832); the historical bug that put N_ν=2 there is documented
+        in that helper's docstring.
+
+        The genuine chemical-potential energy (cfg.munuOverTnu) is carried by
+        the neutrino energy density itself (NeutrinoHistory.rho_nu), NOT here:
+        rho_nu_SD is reserved for the genuine spectral distortions (y/gray).
+        """
+        xi_nu  = self._xi_nu
+        y_sz   = self._y_sz
+        y_gray = self._y_gray
+        Inty3_FD = _INTY3_FD   # ∫₀^∞ y³ f_FD dy (zero μ)
 
         def _rho_nu_SD(Tnu):
             """Extra neutrino energy density [MeV⁴] from the y/gray distortions."""
