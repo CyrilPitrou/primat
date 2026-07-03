@@ -44,3 +44,6 @@ AGENTS.md
 # background config). The shipped set under primat/data/weak/ stays tracked
 # (already committed); this only ignores new files a local run regenerates.
 primat/data/weak/nTOp_*.txt
+
+# Local planning notes, not tracked
+FABLEPLAN.md
