@@ -632,25 +632,60 @@ class StandardBackground(Background):
             solved for ``a(T)``. ``t(a)`` is obtained the same way in both
             modes (Hubble integration below), since no NEVO file carries a
             cosmic-time column. The two modes agree to ~1e-6.
+
+        The five numbered steps below are delegated to
+        :meth:`_setup_neutrino_sector` (1), :meth:`_build_a_of_T` (2), and
+        :meth:`_invert_and_integrate_time` / :meth:`_store_background_arrays`
+        (3-4 / 5); this method is the orchestrator threading their outputs
+        together.
         """
         cfg    = self.cfg
-        thermo = self.plasma
 
         Tstartcosmo  = cfg.T_start_cosmo / cfg.MeV_to_Kelvin
         Tstart = cfg.T_start / cfg.MeV_to_Kelvin   # [MeV]
         Tend   = cfg.T_end   / cfg.MeV_to_Kelvin   # [MeV]
 
-        # ------------------------------------------------------------------
         # Step 1 - Neutrino-sector background (temperatures, heating,
         #          spectral distortion, extra neutrino energy density)
-        # ------------------------------------------------------------------
-        # The neutrino sector is encapsulated in a NeutrinoHistory object
-        # (primat.neutrino_history): NEVOTable for incomplete
-        # decoupling, InstantaneousDecoupling otherwise, optionally decorated
-        # with the analytic μ+y spectral distortion (AnalyticDistortion).  It
-        # exposes the three flavour temperature functions, the NEVO heating
-        # N(T_γ) that drives the a(T_γ) ODE, the n<->p weak-rate distortion
-        # dFDneu_func, and the extra neutrino energy density rho_nu_SD.
+        nh, Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg, N_NEVO_of_Tg = \
+            self._setup_neutrino_sector()
+
+        # Step 2 - Build a(T)
+        a_of_T, T_sol, n_T_pts = self._build_a_of_T(nh, N_NEVO_of_Tg, Tend, Tstartcosmo)
+
+        # Steps 3-4 - Invert a(T) -> T(a), then integrate dt/d(ln a) = 1/H(a)
+        T_of_a, sol_t = self._invert_and_integrate_time(
+            a_of_T, T_sol, n_T_pts, Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg,
+            Tstartcosmo, Tend)
+
+        # Step 5 - Sample on the common time grid; set instance attributes
+        self._store_background_arrays(
+            sol_t, a_of_T, T_of_a, Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg,
+            N_NEVO_of_Tg)
+
+    def _setup_neutrino_sector(self):
+        """Step 1 of :meth:`_setup_background_and_cosmo`: the neutrino-sector
+        background (temperatures, heating, spectral distortion, extra
+        neutrino energy density).
+
+        The neutrino sector is encapsulated in a NeutrinoHistory object
+        (primat.neutrino_history): NEVOTable for incomplete
+        decoupling, InstantaneousDecoupling otherwise, optionally decorated
+        with the analytic μ+y spectral distortion (AnalyticDistortion).  It
+        exposes the three flavour temperature functions, the NEVO heating
+        N(T_γ) that drives the a(T_γ) ODE, the n<->p weak-rate distortion
+        dFDneu_func, and the extra neutrino energy density rho_nu_SD.
+
+        Sets ``self.dFDneu_func``/``self.dFDneu_moments``/``self.rho_nu_SD``
+        (spectral-distortion hooks consumed by ``Hubble`` and
+        ``_setup_weak_rates``; all ``None`` when there are no distortions).
+
+        Returns
+        -------
+        (nh, Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg, N_NEVO_of_Tg)
+        """
+        cfg    = self.cfg
+        thermo = self.plasma
         nh = make_neutrino_history(cfg, thermo)
 
         Tnue_of_Tg   = nh.Tnue_of_Tg
@@ -658,16 +693,28 @@ class StandardBackground(Background):
         Tnutau_of_Tg = nh.Tnutau_of_Tg
         N_NEVO_of_Tg = nh.N_NEVO_of_Tg
 
-        # Spectral-distortion hooks consumed by Hubble (extra ρ via
-        # self.rho_nu_SD) and _setup_weak_rates (self.dFDneu_func).  Both are
-        # None when there are no distortions.
         self.dFDneu_func = nh.dFDneu_func   # None means "no spectral distortions"
         self.dFDneu_moments = nh.dFDneu_moments  # None unless analytic-distortion mode
         self.rho_nu_SD   = nh.rho_nu_SD     # None means "no extra energy density"
 
-        # ------------------------------------------------------------------
-        # Step 2 – Build a(T) / invert to T(a)
-        # ------------------------------------------------------------------
+        return nh, Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg, N_NEVO_of_Tg
+
+    def _build_a_of_T(self, nh, N_NEVO_of_Tg, Tend, Tstartcosmo):
+        """Step 2 of :meth:`_setup_background_and_cosmo`: build a(T_γ) (see
+        that method's docstring for the *minimal* vs *external* mode
+        details).
+
+        Returns
+        -------
+        (a_of_T, T_sol, n_T_pts)
+            ``a_of_T`` : the scale-factor callable (array-safe).
+            ``T_sol``  : the temperature grid it was solved/sampled on.
+            ``n_T_pts``: that grid's point count (reused by
+            :meth:`_invert_and_integrate_time` for the log(a) sampling grid).
+        """
+        cfg    = self.cfg
+        thermo = self.plasma
+
         def _sbar(T):
             return thermo.spl(T) / T**3   # dimensionless
 
@@ -738,9 +785,20 @@ class StandardBackground(Background):
             def a_of_T(T):
                 return np.exp(_lnalnT(np.log(T)))
 
-        # ------------------------------------------------------------------
-        # Step 3 – Invert a(T) → T(a), then integrate dt/d(ln a) = 1/H(a)
-        # ------------------------------------------------------------------
+        return a_of_T, T_sol, n_T_pts
+
+    def _invert_and_integrate_time(self, a_of_T, T_sol, n_T_pts, Tnue_of_Tg,
+                                   Tnumu_of_Tg, Tnutau_of_Tg, Tstartcosmo, Tend):
+        """Steps 3-4 of :meth:`_setup_background_and_cosmo`: invert a(T) ->
+        T(a), then integrate dt/d(ln a) = 1/H(a).
+
+        Returns ``(T_of_a, sol_t)``: the T(a) interpolant and the raw
+        ``solve_ivp`` result for t(ln a) (consumed by
+        :meth:`_store_background_arrays` to build the final
+        t_vec/Tg_vec/... sampled arrays).
+        """
+        cfg = self.cfg
+
         T_grid = T_sol                          # already sampled low→high
         a_grid = a_of_T(T_grid)                  # low a → high a (a_of_T is array-safe)
 
@@ -749,9 +807,6 @@ class StandardBackground(Background):
         a_ini = a_of_T(Tstartcosmo)
         a_fin = a_of_T(Tend)
 
-        # ------------------------------------------------------------------
-        # Step 4 – Integrate dt/d(ln a) = 1/H(a)
-        # ------------------------------------------------------------------
         def Hubble_NEVO(Tg):
             return self.Hubble(Tg, Tnue_of_Tg(Tg), Tnumu_of_Tg(Tg), Tnutau_of_Tg(Tg))
 
@@ -776,12 +831,18 @@ class StandardBackground(Background):
             print((f"[bckg]  Finished t(a) solve in {time.time()-_t_nevo_t0:.2f} s "
                    f"(status={sol_t.status}, nfev={sol_t.nfev})"), flush=True)
 
-        t_of_lna = interp1d(sol_t.t, sol_t.y[0].flatten(),
-                            bounds_error=False, fill_value="extrapolate")
+        return T_of_a, sol_t
 
-        # ------------------------------------------------------------------
-        # Step 5 – Sample on the common time grid; set instance attributes
-        # ------------------------------------------------------------------
+    def _store_background_arrays(self, sol_t, a_of_T, T_of_a, Tnue_of_Tg,
+                                  Tnumu_of_Tg, Tnutau_of_Tg, N_NEVO_of_Tg):
+        """Step 5 of :meth:`_setup_background_and_cosmo`: sample onto the
+        common time grid and set the public interpolant/array instance
+        attributes (``t_vec``, ``Tg_vec``, ``t_of_T``, ``T_of_t``, ``a_of_T``,
+        ``a_of_t``, ...) consumed by ``_setup_derived_cosmo``,
+        ``_setup_weak_rates``, and the nuclear network's ``solve()``.
+        """
+        cfg = self.cfg
+
         a_arr  = np.exp(sol_t.t)       # a values at ODE evaluation points
         t_vec  = sol_t.y[0].flatten()  # corresponding t [s]
         Tg_vec = T_of_a(a_arr)         # T_γ [MeV]
