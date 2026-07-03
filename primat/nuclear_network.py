@@ -98,128 +98,104 @@ class NuclearNetwork:
     # solve(): integrate nuclear network ODEs
     # ======================================================================
 
-    def solve(self, progress=True):
+    def _era_boundaries(self):
+        """Convert the four era temperature boundaries to cosmic times [s].
+
+        Returns ``(t_start, t_weak, t_nucl, t_end)``, the HT/MT/LT era
+        endpoints, via ``background.t_of_T`` (which expects a temperature in
+        MeV, hence the ``/cfg.MeV_to_Kelvin`` conversion from the Kelvin
+        values stored in ``cfg.T_start``/``T_weak``/``T_nucl``/``T_end``).
         """
-        Integrate the nuclear network over the three temperature eras.
-
-        Populates ``self.Y_final``, ``self.abundance_names`` and
-        ``self.Y_of_t`` and returns ``self.Y_final`` (the dict of final
-        mass-fraction abundances by nuclide name).  The BBN observables dict
-        (``Neff``, ``YPBBN``, ``DoH``, ...) is built by ``PRIMAT.solve()`` from
-        ``self.Y_final`` and from ``background``'s optional neutrino-sector
-        hooks -- it is no longer computed here.
-
-        Args:
-            progress: bool, default True.  When True and ``cfg.verbose`` is
-                False, print a compact one-line phase indicator to stderr
-                (``[primat]  HT  MT  LT  done.``) so the user can see the
-                solver is advancing without enabling full verbose output.
-                Set to False inside MC workers (:func:`primat.main._mc_run_batch`)
-                where per-sample dots would flood the terminal.
-        """
-        from .network_data import SPECIES_MD   # noqa: F401 (used for default-zero filling)
-        cfg       = self.cfg
-        background = self.background
-        T_of_t    = background.T_of_t
-        t_of_T    = background.t_of_T
-        rhoB_BBN  = background.rhoB_BBN
-        nTOp_frwrd = background.weak_nTOp_frwrd
-        nTOp_bkwrd = background.weak_nTOp_bkwrd
-        nucl      = self.nucl
-
-        # Refresh nuclear rates with current variation parameters (p_*, delta_*)
-        nucl.apply_variations(cfg)
-
-        # Quiet phase-progress: one compact stderr line when verbose=False so
-        # the user can confirm the solver is advancing without full verbosity.
-        # Suppressed when verbose=True (the verbose prints are more informative)
-        # and when progress=False (set by _mc_run_batch to avoid per-sample spam).
-        _show = progress and not cfg.verbose
-
-        if cfg.verbose:
-            _t0 = time.time()
-
-        # ------------------------------------------------------------------
-        # Temperature era boundaries [s]
-        # ------------------------------------------------------------------
+        cfg = self.cfg
+        t_of_T = self.background.t_of_T
         t_start = t_of_T(cfg.T_start / cfg.MeV_to_Kelvin)
         t_weak  = t_of_T(cfg.T_weak  / cfg.MeV_to_Kelvin)
         t_nucl  = t_of_T(cfg.T_nucl  / cfg.MeV_to_Kelvin)
         t_end   = t_of_T(cfg.T_end   / cfg.MeV_to_Kelvin)
-        self._t_end = t_end   # store for DT-era helpers and tests
+        return t_start, t_weak, t_nucl, t_end
 
-        # ------------------------------------------------------------------
-        # Baryon-to-photon ratio at T_weak, for the MT-era Saha (NSE) seed
-        # ------------------------------------------------------------------
-        # eta_b = n_B/n_gamma, evaluated once at T = T_weak from the two
-        # compulsory Background primitives rhoB_BBN(t) and t_of_T(T): YA is
-        # only ever called at T = cfg.T_weak (the MT seed below), so this
-        # single value is exact -- no etab_of_T(T) interpolant is needed.
+    def _compute_eta_b_weak(self, t_weak):
+        """Baryon-to-photon ratio eta_b = n_B/n_gamma at T = T_weak.
+
+        Evaluated once at T = T_weak from the two compulsory Background
+        primitives ``rhoB_BBN(t)`` and ``t_of_T(T)``: ``_saha_YA`` (the
+        Saha-equilibrium seed used by the MT era) is only ever called at
+        T = cfg.T_weak, so this single value is exact -- no etab_of_T(T)
+        interpolant is needed.
+        """
+        cfg = self.cfg
         T_weak_MeV  = cfg.T_weak / cfg.MeV_to_Kelvin
-        nB_weak     = rhoB_BBN(t_weak) / (cfg.ma * cfg.MeV4_to_gcmm3)   # [MeV^3]
-        ngamma_weak = (2. * zeta(3) / np.pi**2) * T_weak_MeV**3        # [MeV^3]
-        eta_b_weak  = nB_weak / ngamma_weak
+        nB_weak     = self.background.rhoB_BBN(t_weak) / (cfg.ma * cfg.MeV4_to_gcmm3)   # [MeV^3]
+        ngamma_weak = (2. * zeta(3) / np.pi**2) * T_weak_MeV**3                          # [MeV^3]
+        return nB_weak / ngamma_weak
 
-        # ------------------------------------------------------------------
-        # Local thermal equilibrium (Saha) abundance
-        # ------------------------------------------------------------------
-        def YA(name, Yn, Yp, T):
-            """Saha equilibrium mass-fraction abundance of nuclide `name`.
+    def _saha_YA(self, name, Yn, Yp, T, eta_b_weak):
+        """Saha equilibrium mass-fraction abundance of nuclide `name`.
 
-            At high temperature each nuclide is maintained in Nuclear Statistical
-            Equilibrium (NSE) with free neutrons and protons via photo-dissociation.
-            The Saha formula gives (Phys. Rep. §V.A):
+        At high temperature each nuclide is maintained in Nuclear Statistical
+        Equilibrium (NSE) with free neutrons and protons via photo-dissociation.
+        The Saha formula gives (Phys. Rep. §V.A):
 
-                Y_A = g_A ζ(3)^{A-1} π^{(1-A)/2} 2^{(3A-5)/2}
-                      × (M_A / mₙ^N mₚ^Z)^{3/2}
-                      × (kB T)^{3(A-1)/2} η_b^{A-1}
-                      × Yₙ^N Yₚ^Z exp(B_A / kB T)
+            Y_A = g_A ζ(3)^{A-1} π^{(1-A)/2} 2^{(3A-5)/2}
+                  × (M_A / mₙ^N mₚ^Z)^{3/2}
+                  × (kB T)^{3(A-1)/2} η_b^{A-1}
+                  × Yₙ^N Yₚ^Z exp(B_A / kB T)
 
-            where A=N+Z is the mass number, g_A=2J+1 the spin degeneracy,
-            B_A the binding energy (keV), and η_b = n_B/n_γ the baryon-to-photon
-            ratio.  Used to seed the MT-era initial conditions at T = T_weak,
-            where η_b = eta_b_weak (closed over from the enclosing scope, see
-            above).
+        where A=N+Z is the mass number, g_A=2J+1 the spin degeneracy,
+        B_A the binding energy (keV), and η_b = n_B/n_γ the baryon-to-photon
+        ratio.  Used to seed the MT-era initial conditions at T = T_weak,
+        where η_b = eta_b_weak (from :meth:`_compute_eta_b_weak`).
 
-            Args:
-                name : nuclide name string (key into cfg.Nuclides/NuclExcessMass).
-                Yn   : free neutron mass fraction.
-                Yp   : free proton mass fraction.
-                T    : photon temperature in Kelvin (= cfg.T_weak at every
-                       call site).
+        Args:
+            name : nuclide name string (key into cfg.Nuclides/NuclExcessMass).
+            Yn   : free neutron mass fraction.
+            Yp   : free proton mass fraction.
+            T    : photon temperature in Kelvin (= cfg.T_weak at every
+                   call site).
+            eta_b_weak : baryon-to-photon ratio at T = T_weak (see
+                   :meth:`_compute_eta_b_weak`).
 
-            Returns:
-                Y_A  : dimensionless mass fraction (≪ 1 at T ≫ BBN onset).
-            """
-            x     = cfg.Nuclides[name]
-            A     = x[0] + x[1]
-            Z     = x[1]
-            N     = A - Z
-            Mass  = (A * cfg.ma * cfg.MeV
-                     + cfg.keV * cfg.NuclExcessMass[name]
-                     - Z * cfg.me * cfg.MeV)
-            BindE = (N * cfg.NuclExcessMass["n"]
-                     + Z * cfg.NuclExcessMass["p"]
-                     - cfg.NuclExcessMass[name])
-            # (M_A / mₙ^N mₚ^Z)^{3/2}: ratio of nuclear to free-nucleon masses
-            NormYA = (Mass / ((cfg.mn * cfg.MeV)**(A - Z)
-                              * (cfg.mp * cfg.MeV)**Z))**(3. / 2.)
-            return ((2 * cfg.NuclSpin[name] + 1)
-                    * zeta(3)**(A - 1) * np.pi**((1 - A) / 2.)
-                    * 2**((3 * A - 5) / 2.)
-                    * NormYA
-                    * (cfg.kB * T)**(3. / 2. * (A - 1))
-                    * eta_b_weak**(A - 1)
-                    * Yp**Z * Yn**(A - Z)
-                    * np.exp(BindE * cfg.keV / (cfg.kB * T)))
+        Returns:
+            Y_A  : dimensionless mass fraction (≪ 1 at T ≫ BBN onset).
+        """
+        cfg = self.cfg
+        x     = cfg.Nuclides[name]
+        A     = x[0] + x[1]
+        Z     = x[1]
+        N     = A - Z
+        Mass  = (A * cfg.ma * cfg.MeV
+                 + cfg.keV * cfg.NuclExcessMass[name]
+                 - Z * cfg.me * cfg.MeV)
+        BindE = (N * cfg.NuclExcessMass["n"]
+                 + Z * cfg.NuclExcessMass["p"]
+                 - cfg.NuclExcessMass[name])
+        # (M_A / mₙ^N mₚ^Z)^{3/2}: ratio of nuclear to free-nucleon masses
+        NormYA = (Mass / ((cfg.mn * cfg.MeV)**(A - Z)
+                          * (cfg.mp * cfg.MeV)**Z))**(3. / 2.)
+        return ((2 * cfg.NuclSpin[name] + 1)
+                * zeta(3)**(A - 1) * np.pi**((1 - A) / 2.)
+                * 2**((3 * A - 5) / 2.)
+                * NormYA
+                * (cfg.kB * T)**(3. / 2. * (A - 1))
+                * eta_b_weak**(A - 1)
+                * Yp**Z * Yn**(A - Z)
+                * np.exp(BindE * cfg.keV / (cfg.kB * T)))
 
-        # ------------------------------------------------------------------
-        # High-temperature (HT) era: only n and p
-        # ------------------------------------------------------------------
-        # Fixed era boundaries in MeV (10 / 1 / 0.11 MeV), used in verbose messages.
+    def _solve_HT(self, t_start, t_weak, _show):
+        """Integrate the HT era (n <-> p only), T = T_start -> T_weak.
+
+        Returns ``(sol_HT, Yn_HT_f, Yp_HT_f)``: the ``solve_ivp`` result and
+        the final neutron/proton mass fractions, which seed the MT era.
+        """
+        cfg        = self.cfg
+        background = self.background
+        T_of_t     = background.T_of_t
+        nTOp_frwrd = background.weak_nTOp_frwrd
+        nTOp_bkwrd = background.weak_nTOp_bkwrd
+
+        # Fixed era boundaries in MeV (10 / 1 MeV), used in verbose messages.
         T_start_MeV = cfg.T_start / cfg.MeV_to_Kelvin
         T_weak_MeV  = cfg.T_weak  / cfg.MeV_to_Kelvin
-        T_nucl_MeV  = cfg.T_nucl  / cfg.MeV_to_Kelvin
         if _show:
             print("[primat]  HT.", end='', file=sys.stderr, flush=True)
         if cfg.verbose:
@@ -247,10 +223,27 @@ class NuclearNetwork:
         if _show:
             print("  MT.", end='', file=sys.stderr, flush=True)
         Yn_HT_f, Yp_HT_f = sol_HT.y[0][-1], sol_HT.y[1][-1]
+        return sol_HT, Yn_HT_f, Yp_HT_f
 
-        # ------------------------------------------------------------------
-        # ODE systems for the full network
-        # ------------------------------------------------------------------
+    def _solve_MT(self, t_weak, t_nucl, Yn_HT_f, Yp_HT_f, eta_b_weak, _show):
+        """Integrate the MT era (fixed 18-reaction subset), T = T_weak -> T_nucl.
+
+        Seeds every MT species except n/p (which come from the HT solution)
+        at Saha (NSE) equilibrium via :meth:`_saha_YA`.  Returns
+        ``(sol_MT, mt_final_raw)``: the ``solve_ivp`` result and a dict of
+        final mass fractions by nuclide name, which seed the LT era.
+        """
+        cfg        = self.cfg
+        background = self.background
+        nucl       = self.nucl
+        T_of_t     = background.T_of_t
+        rhoB_BBN   = background.rhoB_BBN
+        nTOp_frwrd = background.weak_nTOp_frwrd
+        nTOp_bkwrd = background.weak_nTOp_bkwrd
+
+        T_weak_MeV = cfg.T_weak / cfg.MeV_to_Kelvin
+        T_nucl_MeV = cfg.T_nucl / cfg.MeV_to_Kelvin
+
         def Y_prime_MT(t, Y):
             rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
             return nucl.rhsMT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
@@ -259,17 +252,6 @@ class NuclearNetwork:
             rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
             return nucl.JacobianMT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
-        def Y_prime_LT(t, Y):
-            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.rhsLT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
-
-        def Jacobian_LT(t, Y):
-            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.JacobianLT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
-
-        # ------------------------------------------------------------------
-        # Mid-temperature (MT) era
-        # ------------------------------------------------------------------
         if cfg.verbose:
             print(f"[nucl-py]  Solving nuclear network at mid temperature era"
                   f" (T = {T_weak_MeV:.4g} -> {T_nucl_MeV:.4g} MeV)")
@@ -281,7 +263,7 @@ class NuclearNetwork:
         mt_saha = {"n": Yn_HT_f, "p": Yp_HT_f}
         for s in mt_species:
             if s not in mt_saha:
-                mt_saha[s] = YA(s, Yn_HT_f, Yp_HT_f, cfg.T_weak)
+                mt_saha[s] = self._saha_YA(s, Yn_HT_f, Yp_HT_f, cfg.T_weak, eta_b_weak)
         Yi_MT = [mt_saha[s] for s in mt_species]
 
         _t_mt0 = time.time()
@@ -296,10 +278,36 @@ class NuclearNetwork:
             print("  LT.", end='', file=sys.stderr, flush=True)
         # Extract MT final values by name — works for any network size.
         mt_final_raw = {s: sol_MT.y[i][-1] for i, s in enumerate(mt_species)}
+        return sol_MT, mt_final_raw
 
-        # ------------------------------------------------------------------
-        # Low-temperature (LT) era
-        # ------------------------------------------------------------------
+    def _solve_LT(self, t_nucl, t_end, mt_final_raw, _show):
+        """Integrate the LT era (chosen network), T = T_nucl -> T_end.
+
+        Seeds the LT vector from ``mt_final_raw`` (filling any extra species
+        absent from MT with 0).  Returns ``(sol_LT, finL)``: the ``solve_ivp``
+        result and the final mass fractions by nuclide name (clamped to >= 0
+        and zero-filled for any standard light species the chosen network
+        does not track).
+        """
+        from .network_data import SPECIES_MD
+        cfg        = self.cfg
+        background = self.background
+        nucl       = self.nucl
+        T_of_t     = background.T_of_t
+        rhoB_BBN   = background.rhoB_BBN
+        nTOp_frwrd = background.weak_nTOp_frwrd
+        nTOp_bkwrd = background.weak_nTOp_bkwrd
+
+        T_nucl_MeV = cfg.T_nucl / cfg.MeV_to_Kelvin
+
+        def Y_prime_LT(t, Y):
+            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            return nucl.rhsLT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
+
+        def Jacobian_LT(t, Y):
+            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            return nucl.JacobianLT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
+
         if cfg.verbose:
             print(f"[nucl-py]  Solving nuclear network at low temperature era"
                   f" (T = {T_nucl_MeV:.4g} -> {cfg.T_end_MeV:.4g} MeV)")
@@ -343,11 +351,72 @@ class NuclearNetwork:
             print("-" * 50)
             for s in species_L:
                 print(f"  Y{s:<5}= {finL[s]:.6e}")
+        return sol_LT, finL
+
+    def solve(self, progress=True):
+        """
+        Integrate the nuclear network over the three temperature eras.
+
+        Populates ``self.Y_final``, ``self.abundance_names`` and
+        ``self.Y_of_t`` and returns ``self.Y_final`` (the dict of final
+        mass-fraction abundances by nuclide name).  The BBN observables dict
+        (``Neff``, ``YPBBN``, ``DoH``, ...) is built by ``PRIMAT.solve()`` from
+        ``self.Y_final`` and from ``background``'s optional neutrino-sector
+        hooks -- it is no longer computed here.
+
+        The three eras are delegated to :meth:`_solve_HT`, :meth:`_solve_MT`
+        and :meth:`_solve_LT` (n<->p only / fixed 18-reaction subset / chosen
+        network, see the module docstring); this method is the orchestrator
+        that threads their outputs together, builds the combined abundance
+        interpolator, and handles the optional outputs and DT (decay) era.
+
+        Args:
+            progress: bool, default True.  When True and ``cfg.verbose`` is
+                False, print a compact one-line phase indicator to stderr
+                (``[primat]  HT  MT  LT  done.``) so the user can see the
+                solver is advancing without enabling full verbose output.
+                Set to False inside MC workers (:func:`primat.main._mc_run_batch`)
+                where per-sample dots would flood the terminal.
+        """
+        cfg  = self.cfg
+        nucl = self.nucl
+
+        # Refresh nuclear rates with current variation parameters (p_*, delta_*)
+        nucl.apply_variations(cfg)
+
+        # Quiet phase-progress: one compact stderr line when verbose=False so
+        # the user can confirm the solver is advancing without full verbosity.
+        # Suppressed when verbose=True (the verbose prints are more informative)
+        # and when progress=False (set by _mc_run_batch to avoid per-sample spam).
+        _show = progress and not cfg.verbose
+
+        if cfg.verbose:
+            _t0 = time.time()
+
+        # ------------------------------------------------------------------
+        # Temperature era boundaries [s]
+        # ------------------------------------------------------------------
+        t_start, t_weak, t_nucl, t_end = self._era_boundaries()
+        self._t_end = t_end   # store for DT-era helpers and tests
+
+        # ------------------------------------------------------------------
+        # Baryon-to-photon ratio at T_weak, for the MT-era Saha (NSE) seed
+        # ------------------------------------------------------------------
+        eta_b_weak = self._compute_eta_b_weak(t_weak)
+
+        # ------------------------------------------------------------------
+        # HT -> MT -> LT era chain
+        # ------------------------------------------------------------------
+        sol_HT, Yn_HT_f, Yp_HT_f = self._solve_HT(t_start, t_weak, _show)
+        sol_MT, mt_final_raw = self._solve_MT(
+            t_weak, t_nucl, Yn_HT_f, Yp_HT_f, eta_b_weak, _show)
+        sol_LT, finL = self._solve_LT(t_nucl, t_end, mt_final_raw, _show)
 
         # ------------------------------------------------------------------
         # Store final Y values for direct access (used by get_quantity)
         # ------------------------------------------------------------------
         # Use the LT species list as the canonical name list for any network.
+        species_L = nucl.species_large
         self.abundance_names = species_L
         self.Y_final = dict(finL)
 
