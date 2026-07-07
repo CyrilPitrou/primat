@@ -317,14 +317,14 @@ For systematic MC runs, use `backend.run_mc()`:
 ```python
 from primat.backend import run_mc
 
-# Run MC with nuclear rate uncertainties
+# Run MC with nuclear rate uncertainties (signature: run_mc(num_mc, quantities=None, params=None, ...))
 mc_result = run_mc(
+    100,                              # number of MC samples
+    ["DoH", "YPBBN"],                 # quantities to compute statistics for
     params={"Omegabh2": 0.022425},
-    n_samples=100,
-    quantities=["DoH", "YPBBN"]  # Quantities to compute statistics for
 )
 
-print(f"D/H mean: {mc_result['DoH'].cent:8e} ± {mc_result['DoH'].err:8e}")
+print(f"D/H mean: {mc_result['DoH'].mean:.8e} ± {mc_result['DoH'].std:.8e}")
 ```
 
 `p_<reaction>` parameters can be set via the CLI using `--set`:
@@ -370,7 +370,7 @@ mc = run_mc(100, ["YPBBN", "DoH"], params={"Omegabh2": 0.022425})
 
 mc["DoH"].central   # nominal (best-estimate) value
 mc["DoH"].mean      # mean over the 100 MC samples
-mc["DoH"].std       # MC uncertainty (1-sigma) -- this is "the error"
+mc["DoH"].std       # MC uncertainty (1-sigma, sample std/ddof=1) -- "the error"
 mc["DoH"].values    # full array of per-sample values, length 100
 ```
 
@@ -379,19 +379,55 @@ includes every standard observable (`Neff`, `YPBBN`, `YPCMB`, `DoH`,
 `He3oH`, `He3oHe4`, `Li7oH`, `Li6oLi7`, `YCNO`) and every tracked nuclide's
 final abundance, at no extra cost.
 
-From the command line, just add `--mc N`:
+**Joint uncertainty (covariance and correlation).** When you constrain
+cosmology with several abundances at once (typically `YPBBN` *and* `DoH`),
+you need how they *co-vary* across the same MC samples, not just their
+individual σ's. `MCResult` exposes both matrices (sample estimators,
+`ddof=1`, so `diag(cov) == std**2`):
+
+```python
+mc.cov()                  # full (n_q, n_q) covariance matrix, quantity_names() order
+mc.corr()                 # full correlation matrix (unit diagonal)
+mc.cov("YPBBN", "DoH")    # scalar covariance between two named quantities
+mc.corr("YPBBN", "DoH")   # scalar correlation, e.g. ~ -0.5 (YP and D/H anti-correlate)
+```
+
+A quantity identical in every sample (zero variance) gives `NaN` off-diagonal
+correlations (never a warning storm).
+
+From the command line, just add `--mc N`; the summary then prints the 4×4
+correlation and covariance matrices of the four main products
+(`YPBBN`, `DoH`, `He3oHe4`, `Li7oH`):
 
 ```bash
 primat --Omegabh2 0.022425 --mc 100
 # YP (BBN)   = 0.24700028 +/- 0.00003123
 # D/H        = 2.4350000e-05 +/- 1.2000000e-07
+# ...
+# Correlation matrix (YPBBN, DoH, He3oHe4, Li7oH):
+#             YPBBN      DoH  He3oHe4    Li7oH
+#    YPBBN    1.000    0.057   -0.238   -0.161
+#      DoH    0.057    1.000   -0.811   -0.377
+#  He3oHe4   -0.238   -0.811    1.000    0.226
+#    Li7oH   -0.161   -0.377    0.226    1.000
+# Covariance matrix (YPBBN, DoH, He3oHe4, Li7oH):
+#  ...
 ```
 
 `--mc-seed` sets the random seed (use the same seed to reproduce a run) and
-`--mc-jobs` the number of parallel workers. Pass `--output_mc_samples
---output_mc_file FILE` to additionally dump every raw per-sample value to a
-TSV, useful for inspecting the full distribution rather than just its
-mean/std.
+`--mc-jobs` the number of parallel workers. The three MC output files share
+one filename stem `--output_mc_file_prefix PREFIX` (default `results/output_mc`),
+each gated by its own flag:
+
+- `--output_mc_samples` → `PREFIX_samples.tsv` (every raw per-sample value,
+  one column per quantity)
+- `--output_mc_covariance` → `PREFIX_covariance.tsv` (the covariance matrix)
+- `--output_mc_correlation` → `PREFIX_correlation.tsv` (the correlation matrix)
+
+All three, and both printed matrices, are identical (same shape, same header
+wording) whether the C or the pure-Python backend runs. Programmatically the
+writers are `primat.backend.dump_mc_samples` / `dump_mc_covariance` /
+`dump_mc_correlation`.
 
 ## Output
 

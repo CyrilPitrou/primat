@@ -85,7 +85,8 @@ backend switch. ``custom_network`` is supported on both backends, same as
 import os
 import sys
 
-__all__ = ["HAS_C_BACKEND", "run_bbn", "run_mc", "dump_mc_samples", "dump_final_with_sigma"]
+__all__ = ["HAS_C_BACKEND", "run_bbn", "run_mc", "dump_mc_samples",
+           "dump_mc_covariance", "dump_mc_correlation", "dump_final_with_sigma"]
 
 
 def _log_backend(func_name, used, reason, log_backend):
@@ -102,7 +103,7 @@ def _log_backend(func_name, used, reason, log_backend):
 # (alongside every tracked nuclide's final Y -- see mc_uncertainty/_c_mc)
 # regardless of what the caller explicitly requested via run_mc's
 # `quantities` argument, so an MCResult is always complete enough to dump to
-# disk via dump_mc_samples (the CLI's output_mc_samples/output_mc_file, or
+# disk via dump_mc_samples (the CLI's output_mc_samples/output_mc_file_prefix, or
 # any programmatic caller writing a TSV) without the caller having to
 # remember to ask for every ratio by name. Mirrors the GUI's
 # primat.gui.panels._RATIO_FORMAT keys, which is where this set was
@@ -461,7 +462,8 @@ def dump_mc_samples(mc):
     quantity (header = quantity names, in their original order), one row per
     MC sample -- the on-disk "common language" for MC results shared by both
     backends (CLAUDE.md's backend-parity mandate), and the same shape
-    written to ``cfg.output_mc_file`` when ``output_mc_samples=True``.
+    written to ``<output_mc_file_prefix>_samples.tsv`` when
+    ``output_mc_samples=True``.
 
     Args:
         mc: primat.main.MCResult.
@@ -473,6 +475,94 @@ def dump_mc_samples(mc):
     samples = mc.samples_array()
     lines = ["\t".join(names)]
     lines += ["\t".join(f"{v:.10e}" for v in row) for row in samples]
+    return "\n".join(lines) + "\n"
+
+
+def _mc_num_and_seed(mc):
+    """Helper for the covariance/correlation writers: return ``(N, seed_str)``
+    where ``N`` is the MC sample count (rows of :meth:`~primat.main.MCResult.samples_array`)
+    and ``seed_str`` is the base seed rendered for the file header (the integer,
+    or ``"None"`` for a seedless result).  Kept in one place so both matrix
+    headers -- and their byte-identical C-side counterparts (``primat-c``'s
+    ``mc.c``, per CLAUDE.md's verbose/output-parity mandate) -- agree on the
+    wording.
+    """
+    n = mc.samples_array().shape[0]
+    seed = mc.seed
+    return n, ("None" if seed is None else str(seed))
+
+
+def dump_mc_covariance(mc):
+    """Serialise an :class:`primat.main.MCResult`'s full sample **covariance**
+    matrix (``mc.cov()``; ddof=1, all MC quantities in ``quantity_names``
+    order) to the two-header-line TSV written to
+    ``<output_mc_file_prefix>_covariance.tsv`` when ``output_mc_covariance=True``.
+
+    The joint (off-diagonal) covariance -- e.g. between ``YPBBN`` and ``DoH``,
+    which are driven by the same MC samples -- is exactly what a user needs to
+    build a multi-observable likelihood; the per-observable variances live on
+    the diagonal (``C[i, i] == mc[q_i].std**2``).
+
+    File layout (author spec)::
+
+        # Covariance matrix of the N=100 primat MC samples (seed=0): ...
+        quantity	Neff	YPBBN	...
+        Neff	<C[0,0]>	<C[0,1]>	...
+        ...
+
+    i.e. line 1 is a single ``#`` comment naming the file (with N, seed and the
+    ddof=1 estimator convention); line 2 is the tab-separated quantity names
+    labelling both columns and rows; then one row per quantity, its name first.
+
+    Args:
+        mc: primat.main.MCResult.
+
+    Returns:
+        str: TSV text, with a trailing newline.
+    """
+    import numpy as np
+    names = mc.quantity_names()
+    C = np.atleast_2d(mc.cov())
+    n, seed = _mc_num_and_seed(mc)
+    header = (f"# Covariance matrix of the N={n} primat MC samples "
+              f"(seed={seed}): C[i,j] = sample covariance (ddof=1) of "
+              f"quantities i and j.")
+    lines = [header, "quantity\t" + "\t".join(names)]
+    for i, nm in enumerate(names):
+        lines.append(nm + "\t" + "\t".join(f"{C[i, j]:.10e}"
+                                           for j in range(len(names))))
+    return "\n".join(lines) + "\n"
+
+
+def dump_mc_correlation(mc):
+    """Serialise an :class:`primat.main.MCResult`'s full sample **correlation**
+    matrix (``mc.corr()``; unit diagonal, ddof=1) to the two-header-line TSV
+    written to ``<output_mc_file_prefix>_correlation.tsv`` when
+    ``output_mc_correlation=True``.
+
+    Same layout as :func:`dump_mc_covariance` (line 1 = a ``#`` comment; line 2
+    = the quantity names; then one labelled row per quantity), with its own
+    header wording and a unit diagonal.  A quantity that was identical in every
+    sample (zero variance) has NaN off-diagonal entries -- see
+    :meth:`primat.main.MCResult.corr`.
+
+    Args:
+        mc: primat.main.MCResult.
+
+    Returns:
+        str: TSV text, with a trailing newline.
+    """
+    import numpy as np
+    names = mc.quantity_names()
+    R = np.atleast_2d(mc.corr())
+    n, seed = _mc_num_and_seed(mc)
+    header = (f"# Correlation matrix of the N={n} primat MC samples "
+              f"(seed={seed}): R[i,j] = Pearson correlation (ddof=1) of "
+              f"quantities i and j; unit diagonal.")
+    lines = [header, "quantity\t" + "\t".join(names)]
+    for i, nm in enumerate(names):
+        lines.append(nm + "\t" + "\t".join(f"{R[i, j]:.10e}"
+                                           for j in range(len(names))))
     return "\n".join(lines) + "\n"
 
 

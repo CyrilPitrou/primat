@@ -357,8 +357,9 @@ class PRIMAT:
         }
 
         # Li6/Li7: observable ratio after Be7→Li7 decay (large networks).
-        # SPECIES_MD ensures Li6 is always in finL (padded with 0 for small
-        # network which has no Li6 production reactions), so check Y>0.
+        # Only networks that actually track Li6 (large, large+amax>=6) carry it
+        # in finL; the small network never evolves Li6, so `.get(..., 0.0)`
+        # yields 0 there and the ratio is simply omitted (guarded by Y>0).
         if finL.get("Li6", 0.0) > 0:
             results["Li6oLi7"] = finL["Li6"] / (YLi7_f + YBe7_f)
 
@@ -550,7 +551,14 @@ class MCQuantityResult:
     mean : float
         Mean of MC samples.
     std : float
-        1σ standard deviation of MC samples.
+        1σ **sample** standard deviation of the MC samples, i.e. the unbiased
+        estimator ``sqrt( sum (x_i - mean)^2 / (N - 1) )`` (``np.std`` with
+        ``ddof=1``).  The ``ddof=1`` normalisation is deliberate and matches
+        :meth:`MCResult.cov`/:meth:`MCResult.corr` so that the diagonal of the
+        covariance matrix equals ``std**2`` exactly (see those methods).  For a
+        single sample (``N < 2``) the sample standard deviation is undefined
+        (0/0); we report ``0.0`` there rather than NaN so that a degenerate
+        ``--mc 1`` run still prints a finite ``value +/- 0`` line.
     values : np.ndarray, shape (num_mc,)
         All individual MC sample values.
     """
@@ -560,7 +568,12 @@ class MCQuantityResult:
         self.central = float(central)
         self.values  = np.asarray(samples)
         self.mean    = float(np.mean(self.values))
-        self.std     = float(np.std(self.values))
+        # Sample (ddof=1) standard deviation -- unbiased, and consistent with
+        # the ddof=1 sample covariance/correlation matrices (MCResult.cov/corr)
+        # so diag(cov) == std**2. ddof=1 needs >= 2 samples; fall back to 0.0
+        # for a single-sample run (population std of one point is 0 anyway).
+        self.std     = (float(np.std(self.values, ddof=1))
+                        if self.values.size >= 2 else 0.0)
 
     def __repr__(self):
         return (f"MCQuantityResult(central={self.central:.6g}, "
@@ -633,6 +646,129 @@ class MCResult:
         via :func:`primat.backend.dump_mc_samples`.
         """
         return np.column_stack([self._data[q].values for q in self.quantity_names()])
+
+    def _quantity_index(self, name):
+        """Column index of quantity ``name`` in :meth:`samples_array`, raising
+        a helpful ``KeyError`` (listing the available names) on a typo -- used
+        by the scalar two-name forms of :meth:`cov`/:meth:`corr`.
+        """
+        names = self.quantity_names()
+        try:
+            return names.index(name)
+        except ValueError:
+            raise KeyError(
+                f"Unknown MC quantity {name!r}; available quantities are "
+                f"{names}."
+            ) from None
+
+    def cov(self, a=None, b=None):
+        """Sample covariance of the MC samples.
+
+        Two call forms:
+
+        * ``mc.cov()`` -> the full ``(n_q, n_q)`` covariance matrix over *all*
+          MC quantities, rows/columns in :meth:`quantity_names` order.  This is
+          the joint nuclear-rate + tau_n uncertainty a user needs when
+          constraining cosmology with several abundances at once (e.g. YP and
+          D/H together): the off-diagonal ``C[YPBBN, DoH]`` is the covariance
+          the two share because they are driven by the *same* MC samples.
+        * ``mc.cov("YPBBN", "DoH")`` -> the single scalar covariance between the
+          two named quantities (a typo raises ``KeyError`` listing the valid
+          names).
+
+        Convention: the **sample** covariance with ``ddof=1`` (dividing by
+        ``N - 1``), i.e. ``numpy.cov(..., ddof=1)``.  This matches
+        :attr:`MCQuantityResult.std` (also ``ddof=1``), so the diagonal of the
+        full matrix equals each quantity's ``std**2`` exactly.  With a single
+        sample (``N < 2``) the estimator is undefined and entries are NaN.
+
+        Example::
+
+            mc = mc_uncertainty(500, ['YPBBN', 'DoH'], params=...)
+            C = mc.cov()                 # 2x2 (or larger; all quantities)
+            c_yp_dh = mc.cov('YPBBN', 'DoH')   # scalar, == C's off-diagonal
+
+        Returns:
+            np.ndarray (full form) or float (two-name form).
+        """
+        samples = self.samples_array()          # (num_mc, n_q)
+        nq = samples.shape[1]
+        # The ddof=1 sample covariance is undefined for a single sample (N < 2):
+        # return NaN directly rather than calling np.cov (which would both emit
+        # a "Degrees of freedom <= 0" RuntimeWarning and divide by zero).
+        if a is None and b is None:
+            if samples.shape[0] < 2:
+                return np.full((nq, nq), np.nan)
+            # rowvar=False: columns (= quantities) are the variables.
+            return np.atleast_2d(np.cov(samples, rowvar=False, ddof=1))
+        if a is None or b is None:
+            raise TypeError(
+                "cov() takes either no names (full matrix) or exactly two "
+                "quantity names (scalar covariance)."
+            )
+        ia = self._quantity_index(a)
+        ib = self._quantity_index(b)
+        if samples.shape[0] < 2:
+            return float("nan")
+        # 2-variable sample covariance; [0, 1] is cov(a, b) (== var when a == b).
+        pair = np.cov(samples[:, [ia, ib]], rowvar=False, ddof=1)
+        return float(np.atleast_2d(pair)[0, 1])
+
+    def corr(self, a=None, b=None):
+        """Sample (Pearson) correlation of the MC samples.
+
+        Same two call forms as :meth:`cov`:
+
+        * ``mc.corr()`` -> the full ``(n_q, n_q)`` correlation matrix (unit
+          diagonal), rows/columns in :meth:`quantity_names` order.
+        * ``mc.corr("YPBBN", "DoH")`` -> the single scalar correlation
+          coefficient between the two named quantities.
+
+        Derived from :meth:`cov` (hence also ``ddof=1``) as
+        ``R[i, j] = C[i, j] / (std_i * std_j)``.  A quantity that is identical
+        in every sample (zero variance -- e.g. a nuclide untouched by the
+        varied reactions) has an undefined correlation with anything else:
+        those **off-diagonal** entries are NaN (computed under
+        ``np.errstate`` so no divide-by-zero warning storm is emitted), while
+        the diagonal is set to 1.0 by convention for every quantity.
+
+        Example::
+
+            mc.corr('YPBBN', 'DoH')   # e.g. -0.51: YP and D/H anti-correlate
+
+        Returns:
+            np.ndarray (full form) or float (two-name form).
+        """
+        if a is None and b is None:
+            C = self.cov()
+            d = np.sqrt(np.diag(C))
+            # Suppress the 0/0 -> NaN warnings for any zero-variance quantity;
+            # NaN off-diagonal is the documented, intended sentinel there.
+            with np.errstate(invalid="ignore", divide="ignore"):
+                R = C / np.outer(d, d)
+            # Unit diagonal by convention (a quantity correlates perfectly with
+            # itself), including zero-variance quantities whose row/column is
+            # otherwise all-NaN.
+            np.fill_diagonal(R, 1.0)
+            return R
+        if a is None or b is None:
+            raise TypeError(
+                "corr() takes either no names (full matrix) or exactly two "
+                "quantity names (scalar correlation)."
+            )
+        ia = self._quantity_index(a)
+        ib = self._quantity_index(b)
+        if ia == ib:
+            return 1.0
+        samples = self.samples_array()
+        va, vb = samples[:, ia], samples[:, ib]
+        sa = np.std(va, ddof=1) if va.size >= 2 else 0.0
+        sb = np.std(vb, ddof=1) if vb.size >= 2 else 0.0
+        if sa == 0.0 or sb == 0.0:
+            return float("nan")
+        cab = np.atleast_2d(np.cov(np.column_stack([va, vb]),
+                                   rowvar=False, ddof=1))[0, 1]
+        return float(cab / (sa * sb))
 
     def to_flat_dict(self):
         """Flatten to a plain ``{name: value, ...}`` dict carrying both each

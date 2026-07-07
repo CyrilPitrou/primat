@@ -4,9 +4,9 @@
  * default_rng (see mc.h's top comment), there is no fixed reference value
  * to reproduce -- instead this checks the statistical properties any
  * correct MC propagation must have: the sample mean converges to the
- * central (all p_<rxn>=0) value within a few sigma/sqrt(N), the population
- * std is positive and stable in order of magnitude across two independent
- * base seeds, and the result is independent of how many worker threads
+ * central (all p_<rxn>=0) value within a few sigma/sqrt(N), the sample
+ * (ddof=1) std is positive and stable in order of magnitude across two
+ * independent base seeds, and the result is independent of how many worker threads
  * are used (same seed range, n_jobs=1 vs n_jobs=4 must match exactly,
  * since each sample is fully determined by its own seed -- see mc.c's
  * cpr_mc_uncertainty docstring). Runs on the `small` network (12
@@ -145,6 +145,31 @@ int main(void)
     }
 
     cpr_mc_result_free(&res);
+
+    /* ---- cpr_mc_sample_cov: fixed-sample cross-check against hand-computed
+     * (== numpy np.cov(ddof=1)) references. This is the numeric kernel behind
+     * the CLI's covariance/correlation files (FABLEADVICE F-1). ---- */
+    {
+        double xa[4] = {1.0, 2.0, 3.0, 4.0};
+        double xb[4] = {2.0, 4.0, 6.0, 8.0};   /* = 2*xa -> corr(a,b) == 1 */
+        double xc[4] = {5.0, 5.0, 5.0, 5.0};   /* constant -> zero variance */
+        /* ddof=1 references: var(a)=5/3, cov(a,b)=10/3, var(b)=20/3. */
+        double caa = cpr_mc_sample_cov(xa, xa, 4);
+        double cab = cpr_mc_sample_cov(xa, xb, 4);
+        double cbb = cpr_mc_sample_cov(xb, xb, 4);
+        double cac = cpr_mc_sample_cov(xa, xc, 4);
+        double ccc = cpr_mc_sample_cov(xc, xc, 4);
+        CHECK(fabs(caa - 5.0/3.0) < 1e-12, "cpr_mc_sample_cov var(a) == 5/3 (ddof=1)");
+        CHECK(fabs(cab - 10.0/3.0) < 1e-12, "cpr_mc_sample_cov cov(a,b) == 10/3");
+        CHECK(fabs(cbb - 20.0/3.0) < 1e-12, "cpr_mc_sample_cov var(b) == 20/3");
+        CHECK(fabs(cac) < 1e-12, "cpr_mc_sample_cov cov(a,const) == 0");
+        CHECK(fabs(ccc) < 1e-12, "cpr_mc_sample_cov var(const) == 0");
+        /* correlation built from cov (the CLI's R[i,j] formula): perfect. */
+        double corr_ab = cab / sqrt(caa * cbb);
+        CHECK(fabs(corr_ab - 1.0) < 1e-12, "corr(a, 2a) == 1 from cpr_mc_sample_cov");
+        /* single sample -> undefined (NaN), matching np.cov(ddof=1). */
+        CHECK(isnan(cpr_mc_sample_cov(xa, xb, 1)), "cpr_mc_sample_cov(n=1) is NaN");
+    }
 
     if (failures == 0) printf("All test_mc checks passed.\n");
     else printf("%d test_mc check(s) FAILED.\n", failures);

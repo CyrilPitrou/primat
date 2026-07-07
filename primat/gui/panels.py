@@ -386,6 +386,12 @@ def render_downloads_panel(run, mc=None, background=None):
     * **output_mc_samples.tsv** -- every quick-MC sample drawn (one column per
       quantity, one row per sample), via :func:`primat.backend.dump_mc_samples`
       -- only offered when ``mc`` is given, i.e. a quick MC was actually run.
+    * **output_mc_covariance.tsv** / **output_mc_correlation.tsv** -- the
+      ``(n_q, n_q)`` sample covariance/correlation matrices (ddof=1) over the
+      same quick-MC quantities, via :func:`primat.backend.dump_mc_covariance` /
+      :func:`primat.backend.dump_mc_correlation`; the joint uncertainty a user
+      needs for a multi-abundance likelihood. Also only offered when a quick MC
+      was run.
 
     Parameters
     ----------
@@ -419,7 +425,8 @@ def render_downloads_panel(run, mc=None, background=None):
         mime="text/plain", key="dl_final",
     )
     if mc is not None:
-        from primat.backend import dump_mc_samples
+        from primat.backend import (dump_mc_correlation, dump_mc_covariance,
+                                    dump_mc_samples)
 
         n_mc = len(next(iter(mc._data.values())).values)
         _file_download(
@@ -427,6 +434,23 @@ def render_downloads_panel(run, mc=None, background=None):
             data=dump_mc_samples(mc), file_name="output_mc_samples.tsv",
             mime="text/tab-separated-values", key="dl_mc_samples",
             help=f"{n_mc} quick-MC samples, one column per quantity.",
+        )
+        # The joint (off-diagonal) nuclear-rate uncertainty between observables
+        # -- e.g. the YP-D/H covariance a user needs for a multi-abundance
+        # likelihood -- which the per-observable sigmas in the samples file
+        # alone cannot give. Same (n_q, n_q) ddof=1 matrices over all MC
+        # quantities as the CLI's <prefix>_covariance.tsv/_correlation.tsv.
+        _file_download(
+            "Quick MC covariance", "output_mc_covariance.tsv",
+            data=dump_mc_covariance(mc), file_name="output_mc_covariance.tsv",
+            mime="text/tab-separated-values", key="dl_mc_covariance",
+            help="Sample covariance matrix (ddof=1) of the quick-MC quantities.",
+        )
+        _file_download(
+            "Quick MC correlation", "output_mc_correlation.tsv",
+            data=dump_mc_correlation(mc), file_name="output_mc_correlation.tsv",
+            mime="text/tab-separated-values", key="dl_mc_correlation",
+            help="Sample correlation matrix of the quick-MC quantities.",
         )
     _file_download(
         "Abundances time evolution", "output_time_evolution.tsv",

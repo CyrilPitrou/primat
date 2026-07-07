@@ -25,7 +25,11 @@ the repeat.
 import pytest
 
 from primat.config import PRIMATConfig
-from primat.network_data import load_network, reaction_stoichiometry
+from primat.network_data import (
+    SPECIES_SMALL,
+    load_network,
+    reaction_stoichiometry,
+)
 
 
 def test_auto_derived_stoichiometry_for_unknown_reaction():
@@ -82,3 +86,34 @@ def test_duplicate_reaction_entry_raises_value_error():
     with pytest.raises(ValueError, match="n_p__d_g.*already present"):
         load_network(cfg, era="LT",
                       reaction_names=["n_p__d_g", "n_p__d_g", "d_d__He3_n"])
+
+
+def test_small_network_reports_exactly_its_eight_nuclides():
+    """The `small` network evolves exactly the 8 SPECIES_SMALL nuclides
+    (n, p, H2, H3, He3, He4, Li7, Be7) and must *report* exactly those 8 in
+    ``Y_final`` -- no phantom extras.
+
+    Regression guard for a past bug: ``_solve_LT`` used to zero-fill
+    ``Y_final`` with all of ``SPECIES_MD`` (SPECIES_SMALL + He6/Li8/Li6/B8),
+    padding the small network up to a spurious 12-nuclide ``Y_final`` even
+    though its ODE state vector (``abundance_names``) is only the 8 above.
+    That mismatch also leaked into the MC nuclide set (``nuclide_names =
+    list(Y_final.keys())``) and broke C-vs-Python backend parity (the C
+    backend correctly reports 8).  The padding was narrowed to SPECIES_SMALL,
+    so the invariant below must now hold: ``Y_final`` keys are *exactly* the
+    evolved species, never a superset.
+    """
+    from primat import PRIMAT
+
+    pr = PRIMAT({"network": "small", "verbose": False})
+    pr.solve()
+
+    # The ODE state vector and the reported abundances must be the same set of
+    # nuclides -- Y_final must not carry any species the network never evolved.
+    assert set(pr.nuclear.Y_final) == set(pr.nuclear.abundance_names)
+    # And for `small` that set is exactly the 8 SPECIES_SMALL members.
+    assert set(pr.nuclear.Y_final) == set(SPECIES_SMALL)
+    assert len(pr.nuclear.Y_final) == 8
+    # None of the four SPECIES_MD-only extras should appear.
+    for phantom in ("He6", "Li8", "Li6", "B8"):
+        assert phantom not in pr.nuclear.Y_final

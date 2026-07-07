@@ -12,10 +12,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>   /* getcwd, for the absolute-path [output] messages */
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
-#elif defined(__linux__)
-#include <unistd.h>
 #endif
 
 /* Matches "nTOp_*.txt" (the weak-rate cache naming convention; thermal
@@ -87,6 +86,8 @@ static const char * const bool_flags[] = {
     "output_final_result",
     "output_background_evolution",
     "output_mc_samples",
+    "output_mc_covariance",
+    "output_mc_correlation",
     "show_progress",
     NULL
 };
@@ -97,7 +98,7 @@ static void usage(const char *prog)
            "          [--Omegabh2 VALUE] [--DeltaNeff VALUE] [--network NAME]\n"
            "          [--amax A] [--numerical_precision RTOL] [--munuOverTnu XI]\n"
            "          [--output_file FILE] [--output_final_file FILE]\n"
-           "          [--output_background_file FILE] [--output_mc_file FILE]\n"
+           "          [--output_background_file FILE] [--output_mc_file_prefix PREFIX]\n"
            "          [--QED_corrections | --no-QED_corrections]\n"
            "          [--nuclear_qed_corrections | --no-nuclear_qed_corrections]\n"
            "          [--radiative_corrections | --no-radiative_corrections]\n"
@@ -108,6 +109,8 @@ static void usage(const char *prog)
            "          [--output_final_result | --no-output_final_result]\n"
            "          [--output_background_evolution | --no-output_background_evolution]\n"
            "          [--output_mc_samples | --no-output_mc_samples]\n"
+           "          [--output_mc_covariance | --no-output_mc_covariance]\n"
+           "          [--output_mc_correlation | --no-output_mc_correlation]\n"
            "          [--show_progress | --no-show_progress]\n"
            "          [--mc N] [--mc-seed SEED]\n"
            "          [--json] [--verbose] [--cache-info] [--cache-clear]\n"
@@ -144,9 +147,12 @@ static void usage(const char *prog)
            "  --output_background_file FILE\n"
            "                        Write the background time-evolution TSV to FILE\n"
            "                        when --output_background_evolution is enabled.\n"
-           "  --output_mc_file FILE\n"
-           "                        Write Monte-Carlo samples to FILE when --mc is\n"
-           "                        used and --output_mc_samples is enabled.\n"
+           "  --output_mc_file_prefix PREFIX\n"
+           "                        Filename stem for the Monte-Carlo output files\n"
+           "                        written when --mc is used: PREFIX_samples.tsv /\n"
+           "                        PREFIX_covariance.tsv / PREFIX_correlation.tsv,\n"
+           "                        each gated by --output_mc_samples /\n"
+           "                        --output_mc_covariance / --output_mc_correlation.\n"
            "  --QED_corrections, --no-QED_corrections\n"
            "                        QED interaction corrections to the EM plasma\n"
            "                        equation of state. (default: True).\n"
@@ -178,7 +184,16 @@ static void usage(const char *prog)
            "                        Write the cosmological background time series to\n"
            "                        disk. (default: False).\n"
            "  --output_mc_samples, --no-output_mc_samples\n"
-           "                        Write --mc samples to output_mc_file.\n"
+           "                        Write --mc samples to\n"
+           "                        <output_mc_file_prefix>_samples.tsv.\n"
+           "                        (default: False).\n"
+           "  --output_mc_covariance, --no-output_mc_covariance\n"
+           "                        Write the --mc sample covariance matrix to\n"
+           "                        <output_mc_file_prefix>_covariance.tsv.\n"
+           "                        (default: False).\n"
+           "  --output_mc_correlation, --no-output_mc_correlation\n"
+           "                        Write the --mc sample correlation matrix to\n"
+           "                        <output_mc_file_prefix>_correlation.tsv.\n"
            "                        (default: False).\n"
            "  --show_progress, --no-show_progress\n"
            "                        Print compact stderr progress indicators\n"
@@ -393,6 +408,189 @@ static void print_json(const CPRResults *results, const CPRMCResult *mc)
     printf("\n}\n");
 }
 
+/* ---- Monte-Carlo output files (samples / covariance / correlation) ----
+ *
+ * The standalone C CLI writes the same three MC files as primat/cli.py, with
+ * byte-identical header wording and value formatting (CLAUDE.md output-parity
+ * mandate): <output_mc_file_prefix>_samples.tsv / _covariance.tsv /
+ * _correlation.tsv, each gated by its own boolean flag. The samples file is a
+ * straight port of primat.backend.dump_mc_samples; the two matrix files port
+ * dump_mc_covariance/dump_mc_correlation, computing the ddof=1 sample
+ * covariance/correlation here from the CPRMCResult's own per-quantity value
+ * arrays. */
+
+/* mkdir -p equivalent (mirrors nuclear_network.c's static mkdir_p and Python's
+ * os.makedirs(exist_ok=True)); creates each '/'-delimited component in turn. */
+static void cli_mkdir_p(const char *path)
+{
+    char buf[CPR_PATH_BUF_LEN2];
+    snprintf(buf, sizeof(buf), "%s", path);
+    for (char *p = buf + 1; *p; p++) {
+        if (*p == '/') { *p = '\0'; mkdir(buf, 0755); *p = '/'; }
+    }
+    mkdir(buf, 0755);
+}
+
+/* Resolve `path` to an absolute path (prepending the current working directory
+ * when it is relative), mirroring os.path.abspath so the "[output] ..." lines
+ * print the same absolute path as cli.py. No "." / ".." normalisation is done
+ * (unnecessary for the simple prefix stems used here). */
+static void cli_abspath(const char *path, char *out, size_t outsize)
+{
+    if (path[0] == '/') { snprintf(out, outsize, "%s", path); return; }
+    char cwd[CPR_PATH_BUF_LEN];
+    if (getcwd(cwd, sizeof(cwd)))
+        snprintf(out, outsize, "%s/%s", cwd, path);
+    else
+        snprintf(out, outsize, "%s", path);
+}
+
+/* Create the parent directory of `path` (if any), mirroring cli.py's
+ * os.makedirs(os.path.dirname(abspath)). */
+static void cli_ensure_parent_dir(const char *path)
+{
+    char dir[CPR_PATH_BUF_LEN2];
+    snprintf(dir, sizeof(dir), "%s", path);
+    char *slash = strrchr(dir, '/');
+    if (slash) { *slash = '\0'; if (dir[0]) cli_mkdir_p(dir); }
+}
+
+/* The ddof=1 sample covariance kernel is cpr_mc_sample_cov (mc.h), shared with
+ * the covariance/correlation matrix builders below and unit-tested in
+ * tests/unit/test_mc.c. */
+
+/* Port of primat.backend.dump_mc_samples: header = tab-joined quantity names,
+ * then one %.10e row per sample. */
+static int mc_write_samples(const char *path, const CPRMCResult *mc, int num_mc)
+{
+    cli_ensure_parent_dir(path);
+    FILE *f = fopen(path, "w");
+    if (!f) { fprintf(stderr, "warning: cannot write MC samples to %s\n", path); return 1; }
+    for (size_t j = 0; j < mc->n; j++)
+        fprintf(f, "%s%s", j ? "\t" : "", mc->items[j].name);
+    fputc('\n', f);
+    for (int s = 0; s < num_mc; s++) {
+        for (size_t j = 0; j < mc->n; j++)
+            fprintf(f, "%s%.10e", j ? "\t" : "", mc->items[j].values[s]);
+        fputc('\n', f);
+    }
+    fclose(f);
+    return 0;
+}
+
+/* Port of dump_mc_covariance (is_corr=0) / dump_mc_correlation (is_corr=1):
+ * line 1 = a '#' comment (N, seed, estimator convention, byte-identical to the
+ * Python writers); line 2 = "quantity\t<name>..."; then one name-first %.10e
+ * row per quantity. For correlation, R[i,j]=C[i,j]/(std_i*std_j) with a unit
+ * diagonal and NaN off-diagonal for any zero-variance quantity (mirrors
+ * MCResult.corr). */
+static int mc_write_matrix(const char *path, const CPRMCResult *mc,
+                           int num_mc, int seed, int is_corr)
+{
+    cli_ensure_parent_dir(path);
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "warning: cannot write MC %s to %s\n",
+                is_corr ? "correlation" : "covariance", path);
+        return 1;
+    }
+    if (is_corr)
+        fprintf(f, "# Correlation matrix of the N=%d primat MC samples (seed=%d): "
+                   "R[i,j] = Pearson correlation (ddof=1) of quantities i and j; "
+                   "unit diagonal.\n", num_mc, seed);
+    else
+        fprintf(f, "# Covariance matrix of the N=%d primat MC samples (seed=%d): "
+                   "C[i,j] = sample covariance (ddof=1) of quantities i and j.\n",
+                num_mc, seed);
+    fputs("quantity", f);
+    for (size_t j = 0; j < mc->n; j++) fprintf(f, "\t%s", mc->items[j].name);
+    fputc('\n', f);
+    for (size_t i = 0; i < mc->n; i++) {
+        fputs(mc->items[i].name, f);
+        for (size_t j = 0; j < mc->n; j++) {
+            double v;
+            if (is_corr) {
+                if (i == j) {
+                    v = 1.0;   /* unit diagonal by convention */
+                } else {
+                    double si = mc->items[i].std, sj = mc->items[j].std;
+                    v = (si == 0.0 || sj == 0.0) ? NAN
+                        : cpr_mc_sample_cov(mc->items[i].values, mc->items[j].values, num_mc)
+                          / (si * sj);
+                }
+            } else {
+                v = cpr_mc_sample_cov(mc->items[i].values, mc->items[j].values, num_mc);
+            }
+            fprintf(f, "\t%.10e", v);
+        }
+        fputc('\n', f);
+    }
+    fclose(f);
+    return 0;
+}
+
+/* Print the 4x4 correlation and covariance matrices of the four main BBN
+ * products (YPBBN/DoH/He3oHe4/Li7oH), aligned; byte-for-byte identical layout
+ * to primat/cli.py's _print_mc_matrices (verbose/output-parity). Only the
+ * products this network produced are shown; nothing prints if fewer than two
+ * are present. */
+static void print_mc_matrices(const CPRMCResult *mc, int num_mc)
+{
+    static const char *main4[] = {"YPBBN", "DoH", "He3oHe4", "Li7oH"};
+    size_t idx[4]; size_t m = 0;
+    for (size_t k = 0; k < 4; k++) {
+        size_t ix = cpr_mc_result_index(mc, main4[k]);
+        if (ix < mc->n) idx[m++] = ix;
+    }
+    if (m < 2) return;
+    /* A sample covariance/correlation needs >= 2 samples; skip for a
+     * single-sample run (mirrors cli.py's _print_mc_matrices guard). */
+    if (num_mc < 2) return;
+
+    /* Title: comma-joined present labels (", " separator, matching Python). */
+    char title[80]; title[0] = '\0';
+    for (size_t k = 0; k < m; k++) {
+        strncat(title, mc->items[idx[k]].name, sizeof(title) - strlen(title) - 1);
+        if (k + 1 < m) strncat(title, ", ", sizeof(title) - strlen(title) - 1);
+    }
+
+    /* Correlation: 8-wide row labels, 9-wide %9.3f value columns. */
+    printf("Correlation matrix (%s):\n", title);
+    printf("%8s", "");
+    for (size_t k = 0; k < m; k++) printf("%9s", mc->items[idx[k]].name);
+    putchar('\n');
+    for (size_t i = 0; i < m; i++) {
+        printf("%8s", mc->items[idx[i]].name);
+        for (size_t j = 0; j < m; j++) {
+            double v;
+            if (i == j) {
+                v = 1.0;
+            } else {
+                double si = mc->items[idx[i]].std, sj = mc->items[idx[j]].std;
+                v = (si == 0.0 || sj == 0.0) ? NAN
+                    : cpr_mc_sample_cov(mc->items[idx[i]].values,
+                                  mc->items[idx[j]].values, num_mc) / (si * sj);
+            }
+            printf("%9.3f", v);
+        }
+        putchar('\n');
+    }
+    /* Covariance: same 8-wide labels, 13-wide %13.3e value columns. */
+    printf("Covariance matrix (%s):\n", title);
+    printf("%8s", "");
+    for (size_t k = 0; k < m; k++) printf("%13s", mc->items[idx[k]].name);
+    putchar('\n');
+    for (size_t i = 0; i < m; i++) {
+        printf("%8s", mc->items[idx[i]].name);
+        for (size_t j = 0; j < m; j++) {
+            double v = cpr_mc_sample_cov(mc->items[idx[i]].values,
+                                   mc->items[idx[j]].values, num_mc);
+            printf("%13.3e", v);
+        }
+        putchar('\n');
+    }
+}
+
 /* ---- Plain-text report (mirrors cli.py's default output) ---- */
 
 static void print_plain(const CPRConfig *cfg, const CPRResults *results,
@@ -442,7 +640,12 @@ static void print_plain(const CPRConfig *cfg, const CPRResults *results,
     }
 #undef MC_STD
 
-    if (mc) printf("--- Monte-Carlo: %d samples ---\n", mc_n);
+    if (mc) {
+        /* Joint uncertainty of the four main products: 4x4 correlation +
+         * covariance matrices (same layout as cli.py's _print_mc_matrices). */
+        print_mc_matrices(mc, mc_n);
+        printf("--- Monte-Carlo: %d samples ---\n", mc_n);
+    }
 }
 
 int cpr_cli_main(int argc, char **argv)
@@ -589,9 +792,9 @@ int cpr_cli_main(int argc, char **argv)
         } else if (strcmp(a, "--output_background_file") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
             apply_param(&cfg, &cp, "output_background_file", p, "--output_background_file");
-        } else if (strcmp(a, "--output_mc_file") == 0 && has_val) {
+        } else if (strcmp(a, "--output_mc_file_prefix") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            apply_param(&cfg, &cp, "output_mc_file", p, "--output_mc_file");
+            apply_param(&cfg, &cp, "output_mc_file_prefix", p, "--output_mc_file_prefix");
 
         /* ---- Boolean --flag / --no-flag pairs ---- */
         } else if (strncmp(a, "--", 2) == 0) {
@@ -669,22 +872,33 @@ int cpr_cli_main(int argc, char **argv)
     CPRMCResult *mc = NULL;
 
     if (mc_n > 0) {
-        /* Standard observable set, mirroring _DEFAULT_MC_OBSERVABLES in
-         * primat/backend.py; cpr_mc_uncertainty silently skips any quantity
-         * whose name is not in CPRResults (e.g. "Li6oLi7" when the small
-         * network is used and has_Li6oLi7 == 0). We filter them here instead
-         * by checking the results struct so unknown-quantity errors are avoided. */
+        /* MC quantity set: the standard observables (mirroring
+         * _DEFAULT_MC_OBSERVABLES in primat/backend.py, filtered to those this
+         * network actually produces -- e.g. "Li6oLi7"/"YCNO" only for large)
+         * FIRST, then every tracked nuclide's final Y, in nuclide_names order.
+         * This matches the order primat/backend.py's run_mc builds
+         * (`quantities_plus_observables + nuclides`), so the samples/covariance/
+         * correlation files this CLI writes have the same columns, in the same
+         * order, as the Python CLI's -- covering all MC quantities, not just
+         * the observables (FABLEADVICE F-1). cpr_mc_uncertainty resolves each
+         * nuclide name via cpr_results_get_quantity's Y_final fallback. */
         const char *all_quantities[] = {
             "Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4", "Li7oH",
             "Li6oLi7", "YCNO"
         };
-        const char *quantities[9];
+        size_t n_obs = sizeof(all_quantities)/sizeof(all_quantities[0]);
         size_t n_q = 0;
-        for (size_t qi = 0; qi < sizeof(all_quantities)/sizeof(all_quantities[0]); qi++) {
+        /* observables (present) + every nuclide; observables never collide with
+         * nuclide names (ratios vs element names), so no dedup is needed. */
+        const char **quantities = malloc((n_obs + results.n_nuclides)
+                                         * sizeof(*quantities));
+        for (size_t qi = 0; qi < n_obs; qi++) {
             int found = 0;
             cpr_results_get_quantity(&results, all_quantities[qi], &found);
             if (found) quantities[n_q++] = all_quantities[qi];
         }
+        for (size_t k = 0; k < results.n_nuclides; k++)
+            quantities[n_q++] = results.nuclide_names[k];
 
         if (cpr_mc_uncertainty(mc_n, quantities, n_q,
                                data_dir,
@@ -698,6 +912,7 @@ int cpr_cli_main(int argc, char **argv)
         } else {
             mc = &mc_result;
         }
+        free(quantities);
     }
 
     /* ---- Output ---- */
@@ -705,6 +920,33 @@ int cpr_cli_main(int argc, char **argv)
         print_json(&results, mc);
     } else {
         print_plain(&cfg, &results, mc, mc_n);
+    }
+
+    /* ---- Optional MC output files (samples / covariance / correlation) ----
+     * All three share the output_mc_file_prefix stem, each gated by its own
+     * boolean, mirroring cli.py's writer block (byte-identical file format). */
+    if (mc) {
+        const char *prefix = cfg.output_mc_file_prefix;
+        char rel[CPR_PATH_BUF_LEN], path[CPR_PATH_BUF_LEN2];
+        if (cfg.output_mc_samples) {
+            snprintf(rel, sizeof(rel), "%s_samples.tsv", prefix);
+            cli_abspath(rel, path, sizeof(path));
+            if (mc_write_samples(path, mc, mc_n) == 0)
+                printf("[output] MC samples (%d sample%s) written to %s\n",
+                       mc_n, mc_n == 1 ? "" : "s", path);
+        }
+        if (cfg.output_mc_covariance) {
+            snprintf(rel, sizeof(rel), "%s_covariance.tsv", prefix);
+            cli_abspath(rel, path, sizeof(path));
+            if (mc_write_matrix(path, mc, mc_n, mc_seed, 0) == 0)
+                printf("[output] MC covariance matrix written to %s\n", path);
+        }
+        if (cfg.output_mc_correlation) {
+            snprintf(rel, sizeof(rel), "%s_correlation.tsv", prefix);
+            cli_abspath(rel, path, sizeof(path));
+            if (mc_write_matrix(path, mc, mc_n, mc_seed, 1) == 0)
+                printf("[output] MC correlation matrix written to %s\n", path);
+        }
     }
 
     if (mc) cpr_mc_result_free(&mc_result);

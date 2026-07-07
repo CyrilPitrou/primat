@@ -14,10 +14,12 @@ need (baryon density, extra relativistic species, network choice) so a
 
 The output filenames are exposed as named flags as well
 (``--output_file``, ``--output_final_file``, ``--output_background_file``,
-``--output_mc_file``) so they show up in ``primat --help`` alongside the
-other basic options. Monte-Carlo sample dumping is controlled by the
-standard config flag ``--output_mc_samples`` and the filename is taken from
-``--output_mc_file``.
+``--output_mc_file_prefix``) so they show up in ``primat --help`` alongside
+the other basic options. Monte-Carlo output is controlled by three standard
+config flags (``--output_mc_samples`` / ``--output_mc_covariance`` /
+``--output_mc_correlation``); each writes ``<prefix>_samples.tsv`` /
+``<prefix>_covariance.tsv`` / ``<prefix>_correlation.tsv`` respectively, with
+the stem taken from ``--output_mc_file_prefix``.
 
 Anything not exposed as a named flag here can still be set without writing a
 script, via the (intentionally undocumented in ``--help``, to keep the
@@ -40,7 +42,8 @@ import time
 
 from . import PRIMAT, __version__
 from .credits import cli_credits_text
-from .backend import HAS_C_BACKEND, dump_mc_samples, run_bbn, run_mc
+from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
+                      dump_mc_samples, run_bbn, run_mc)
 from .cache_utils import clear_weak_cache, list_weak_cache_files
 from .config import PRIMATConfig, _rates_overlay_notice
 
@@ -66,6 +69,49 @@ def _parse_set_value(raw: str):
         return ast.literal_eval(raw)
     except (ValueError, SyntaxError):
         return raw
+
+
+# The four main BBN products whose joint MC uncertainty the CLI prints as
+# aligned correlation/covariance matrices (author spec, FABLEADVICE F-1).
+_MC_MAIN_PRODUCTS = ("YPBBN", "DoH", "He3oHe4", "Li7oH")
+
+
+def _print_mc_matrices(mc):
+    """Print the 4x4 correlation and covariance matrices of the four main BBN
+    products (``YPBBN``, ``DoH``, ``He3oHe4``, ``Li7oH``) from an
+    :class:`primat.main.MCResult`, aligned and labelled.
+
+    The correlation matrix is dimensionless (printed to 3 decimals); the
+    covariance matrix uses ``%.3e``.  Together they give the *joint* nuclear-
+    rate/tau_n uncertainty a user needs to build a likelihood over several
+    abundances at once (the off-diagonal YP-D/H term is not recoverable from
+    the per-observable sigmas alone).  Only the products this network actually
+    produced are shown; nothing is printed if fewer than two are present.
+
+    The layout (fixed-width fields) is byte-for-byte identical to the C
+    backend's ``print_mc_matrices`` (``primat-c/src/cli.c``), per CLAUDE.md's
+    verbose/output-parity mandate.
+    """
+    names = mc.quantity_names()
+    labels = [q for q in _MC_MAIN_PRODUCTS if q in names]
+    if len(labels) < 2:
+        return
+    # A sample covariance/correlation needs at least 2 samples; skip the
+    # matrices entirely for a degenerate single-sample run (they'd be all-NaN).
+    if mc.samples_array().shape[0] < 2:
+        return
+    title = ", ".join(labels)
+    # Correlation: 8-wide row-label column, 9-wide value columns (%9.3f); the
+    # header names are right-justified to the same 9 so they sit over values.
+    print(f"Correlation matrix ({title}):")
+    print(" " * 8 + "".join(f"{q:>9}" for q in labels))
+    for a in labels:
+        print(f"{a:>8}" + "".join(f"{mc.corr(a, b):9.3f}" for b in labels))
+    # Covariance: same 8-wide labels, 13-wide value columns (%13.3e).
+    print(f"Covariance matrix ({title}):")
+    print(" " * 8 + "".join(f"{q:>13}" for q in labels))
+    for a in labels:
+        print(f"{a:>8}" + "".join(f"{mc.cov(a, b):13.3e}" for b in labels))
 
 
 def _build_parser():
@@ -146,9 +192,11 @@ def _build_parser():
              "--output_background_evolution is enabled.",
     )
     parser.add_argument(
-        "--output_mc_file", default=None, metavar="FILE",
-        help="Write Monte-Carlo samples to FILE when --mc is used and "
-             "--output_mc_samples is enabled.",
+        "--output_mc_file_prefix", default=None, metavar="PREFIX",
+        help="Filename stem for the Monte-Carlo output files written when --mc "
+             "is used: PREFIX_samples.tsv / PREFIX_covariance.tsv / "
+             "PREFIX_correlation.tsv, each gated by --output_mc_samples / "
+             "--output_mc_covariance / --output_mc_correlation respectively.",
     )
     # Boolean PRIMATConfig flags exposed as --flag/--no-flag pairs (argparse's
     # BooleanOptionalAction), so they don't need the --set escape hatch.
@@ -176,7 +224,13 @@ def _build_parser():
         ("output_background_evolution", False,
          "Write the cosmological background time series to disk."),
         ("output_mc_samples", False,
-         "Write --mc samples to output_mc_file."),
+         "Write --mc samples to <output_mc_file_prefix>_samples.tsv."),
+        ("output_mc_covariance", False,
+         "Write the --mc sample covariance matrix to "
+         "<output_mc_file_prefix>_covariance.tsv."),
+        ("output_mc_correlation", False,
+         "Write the --mc sample correlation matrix to "
+         "<output_mc_file_prefix>_correlation.tsv."),
         ("show_progress", True,
          "Print compact stderr progress indicators ('[primat]  HT.  MT.  "
          "LT.  done.' phase markers, '[MC] ...' sample counter)."),
@@ -292,9 +346,10 @@ def main(argv=None):
         "munuOverTnu", "QED_corrections", "nuclear_qed_corrections",
         "radiative_corrections", "finite_mass_corrections", "thermal_corrections",
         "spectral_distortions", "output_time_evolution", "output_final_result",
-        "output_background_evolution", "output_mc_samples", "show_progress",
+        "output_background_evolution", "output_mc_samples",
+        "output_mc_covariance", "output_mc_correlation", "show_progress",
         "output_file", "output_final_file", "output_background_file",
-        "output_mc_file",
+        "output_mc_file_prefix",
     ):
         value = getattr(args, key)
         if value is not None:
@@ -359,20 +414,39 @@ def main(argv=None):
         if "YCNO" in results:
             print(f"CNO (mass) = {results['YCNO']:.6e}" +
                   (f" +/- {mc['YCNO'].std:.6e}" if mc is not None and "YCNO" in mc.quantity_names() else ""))
+        # After the per-observable value +/- sigma block, print the joint
+        # uncertainty of the four main products (YPBBN/DoH/He3oHe4/Li7oH): the
+        # 4x4 correlation matrix (dimensionless, 3 decimals) and covariance
+        # matrix (%.3e), computed from the same MC samples. The correlation is
+        # what a user needs to build a joint likelihood over several abundances.
+        if mc is not None:
+            _print_mc_matrices(mc)
         print(f"--- running time: {elapsed:.2f} seconds ---")
 
     if mc is not None:
+        # All three MC files share one filename stem (output_mc_file_prefix),
+        # each gated by its own boolean, and are written verbatim from the same
+        # dump_mc_* helpers the GUI uses (backend-agnostic MCResult).
         cfg_check = PRIMATConfig(params)
-        mc_output_path = cfg_check.output_mc_file if cfg_check.output_mc_samples else None
-        if mc_output_path:
-            out_path = os.path.abspath(mc_output_path)
+        prefix = cfg_check.output_mc_file_prefix
+        for enabled, suffix, writer, label in (
+            (cfg_check.output_mc_samples,     "_samples.tsv",     dump_mc_samples,     "samples"),
+            (cfg_check.output_mc_covariance,  "_covariance.tsv",  dump_mc_covariance,  "covariance"),
+            (cfg_check.output_mc_correlation, "_correlation.tsv", dump_mc_correlation, "correlation"),
+        ):
+            if not enabled:
+                continue
+            out_path = os.path.abspath(prefix + suffix)
             out_dir = os.path.dirname(out_path)
             if out_dir:
                 os.makedirs(out_dir, exist_ok=True)
             with open(out_path, "w") as f:
-                f.write(dump_mc_samples(mc))
-            sample_word = "sample" if args.mc == 1 else "samples"
-            print(f"[output] MC samples ({args.mc} {sample_word}) written to {out_path}")
+                f.write(writer(mc))
+            if label == "samples":
+                sample_word = "sample" if args.mc == 1 else "samples"
+                print(f"[output] MC samples ({args.mc} {sample_word}) written to {out_path}")
+            else:
+                print(f"[output] MC {label} matrix written to {out_path}")
 
     return 0
 

@@ -289,7 +289,7 @@ class NuclearNetwork:
         and zero-filled for any standard light species the chosen network
         does not track).
         """
-        from .network_data import SPECIES_MD
+        from .network_data import SPECIES_SMALL
         cfg        = self.cfg
         background = self.background
         nucl       = self.nucl
@@ -329,15 +329,24 @@ class NuclearNetwork:
                   flush=True)
         if _show:
             print("  done.", file=sys.stderr)
-        # Build LT final abundances by name; fill in 0 for any standard light
-        # species that the chosen network does not track (e.g. heavy-nuclide-only
-        # networks that drop He6 — though in practice all three standard networks
-        # include all SPECIES_MD members).
+        # Build LT final abundances by name.
         # Clamp to 0: the BDF solver can leave near-extinct nuclides at a
         # tiny negative value (numerical noise around zero), which is
         # unphysical for an abundance and breaks log-scale displays/ratios.
         finL = {s: max(sol_LT.y[i][-1], 0.0) for i, s in enumerate(species_L)}
-        for s in SPECIES_MD:
+        # Zero-fill only the eight *observable* light species (SPECIES_SMALL:
+        # the n,p,H2,H3,He3,He4,Li7,Be7 that PRIMAT.solve() reads directly to
+        # form YPBBN/D/H/He3/Li7).  This guards a custom LT network that drops
+        # one of them (e.g. He4 stripped out) against a KeyError downstream,
+        # *without* injecting phantom nuclides the network never evolved: the
+        # small network's state vector is exactly SPECIES_SMALL, so this adds
+        # nothing there and Y_final reports its true 8 nuclides -- matching
+        # abundance_names (=species_L) and the C backend.  Networks that *do*
+        # track the heavier He6/Li8/Li6/B8 (large, and large+amax>=8) keep them
+        # because they are already in species_L above; we just no longer force
+        # those four onto networks that don't (which was inflating `small` to a
+        # spurious 12-nuclide Y_final).
+        for s in SPECIES_SMALL:
             finL.setdefault(s, 0.0)
 
         if cfg.verbose:

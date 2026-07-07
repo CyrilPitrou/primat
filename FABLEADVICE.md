@@ -26,8 +26,10 @@ the community-standard one.
 - **Opus** gets tasks that are cross-cutting, involve design decisions, new
   subsystems, or anything that must be mirrored between the Python and C
   backends (per CLAUDE.md's parity mandate).
-- Work in phase order (Phase 1 before the PyPI release; later phases after).
-- Items are numbered `S-n` (Sonnet) and `O-n` (Opus).
+- Work in phase order (**Phase 0 first** — author decision, 2026-07-07 —
+  then Phase 1 before the PyPI release; later phases after).
+- Items are numbered `F-n` (the Phase-0 feature), `S-n` (Sonnet) and `O-n`
+  (Opus).
 
 ### Ground rules for BOTH models (non-negotiable, from CLAUDE.md)
 
@@ -46,6 +48,110 @@ the community-standard one.
    `tests/test_docs_consistency.py` wherever a number or claim can be
    machine-checked — that file exists precisely because README/CLAUDE.md
    have staled before.
+
+---
+
+## Phase 0 — MC covariance & correlation matrices (START HERE)
+
+Requested by the author 2026-07-07. Motivation: when a user constrains
+cosmology with several abundances at once (mostly YP and D/H), they need the
+*joint* nuclear-rate uncertainty — the covariance between observables from
+the same MC samples — not just per-observable sigmas. The samples already
+exist in `MCResult` (`samples_array()` stacks them as `(num_mc, n_quantity)`),
+so this is a presentation feature, but it must land uniformly across the
+Python API, CLI, GUI, output files, both backends, and the docs.
+
+Author decisions already made (do not re-litigate):
+- Full matrices cover **all** MC quantities (every standard observable +
+  every tracked nuclide's final Y — the same set as the samples file), in
+  `quantity_names()` order.
+- **Hard rename** `output_mc_file` → `output_mc_file_prefix` (no deprecated
+  alias; primat is not on PyPI yet).
+- CLI `--mc` prints the 4×4 covariance and correlation of the four main
+  products: `YPBBN`, `DoH`, `He3oHe4`, `Li7oH`.
+- Every behavior change is reflected in README.md **in the same PR**.
+
+### F-1. Core implementation, both backends  «Opus»
+**Python API** (`primat/main.py`, `MCResult` — build on `samples_array()`):
+- `mc.cov()` → full `(n_q, n_q)` sample covariance matrix (`np.cov` on the
+  stacked samples, `ddof=1` — document the convention; it must match how
+  `MCResult.std` is computed, check and align if it uses ddof=0).
+- `mc.corr()` → correlation matrix (`np.corrcoef`); guard zero-variance
+  quantities (a nuclide identical in every sample) → NaN off-diagonal with a
+  docstring note, not a RuntimeWarning storm.
+- Scalar two-name form: `mc.cov("YPBBN", "DoH")` / `mc.corr("YPBBN", "DoH")`
+  (raise KeyError with the available names on a typo).
+- Works identically for C- and Python-backend `MCResult`s since both fill
+  `values` — the API layer is backend-agnostic by construction.
+**Config keys** (`DEFAULT_PARAMS` goes 74 → 76; full three-file sync per
+CLAUDE.md — config.py, `primat_run_explanatory.py`, `run_basic.ini`, count
+comments, plus the C `CPRConfig` field table / `cpr_config_set_by_name`):
+- Rename `output_mc_file` → `output_mc_file_prefix`, default
+  `"results/output_mc"`. Written files: `<prefix>_samples.tsv`,
+  `<prefix>_covariance.tsv`, `<prefix>_correlation.tsv`
+  (`output_mc_samples.tsv` as a default filename is gone).
+- New booleans `output_mc_covariance`, `output_mc_correlation` (default
+  False), siblings of the existing `output_mc_samples`.
+**File format** (author spec — exactly two header lines):
+```
+# Covariance matrix of the N=100 primat MC samples (seed=0): C[i,j] = sample covariance (ddof=1) of quantities i and j.
+quantity	Neff	YPBBN	YPCMB	DoH	...
+Neff	...	...
+```
+i.e. line 1 = one `#` line saying what the file is (include N, seed, and the
+estimator convention); line 2 = tab-separated quantity names labelling both
+columns and rows; then one row per quantity, name first. Correlation file
+identical with its own line-1 wording and unit diagonal.
+**Writers**: shared helpers next to `dump_mc_samples` in `primat/backend.py`
+(`dump_mc_covariance(mc)`, `dump_mc_correlation(mc)`), used by CLI and GUI.
+The **standalone C CLI** (`primat-c` binary: `mc.c`/`cli.c`) must write the
+same three files with byte-identical header wording (verbose-output-parity
+spirit) — compute cov/corr in C from its own samples.
+**CLI** (`primat/cli.py`): rename the `--output_mc_file` flag to
+`--output_mc_file_prefix`; when `--mc N` runs, print after the
+`value ± sigma` block the 4×4 **correlation** matrix (aligned, 3 decimals)
+and the 4×4 **covariance** matrix (`%.3e`) of YPBBN/DoH/He3oHe4/Li7oH,
+each with a one-line title; file writing gated by the three booleans.
+**Tests**: extend `tests/test_mc.py` (cov symmetric, `diag(corr)==1`,
+`diag(cov)==std**2` under the chosen ddof, scalar form == matrix entry,
+zero-variance guard); a file round-trip parse test; backend parity — same
+header lines and matrix shape from both backends, statistical agreement of
+matrices at large-ish N; a C unit test injecting fixed samples and
+cross-checking cov/corr values against numpy-computed references.
+**README.md** (same PR): update the MC section — new key names, the three
+files, a `mc.corr("YPBBN","DoH")` example, and the CLI printout sample.
+**Accept**: `primat --mc 100 --set output_mc_samples=True --set
+output_mc_covariance=True --set output_mc_correlation=True
+--output_mc_file_prefix results/demo` prints the two 4×4 matrices and writes
+the three files on both `--backend c` and `--backend python` with identical
+headers; validation table (CLAUDE.md) unchanged; full suite green.
+
+### F-2. Demos, notebook, GUI  «Sonnet» (after F-1 merges)
+- **`runfiles/primat_mc.py`** (new, author-mandated): heavily-commented demo
+  in the house style of `primat_run_explanatory.py` — run
+  `run_mc(500, params={...})`, print each observable `value ± sigma` at
+  CLAUDE.md precision, print the 4×4 correlation of the main products, show
+  the scalar `mc.cov("YPBBN", "DoH")` / `mc.corr("YPBBN", "DoH")` access,
+  and write the three `<prefix>_*.tsv` files. Add it to
+  `tests/test_runfiles.py`'s script list (use a small `num_mc` via an env
+  override or a `--quick` arg so the smoke test stays fast) and to the
+  runfiles list in README/CLAUDE.md.
+- **`notebooks/MonteCarloRates.ipynb`**: add a section computing and
+  displaying the full correlation matrix via `mc.corr()` (pandas-styled
+  heat-styled table for the 4 main products; replace any hand-rolled
+  `np.corrcoef(values)` with the new API), with a sentence on *why* the
+  YP–D/H correlation matters for joint likelihoods. Keep the corner plot.
+- **GUI** (`primat/gui/panels.py`): alongside the existing MC-samples
+  download, add "Download covariance (.tsv)" and "Download correlation
+  (.tsv)" buttons sharing the radical name (`output_mc_samples` /
+  `output_mc_covariance` / `output_mc_correlation` naming), fed by the F-1
+  `dump_mc_*` helpers; follow the existing `_download_button` pattern and
+  add AppTest coverage in `tests/test_gui.py`.
+- **Docs-consistency**: pin README's quoted key names
+  (`output_mc_file_prefix`, `output_mc_covariance`, `output_mc_correlation`)
+  in `tests/test_docs_consistency.py`.
+**Accept**: `python runfiles/primat_mc.py` runs standalone from the repo
+root; `pytest -m "gui or notebook"` green; README examples reproduce.
 
 ---
 
@@ -110,8 +216,9 @@ All verified against the running code on 2026-07-07:
 - **Cobaya section is out of date** ("will be available"): the wrapper
   already exists in the author's separate `primat_tools` GitHub repo —
   rewrite to present tense with the link (details in O-4).
-Also fix CLAUDE.md's "currently 73 keys" (it is 74 — the explanatory
-template already says 74).
+(CLAUDE.md's stale "currently 73 keys", data paths, PDF location, and
+version-check claim were already fixed directly by Fable on 2026-07-07 —
+but F-1 bumps the count again to 76; keep it true.)
 **Accept**: every number/example in README is reproduced by actually running
 the shown command; add pins to `tests/test_docs_consistency.py` for the
 `--set` syntax and the Python-only-features list (parse README, assert).
@@ -518,6 +625,7 @@ regenerates the table.
 
 | Order | Items | Why |
 |-------|-------|-----|
+| 0 | F-1 → F-2 | the MC covariance/correlation feature (author priority) |
 | 1 | S-1, S-2, S-3, S-4, S-5, S-6 | CI + wheels + truthful README = safe to release |
 | 2 | O-1, O-2 | error UX and dependency shape are hard to change after users exist |
 | 3 | O-3 → S-7, S-8, S-9, S-10, S-11 | docs site, then everything that links into it |

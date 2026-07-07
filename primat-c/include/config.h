@@ -177,7 +177,9 @@ typedef struct {
     int output_background_evolution;
     char *output_background_file;
     int output_mc_samples;
-    char *output_mc_file;
+    int output_mc_covariance;
+    int output_mc_correlation;
+    char *output_mc_file_prefix; /* stem for <prefix>_samples/_covariance/_correlation.tsv */
 
     /* ---- nuclear network ---- */
     char *rate_interp_order; /* "linear" | "quadratic" | "cubic" */

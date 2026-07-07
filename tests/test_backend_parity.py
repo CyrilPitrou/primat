@@ -503,3 +503,50 @@ def test_backend_custom_network_numerical_agreement():
     assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=5e-5)
     assert r_c["DoH"] != pytest.approx(r_c_plain["DoH"], rel=1e-6)
     assert r_py["DoH"] != pytest.approx(r_py_plain["DoH"], rel=1e-6)
+
+
+@requires_c_backend
+def test_backend_mc_cov_corr_parity():
+    """The MC covariance/correlation feature (FABLEADVICE F-1) must be
+    backend-transparent: both backends track the *same* MC quantity set, the
+    ``dump_mc_*`` writers emit byte-identical header lines (line 1: N/seed/
+    estimator; line 2: the quantity names), each backend's ``cov()``/``corr()``
+    is square and symmetric over those quantities, and the matrices agree
+    *statistically* at a large-ish N (the two backends draw from different RNG
+    streams -- see the module docstring -- so only convergent statistics match,
+    not per-sample values).
+
+    The ``small`` network reports exactly its 8 evolved nuclides on *both*
+    backends now (see tests/test_nuclear.py
+    ::test_small_network_reports_exactly_its_eight_nuclides -- Python no longer
+    pads Y_final up to SPECIES_MD), so the full MC quantity list (observables +
+    nuclides) is identical across backends.
+    """
+    from primat.backend import (run_mc, dump_mc_covariance, dump_mc_correlation)
+
+    params = {"network": "small"}
+    n = 120
+    mc_c = run_mc(n, params=params, force_backend="c", seed=0)
+    mc_py = run_mc(n, params=params, force_backend="python", seed=0)
+
+    # Both backends track the identical MC quantity set (observables + the 8
+    # small-network nuclides, in the same order).
+    assert mc_c.quantity_names() == mc_py.quantity_names()
+
+    # Each backend's own full matrix is square and symmetric.
+    for mc in (mc_c, mc_py):
+        nq = len(mc.quantity_names())
+        C, R = mc.cov(), mc.corr()
+        assert C.shape == (nq, nq) and R.shape == (nq, nq)
+        assert np.allclose(C, C.T)
+        assert np.allclose(R, R.T, equal_nan=True)
+
+    # Both header lines are byte-identical across backends: line 1 (N, seed,
+    # estimator convention) and line 2 (the tab-separated quantity names).
+    for dump in (dump_mc_covariance, dump_mc_correlation):
+        assert dump(mc_c).splitlines()[:2] == dump(mc_py).splitlines()[:2]
+
+    # Statistical agreement of the YPBBN-DoH correlation at N=120 (loose: the
+    # two RNG streams give different samples, only convergent statistics).
+    assert mc_c.corr("YPBBN", "DoH") == pytest.approx(
+        mc_py.corr("YPBBN", "DoH"), abs=0.25)

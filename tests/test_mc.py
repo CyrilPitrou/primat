@@ -67,7 +67,10 @@ def test_mean_consistent_with_values(mc_single):
 
 def test_std_consistent_with_values(mc_single):
     q = mc_single["YPBBN"]
-    assert q.std == pytest.approx(np.std(q.values), rel=1e-10)
+    # std is the sample (ddof=1) standard deviation -- unbiased and consistent
+    # with the ddof=1 cov()/corr() matrices, so diag(cov) == std**2 (see
+    # test_cov_diag_equals_std_squared).
+    assert q.std == pytest.approx(np.std(q.values, ddof=1), rel=1e-10)
 
 
 def test_central_close_to_nominal(mc_single):
@@ -84,6 +87,152 @@ def test_std_positive(mc_single):
 def test_std_positive_multi(mc_multi):
     for key in ("YPBBN", "DoH", "Li7oH"):
         assert mc_multi[key].std > 0
+
+
+# --- Covariance / correlation matrices (MCResult.cov / MCResult.corr) ---
+#
+# These use a synthetic MCResult built from fixed sample arrays (no BBN solve
+# needed) so the linear-algebra invariants can be checked deterministically and
+# fast, plus one structural check on the real mc_multi fixture.
+
+def _synthetic_mc(seed=0, n=200):
+    """A 3-quantity MCResult with known structure: A ~ N(0,1); B strongly
+    correlated with A; C constant (zero variance, to exercise the guard)."""
+    rng = np.random.default_rng(seed)
+    a = rng.standard_normal(n)
+    b = 0.7 * a + 0.3 * rng.standard_normal(n)   # correlated with A
+    c = np.full(n, 3.0)                            # identical in every sample
+    data = {
+        "A": MCQuantityResult(0.0, a),
+        "B": MCQuantityResult(0.0, b),
+        "C": MCQuantityResult(3.0, c),
+    }
+    return MCResult(data, seed=seed)
+
+
+def test_cov_matrix_shape_and_symmetry():
+    mc = _synthetic_mc()
+    C = mc.cov()
+    assert C.shape == (3, 3)
+    assert np.allclose(C, C.T)
+
+
+def test_cov_diag_equals_std_squared():
+    """diag(cov) == std**2 -- the reason MCQuantityResult.std uses ddof=1 too."""
+    mc = _synthetic_mc()
+    C = mc.cov()
+    for i, q in enumerate(mc.quantity_names()):
+        assert C[i, i] == pytest.approx(mc[q].std ** 2, rel=1e-12)
+
+
+def test_corr_unit_diagonal():
+    mc = _synthetic_mc()
+    R = mc.corr()
+    # Unit diagonal for every quantity, including the zero-variance C.
+    assert np.allclose(np.diag(R), 1.0)
+
+
+def test_corr_matrix_symmetry():
+    mc = _synthetic_mc()
+    R = mc.corr()
+    assert np.allclose(R, R.T, equal_nan=True)
+
+
+def test_corr_matches_cov_over_std():
+    """R[i,j] == C[i,j] / (std_i std_j) for the varying quantities."""
+    mc = _synthetic_mc()
+    C, R = mc.cov(), mc.corr()
+    names = mc.quantity_names()
+    ia, ib = names.index("A"), names.index("B")
+    expected = C[ia, ib] / (mc["A"].std * mc["B"].std)
+    assert R[ia, ib] == pytest.approx(expected, rel=1e-12)
+    # Strongly (positively) correlated by construction.
+    assert 0.8 < R[ia, ib] < 1.0
+
+
+def test_scalar_cov_corr_equal_matrix_entry():
+    mc = _synthetic_mc()
+    C, R = mc.cov(), mc.corr()
+    names = mc.quantity_names()
+    ia, ib = names.index("A"), names.index("B")
+    assert mc.cov("A", "B") == pytest.approx(C[ia, ib], rel=1e-12)
+    assert mc.corr("A", "B") == pytest.approx(R[ia, ib], rel=1e-12)
+    # Scalar of a quantity with itself: cov == var == std**2, corr == 1.
+    assert mc.cov("A", "A") == pytest.approx(mc["A"].std ** 2, rel=1e-12)
+    assert mc.corr("A", "A") == 1.0
+
+
+def test_zero_variance_guard_no_warning():
+    """A quantity identical in every sample gets NaN off-diagonal correlation
+    (both matrix and scalar forms) and zero covariance, with NO RuntimeWarning
+    storm from the 0/0 division."""
+    mc = _synthetic_mc()
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")          # any RuntimeWarning -> failure
+        R = mc.corr()
+        scalar = mc.corr("A", "C")
+    names = mc.quantity_names()
+    ic = names.index("C")
+    ia = names.index("A")
+    assert np.isnan(R[ia, ic]) and np.isnan(R[ic, ia])
+    assert R[ic, ic] == 1.0                     # unit diagonal even so
+    assert np.isnan(scalar)
+    # Covariance of the constant with itself is exactly 0 (ddof=1 variance).
+    assert mc.cov("C", "C") == pytest.approx(0.0, abs=1e-30)
+
+
+def test_cov_corr_unknown_name_raises_keyerror():
+    mc = _synthetic_mc()
+    with pytest.raises(KeyError):
+        mc.cov("not_a_quantity", "A")
+    with pytest.raises(KeyError):
+        mc.corr("A", "not_a_quantity")
+
+
+def test_cov_corr_one_name_raises_typeerror():
+    """Exactly zero or exactly two names -- one name is a usage error."""
+    mc = _synthetic_mc()
+    with pytest.raises(TypeError):
+        mc.cov("A")
+    with pytest.raises(TypeError):
+        mc.corr("A")
+
+
+def test_cov_corr_files_roundtrip():
+    """dump_mc_covariance/dump_mc_correlation write the two-header-line TSV;
+    reparsing the matrix body reproduces mc.cov()/mc.corr()."""
+    from primat.backend import dump_mc_covariance, dump_mc_correlation
+    mc = _synthetic_mc()
+
+    def _parse(text):
+        lines = text.splitlines()
+        assert lines[0].startswith("#")                    # line 1: comment
+        header = lines[1].split("\t")
+        assert header[0] == "quantity"
+        names = header[1:]
+        rows = []
+        for ln in lines[2:]:
+            cells = ln.split("\t")
+            assert cells[0] in names                       # row label
+            rows.append([float(x) for x in cells[1:]])
+        return names, np.array(rows)
+
+    names_c, M_cov = _parse(dump_mc_covariance(mc))
+    assert names_c == mc.quantity_names()
+    assert np.allclose(M_cov, mc.cov(), equal_nan=True)
+
+    names_r, M_corr = _parse(dump_mc_correlation(mc))
+    assert names_r == mc.quantity_names()
+    assert np.allclose(M_corr, mc.corr(), equal_nan=True)
+
+
+def test_mc_multi_cov_shape_matches_quantities(mc_multi):
+    """On a real MC result the covariance is square over all quantity_names."""
+    C = mc_multi.cov()
+    nq = len(mc_multi.quantity_names())
+    assert C.shape == (nq, nq)
+    assert np.allclose(C, C.T)
 
 
 # --- Reproducibility ---

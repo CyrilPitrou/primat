@@ -398,7 +398,11 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
         return 1;
     }
 
-    /* Mean/std (population std, matching np.std's default ddof=0). */
+    /* Mean/std. std is the *sample* standard deviation (ddof=1: divide by
+     * num_mc-1), matching Python's MCQuantityResult.std (np.std(ddof=1)) and
+     * the ddof=1 covariance/correlation matrices below, so diag(cov)==std**2.
+     * A single sample has an undefined sample std (0/0); report 0.0 there
+     * (mirrors main.py's `values.size >= 2 else 0.0` guard). */
     for (size_t q = 0; q < n_quantities; q++) {
         double sum = 0.0;
         for (int i = 0; i < num_mc; i++) sum += out->items[q].values[i];
@@ -409,7 +413,7 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
             var += d * d;
         }
         out->items[q].mean = mean;
-        out->items[q].std = sqrt(var / (double)num_mc);
+        out->items[q].std = (num_mc >= 2) ? sqrt(var / (double)(num_mc - 1)) : 0.0;
     }
     return 0;
 }
@@ -427,4 +431,16 @@ size_t cpr_mc_result_index(const CPRMCResult *out, const char *name)
     for (size_t q = 0; q < out->n; q++)
         if (strcmp(out->items[q].name, name) == 0) return q;
     return out->n;
+}
+
+double cpr_mc_sample_cov(const double *xa, const double *xb, int n)
+{
+    /* ddof=1 sample covariance; undefined (NaN) for a single sample. */
+    if (n < 2) return NAN;
+    double ma = 0.0, mb = 0.0;
+    for (int i = 0; i < n; i++) { ma += xa[i]; mb += xb[i]; }
+    ma /= (double)n; mb /= (double)n;
+    double s = 0.0;
+    for (int i = 0; i < n; i++) s += (xa[i] - ma) * (xb[i] - mb);
+    return s / (double)(n - 1);
 }

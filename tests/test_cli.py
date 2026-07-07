@@ -137,7 +137,7 @@ def test_cli_help_shows_named_output_path_flags(capsys):
     assert "--output_file FILE" in out
     assert "--output_final_file FILE" in out
     assert "--output_background_file FILE" in out
-    assert "--output_mc_file FILE" in out
+    assert "--output_mc_file_prefix PREFIX" in out
     assert not re.search(r"(?m)^\s+--set\b", out)
 
 
@@ -151,23 +151,47 @@ def test_cli_credits_prints_short_text(capsys):
 
 
 def test_cli_mc_output_announces_path(capsys, tmp_path):
-    """The MC TSV writer must also emit a visible [output] line."""
-    out_path = tmp_path / "mc_samples.tsv"
-    rc = main(["--mc", "1", "--output_mc_samples", "--output_mc_file", str(out_path)])
+    """The MC TSV writer must also emit a visible [output] line. With the
+    prefix scheme the samples file is ``<prefix>_samples.tsv``."""
+    prefix = tmp_path / "mc"
+    rc = main(["--mc", "1", "--output_mc_samples",
+               "--output_mc_file_prefix", str(prefix)])
     assert rc == 0
     out = capsys.readouterr().out
     assert "[output] MC samples (1 sample) written to" in out
-    assert str(out_path.resolve()) in out
+    assert str((tmp_path / "mc_samples.tsv").resolve()) in out
+
+
+def test_cli_mc_covariance_correlation_files(capsys, tmp_path):
+    """--output_mc_covariance/--output_mc_correlation write the two matrix
+    files under the shared prefix, each announced with an [output] line."""
+    prefix = tmp_path / "mc"
+    rc = main(["--mc", "3", "--output_mc_covariance", "--output_mc_correlation",
+               "--output_mc_file_prefix", str(prefix)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[output] MC covariance matrix written to" in out
+    assert "[output] MC correlation matrix written to" in out
+    assert (tmp_path / "mc_covariance.tsv").exists()
+    assert (tmp_path / "mc_correlation.tsv").exists()
+    # Header wording (author spec: one '#' line naming the file).
+    cov_head = (tmp_path / "mc_covariance.tsv").read_text().splitlines()[0]
+    assert cov_head.startswith("# Covariance matrix of the N=3 primat MC samples")
+    assert "ddof=1" in cov_head
+    # The CLI also prints the 4x4 correlation/covariance matrices of the main
+    # products after the value +/- sigma block.
+    assert "Correlation matrix (YPBBN, DoH, He3oHe4, Li7oH):" in out
+    assert "Covariance matrix (YPBBN, DoH, He3oHe4, Li7oH):" in out
 
 
 def test_cli_mc_output_file_without_enable_flag_does_not_write(capsys, tmp_path):
-    """The filename option alone should not force MC sample output."""
-    out_path = tmp_path / "mc_samples.tsv"
-    rc = main(["--mc", "1", "--output_mc_file", str(out_path)])
+    """The filename option alone should not force MC output."""
+    prefix = tmp_path / "mc"
+    rc = main(["--mc", "1", "--output_mc_file_prefix", str(prefix)])
     assert rc == 0
     out = capsys.readouterr().out
     assert "[output] MC samples" not in out
-    assert not out_path.exists()
+    assert not (tmp_path / "mc_samples.tsv").exists()
 
 
 def test_cli_mc_summary_includes_all_displayed_sigmas(capsys):

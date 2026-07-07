@@ -115,4 +115,15 @@ void cpr_mc_result_free(CPRMCResult *out);
  * linear scan since n_quantities is always small). */
 size_t cpr_mc_result_index(const CPRMCResult *out, const char *name);
 
+/* Sample covariance (ddof=1) between two length-`n` MC value arrays:
+ * `sum((xa-mean_a)*(xb-mean_b)) / (n-1)`. Returns NaN for `n < 2` (undefined,
+ * matching NumPy's `np.cov(ddof=1)` and Python `MCResult.cov`). This is the
+ * shared numeric kernel behind the standalone CLI's covariance/correlation
+ * file writers and printed matrices (`cli.c`): the covariance matrix is
+ * `C[i,j] = cpr_mc_sample_cov(values_i, values_j, n)` and the correlation is
+ * `C[i,j] / sqrt(C[i,i]*C[j,j])` (== `C[i,j]/(std_i*std_j)`, using the ddof=1
+ * per-quantity std computed by cpr_mc_uncertainty). Mirrors main.py's
+ * MCResult.cov/corr ddof=1 convention exactly. */
+double cpr_mc_sample_cov(const double *xa, const double *xb, int n);
+
 #endif /* CPRIMAT_MC_H */

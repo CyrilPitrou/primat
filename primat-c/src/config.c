@@ -269,7 +269,9 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(output_background_evolution, F_BOOL),
     FLD(output_background_file, F_STRING),
     FLD(output_mc_samples, F_BOOL),
-    FLD(output_mc_file, F_STRING),
+    FLD(output_mc_covariance, F_BOOL),
+    FLD(output_mc_correlation, F_BOOL),
+    FLD(output_mc_file_prefix, F_STRING),
     FLD(rate_interp_order, F_STRING),
     FLD(rate_grid_npts, F_INT),
     FLD(rate_grid_T9_min, F_DOUBLE),
@@ -314,7 +316,7 @@ static int cpr_is_path_field(const char *name)
         || strcmp(name, "output_file") == 0
         || strcmp(name, "output_final_file") == 0
         || strcmp(name, "output_background_file") == 0
-        || strcmp(name, "output_mc_file") == 0
+        || strcmp(name, "output_mc_file_prefix") == 0
         || strcmp(name, "output_decay_file") == 0;
 }
 
@@ -433,7 +435,9 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->output_background_evolution = 0;
     cfg->output_background_file = cpr_strdup("results/output_background.tsv");
     cfg->output_mc_samples = 0;
-    cfg->output_mc_file = cpr_strdup("results/output_mc_samples.tsv");
+    cfg->output_mc_covariance = 0;
+    cfg->output_mc_correlation = 0;
+    cfg->output_mc_file_prefix = cpr_strdup("results/output_mc");
 
     cfg->rate_interp_order = cpr_strdup("linear");
     cfg->rate_grid_npts = 1000;

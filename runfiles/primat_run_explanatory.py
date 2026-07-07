@@ -23,7 +23,7 @@ cfg = dict(
     # Every key below is shown at its DEFAULT_PARAMS default (see
     # primat/config.py for the authoritative, more detailed comments this
     # file summarises); uncomment and edit whichever you need to override.
-    # All 74 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
+    # All 76 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- general behaviour and numerical settings -------------------------
     # verbose=False,                  # print primat's own progress messages
@@ -95,8 +95,10 @@ cfg = dict(
     # output_final_file="results/output_final.dat",  # path for output_final_result
     # output_background_evolution=False,  # write the cosmological background's own time-evolution TSV
     # output_background_file="results/output_background.tsv",  # path for output_background_evolution
-    # output_mc_samples=False,        # write every MC sample (run_mc/mc_uncertainty) to a TSV, one column per quantity
-    # output_mc_file="results/output_mc_samples.tsv",  # path for output_mc_samples
+    # output_mc_samples=False,        # write every MC sample to <output_mc_file_prefix>_samples.tsv (one column per quantity)
+    # output_mc_covariance=False,     # write the (n_q,n_q) sample covariance matrix (ddof=1) to <output_mc_file_prefix>_covariance.tsv
+    # output_mc_correlation=False,    # write the matching correlation matrix to <output_mc_file_prefix>_correlation.tsv
+    # output_mc_file_prefix="results/output_mc",  # filename stem for the three MC output files above
 
     # ---- nuclear network --------------------------------------------------
     # rate_interp_order="linear",     # nuclear rate table interpolation: "linear" / "quadratic" / "cubic"
@@ -144,8 +146,16 @@ print("D/H   =", result["DoH"])
 # pure-Python joblib (see primat/backend.py's module docstring for the RNG
 # caveat: C and Python samples are statistically, not bit-for-bit, equal).
 #
-# from primat.backend import run_mc, dump_mc_samples
+# from primat.backend import (run_mc, dump_mc_samples,
+#                              dump_mc_covariance, dump_mc_correlation)
 # mc = run_mc(50, ['YPBBN', 'DoH'], params=cfg, force_backend="auto")
 # print("YPBBN =", mc['YPBBN'].mean, "+/-", mc['YPBBN'].std)
+# # Joint uncertainty (needed for a multi-abundance likelihood): the full
+# # covariance/correlation matrices, plus scalar access by name.
+# print("corr(YPBBN, DoH) =", mc.corr('YPBBN', 'DoH'))
 # with open("results/output_mc_samples.tsv", "w") as f:
 #     f.write(dump_mc_samples(mc))
+# with open("results/output_mc_covariance.tsv", "w") as f:
+#     f.write(dump_mc_covariance(mc))
+# with open("results/output_mc_correlation.tsv", "w") as f:
+#     f.write(dump_mc_correlation(mc))

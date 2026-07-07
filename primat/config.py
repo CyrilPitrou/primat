@@ -36,7 +36,7 @@ _PATH_PARAMS = {
     "output_file",
     "output_final_file",
     "output_background_file",
-    "output_mc_file",
+    "output_mc_file_prefix",
     "output_decay_file",
 }
 
@@ -283,15 +283,27 @@ DEFAULT_PARAMS: dict = {
     "output_background_evolution": False,
     "output_background_file":     "results/output_background.tsv",
 
-    # Writes a TSV (cfg.output_mc_file) with every Monte-Carlo sample drawn by
-    # backend.run_mc/main.mc_uncertainty: one column per requested quantity
-    # (nuclide final-Y names and/or result-dict observables), one row per
-    # sample. Has no effect by itself -- only the MC entry points write this
-    # file, never a plain solve() -- so it is opt-in plumbing for callers that
-    # want every sample on disk (e.g. for an external corner plot) rather than
-    # just the summary mean/std (see primat.backend.dump_mc_samples).
+    # Monte-Carlo output files (backend.run_mc/main.mc_uncertainty only; a
+    # plain solve() never writes them). All three share one filename stem set
+    # by output_mc_file_prefix, each gated by its own boolean below:
+    #   <prefix>_samples.tsv      (output_mc_samples)     -- every raw sample,
+    #                              one column per quantity, one row per sample
+    #                              (see primat.backend.dump_mc_samples)
+    #   <prefix>_covariance.tsv   (output_mc_covariance)  -- the (n_q, n_q)
+    #                              sample covariance matrix (ddof=1) over all MC
+    #                              quantities (primat.backend.dump_mc_covariance)
+    #   <prefix>_correlation.tsv  (output_mc_correlation) -- the matching
+    #                              correlation matrix (primat.backend.dump_mc_correlation)
+    # The covariance/correlation give the *joint* nuclear-rate uncertainty (the
+    # off-diagonal YP-D/H covariance a user needs for a joint likelihood), not
+    # just the per-observable sigmas in the samples file. Each flag is opt-in
+    # plumbing (default False); the prefix is used verbatim (its directory is
+    # created on demand). E.g. prefix "results/output_mc" writes
+    # results/output_mc_samples.tsv etc.
     "output_mc_samples":           False,
-    "output_mc_file":              "results/output_mc_samples.tsv",
+    "output_mc_covariance":        False,
+    "output_mc_correlation":       False,
+    "output_mc_file_prefix":       "results/output_mc",
 
 
     # ---- nuclear network --------------------------------------------------

@@ -305,6 +305,27 @@ def test_quick_mc_uncertainty_adds_sigma_column():
     assert "$Y_P\\ (\\text{BBN})$" in ratios_md.value
 
 
+def test_quick_mc_offers_covariance_and_correlation_downloads():
+    """After a quick MC run, the Output tab offers not just the samples TSV but
+    also the covariance and correlation matrix downloads (FABLEADVICE F-1;
+    fed by ``primat.backend.dump_mc_covariance``/``dump_mc_correlation`` in
+    ``panels.render_downloads_panel``)."""
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+
+    [toggle] = [t for t in at.sidebar.toggle if t.key == "quick_mc_uncertainty"]
+    toggle.set_value(True)
+    at.run(timeout=60)
+    _run_bbn(at)
+    assert not at.exception
+
+    for label in ("output_mc_samples.tsv", "output_mc_covariance.tsv",
+                  "output_mc_correlation.tsv"):
+        button = _download_button(at, label)
+        assert button is not None, f"missing download button: {label}"
+        assert button.proto.url.endswith(".tsv")
+
+
 def test_quick_mc_uncertainty_with_customised_network():
     """Quick MC must keep working (no exception, sigma column still renders)
     when a custom network (with a reaction removed) is the active network --
