@@ -1,8 +1,9 @@
-joblib
 numpy
+scipy
 numba
 vegas
-scipy
+joblib
 streamlit
 pandas
+plotly
 ./wheels/primat-0.3.2-cp312-cp312-linux_x86_64.whl

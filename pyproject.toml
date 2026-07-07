@@ -40,11 +40,16 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 requires-python = ">=3.10"
+# Lean core: only what a single ``run_bbn`` / ``PRIMAT(...).solve()`` actually
+# needs at import and solve time.  ``joblib`` (parallel Monte-Carlo) and
+# ``plotly`` (GUI figures) used to be hard dependencies but are neither on the
+# ``import primat`` nor the ``run_bbn`` path, so they now live in extras
+# (``mc`` / ``plots`` / ``gui``) -- see [project.optional-dependencies].  A
+# core install can still run MC serially (``n_jobs=1``) or via the C backend
+# without joblib, and everything except the GUI works without plotly.
 dependencies = [
     "numpy",
     "scipy",
-    "joblib",
-    "plotly",
 ]
 
 [project.urls]
@@ -58,13 +63,23 @@ primat = "primat.cli:main"
 primat-gui = "primat.gui.launcher:main"
 
 [project.optional-dependencies]
+# Recommended experience: JIT (numba), the vegas thermal-rate integrator, and
+# joblib for parallel Monte-Carlo (``mc_uncertainty(..., n_jobs != 1)``).
 recommended = [
     "numba",
     "vegas",
+    "joblib",
 ]
-all = [
-    "numba",
-    "vegas",
+# Parallel Monte-Carlo only.  ``mc_uncertainty``/``run_mc`` import joblib
+# lazily and only when ``n_jobs != 1``; a core install can still run MC
+# serially (``n_jobs=1``) or on the C backend with no joblib present.
+mc = [
+    "joblib",
+]
+# Interactive plotting.  plotly is used only by the GUI's figure panels
+# (``primat/gui/panels.py``); ``primat/plotting.py`` itself is plotly-free.
+plots = [
+    "plotly",
 ]
 notebooks = [
     "matplotlib",
@@ -74,6 +89,18 @@ notebooks = [
 gui = [
     "streamlit",
     "pandas",
+    "plotly",
+]
+# Everything (physics perf + MC + plotting + GUI + notebooks) in one shot.
+all = [
+    "numba",
+    "vegas",
+    "joblib",
+    "plotly",
+    "streamlit",
+    "pandas",
+    "matplotlib",
+    "papermill",
 ]
 
 [tool.setuptools]

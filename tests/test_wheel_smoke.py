@@ -29,11 +29,10 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.slow, pytest.mark.wheel]
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.slow
 @pytest.mark.wheel
 def test_wheel_install_smoke_solve():
     """Build a wheel, pip-install it in a clean venv, and run a small solve.
@@ -100,3 +99,73 @@ def test_wheel_install_smoke_solve():
     yp, doh = float(yp_str), float(doh_str)
     assert yp  == pytest.approx(0.2469983, abs=1e-4)
     assert doh == pytest.approx(2.43490e-5, rel=2e-3)
+
+
+# Script run in a subprocess for test_core_runs_without_plotly_or_joblib
+# (below).  It installs a meta-path finder that makes ``import plotly`` and
+# ``import joblib`` fail, *then* imports primat and exercises the two paths a
+# lean core install must support without those two now-optional dependencies
+# (O-2 dependency diet): a single ``run_bbn`` solve, and a serial
+# (``n_jobs=1``) Monte-Carlo run.  A subprocess is used so the import blocker
+# and any already-imported plotly/joblib in the test session cannot interfere.
+_NO_OPTIONAL_DEPS_SCRIPT = r"""
+import sys
+import importlib.abc
+
+
+class _Blocker(importlib.abc.MetaPathFinder):
+    '''Refuse to import the named top-level packages (and their submodules).'''
+    def __init__(self, blocked):
+        self.blocked = set(blocked)
+
+    def find_spec(self, name, path, target=None):
+        if name.split('.')[0] in self.blocked:
+            raise ImportError(f"{name} is blocked for this test")
+        return None
+
+
+# Drop anything already imported so the blocker actually bites, then install it.
+for _m in list(sys.modules):
+    if _m.split('.')[0] in {"plotly", "joblib"}:
+        del sys.modules[_m]
+sys.meta_path.insert(0, _Blocker({"plotly", "joblib"}))
+
+# Importing primat.backend and running a solve must touch neither package.
+import primat.backend as b
+r = b.run_bbn({"network": "small", "verbose": False, "debug": False},
+              force_backend="python")
+assert abs(r["YPBBN"] - 0.247) < 2e-3, r["YPBBN"]
+
+# Serial Monte-Carlo (n_jobs=1) must run without importing joblib.
+mc = b.run_mc(2, ["YPBBN"], params={"network": "small"},
+              force_backend="python", n_jobs=1, seed=0)
+assert mc["YPBBN"].mean > 0.0
+
+# Sanity: the blocker really is active (a real import would have raised).
+assert "plotly" not in sys.modules and "joblib" not in sys.modules
+print("OK")
+"""
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_core_runs_without_plotly_or_joblib():
+    """A lean core install (no plotly, no joblib) can still ``run_bbn`` and run
+    serial Monte-Carlo.
+
+    O-2 moved plotly (GUI figures) and joblib (parallel MC) out of the hard
+    dependencies into extras.  This pins that promise: with both packages made
+    un-importable, ``primat.backend.run_bbn`` and a serial ``run_mc(n_jobs=1)``
+    on the pure-Python backend must both succeed -- proving neither the
+    ``import primat`` path nor the core solve/serial-MC path secretly depends
+    on the two now-optional packages.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", _NO_OPTIONAL_DEPS_SCRIPT],
+        cwd=str(REPO_ROOT), capture_output=True, text=True,
+    )
+    assert result.returncode == 0, (
+        "core solve / serial MC failed without plotly+joblib:\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "OK" in result.stdout

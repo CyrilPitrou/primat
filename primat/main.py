@@ -901,17 +901,38 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
     progress counter advances steadily instead of jumping straight from 0%
     to 100% -- without requiring per-sample IPC.
     """
-    from joblib import Parallel, delayed, effective_n_jobs
-
     if not seeds:
         return np.empty((0, len(quantities)))
+
+    # joblib is an *optional* dependency (the ``mc``/``recommended`` extras):
+    # a lean ``pip install primat`` core can still run Monte-Carlo serially
+    # (``n_jobs == 1``) with no joblib present, and the C backend never needs
+    # it at all.  Only genuine parallelism (``n_jobs != 1``) reaches for
+    # joblib, and a missing joblib there is a friendly, actionable error
+    # rather than a bare ImportError surfacing from deep in the MC machinery.
+    parallel = (n_jobs != 1)
+    if parallel:
+        try:
+            from joblib import Parallel, delayed, effective_n_jobs
+        except ImportError as exc:      # pragma: no cover - depends on env
+            raise ImportError(
+                f"Parallel Monte-Carlo (n_jobs={n_jobs!r}) requires joblib, "
+                "which is not installed. Install it with "
+                "`pip install \"primat[mc]\"` (or `pip install joblib`), or "
+                "pass n_jobs=1 to run the samples serially without joblib."
+            ) from exc
+        n_workers = effective_n_jobs(n_jobs)
+    else:
+        n_workers = 1
+
     # Use several chunks per worker (not just one) so the progress generator
     # below yields updates steadily throughout the run instead of bunching
     # them all near the end: with exactly one chunk per worker, every chunk
     # takes about the same time and they all complete near-simultaneously.
+    # In serial mode ``n_workers == 1``, so the chunking still gives the
+    # progress counter (below) ~10 evenly-spaced updates over the run.
     _chunks_per_worker = 10
-    n_chunks = max(1, min(len(seeds),
-                          effective_n_jobs(n_jobs) * _chunks_per_worker))
+    n_chunks = max(1, min(len(seeds), n_workers * _chunks_per_worker))
     chunks   = [list(c) for c in np.array_split(seeds, n_chunks)]
     total    = len(seeds)
     done     = 0
@@ -921,15 +942,24 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
         print(f"\r[MC] {done:{_w}}/{total} samples ({0:3d}%)",
               end='', file=sys.stderr, flush=True)
 
-    # return_as='generator' yields results in submission order as each worker
-    # completes its chunk, letting us update the progress counter without
-    # waiting for all chunks to finish before seeing any output.
-    gen = Parallel(n_jobs=n_jobs, return_as='generator')(
-        delayed(_mc_run_batch)(base_params, rate_keys, quantities, chunk,
-                               custom_network=custom_network,
-                               include_nuclides=include_nuclides)
-        for chunk in chunks
-    )
+    if parallel:
+        # return_as='generator' yields results in submission order as each
+        # worker completes its chunk, letting us update the progress counter
+        # without waiting for all chunks to finish before seeing any output.
+        gen = Parallel(n_jobs=n_jobs, return_as='generator')(
+            delayed(_mc_run_batch)(base_params, rate_keys, quantities, chunk,
+                                   custom_network=custom_network,
+                                   include_nuclides=include_nuclides)
+            for chunk in chunks
+        )
+    else:
+        # Serial path: map over the chunks in-process, with no joblib import.
+        # A plain generator keeps the progress-update loop below identical to
+        # the parallel case (one chunk result at a time, in order).
+        gen = (_mc_run_batch(base_params, rate_keys, quantities, chunk,
+                             custom_network=custom_network,
+                             include_nuclides=include_nuclides)
+               for chunk in chunks)
 
     all_rows = []
     for chunk_result in gen:
@@ -1037,6 +1067,11 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         Base parameters for PRIMAT (e.g. Omegabh2, is_small, network).
     n_jobs : int
         Number of parallel workers passed to joblib.Parallel (-1 = all CPUs).
+        ``n_jobs=1`` runs the samples serially *in-process* and does not import
+        joblib at all, so a lean core install (``pip install primat``, no
+        ``mc``/``recommended`` extra) can still do Monte-Carlo this way; any
+        other value needs joblib and raises an actionable ImportError if it is
+        missing.
     seed : int
         Base random seed; sample i uses seed + i for reproducibility.
         When evaluating on a parameter grid (e.g. scanning Ω_b h²), use the

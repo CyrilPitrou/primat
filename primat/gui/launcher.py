@@ -52,11 +52,18 @@ def main(argv=None):
 
     >>> main(["--backend", "python"])  # doctest: +SKIP
     """
+    # streamlit *and* plotly are the two GUI-only dependencies (the ``gui``
+    # extra).  Check both up front so a partial environment (e.g. streamlit
+    # present but plotly missing after the plotly dependency-diet in O-2)
+    # yields one actionable message here instead of an ImportError traceback
+    # from deep inside ``primat/gui/panels.py`` once Streamlit re-execs it.
     try:
         from streamlit.web import cli as stcli
+        import plotly.graph_objects  # noqa: F401  (import-time availability check)
     except ImportError:
         sys.exit(
-            "The primat GUI requires the optional 'gui' extra.\n"
+            "The primat GUI requires the optional 'gui' extra "
+            "(streamlit + plotly).\n"
             "Install it with:\n\n"
             '    pip install "primat[gui]"\n'
         )

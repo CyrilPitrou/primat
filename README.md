@@ -39,9 +39,23 @@ pip install -e ".[recommended]"
 
 | Package | Role |
 |---------|------|
-| `numpy`, `scipy`, `joblib`, `plotly` | **Mandatory** (installed by `pip install primat`) |
-| `numba` | Recommended — JIT compilation gives ~5× speedup on rate kernels |
-| `vegas` | Recommended — Monte Carlo integration for thermal weak-rate corrections |
+| `numpy`, `scipy` | **Mandatory** (installed by `pip install primat`) — everything needed for a single `run_bbn`/`solve` |
+| `numba` (`recommended`) | JIT compilation gives ~5× speedup on rate kernels |
+| `vegas` (`recommended`) | Monte Carlo integration for thermal weak-rate corrections |
+| `joblib` (`recommended`, `mc`) | Parallel Monte-Carlo (`run_mc(..., n_jobs != 1)`); a core install can still run MC serially with `n_jobs=1` or on the C backend |
+
+`joblib` and `plotly` are **no longer mandatory** — they moved into extras so a
+lean `pip install primat` core (numpy + scipy) is enough to install and solve.
+Pick an extra by use case:
+
+| Extra | `pip install "primat[…]"` | Adds |
+|-------|---------------------------|------|
+| `recommended` | `numba`, `vegas`, `joblib` | fast kernels + thermal-rate integrator + parallel MC |
+| `mc` | `joblib` | parallel Monte-Carlo only |
+| `plots` | `plotly` | interactive plotting (used by the GUI figures) |
+| `gui` | `streamlit`, `pandas`, `plotly` | the `primat-gui` web app |
+| `notebooks` | `matplotlib`, `pandas`, `papermill` | the example notebooks |
+| `all` | all of the above | everything in one shot |
 
 For the graphical interface (`primat-gui`), install the `gui` extra:
 
@@ -53,6 +67,7 @@ pip install "primat[gui]"
 |---------|------|
 | `streamlit` | **Required for `primat-gui`** — the web app framework |
 | `pandas` | **Required for `primat-gui`** — final-abundance table |
+| `plotly` | **Required for `primat-gui`** — the abundance-evolution figures |
 
 For the example notebooks, install from source:
 
