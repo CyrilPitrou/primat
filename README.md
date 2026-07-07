@@ -71,8 +71,8 @@ from primat.backend import run_bbn
 
 result = run_bbn({"Omegabh2": 0.022425})
 
-print(f"YP  (BBN) = {result['YPBBN']:.6f}")  # ~0.246915
-print(f"D/H = {result['DoH']:.5e}")          # ~2.43647e-05
+print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699911
+print(f"D/H = {result['DoH']:.7e}")          # 2.4350167e-05
 ```
 
 `run_bbn()` is the main entry point and automatically selects the best available
@@ -129,7 +129,7 @@ Li6/Li7    = 1.418945e-05
 | `--backend {auto,c,python}` | Force a backend (default: `auto`) |
 | `--json` | Print full results dict as JSON instead of summary |
 | `--verbose` | Enable progress messages (timings, cache hits, ...) |
-| `--set KEY VALUE` | Set any configuration parameter (e.g., `--set tau_n 880.1`); use `primat --help` for the full list |
+| `--set KEY=VALUE` | Set any configuration parameter (e.g., `--set tau_n=880.1`); use `primat --help` for the full list |
 
 Run `primat --help` to see all available command-line options. For parameters not exposed as flags, use `--set` or the Python API.
 
@@ -169,10 +169,13 @@ python runfiles/primat_mc.py            # MC uncertainty + covariance/correlatio
   when using Python-only features
 
 Python-only features (that force fallback to pure-Python even with
-`force_backend="auto"`):
-- `custom_network` (GUI "Create custom network" feature)
-- `output_time_evolution=True` (write full time series)
-- `extra_rho`, `background=` arguments
+`force_backend="auto"`; raise instead if `force_backend="c"`):
+- `extra_rho`, `background=` arguments (custom `PRIMAT.__init__` overrides)
+- `decay_era`
+- MC `prev` (incremental sample reuse across `run_mc()` calls)
+
+Note that `custom_network` and `output_time_evolution=True` are **not** in
+this list — both are supported on the C backend too.
 
 ### Using primat-c directly
 
@@ -439,7 +442,7 @@ writers are `primat.backend.dump_mc_samples` / `dump_mc_covariance` /
 | `YPBBN` | Helium-4 mass fraction (BBN convention) |
 | `YPCMB` | Helium-4 mass fraction (CMB convention) |
 | `DoH` | D/H |
-| `He3oH` | ((He3+T)/H |
+| `He3oH` | (He3+H3)/H |
 | `Li7oH` | (Li7+Be7)/H |
 | `Neff` | Effective number of neutrino species |
 | `Omeganurel` | Ω_ν h² × 10⁶ (relativistic) |
@@ -453,7 +456,12 @@ e.g. `sigma_DoH` alongside `DoH`, `sigma_YPBBN` alongside `YPBBN`.
 When `output_time_evolution=True`, the time evolution data is made available. If `output_file` is set to a path, a TSV file is written with columns:
 `a, T, t, H, Tnue, Tnumu, Tnutau, [Nheating], [abundances], n_to_p_weak_rate, p_to_n_weak_rate, [nuclear rates]`.
 
-If `output_file=None` (the default), no file is written to disk, but the time evolution data is still accessible via the `"evolution"` key in the result dictionary returned by `run_bbn()`. The `primat.evolution` and `primat.plotting` modules provide tools for working with and plotting this time evolution data (see the example notebooks for usage).
+`output_file` defaults to `results/output_tables.tsv` (relative to the current
+directory); set it to `None` to skip the disk write entirely -- the time
+evolution data is still accessible via the `"evolution"` key in the result
+dictionary returned by `run_bbn()` either way. The `primat.evolution` and
+`primat.plotting` modules provide tools for working with and plotting this
+time evolution data (see the example notebooks for usage).
 
 `Nheating` is included only for `incomplete_decoupling=True` (a real NEVO
 heating table). `[abundances]` is one `Y<species>` column per nuclide of the
@@ -543,7 +551,8 @@ tables) and **"Import custom network"** (re-load a previously saved
 
 ## Cobaya / MCMC interface
 
-A wrapper for primat will be available for use
+A Cobaya wrapper for primat is available in the separate
+[primat_tools](https://github.com/CyrilPitrou/primat_tools) repository, for use
 with [Cobaya](https://cobaya.readthedocs.io), allowing BBN to be embedded directly
 in MCMC analyses of CMB or other cosmological data.  The wrapper exposes
 `Omegabh2`, `DeltaNeff`, and the nuclear-rate uncertainty parameters as Cobaya

@@ -3,7 +3,12 @@ name: Build wheels and sdist
 on:
   release:
     types: [published]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      publish_testpypi:
+        description: "Publish the built artifacts to TestPyPI (PyPiGuide.md Step 3 dry run)"
+        type: boolean
+        default: false
 
 jobs:
   build_wheels:
@@ -27,6 +32,15 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT: "CFLAGS='-O2'"
+          # setup.py's optional_build_ext deliberately lets the C extension
+          # fail without failing a *source* build -- but a wheel that
+          # silently shipped the 25x-slower pure-Python fallback would be a
+          # regression nobody notices (see FABLEADVICE.md S-2). Assert the
+          # compiled extension is present and reproduces the documented
+          # small-network YPBBN (coarse tolerance: this is a smoke test, not
+          # the tight pytest regression).
+          CIBW_TEST_COMMAND: >-
+            python -c "import primat.backend as b; assert b.HAS_C_BACKEND, 'wheel shipped without C extension'; r=b.run_bbn({'network':'small'}); assert abs(r['YPBBN']-0.247) < 2e-3, r['YPBBN']"
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
@@ -43,10 +57,20 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
-  publish:
+  # Two separate publish jobs so the testpypi/pypi switch is a matter of
+  # *how the workflow is triggered*, not a commit that flips a
+  # repository-url/environment line (FABLEADVICE.md S-6 -- the old single
+  # `publish` job hard-pointed at TestPyPI with the real index commented
+  # out, which was easy to forget to flip and required editing the
+  # workflow at the most delicate moment, PyPiGuide.md Step 6).
+
+  publish-testpypi:
+    # Only runs on an explicit manual dry run (PyPiGuide.md Step 3) with the
+    # opt-in input checked -- never on a real GitHub release.
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_testpypi
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    environment: testpypi #pypi
+    environment: testpypi
     permissions:
       id-token: write       # PyPI Trusted Publishing (OIDC) -- no token to manage/leak
     steps:
@@ -54,5 +78,20 @@ jobs:
         with: { path: dist, merge-multiple: true }
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository-url: https://test.pypi.org/legacy/ #https://upload.pypi.org/legacy/ 
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    # Only runs when a GitHub release is actually published (PyPiGuide.md
+    # Step 6) -- unreachable from workflow_dispatch, so a dry run can never
+    # accidentally hit the real index.
+    if: github.event_name == 'release' && github.event.action == 'published'
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write       # PyPI Trusted Publishing (OIDC) -- no token to manage/leak
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - uses: pypa/gh-action-pypi-publish@release/v1
 

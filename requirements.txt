@@ -1,7 +1,6 @@
 joblib
 numpy
 numba
-joblib
 vegas
 scipy
 streamlit

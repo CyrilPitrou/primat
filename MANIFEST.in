@@ -2,3 +2,9 @@
 recursive-include primat-c/src *.c
 recursive-include primat-c/include *.h
 include primat/_primat_c/_wrapper.c
+
+# Include the standalone primat-c build/usage material -- useful to sdist
+# consumers (e.g. debian/conda packagers) who want to build primat-c
+# independently of the Python extension (see CLAUDE.md's primat-c section).
+include primat-c/Makefile
+recursive-include primat-c/examples *.ini

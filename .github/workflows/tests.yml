@@ -1,0 +1,77 @@
+name: Tests
+
+# Runs the pytest suite (see tests/README.md for the marker tiers). Two
+# lanes:
+#   - "test" (push/PR): the fast + default-precision-solve lane
+#     (`-m "not slow or solve"`), matrixed across OS x Python version so a
+#     platform- or version-specific regression is caught before merge.
+#   - "nightly": the full suite (including the tight `reference` regression
+#     and the `wheel` install smoke test) on a schedule, since those tiers
+#     are too slow (~4 min total) to run on every push.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    # 03:17 UTC daily -- an off-the-hour time to avoid GitHub Actions'
+    # documented "everyone runs on the hour" scheduling congestion.
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    if: github.event_name != 'schedule'
+    name: pytest (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          # Only the two extremal Python versions on macOS/Windows, to keep
+          # matrix minutes sane -- ubuntu already covers the full 3.10-3.13
+          # span above.
+          - os: macos-14
+            python-version: "3.10"
+          - os: macos-14
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.10"
+          - os: windows-latest
+            python-version: "3.13"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install primat + test dependencies
+        run: python -m pip install -e ".[recommended,gui,notebooks]" pytest
+      - name: Run fast + solve lane
+        run: pytest tests/ -m "not slow or solve" --junitxml=junit-${{ matrix.os }}-${{ matrix.python-version }}.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-${{ matrix.os }}-${{ matrix.python-version }}
+          path: junit-${{ matrix.os }}-${{ matrix.python-version }}.xml
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: nightly full suite (ubuntu, py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install primat + test dependencies
+        run: python -m pip install -e ".[recommended,gui,notebooks]" pytest build
+      - name: Run full suite (including reference and wheel markers)
+        run: pytest tests/ --junitxml=junit-nightly.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-nightly
+          path: junit-nightly.xml

@@ -27,9 +27,9 @@ From the repository root:
 ```bash
 pytest tests/                          # everything (~4 min)
 pytest tests/ -m "not slow"            # fast lane: config/plasma/structural unit tests, <10 s
-pytest tests/ -m "not slow or solve"   # fast lane + default-precision solves (CI: every push, ~3 min)
+pytest tests/ -m "not slow or solve"   # fast lane + default-precision solves (CI: every push/PR, .github/workflows/tests.yml)
 pytest tests/ -m "not reference"       # skip only the ~1 min high-precision reference runs
-pytest tests/ -m reference             # only the tight CLAUDE.md regression (CI: nightly)
+pytest tests/ -m reference             # only the tight CLAUDE.md regression (CI: nightly, .github/workflows/tests.yml)
 pytest tests/test_plasma.py -v         # a single file, verbose
 ```
 

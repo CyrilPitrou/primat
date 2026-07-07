@@ -7,12 +7,37 @@ name = "primat"
 version = "0.3.2"
 description = "PRIMAT: precise Big Bang Nucleosynthesis computations, with a fast C backend and a pure-Python fallback"
 readme = "README.md"
-license = { file = "LICENCE" }
+# SPDX license expression (PEP 639) -- the LICENCE file states GPLv3 "or (at
+# your option) any later version".
+license = "GPL-3.0-or-later"
+license-files = ["LICENCE"]
 authors = [
     { name = "Cyril Pitrou", email = "pitrou@iap.fr" },
 ]
 maintainers = [
     { name = "Julien Froustey" },
+]
+keywords = [
+    "BBN",
+    "big bang nucleosynthesis",
+    "cosmology",
+    "primordial abundances",
+    "early universe",
+    "helium",
+    "deuterium",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: C",
+    "Operating System :: OS Independent",
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -21,6 +46,12 @@ dependencies = [
     "joblib",
     "plotly",
 ]
+
+[project.urls]
+Homepage = "https://github.com/CyrilPitrou/primat"
+Repository = "https://github.com/CyrilPitrou/primat"
+Issues = "https://github.com/CyrilPitrou/primat/issues"
+Changelog = "https://github.com/CyrilPitrou/primat/commits/master/"
 
 [project.scripts]
 primat = "primat.cli:main"

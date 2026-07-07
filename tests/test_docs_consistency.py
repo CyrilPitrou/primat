@@ -137,6 +137,73 @@ def test_readme_does_not_reference_old_mc_file_key():
     assert not re.search(r'\boutput_mc_file\b(?!_prefix)', readme_text)
 
 
+def test_streamlit_wheel_matches_pyproject_version():
+    """requirements.txt's last line (the Streamlit Cloud deployment chain,
+    see CLAUDE.md/wheels/README.md -- FABLEADVICE.md S-5) must point at a
+    wheel file that (a) actually exists under wheels/ and (b) has the same
+    version as pyproject.toml, or the public demo silently keeps serving an
+    old build after a version bump."""
+    pyproject_path = os.path.join(REPO_ROOT, "pyproject.toml")
+    pyproject_text = open(pyproject_path).read()
+    pyproject_version = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject_text).group(1)
+
+    requirements_path = os.path.join(REPO_ROOT, "requirements.txt")
+    lines = [l.strip() for l in open(requirements_path).read().splitlines() if l.strip()]
+    wheel_line = lines[-1]
+    assert wheel_line.startswith("./wheels/") and wheel_line.endswith(".whl"), (
+        f"requirements.txt's last line is expected to be the Streamlit-Cloud "
+        f"wheel path, got {wheel_line!r}"
+    )
+    wheel_filename = wheel_line[len("./wheels/"):]
+    wheel_path = os.path.join(REPO_ROOT, "wheels", wheel_filename)
+    assert os.path.isfile(wheel_path), f"{wheel_line!r} does not exist on disk"
+
+    # Wheel filenames are "primat-<version>-<tag...>.whl" (PEP 427).
+    assert wheel_filename.startswith(f"primat-{pyproject_version}-"), (
+        f"wheels/{wheel_filename} does not match pyproject.toml's version "
+        f"{pyproject_version!r} -- rebuild via build_linux.yml and update "
+        f"requirements.txt (see wheels/README.md)."
+    )
+
+
+def test_readme_set_syntax_is_key_equals_value():
+    """README's CLI section documents `--set KEY=VALUE`; primat/cli.py actually
+    requires the '=' form (argparse splits on it), not the 'KEY VALUE' form
+    README used to show (FABLEADVICE.md S-3) -- which primat --set rejects."""
+    readme_path = os.path.join(REPO_ROOT, "README.md")
+    readme_text = open(readme_path).read()
+    assert "--set KEY=VALUE" in readme_text
+    assert "--set tau_n=880.1" in readme_text
+    # The old (wrong) space-separated form must not reappear.
+    assert "--set tau_n 880.1" not in readme_text
+
+
+def test_readme_python_only_features_list_matches_backend():
+    """README's 'Python-only features' list (FABLEADVICE.md S-3) must match
+    primat/backend.py's actual auto-fallback gate: extra_rho/background/
+    decay_era/MC prev force Python, but custom_network and
+    output_time_evolution do NOT (both backends support them)."""
+    backend_path = os.path.join(REPO_ROOT, "primat", "backend.py")
+    backend_text = open(backend_path).read()
+    # The features actually gated in backend.py's run_bbn()/run_mc() fallback
+    # logic -- if this string disappears from backend.py, the module was
+    # refactored and README's list needs re-verifying against the new code.
+    assert "extra_rho/background/decay_era" in backend_text
+
+    readme_path = os.path.join(REPO_ROOT, "README.md")
+    readme_text = open(readme_path).read()
+    assert "extra_rho" in readme_text
+    assert "decay_era" in readme_text
+    assert "MC `prev`" in readme_text
+    # custom_network/output_time_evolution must NOT be listed as Python-only
+    # any more -- both are supported on the C backend (CLAUDE.md, F-1 era).
+    python_only_section = readme_text[readme_text.index("Python-only features"):]
+    python_only_section = python_only_section[:python_only_section.index("### Using primat-c directly")]
+    assert "custom_network` (GUI" not in python_only_section
+    assert "output_time_evolution=True (write full time series)" not in python_only_section
+    assert "both are supported on the C backend too" in python_only_section
+
+
 class _no_warning_context:
     """Fail the test if PRIMATConfig(options) emits an 'unknown parameter' warning."""
 

@@ -104,18 +104,15 @@ real index. Treat everything in this step as repeatable.
    pointing at this GitHub repo + `wheels.yml` + a `testpypi` GitHub
    environment (separate from the `pypi` environment used for the real
    index, so a misconfiguration can't accidentally hit the real index).
-3. Temporarily point `wheels.yml`'s `publish` job at TestPyPI for this
-   dry run — `gh-action-pypi-publish` takes a `repository-url` input:
-   ```yaml
-   - uses: pypa/gh-action-pypi-publish@release/v1
-     with:
-       repository-url: https://test.pypi.org/legacy/
-   ```
-   Keep this as a second job (or a workflow-dispatch input toggle)
-   rather than overwriting the real-PyPI `publish` job, so you don't
-   have to remember to revert it later.
-4. Trigger via `workflow_dispatch` → wheels + sdist get built and
-   uploaded to **test**.pypi.org.
+3. `wheels.yml` already has this split as two separate jobs
+   (FABLEADVICE.md S-6): `publish-testpypi` (only runs on
+   `workflow_dispatch` with the `publish_testpypi` input checked,
+   `environment: testpypi`) and `publish-pypi` (only runs on a real
+   `release: published` event, `environment: pypi`) — no workflow edit
+   needed for this dry run, and no risk of a stray commit leaving the
+   real-PyPI job pointed at the sandbox.
+4. Trigger via `workflow_dispatch` with `publish_testpypi: true` → wheels +
+   sdist get built and uploaded to **test**.pypi.org.
 5. Verify end-to-end: `pip install -i https://test.pypi.org/simple/ primat`
    into a clean venv, run the validation script (`runfiles/primat_run.py`
    equivalent), and confirm the result matches the documented tolerances
@@ -187,7 +184,12 @@ irreversible the moment a `release: published` event actually fires the
 ## Step 6 — 🔴 Tag `v0.3.0`, publish the GitHub release, let `wheels.yml` upload to real PyPI
 
 The GitHub release's `published` event triggers `wheels.yml`'s full
-pipeline against the real `pypi` index.
+pipeline against the real `pypi` index — via the dedicated `publish-pypi`
+job (FABLEADVICE.md S-6), which only ever fires on `release: published` and
+is unreachable from `workflow_dispatch`. No workflow-file edit is needed at
+this step any more (the old single-job version required flipping
+`repository-url`/`environment` in a commit right before publishing; that
+manual step is now obsolete).
 
 Irreversible because:
 - Once `primat-0.3.0` (wheels + sdist) lands on real PyPI, that exact
