@@ -156,6 +156,7 @@ Clone the repo and run from the root:
 python runfiles/primat_run.py           # Standard SM run
 python runfiles/primat_compare.py       # Network comparison
 python runfiles/primat_reference_run.py # High-precision run (~2 min)
+python runfiles/primat_mc.py            # MC uncertainty + covariance/correlation demo
 ```
 
 ## Backend selection

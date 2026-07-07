@@ -107,6 +107,36 @@ def test_reference_run_params_are_known_to_config():
         PRIMATConfig(options)
 
 
+@pytest.mark.parametrize("key", [
+    "output_mc_file_prefix",
+    "output_mc_covariance",
+    "output_mc_correlation",
+])
+def test_readme_mc_key_names_are_real_params(key):
+    """README's MC section (FABLEADVICE F-1/F-2) quotes these DEFAULT_PARAMS
+    key names verbatim; a rename that isn't mirrored in README would leave
+    users following a documented option that raises an 'unknown parameter'
+    warning instead of doing anything."""
+    from primat.config import DEFAULT_PARAMS
+    assert key in DEFAULT_PARAMS, f"{key!r} no longer a DEFAULT_PARAMS key"
+    readme_path = os.path.join(REPO_ROOT, "README.md")
+    readme_text = open(readme_path).read()
+    assert key in readme_text, f"{key!r} no longer documented in README.md"
+
+
+def test_readme_does_not_reference_old_mc_file_key():
+    """output_mc_file was hard-renamed to output_mc_file_prefix (no deprecated
+    alias, author decision -- primat is not on PyPI yet); README must not
+    keep referencing the old name."""
+    from primat.config import DEFAULT_PARAMS
+    assert "output_mc_file" not in DEFAULT_PARAMS
+    readme_path = os.path.join(REPO_ROOT, "README.md")
+    readme_text = open(readme_path).read()
+    # Match the old key as a whole word so "output_mc_file_prefix" (the
+    # correct, current name) does not trip this assertion.
+    assert not re.search(r'\boutput_mc_file\b(?!_prefix)', readme_text)
+
+
 class _no_warning_context:
     """Fail the test if PRIMATConfig(options) emits an 'unknown parameter' warning."""
 

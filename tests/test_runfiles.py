@@ -47,6 +47,11 @@ FAST_RUNFILES = [
     "primat_compare.py",
 ]
 
+# primat_mc.py needs the "--quick" flag (20 samples instead of 500) to stay
+# within this smoke test's time budget -- it is not one of FAST_RUNFILES
+# since it takes an extra CLI argument the others don't.
+MC_RUNFILE = "primat_mc.py"
+
 
 @pytest.mark.parametrize("name", FAST_RUNFILES)
 def test_runfile_executes_cleanly(name, tmp_path):
@@ -71,3 +76,28 @@ def test_runfile_executes_cleanly(name, tmp_path):
     # the solver rather than exiting early/silently.
     assert "Neff" in result.stdout
     assert "D/H" in result.stdout
+
+
+def test_primat_mc_runfile_executes_cleanly(tmp_path):
+    """Run primat_mc.py --quick (20 MC samples) as a subprocess; fail on a
+    nonzero exit code or a traceback, and sanity-check it printed the
+    headline observables and wrote the three MC output files."""
+    result = subprocess.run(
+        [sys.executable, str(RUNFILES_DIR / MC_RUNFILE), "--quick"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, (
+        f"{MC_RUNFILE} exited with code {result.returncode}\n"
+        f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+    )
+    assert "Traceback" not in result.stderr, result.stderr
+    assert "Neff" in result.stdout
+    assert "D/H" in result.stdout
+    assert "Correlation matrix" in result.stdout
+
+    for suffix in ("samples", "covariance", "correlation"):
+        assert (tmp_path / "results" / f"output_mc_{suffix}.tsv").exists()
