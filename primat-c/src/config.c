@@ -228,6 +228,7 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(debug, F_BOOL),
     FLD(numerical_precision, F_DOUBLE),
     FLD(numba_installed, F_BOOL),
+    FLD(strict_params, F_BOOL),
     FLD(incomplete_decoupling, F_BOOL),
     FLD(QED_corrections, F_BOOL),
     FLD(n_electron_table, F_INT),
@@ -381,6 +382,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->debug = 0;
     cfg->numerical_precision = 1.e-7;
     cfg->numba_installed = 1;
+    cfg->strict_params = 0;
 
     cfg->incomplete_decoupling = 1;
 
@@ -723,6 +725,85 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
 
     if (cfg->amax != -1 && cfg->amax < 1) {
         *errmsg = strdup("amax must be None (-1) or a positive integer");
+        return 1;
+    }
+
+    /* Physical/numerical range checks, mirroring primat/config.py's
+     * _PARAM_RANGE table (O-1: config validation UX). Each guards a value that
+     * must stay strictly positive (a physical scale, tolerance, count, or
+     * time) or non-negative. Emitted here rather than in cpr_config_set_by_name
+     * so a value set via any path (INI, --set, wrapper) is caught uniformly. */
+#define CPR_REQUIRE(cond, fmt, val) \
+    do { if (!(cond)) { *errmsg = malloc(160); \
+        snprintf(*errmsg, 160, fmt, val); return 1; } } while (0)
+
+    /* strictly positive doubles */
+    CPR_REQUIRE(cpr_config_get_Omegabh2(cfg) > 0,
+                "Omegabh2=%.6g is out of range: must be > 0", cpr_config_get_Omegabh2(cfg));
+    CPR_REQUIRE(cpr_config_get_GN(cfg) > 0,
+                "GN=%.6g is out of range: must be > 0", cpr_config_get_GN(cfg));
+    CPR_REQUIRE(cfg->numerical_precision > 0,
+                "numerical_precision=%.6g is out of range: must be > 0", cfg->numerical_precision);
+    CPR_REQUIRE(cfg->T_start_cosmo_MeV > 0,
+                "T_start_cosmo_MeV=%.6g is out of range: must be > 0", cfg->T_start_cosmo_MeV);
+    CPR_REQUIRE(cfg->T_end_MeV > 0,
+                "T_end_MeV=%.6g is out of range: must be > 0", cfg->T_end_MeV);
+    CPR_REQUIRE(cfg->tau_n > 0,
+                "tau_n=%.6g is out of range: must be > 0", cfg->tau_n);
+    CPR_REQUIRE(cfg->Omegach2 > 0,
+                "Omegach2=%.6g is out of range: must be > 0", cfg->Omegach2);
+    CPR_REQUIRE(cfg->h > 0,
+                "h=%.6g is out of range: must be > 0", cfg->h);
+    CPR_REQUIRE(cfg->atol_large_LT > 0,
+                "atol_large_LT=%.6g is out of range: must be > 0", cfg->atol_large_LT);
+    CPR_REQUIRE(cfg->epsrel_thermal > 0,
+                "epsrel_thermal=%.6g is out of range: must be > 0", cfg->epsrel_thermal);
+    CPR_REQUIRE(cfg->t_decay_end > 0,
+                "t_decay_end=%.6g is out of range: must be > 0", cfg->t_decay_end);
+    CPR_REQUIRE(cfg->zcEDE > 0,
+                "zcEDE=%.6g is out of range: must be > 0", cfg->zcEDE);
+    CPR_REQUIRE(cfg->rate_grid_T9_min > 0,
+                "rate_grid_T9_min=%.6g is out of range: must be > 0", cfg->rate_grid_T9_min);
+    CPR_REQUIRE(cfg->rate_grid_T9_max > 0,
+                "rate_grid_T9_max=%.6g is out of range: must be > 0", cfg->rate_grid_T9_max);
+    /* mc_rate_rescale_cap: 0.0 is the "no cap" sentinel (Python None); any
+     * positive value is the cap. A negative cap is meaningless. */
+    CPR_REQUIRE(cfg->mc_rate_rescale_cap >= 0,
+                "mc_rate_rescale_cap=%.6g is out of range: must be > 0 or None", cfg->mc_rate_rescale_cap);
+    /* non-negative doubles (a 1-sigma width may legitimately be 0) */
+    CPR_REQUIRE(cfg->std_tau_n >= 0,
+                "std_tau_n=%.6g is out of range: must be >= 0", cfg->std_tau_n);
+
+    /* strictly positive integer counts */
+    CPR_REQUIRE(cfg->n_electron_table >= 1,
+                "n_electron_table=%d is out of range: must be a positive integer (>= 1)", cfg->n_electron_table);
+    CPR_REQUIRE(cfg->sampling_temperature_per_decade >= 1,
+                "sampling_temperature_per_decade=%d is out of range: must be a positive integer (>= 1)", cfg->sampling_temperature_per_decade);
+    CPR_REQUIRE(cfg->sampling_nTOp_per_decade >= 1,
+                "sampling_nTOp_per_decade=%d is out of range: must be a positive integer (>= 1)", cfg->sampling_nTOp_per_decade);
+    CPR_REQUIRE(cfg->sampling_nTOp_thermal_per_decade >= 1,
+                "sampling_nTOp_thermal_per_decade=%d is out of range: must be a positive integer (>= 1)", cfg->sampling_nTOp_thermal_per_decade);
+    CPR_REQUIRE(cfg->vegas_n_eval >= 1,
+                "vegas_n_eval=%d is out of range: must be a positive integer (>= 1)", cfg->vegas_n_eval);
+    CPR_REQUIRE(cfg->vegas_n_itn >= 1,
+                "vegas_n_itn=%d is out of range: must be a positive integer (>= 1)", cfg->vegas_n_itn);
+    CPR_REQUIRE(cfg->output_n_points >= 1,
+                "output_n_points=%d is out of range: must be a positive integer (>= 1)", cfg->output_n_points);
+    CPR_REQUIRE(cfg->rate_grid_npts >= 1,
+                "rate_grid_npts=%d is out of range: must be a positive integer (>= 1)", cfg->rate_grid_npts);
+    CPR_REQUIRE(cfg->decay_n_points >= 1,
+                "decay_n_points=%d is out of range: must be a positive integer (>= 1)", cfg->decay_n_points);
+#undef CPR_REQUIRE
+
+    /* rate_interp_order is constrained to a fixed set of choices (mirrors
+     * _PARAM_CHOICES in config.py). */
+    if (strcmp(cfg->rate_interp_order, "linear") != 0
+            && strcmp(cfg->rate_interp_order, "quadratic") != 0
+            && strcmp(cfg->rate_interp_order, "cubic") != 0) {
+        *errmsg = malloc(160);
+        snprintf(*errmsg, 160,
+                 "rate_interp_order=%s must be one of linear, quadratic, cubic",
+                 cfg->rate_interp_order);
         return 1;
     }
 

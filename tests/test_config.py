@@ -108,6 +108,116 @@ def test_physical_constants_positive():
         assert getattr(cfg, attr) > 0, f"cfg.{attr} should be positive"
 
 
+def test_bad_type_raises_typeerror():
+    """O-1: a value of the wrong *type* raises an immediate, self-explanatory
+    TypeError naming the key, value, and expected type -- instead of dying much
+    later inside the thermodynamics (Omegabh2="0.022" once produced a cryptic
+    "can't multiply sequence by non-int" from deep in the solver)."""
+    cases = [
+        {"Omegabh2": "0.022"},   # str for a float field
+        {"verbose": 1.5},         # non-bool for a bool field
+        {"amax": "eight"},        # str for an int/None field
+        {"network": 5},           # int for a str field
+    ]
+    for params in cases:
+        with pytest.raises(TypeError) as exc:
+            PRIMATConfig(params)
+        key = next(iter(params))
+        assert key in str(exc.value)
+
+
+def test_bool_not_accepted_as_number():
+    """True/False must not be silently taken as 1.0/0.0 for a numeric field:
+    passing a bool where a float is expected is a bug, not the number one."""
+    with pytest.raises(TypeError):
+        PRIMATConfig({"Omegabh2": True})
+
+
+def test_out_of_range_raises_valueerror():
+    """O-1: physical/numerical range violations raise ValueError, always
+    (independent of strict_params)."""
+    cases = [
+        {"Omegabh2": -0.1},
+        {"tau_n": 0.0},
+        {"numerical_precision": 0.0},
+        {"rate_grid_npts": 0},
+        {"h": -0.5},
+        {"std_tau_n": -1.0},
+    ]
+    for params in cases:
+        with pytest.raises(ValueError) as exc:
+            PRIMATConfig(params)
+        assert "out of range" in str(exc.value)
+
+
+def test_std_tau_n_zero_allowed():
+    """std_tau_n is a 1-sigma width that may legitimately be exactly 0."""
+    cfg = PRIMATConfig({"std_tau_n": 0.0})
+    assert cfg.std_tau_n == 0.0
+
+
+def test_rate_interp_order_choice():
+    """rate_interp_order is constrained to linear/quadratic/cubic."""
+    for good in ("linear", "quadratic", "cubic"):
+        assert PRIMATConfig({"rate_interp_order": good}).rate_interp_order == good
+    with pytest.raises(ValueError) as exc:
+        PRIMATConfig({"rate_interp_order": "spline"})
+    assert "one of" in str(exc.value)
+
+
+def test_numpy_scalars_accepted():
+    """numpy scalar overrides (np.float64/np.int64, common in MCMC drivers)
+    must pass the type check just like their Python counterparts."""
+    import numpy as np
+    cfg = PRIMATConfig({"Omegabh2": np.float64(0.022), "amax": np.int64(8)})
+    assert cfg.Omegabh2 == pytest.approx(0.022)
+    assert cfg.amax == 8
+
+
+def test_nullable_params_accept_none():
+    """None-able parameters (path sentinels, amax, the MC rate cap) accept
+    None without a type error."""
+    cfg = PRIMATConfig({"amax": None, "output_file": None,
+                        "mc_rate_rescale_cap": None, "data_dir": None})
+    assert cfg.amax is None
+    assert cfg.output_file is None
+    assert cfg.mc_rate_rescale_cap is None
+
+
+def test_unknown_key_suggests_close_match():
+    """O-1: an unknown key that is a near-miss of a real one gets a
+    difflib 'did you mean ...?' suggestion in the warning."""
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        PRIMATConfig({"Omegab2h": 0.022})
+    msgs = " ".join(str(x.message) for x in w)
+    assert "Omegab2h" in msgs
+    assert "Omegabh2" in msgs  # the suggested close match
+
+
+def test_strict_params_raises_on_unknown_key():
+    """O-1: strict_params=True upgrades the unknown-key warning to a
+    ValueError (recommended in scripted/MCMC pipelines)."""
+    with pytest.raises(ValueError) as exc:
+        PRIMATConfig({"Omegab2h": 0.022, "strict_params": True})
+    assert "Omegab2h" in str(exc.value)
+    assert "Omegabh2" in str(exc.value)  # suggestion still surfaced
+
+
+def test_strict_params_default_false_only_warns():
+    """With strict_params at its default (False) an unknown key must warn,
+    not raise (back-compatible behaviour)."""
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        PRIMATConfig({"Omegab2h": 0.022})
+    assert any("Omegab2h" in str(x.message) for x in w)
+
+
+def test_strict_params_is_a_default_param():
+    """strict_params must be a real DEFAULT_PARAMS key (three-file sync)."""
+    assert DEFAULT_PARAMS["strict_params"] is False
+
+
 def test_config_dynamic_rate_attrs():
     """Dynamic ``p_*`` and ``delta_*`` attrs round-trip through the backing dicts."""
     cfg = PRIMATConfig()

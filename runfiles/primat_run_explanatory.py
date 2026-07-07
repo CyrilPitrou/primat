@@ -23,7 +23,7 @@ cfg = dict(
     # Every key below is shown at its DEFAULT_PARAMS default (see
     # primat/config.py for the authoritative, more detailed comments this
     # file summarises); uncomment and edit whichever you need to override.
-    # All 76 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
+    # All 77 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- general behaviour and numerical settings -------------------------
     # verbose=False,                  # print primat's own progress messages
@@ -31,6 +31,7 @@ cfg = dict(
     # show_progress=True,             # print compact stderr progress indicators (HT./MT./LT./done., MC counter) when verbose=False
     # numerical_precision=1e-7,       # rtol for all solve_ivp calls
     # numba_installed=True,           # re-checked at runtime; enables JIT kernels if available
+    # strict_params=False,            # True: raise on an unknown param key (typo); False: warn with "did you mean ...?"
 
     # ---- neutrino decoupling -----------------------------------------------
     # incomplete_decoupling=True,     # True: NEVO non-instantaneous decoupling table; False: instantaneous decoupling

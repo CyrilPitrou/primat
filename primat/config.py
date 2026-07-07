@@ -13,6 +13,8 @@ No file I/O happens here.  Nuclear rate data are loaded separately in
 ``nuclear_data.py``.
 """
 
+import difflib
+import numbers
 import os
 import re
 import warnings
@@ -123,6 +125,13 @@ DEFAULT_PARAMS: dict = {
     # primat-c's CPRConfig.show_progress field (primat-c/include/config.h), already wired there.
     "numerical_precision":        1.e-7, # for finite differences (solve_ivp). 1e-6 should be enough.
     "numba_installed":                 True,  # will be re-checked at runtime. Allows just-in-time compilation for faster execution.
+    "strict_params":              False, # How PRIMATConfig reacts to an unknown parameter key (a typo like
+    # "Omegab2h", or a key from a different code). False (default): warn and ignore it, appending
+    # difflib "did you mean ...?" suggestions so the mistake is visible without being fatal. True:
+    # raise ValueError on the first unknown key -- recommended in scripted/MCMC pipelines where a
+    # silently-ignored typo would run the wrong cosmology unnoticed. Independent of the per-key
+    # *type/range* validation (e.g. Omegabh2>0, amax a positive int), which always raises regardless
+    # of this flag. p_<rxn>/delta_<rxn> rate-variation keys are never "unknown" and are unaffected.
 
     # ---- physics settings ------------------------------------------------
     # ---- neutrino decoupling ----------------------
@@ -411,6 +420,180 @@ DEFAULT_PARAMS: dict = {
 }
 
 
+# ===========================================================================
+# Parameter validation (O-1: config validation and error-message UX)
+# ---------------------------------------------------------------------------
+# A physicist's first contact with primat is often a typo in a params dict or a
+# YAML file.  Without validation a wrong *type* surfaces much later as an opaque
+# stack trace from deep inside the thermodynamics (e.g. Omegabh2="0.022" dying
+# with "can't multiply sequence by non-int"), and a wrong *key* (Omegab2h)
+# silently runs the default cosmology.  The helpers below validate every
+# user-supplied DEFAULT_PARAMS override at construction time, raising a
+# one-line, self-explanatory TypeError/ValueError that names the key, the
+# received value, and the expected type/range.  The C backend mirrors the type
+# checks in cpr_config_set_by_name and the range checks in cpr_config_validate
+# (primat-c/src/config.c), per the CLAUDE.md parity mandate.
+# ===========================================================================
+
+# Kind tags used by the spec below.  Each maps to a predicate on a candidate
+# value.  Numeric kinds use the ``numbers`` ABCs so numpy scalars (np.float64,
+# np.int64 -- common in MCMC drivers) are accepted, while ``bool`` (a subclass
+# of int) is explicitly excluded from the numeric kinds: passing True where a
+# float is expected is a bug, not the number 1.0.
+_KIND_CHECKS = {
+    "bool":  lambda v: isinstance(v, bool),
+    "int":   lambda v: isinstance(v, numbers.Integral) and not isinstance(v, bool),
+    "float": lambda v: isinstance(v, numbers.Real) and not isinstance(v, bool),
+    "str":   lambda v: isinstance(v, str),
+    "none":  lambda v: v is None,
+}
+_KIND_ENGLISH = {"bool": "bool", "int": "int", "float": "float",
+                 "str": "str", "none": "None"}
+
+# Keys whose accepted kinds cannot be inferred from ``DEFAULT_PARAMS`` (their
+# default is ``None``, so it carries no type) or that accept ``None`` in
+# addition to their default's type (path parameters where ``None`` is a "skip"
+# sentinel, and mc_rate_rescale_cap where ``None`` disables the cap).  Every
+# other key infers its single accepted kind from the default value's type
+# (see :func:`_param_kinds`).
+_PARAM_TYPESPEC = {
+    "amax":                  ("int", "none"),   # None = no A cutoff; else positive int
+    "mc_rate_rescale_cap":   ("float", "none"),  # None = no cap; else positive number
+    # Optional filesystem-path parameters: a str path or None ("use default" /
+    # "skip this output").  Mirrors _PATH_PARAMS above.
+    "nevo_file":             ("str", "none"),
+    "nevo_spectral_file":    ("str", "none"),
+    "nevo_grid_file":        ("str", "none"),
+    "custom_background":      ("str", "none"),
+    "data_dir":              ("str", "none"),
+    "user_nuclear_dir":      ("str", "none"),
+    "output_file":           ("str", "none"),
+    "output_final_file":     ("str", "none"),
+    "output_background_file": ("str", "none"),
+    "output_mc_file_prefix": ("str", "none"),
+    "output_decay_file":     ("str", "none"),
+}
+
+# String parameters constrained to a fixed set of choices.
+_PARAM_CHOICES = {
+    "rate_interp_order": ("linear", "quadratic", "cubic"),
+}
+
+# Numeric range constraints, where the physics/numerics demand them.  Each
+# entry is ``(predicate, human_text)``; the predicate is applied only to
+# non-None values that already passed the type check.  fEDE (0<=fEDE<1) and
+# amax (>=1) are validated by their own dedicated methods (_validate_fEDE /
+# _validate_amax) with bespoke messages, so they are intentionally absent here.
+_POSITIVE = (lambda v: v > 0, "must be > 0")
+_POSITIVE_INT = (lambda v: v >= 1, "must be a positive integer (>= 1)")
+_NON_NEGATIVE = (lambda v: v >= 0, "must be >= 0")
+_PARAM_RANGE = {
+    # ---- strictly positive floats (a physical scale, tolerance, or time) ----
+    "numerical_precision": _POSITIVE,
+    "GN":                  _POSITIVE,
+    "T_start_cosmo_MeV":   _POSITIVE,
+    "T_end_MeV":           _POSITIVE,
+    "tau_n":               _POSITIVE,
+    "Omegabh2":            _POSITIVE,
+    "Omegach2":            _POSITIVE,
+    "h":                   _POSITIVE,
+    "atol_large_LT":       _POSITIVE,
+    "epsrel_thermal":      _POSITIVE,
+    "t_decay_end":         _POSITIVE,
+    "zcEDE":               _POSITIVE,
+    "rate_grid_T9_min":    _POSITIVE,
+    "rate_grid_T9_max":    _POSITIVE,
+    "mc_rate_rescale_cap": _POSITIVE,
+    # ---- strictly positive counts (grid points, iterations, samplings) ------
+    "n_electron_table":                  _POSITIVE_INT,
+    "sampling_temperature_per_decade":   _POSITIVE_INT,
+    "sampling_nTOp_per_decade":          _POSITIVE_INT,
+    "sampling_nTOp_thermal_per_decade":  _POSITIVE_INT,
+    "vegas_n_eval":                      _POSITIVE_INT,
+    "vegas_n_itn":                       _POSITIVE_INT,
+    "output_n_points":                   _POSITIVE_INT,
+    "rate_grid_npts":                    _POSITIVE_INT,
+    "decay_n_points":                    _POSITIVE_INT,
+    # ---- non-negative (a 1-sigma width may legitimately be 0) ---------------
+    "std_tau_n":           _NON_NEGATIVE,
+}
+
+
+def _param_kinds(key: str):
+    """Return the tuple of accepted kind tags for a ``DEFAULT_PARAMS`` key.
+
+    Uses the explicit :data:`_PARAM_TYPESPEC` entry when present (None-defaulted
+    or None-able keys); otherwise infers a single kind from the default value's
+    Python type.  ``bool`` is checked before ``int`` because ``bool`` is a
+    subclass of ``int``.
+    """
+    if key in _PARAM_TYPESPEC:
+        return _PARAM_TYPESPEC[key]
+    default = DEFAULT_PARAMS[key]
+    if isinstance(default, bool):
+        return ("bool",)
+    if isinstance(default, int):
+        return ("int",)
+    if isinstance(default, float):
+        return ("float",)
+    if isinstance(default, str):
+        return ("str",)
+    return None  # unreachable: every None-defaulted key is in _PARAM_TYPESPEC
+
+
+def _validate_param_value(key: str, value):
+    """Type-, choice-, and range-check one user-supplied ``DEFAULT_PARAMS``
+    override, raising an immediate, self-explanatory error on any mismatch.
+
+    Parameters
+    ----------
+    key : str
+        A key known to be in ``DEFAULT_PARAMS`` (p_<rxn>/delta_<rxn> dynamic
+        keys are handled separately and never reach here).
+    value : object
+        The candidate override value.
+
+    Raises
+    ------
+    TypeError
+        If ``value``'s type does not match any accepted kind for ``key``.
+    ValueError
+        If ``value`` is outside the allowed choices (:data:`_PARAM_CHOICES`)
+        or numeric range (:data:`_PARAM_RANGE`).
+
+    Example
+    -------
+        >>> _validate_param_value("Omegabh2", "0.022")   # doctest: +SKIP
+        TypeError: PRIMATConfig: parameter 'Omegabh2' got '0.022' of type str;
+        expected float.
+        >>> _validate_param_value("Omegabh2", -0.1)      # doctest: +SKIP
+        ValueError: PRIMATConfig: parameter 'Omegabh2' got -0.1, which is out
+        of range: must be > 0.
+    """
+    kinds = _param_kinds(key)
+    if kinds is None:
+        return
+    if not any(_KIND_CHECKS[k](value) for k in kinds):
+        expected = " or ".join(_KIND_ENGLISH[k] for k in kinds)
+        raise TypeError(
+            f"PRIMATConfig: parameter {key!r} got {value!r} of type "
+            f"{type(value).__name__}; expected {expected}."
+        )
+    if key in _PARAM_CHOICES and value not in _PARAM_CHOICES[key]:
+        allowed = ", ".join(repr(c) for c in _PARAM_CHOICES[key])
+        raise ValueError(
+            f"PRIMATConfig: parameter {key!r} got {value!r}; "
+            f"must be one of {allowed}."
+        )
+    if value is not None and key in _PARAM_RANGE:
+        predicate, text = _PARAM_RANGE[key]
+        if not predicate(value):
+            raise ValueError(
+                f"PRIMATConfig: parameter {key!r} got {value!r}, "
+                f"which is out of range: {text}."
+            )
+
+
 class PRIMATConfig:
     """
     Immutable physical constants + mutable run-time parameters.
@@ -606,21 +789,59 @@ class PRIMATConfig:
         typos against the *finalised* network's reaction list).
         """
         user_keys = set(params.keys()) if params else set()
-        if params:
-            known_prefixes = ('p_', 'delta_')
-            unknown = set()
-            for key, value in params.items():
-                if key in DEFAULT_PARAMS or any(key.startswith(p) for p in known_prefixes):
-                    setattr(self, key, value)
-                else:
-                    unknown.add(key)
+        if not params:
+            return user_keys
 
-            if unknown:
-                warnings.warn(
-                    f"PRIMATConfig: unknown parameter keys ignored: {unknown}",
-                    stacklevel=2,
-                )
+        # strict_params governs how unknown keys are handled (warn vs. raise);
+        # read its effective value up front -- from this very override if the
+        # caller set it, else the default already seeded on self -- so the
+        # decision is available while iterating.
+        strict = bool(params.get("strict_params", self.strict_params))
+
+        known_prefixes = ('p_', 'delta_')
+        unknown = []
+        for key, value in params.items():
+            if key in DEFAULT_PARAMS:
+                # Type/choice/range-check the value *before* storing it, so a
+                # bad override never reaches the solver as a confusing later
+                # error (see _validate_param_value's docstring).
+                _validate_param_value(key, value)
+                setattr(self, key, value)
+            elif any(key.startswith(p) for p in known_prefixes):
+                # p_<rxn>/delta_<rxn> rate variations: routed to the backing
+                # dicts by __setattr__ (which float()s the value, raising on a
+                # non-numeric one); validated against the network's reaction
+                # list later by _warn_unknown_rate_variations.
+                setattr(self, key, value)
+            else:
+                unknown.append(key)
+
+        if unknown:
+            self._report_unknown_keys(unknown, strict)
         return user_keys
+
+    def _report_unknown_keys(self, unknown: list, strict: bool):
+        """Report unknown parameter keys with "did you mean ...?" suggestions.
+
+        Each unknown key is matched against the known ``DEFAULT_PARAMS`` names
+        with :func:`difflib.get_close_matches`, so a typo like ``"Omegab2h"``
+        is met with ``did you mean 'Omegabh2'?`` rather than a silent no-op.
+        When ``strict`` (``strict_params=True``) the first batch of unknown
+        keys raises ``ValueError``; otherwise it is a ``UserWarning`` (the
+        back-compatible default) that also surfaces the suggestions.
+        """
+        details = []
+        for key in sorted(unknown):
+            matches = difflib.get_close_matches(key, DEFAULT_PARAMS.keys(), n=3)
+            if matches:
+                hint = " or ".join(repr(m) for m in matches)
+                details.append(f"{key!r} (did you mean {hint}?)")
+            else:
+                details.append(repr(key))
+        msg = "PRIMATConfig: unknown parameter key(s): " + ", ".join(details)
+        if strict:
+            raise ValueError(msg + " [strict_params=True]")
+        warnings.warn(msg, stacklevel=3)
 
     def _validate_fEDE(self):
         """fEDE is a fraction of the total energy density at its peak, so it
@@ -763,8 +984,11 @@ class PRIMATConfig:
 
     def _validate_amax(self):
         """amax must be None or a positive integer."""
+        # numbers.Integral (not bare int) so a numpy int (np.int64, common in
+        # MCMC drivers) is accepted -- bool is an Integral subclass but is
+        # already rejected upstream by _validate_param_value's type check.
         if self.amax is not None:
-            if not (isinstance(self.amax, int) and self.amax >= 1):
+            if not (isinstance(self.amax, numbers.Integral) and self.amax >= 1):
                 raise ValueError(
                     f"amax must be None or a positive integer (got {self.amax!r})."
                 )

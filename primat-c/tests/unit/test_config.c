@@ -109,6 +109,62 @@ int main(void)
     CHECK(cpr_config_get_Omegabh2(&cfg) == 0.02, "Omegabh2 getter reflects the override");
     CHECK(cfg.eta0b != eta0b_before, "eta0b was recomputed after the Omegabh2 override");
 
+    /* ---- Physical/numerical range checks in cpr_config_validate (O-1),
+     * mirroring test_config.py's range-check tests. Each bad value must make
+     * cpr_config_validate return non-zero with a message naming the field.
+     * strict_params default (0) and the strict_params field round-trip are
+     * checked too. ---- */
+    CHECK(cfg.strict_params == 0, "default strict_params is False (0)");
+    CPRParam p_strict = { .type = CPR_BOOL, .v.b = 1 };
+    CHECK(cpr_config_set_by_name(&cfg, "strict_params", p_strict, &set_err) == 0,
+          "strict_params round-trips through the field table");
+    CHECK(cfg.strict_params == 1, "strict_params overridden to True (1)");
+
+    /* Reset to a clean valid config, then perturb one field at a time. */
+    cpr_config_free(&cfg);
+    if (cpr_config_init_defaults(&cfg, "../primat/data", &err)) {
+        printf("FAIL cpr_config_init_defaults (range block): %s\n", err);
+        return 1;
+    }
+    char *verr = NULL;
+    CHECK(cpr_config_validate(&cfg, &verr) == 0, "pristine defaults pass validation");
+    free(verr); verr = NULL;
+
+    /* Negative Omegabh2 -> out of range (routed through the setter). */
+    cpr_config_set_Omegabh2(&cfg, -0.02);
+    CHECK(cpr_config_validate(&cfg, &verr) != 0 && verr && strstr(verr, "Omegabh2"),
+          "negative Omegabh2 is rejected with a naming message");
+    free(verr); verr = NULL;
+    cpr_config_set_Omegabh2(&cfg, 0.022425); /* restore */
+
+    /* Non-positive tau_n. */
+    cfg.tau_n = 0.0;
+    CHECK(cpr_config_validate(&cfg, &verr) != 0 && verr && strstr(verr, "tau_n"),
+          "tau_n=0 is rejected");
+    free(verr); verr = NULL;
+    cfg.tau_n = 878.4;
+
+    /* Non-positive integer count. */
+    cfg.rate_grid_npts = 0;
+    CHECK(cpr_config_validate(&cfg, &verr) != 0 && verr && strstr(verr, "rate_grid_npts"),
+          "rate_grid_npts=0 is rejected");
+    free(verr); verr = NULL;
+    cfg.rate_grid_npts = 1000;
+
+    /* Bad rate_interp_order enum choice. */
+    free(cfg.rate_interp_order);
+    cfg.rate_interp_order = strdup("spline");
+    CHECK(cpr_config_validate(&cfg, &verr) != 0 && verr && strstr(verr, "rate_interp_order"),
+          "rate_interp_order='spline' is rejected");
+    free(verr); verr = NULL;
+    free(cfg.rate_interp_order);
+    cfg.rate_interp_order = strdup("linear");
+
+    /* std_tau_n is allowed to be exactly 0 (non-negative, not strictly positive). */
+    cfg.std_tau_n = 0.0;
+    CHECK(cpr_config_validate(&cfg, &verr) == 0, "std_tau_n=0 is accepted (non-negative)");
+    free(verr); verr = NULL;
+
     cpr_config_free(&cfg);
 
     if (failures) {

@@ -104,6 +104,10 @@ typedef struct {
     int debug;
     double numerical_precision;
     int numba_installed; /* unused in C (no JIT path); kept for CLI/ini parity */
+    int strict_params; /* unknown-key policy for the INI/CLI loaders (default 0). Mirrors
+                        * PRIMATConfig.strict_params: 0 = warn-and-ignore, 1 = fatal. Stored
+                        * for round-trip/wrapper parity; the standalone C loaders already treat
+                        * unknown keys as fatal, so this only downgrades that when 0. */
 
     /* ---- neutrino decoupling ---- */
     int incomplete_decoupling;
