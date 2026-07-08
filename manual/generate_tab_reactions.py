@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-doc/generate_tab_reactions.py
-==============================
-Regenerate doc/tab_reactions.tex from the *current* nuclear-network data
+manual/generate_tab_reactions.py
+==================================
+Regenerate manual/tab_reactions.tex from the *current* nuclear-network data
 (primat/data/csv/reactions_large.csv, primat/data/nuclear/networks/{small,large}.txt).
 
 Why this exists
@@ -22,7 +22,7 @@ those parameters.
 
 Run from the repository root:
 
-    python doc/generate_tab_reactions.py
+    python manual/generate_tab_reactions.py
 
 and recompile the LaTeX document afterwards.
 """

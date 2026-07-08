@@ -2,7 +2,7 @@
 
 Audit date: 2026-07-07, at version 0.3.2 (branch `master`, clean tree).
 Written by Fable 5 after a full review of `primat/`, `primat/gui/`,
-`primat-c/`, `doc/`, `notebooks/`, `runfiles/`, `tests/`, and the packaging/CI
+`primat-c/`, `manual/` (formerly `doc/`), `notebooks/`, `runfiles/`, `tests/`, and the packaging/CI
 files. Goal: primat installed by hundreds of cosmologists via `pip install
 primat`, robust on every platform, beautiful to read and use, and flexible
 enough that physicists reach for it for *every* BBN use case.
@@ -346,7 +346,7 @@ installs and solves with neither plotly nor streamlit present.
 
 ### O-3. Build the documentation site (Sphinx + Read the Docs)  «Opus» (architecture) + «Sonnet» (migration)
 This is the single highest-leverage item in the whole plan. Today the docs
-are: a 525-line README, a LaTeX PDF (`doc/primat_documentation_v0.3.1.pdf`),
+are: a 525-line README, a LaTeX PDF (`manual/primat_documentation_v0.3.1.pdf`),
 EXTENDING.md, notebook READMEs, and superb docstrings *that no user can
 browse*. Community-scale packages (astropy, CLASS, emcee) live or die by
 their HTML docs.

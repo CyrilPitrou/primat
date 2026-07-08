@@ -22,14 +22,14 @@ data files resolve), then compile from this folder:
 ```bash
 # 1. regenerate the figures (~30 s)
 jupyter nbconvert --to notebook --execute --inplace \
-    doc/primat_doc_figures.ipynb
+    manual/primat_doc_figures.ipynb
 
 # 2. regenerate the reaction-list appendix table (only needed if the
 #    network/rate-table data changed; no BBN run required, <1 s)
-python doc/generate_tab_reactions.py
+python manual/generate_tab_reactions.py
 
 # 3. compile the document
-cd doc
+cd manual
 latexmk -pdf primat_documentation_v0.3.1.tex
 ```
 
