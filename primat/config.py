@@ -420,6 +420,59 @@ DEFAULT_PARAMS: dict = {
 }
 
 
+def _default_params_comments():
+    """Parse this file's own source to extract each ``DEFAULT_PARAMS`` key's
+    one-line trailing comment (S-11, CLI discoverability: ``primat
+    --list-params`` uses this to show users what every parameter means
+    without duplicating the explanation in a second place that could drift
+    out of sync).
+
+    Only the ``# ...`` text on the *same source line* as the key's value is
+    captured -- many entries above continue their explanation on following
+    (uncommented-key) lines, but those are prose for a human reading the
+    dict, not a "one-line" description, so they are intentionally not
+    concatenated here.
+
+    Returns
+    -------
+    dict
+        Maps each ``DEFAULT_PARAMS`` key to its trailing comment string
+        (``""`` for keys with no trailing comment on their own line).
+    """
+    import ast
+    import tokenize
+
+    path = __file__
+    with open(path) as f:
+        source = f.read()
+    tree = ast.parse(source, filename=path)
+
+    dict_node = None
+    for node in ast.walk(tree):
+        # DEFAULT_PARAMS is declared with a type annotation ("DEFAULT_PARAMS:
+        # dict = {...}"), i.e. an ast.AnnAssign, not a plain ast.Assign.
+        if (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+                and node.target.id == "DEFAULT_PARAMS"):
+            dict_node = node.value
+            break
+    if dict_node is None:
+        return {}
+
+    # Map each source line number to the comment token that starts on it, by
+    # re-tokenizing the same file (comments aren't part of the AST).
+    line_comments = {}
+    with open(path) as f:
+        for tok in tokenize.generate_tokens(f.readline):
+            if tok.type == tokenize.COMMENT:
+                line_comments[tok.start[0]] = tok.string.lstrip("#").strip()
+
+    comments = {}
+    for key_node, value_node in zip(dict_node.keys, dict_node.values):
+        key = ast.literal_eval(key_node)
+        comments[key] = line_comments.get(value_node.end_lineno, "")
+    return comments
+
+
 # ===========================================================================
 # Parameter validation (O-1: config validation and error-message UX)
 # ---------------------------------------------------------------------------

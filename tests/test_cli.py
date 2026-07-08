@@ -141,6 +141,48 @@ def test_cli_help_shows_named_output_path_flags(capsys):
     assert not re.search(r"(?m)^\s+--set\b", out)
 
 
+def test_cli_list_params_covers_every_default_params_key(capsys):
+    """--list-params (S-11) must print every DEFAULT_PARAMS key with its
+    default value, without running a solve."""
+    from primat.config import DEFAULT_PARAMS
+
+    rc = main(["--list-params"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert len(lines) == len(DEFAULT_PARAMS)
+    for key in DEFAULT_PARAMS:
+        assert re.search(rf"(?m)^{re.escape(key)}\s*=", out)
+    # A few keys with a known one-line trailing comment in config.py should
+    # carry it through verbatim, so the descriptions are not silently dropped.
+    assert "Omega_b h^2" in out
+    assert "Coulomb + T=0 resummed radiative corrections" in out
+
+
+def test_cli_help_mentions_list_params_next_to_set(capsys):
+    """--help's epilog should point power users at --list-params, the
+    documented way to discover every --set-able parameter."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "--list-params" in out
+    assert not re.search(r"(?m)^\s+--set\b", out)
+
+
+def test_cli_version_reports_backend_availability(capsys):
+    """--version must also state whether the C backend is available, so
+    users can tell why --backend c would (not) work without a separate run."""
+    from primat.backend import HAS_C_BACKEND
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--version"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "C backend:" in out
+    assert ("available" if HAS_C_BACKEND else "unavailable") in out
+
+
 def test_cli_credits_prints_short_text(capsys):
     """--credits prints the attribution text without install/run guidance."""
     rc = main(["--credits"])

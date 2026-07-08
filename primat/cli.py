@@ -45,7 +45,7 @@ from .credits import cli_credits_text
 from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
                       dump_mc_samples, run_bbn, run_mc)
 from .cache_utils import clear_weak_cache, list_weak_cache_files
-from .config import PRIMATConfig, _rates_overlay_notice
+from .config import DEFAULT_PARAMS, PRIMATConfig, _default_params_comments, _rates_overlay_notice
 
 
 def _parse_set_value(raw: str):
@@ -114,6 +114,27 @@ def _print_mc_matrices(mc):
         print(f"{a:>8}" + "".join(f"{mc.cov(a, b):13.3e}" for b in labels))
 
 
+def _print_list_params():
+    """Print every ``PRIMATConfig`` parameter (``DEFAULT_PARAMS`` key), its
+    default value, and a one-line description, for ``primat --list-params``
+    (S-11, CLI discoverability). The ``--set KEY=VALUE`` escape hatch is
+    deliberately left undocumented in ``--help`` to keep the printed help
+    short (see the module docstring), so this is the intended way power
+    users discover every parameter it accepts -- descriptions are parsed
+    straight out of ``config.py``'s own inline comments
+    (:func:`primat.config._default_params_comments`) rather than duplicated
+    here, so they cannot drift out of sync with the source of truth.
+    """
+    comments = _default_params_comments()
+    key_width = max(len(key) for key in DEFAULT_PARAMS)
+    for key, default in DEFAULT_PARAMS.items():
+        line = f"{key:<{key_width}} = {default!r}"
+        comment = comments.get(key, "")
+        if comment:
+            line += f"  # {comment}"
+        print(line)
+
+
 def _build_parser():
     """Build the ``argparse.ArgumentParser`` for the ``primat`` CLI.
 
@@ -129,19 +150,29 @@ def _build_parser():
                      "primat and print the resulting Neff/abundances.",
         epilog="Any other PRIMATConfig parameter (including p_<reaction>/"
                "delta_<reaction> rate variations) can be set with "
-               "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4.",
+               "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4. Use "
+               "--list-params to see every parameter's default and a "
+               "one-line description.",
     )
     # `version` action prints the string and exits before any computation;
     # the version itself comes from the installed distribution metadata via
-    # primat.__version__ (single source of truth in pyproject.toml).
+    # primat.__version__ (single source of truth in pyproject.toml). Also
+    # reports C-backend availability, since "primat 0.3.2" alone doesn't tell
+    # a user whether --backend c will work on their install.
     parser.add_argument(
         "--credits", action="store_true",
         help="Print the project credits and exit.",
     )
+    backend_status = "available" if HAS_C_BACKEND else "unavailable"
     parser.add_argument(
         "--version", action="version",
-        version=f"%(prog)s {__version__}",
-        help="Print the primat version and exit.",
+        version=f"%(prog)s {__version__} (C backend: {backend_status})",
+        help="Print the primat version and C-backend availability, then exit.",
+    )
+    parser.add_argument(
+        "--list-params", action="store_true",
+        help="Print every PRIMATConfig parameter, its default value, and a "
+             "one-line description, then exit.",
     )
     parser.add_argument(
         "--Omegabh2", type=float, default=None, metavar="VALUE",
@@ -326,6 +357,10 @@ def main(argv=None):
 
     if args.credits:
         print(cli_credits_text())
+        return 0
+
+    if args.list_params:
+        _print_list_params()
         return 0
 
     if args.cache_info or args.cache_clear:
