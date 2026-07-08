@@ -1,0 +1,68 @@
+# Citation File Format metadata for primat.
+#
+# This makes GitHub show a "Cite this repository" button on the repo page
+# and lets tools like cffconvert / Zenodo read structured citation metadata.
+# Validate with: `pip install cffconvert && cffconvert --validate`.
+#
+# Two distinct things are cited here, on purpose:
+#   - the *software* (this repository/release) -- the top-level fields below;
+#   - the *physics paper* describing the code's methods -- `preferred-citation`,
+#     which is what most published work using primat should actually cite
+#     (see docs/citing.md and primat.__citation__ for the same BibTeX entry).
+cff-version: 1.2.0
+message: >-
+  If you use primat in your research, please cite the preferred-citation
+  entry below (the Physics Reports paper describing the code's physics).
+  To additionally cite this specific software release, use the top-level
+  metadata.
+title: "primat: precise Big Bang Nucleosynthesis computations"
+abstract: >-
+  primat is a precise Big Bang Nucleosynthesis (BBN) solver, distributed as a
+  single pip-installable package with two interchangeable backends: a fast C
+  engine and a pure-Python implementation. It integrates the coupled ODEs of
+  the cosmological background (photon/neutrino temperatures, scale factor)
+  together with a nuclear reaction network to predict primordial abundances
+  of H, D, He3, He4, Li7 and heavier nuclides.
+type: software
+version: 0.3.2
+date-released: "2026-07-02"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/CyrilPitrou/primat"
+url: "https://primat.readthedocs.io"
+keywords:
+  - BBN
+  - big bang nucleosynthesis
+  - cosmology
+  - primordial abundances
+  - early universe
+  - helium
+  - deuterium
+authors:
+  - family-names: Pitrou
+    given-names: Cyril
+    email: pitrou@iap.fr
+    website: "https://www2.iap.fr/users/pitrou/"
+  - family-names: Froustey
+    given-names: Julien
+preferred-citation:
+  type: article
+  title: "Precision big bang nucleosynthesis with improved Helium-4 predictions"
+  authors:
+    - family-names: Pitrou
+      given-names: Cyril
+    - family-names: Coc
+      given-names: Alain
+    - family-names: Uzan
+      given-names: Jean-Philippe
+    - family-names: Vangioni
+      given-names: Elisabeth
+  journal: "Physics Reports"
+  volume: "754"
+  start: "1"
+  end: "66"
+  year: 2018
+  doi: "10.1016/j.physrep.2018.04.005"
+  identifiers:
+    - type: other
+      value: "arXiv:1801.08023"
+      description: "arXiv preprint"

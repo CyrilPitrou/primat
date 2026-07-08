@@ -19,3 +19,16 @@ If you use primat in published work, please cite the Physics Reports paper:
     doi           = "10.1016/j.physrep.2018.04.005"
 }
 ```
+
+The same entry is available at runtime as `primat.__citation__` (see
+`primat/credits.py`), so scripts can print it without hard-coding it.
+
+## Citing the software itself
+
+If you want to cite the specific `primat` software/release you used (as
+distinct from the physics methods paper above), the repository ships a
+[`CITATION.cff`](https://github.com/CyrilPitrou/primat/blob/master/CITATION.cff)
+at its root, which GitHub renders as a "Cite this repository" button on the
+repo page. Once Zenodo–GitHub archival is enabled (see `PyPiGuide.md` Step
+7), each tagged release also gets its own archival DOI through Zenodo.
+

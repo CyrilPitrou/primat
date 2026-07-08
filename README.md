@@ -1,6 +1,11 @@
 # primat
 
 [![Documentation](https://readthedocs.org/projects/primat/badge/?version=latest)](https://primat.readthedocs.io/en/latest/?badge=latest)
+<!-- DOI badge placeholder: replace with the real
+     https://zenodo.org/badge/DOI/<concept-doi>.svg badge once Zenodo–GitHub
+     archival is enabled (see PyPiGuide.md Step 7) and the first release has
+     minted a DOI. -->
+<!-- [![DOI](https://zenodo.org/badge/DOI/PLACEHOLDER.svg)](https://doi.org/PLACEHOLDER) -->
 
 A precise Big Bang Nucleosynthesis (BBN) solver. It integrates coupled ODEs
 for the cosmological background (photon/neutrino temperatures, scale factor)

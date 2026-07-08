@@ -220,3 +220,35 @@ Pre-flight checklist (everything above must already be true):
 After this, the only thing left to verify is `pip install primat` from
 a clean machine/venv with no `-i test.pypi.org` flag, confirming the
 real index serves what you expect.
+
+---
+
+## Step 7 — 🟡 Zenodo–GitHub integration (archival DOI)
+
+`CITATION.cff` (repo root) already gives the repo a "Cite this repository"
+button on GitHub and structured metadata for GitHub/Zenodo/other citation
+tooling — nothing to do there beyond keeping its `version`/`date-released`
+fields in sync with `pyproject.toml` at each release (mirroring the existing
+`CPRIMAT_VERSION` sync habit). What is still a manual, human step:
+
+1. Go to [zenodo.org](https://zenodo.org), sign in with the GitHub account
+   that owns/administers `CyrilPitrou/primat`, and open
+   **Settings → GitHub** in the Zenodo dashboard.
+2. Flip the toggle next to the `primat` repository to "on". This does not
+   archive anything by itself — it only arms Zenodo to watch for GitHub
+   **releases**.
+3. From then on, every GitHub release (the same `Publish release` action
+   from Step 6) triggers Zenodo to snapshot that tagged version, mint a
+   version-specific DOI plus a version-independent "concept DOI" that always
+   resolves to the latest release, and populate the record from
+   `CITATION.cff`.
+4. Add the resulting DOI badge to `README.md` (a placeholder Markdown badge
+   is already there, right under the other badges — swap in the real
+   `https://zenodo.org/badge/DOI/<concept-doi>.svg` URL Zenodo gives you
+   after the first release archives).
+
+🟡 because a Zenodo record, once minted for a published release, is meant to
+be permanent (that is the point of an archival DOI) — but toggling the
+GitHub integration itself is reversible, and it only starts affecting new
+releases from the moment it's turned on (nothing retroactive, nothing to
+undo on the PyPI side).

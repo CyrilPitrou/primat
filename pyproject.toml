@@ -57,7 +57,7 @@ Homepage = "https://github.com/CyrilPitrou/primat"
 Documentation = "https://primat.readthedocs.io"
 Repository = "https://github.com/CyrilPitrou/primat"
 Issues = "https://github.com/CyrilPitrou/primat/issues"
-Changelog = "https://github.com/CyrilPitrou/primat/commits/master/"
+Changelog = "https://github.com/CyrilPitrou/primat/blob/master/CHANGELOG.md"
 
 [project.scripts]
 primat = "primat.cli:main"
