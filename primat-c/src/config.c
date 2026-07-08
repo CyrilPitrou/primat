@@ -212,7 +212,11 @@ static int load_nuclides(CPRConfig *cfg, char **errmsg)
  * Defaults + field table for generic name-based dispatch.
  * ===========================================================================
  */
-typedef enum { F_BOOL, F_INT, F_INT_OR_NONE, F_DOUBLE, F_DOUBLE_OR_NONE, F_STRING } FieldKind;
+/* F_DOUBLE_OR_NAN: a double whose "None" (Python) maps to NAN rather than 0.0,
+ * used for the per-flavour munuOverTnu_e/mu/tau overrides where NAN is the
+ * "inherit munuOverTnu" sentinel (0.0 is a legitimate value there, so it cannot
+ * double as the sentinel the way F_DOUBLE_OR_NONE's 0.0 does for the MC cap). */
+typedef enum { F_BOOL, F_INT, F_INT_OR_NONE, F_DOUBLE, F_DOUBLE_OR_NONE, F_DOUBLE_OR_NAN, F_STRING } FieldKind;
 
 typedef struct {
     const char *name;
@@ -288,6 +292,9 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(h, F_DOUBLE),
     FLD(DeltaNeff, F_DOUBLE),
     FLD(munuOverTnu, F_DOUBLE),
+    FLD(munuOverTnu_e, F_DOUBLE_OR_NAN),
+    FLD(munuOverTnu_mu, F_DOUBLE_OR_NAN),
+    FLD(munuOverTnu_tau, F_DOUBLE_OR_NAN),
     FLD(decay_reverse_rates, F_BOOL),
     FLD(decay_era, F_BOOL),
     FLD(t_decay_end, F_DOUBLE),
@@ -458,6 +465,11 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->h = 0.6766;
     cfg->DeltaNeff = 0.;
     cfg->munuOverTnu = 0.;
+    /* NAN = "inherit munuOverTnu" (mirrors Python None); resolved by
+     * cpr_config_xi_nu_e/mu/tau(). */
+    cfg->munuOverTnu_e = NAN;
+    cfg->munuOverTnu_mu = NAN;
+    cfg->munuOverTnu_tau = NAN;
 
     cfg->decay_reverse_rates = 0;
     cfg->decay_era = 0;
@@ -503,6 +515,22 @@ double cpr_config_T_start_cosmo(const CPRConfig *cfg)
 double cpr_config_T_end(const CPRConfig *cfg)
 {
     return cfg->T_end_MeV * cpr_MeV_to_Kelvin();
+}
+
+/* Effective per-flavour ξ (O-9): NAN in the override field means "inherit the
+ * common munuOverTnu"; any finite value is that flavour's own ξ. Mirrors
+ * PRIMATConfig.xi_nu_e / xi_nu_mu / xi_nu_tau (None -> munuOverTnu). */
+double cpr_config_xi_nu_e(const CPRConfig *cfg)
+{
+    return isnan(cfg->munuOverTnu_e) ? cfg->munuOverTnu : cfg->munuOverTnu_e;
+}
+double cpr_config_xi_nu_mu(const CPRConfig *cfg)
+{
+    return isnan(cfg->munuOverTnu_mu) ? cfg->munuOverTnu : cfg->munuOverTnu_mu;
+}
+double cpr_config_xi_nu_tau(const CPRConfig *cfg)
+{
+    return isnan(cfg->munuOverTnu_tau) ? cfg->munuOverTnu : cfg->munuOverTnu_tau;
 }
 
 static int path_exists(const char *path)
@@ -670,6 +698,21 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             /* None → 0.0 (sentinel for "no cap"); any positive number is the cap value. */
             if (value.type == CPR_NONE) {
                 *(double *)field = 0.0;
+                return 0;
+            }
+            if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;
+            else if (value.type == CPR_INT) *(double *)field = (double)value.v.i;
+            else {
+                *errmsg = malloc(128);
+                snprintf(*errmsg, 128, "%s expects a number or None", name);
+                return 1;
+            }
+            return 0;
+        case F_DOUBLE_OR_NAN:
+            /* None → NAN (sentinel for "inherit munuOverTnu"); any number is a
+             * concrete per-flavour ξ (may be negative). */
+            if (value.type == CPR_NONE) {
+                *(double *)field = NAN;
                 return 0;
             }
             if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;

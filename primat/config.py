@@ -385,12 +385,24 @@ DEFAULT_PARAMS: dict = {
     "Omegach2":                   0.11933,  # cold dark matter density parameter Omega_c h^2 (Planck 2018)
     "h":                          0.6766,   # reduced Hubble constant h = H_0 / (100 km/s/Mpc) (Planck 2018)
     "DeltaNeff":                  0.,
-    "munuOverTnu":                0., # Reduced chemical potential xi = mu/T of neutrinos (same for all flavours, nu_e, nu_mu, nu_tau; antineutrinos carry -xi).
+    "munuOverTnu":                0., # Reduced chemical potential xi = mu/T of neutrinos (the COMMON default for all flavours, nu_e, nu_mu, nu_tau; antineutrinos carry -xi).
     # A genuine chemical potential: it shifts the n<->p weak rates (FD_nu3 in the
     # rate integrands) AND raises the neutrino energy density / Neff by
     # rho(xi) = T^4 (7pi^2/120 + xi^2/4 + xi^4/(8 pi^2)) per flavour
     # (plasma.rho_nu_chempot_excess). It is part of the weak-rate cache fingerprint.
     # munuOverTnu != 0 with incomplete_decoupling=True is physically inconsistent (the NEVO table assumes it vanishes); use incomplete_decoupling=False to explore non-zero values.
+    # Per-flavour overrides (O-9): the literature (Parthenope, PRyMordial) scans
+    # xi_e SEPARATELY from xi_mu,tau because only xi_e enters the n<->p weak rates
+    # (nu_e appears in n <-> p + e + nu_e), while all three gravitate through the
+    # neutrino energy density / Neff. Each of the three below defaults to None,
+    # meaning "inherit munuOverTnu"; set a float to give that flavour its own xi.
+    # The EFFECTIVE per-flavour values are exposed as the read-only properties
+    # cfg.xi_nu_e / cfg.xi_nu_mu / cfg.xi_nu_tau (None -> munuOverTnu). Only
+    # xi_nu_e is threaded into the weak rates (and the weak-rate cache
+    # fingerprint); all three enter Plasma.rho_nu / the Friedmann sum.
+    "munuOverTnu_e":              None, # Reduced chemical potential xi_e of nu_e; None = inherit munuOverTnu. Enters BOTH the n<->p weak rates and the energy density.
+    "munuOverTnu_mu":             None, # Reduced chemical potential xi_mu of nu_mu; None = inherit munuOverTnu. Gravitates only (energy density / Neff), no weak-rate effect.
+    "munuOverTnu_tau":            None, # Reduced chemical potential xi_tau of nu_tau; None = inherit munuOverTnu. Gravitates only (energy density / Neff), no weak-rate effect.
 
     # ---- Decay-era options -------------------------------------------------
     # decay_reverse_rates: when True, compute detailed-balance reverse rates
@@ -512,6 +524,11 @@ _KIND_ENGLISH = {"bool": "bool", "int": "int", "float": "float",
 _PARAM_TYPESPEC = {
     "amax":                  ("int", "none"),   # None = no A cutoff; else positive int
     "mc_rate_rescale_cap":   ("float", "none"),  # None = no cap; else positive number
+    # Per-flavour neutrino chemical potentials: None = inherit munuOverTnu; else
+    # any real xi (may be negative). See xi_nu_e/xi_nu_mu/xi_nu_tau properties.
+    "munuOverTnu_e":         ("float", "none"),
+    "munuOverTnu_mu":        ("float", "none"),
+    "munuOverTnu_tau":       ("float", "none"),
     # Optional filesystem-path parameters: a str path or None ("use default" /
     # "skip this output").  Mirrors _PATH_PARAMS above.
     "nevo_file":             ("str", "none"),
@@ -669,6 +686,44 @@ class PRIMATConfig:
     def is_large(self) -> bool:
         """True if using the 'large' network."""
         return self.network == "large"
+
+    # ------------------------------------------------------------------
+    # Effective per-flavour neutrino chemical potentials (O-9)
+    # ------------------------------------------------------------------
+    # ``munuOverTnu_e/mu/tau`` default to None ("inherit the common
+    # ``munuOverTnu``"); these three properties resolve None -> munuOverTnu so
+    # the rest of the code (weak rates, Plasma.rho_nu, the Friedmann sum) always
+    # reads a concrete float. Only ``xi_nu_e`` gates the n<->p weak rates (nu_e
+    # is the flavour that appears in n <-> p + e + nu_e); all three enter the
+    # neutrino energy density / Neff. When all three are left at their default
+    # None with a single ``munuOverTnu``, xi_nu_e == xi_nu_mu == xi_nu_tau ==
+    # munuOverTnu, reproducing the pre-O-9 single-xi behaviour bit-for-bit.
+    @property
+    def xi_nu_e(self) -> float:
+        """Effective reduced chemical potential xi_e = mu_{nu_e}/T of nu_e.
+
+        Returns ``munuOverTnu_e`` if the user set it, else falls back to the
+        common ``munuOverTnu``. This is the ONLY flavour that shifts the n<->p
+        weak rates (via the FD_nu3 integrand in weak_rates), so it is also the
+        one carried in the weak-rate cache fingerprint.
+        """
+        return self.munuOverTnu if self.munuOverTnu_e is None else self.munuOverTnu_e
+
+    @property
+    def xi_nu_mu(self) -> float:
+        """Effective reduced chemical potential xi_mu of nu_mu (``munuOverTnu_mu``
+        or, if None, ``munuOverTnu``). nu_mu only gravitates: it enters the
+        neutrino energy density / Neff (Plasma.rho_nu) but not the weak rates.
+        """
+        return self.munuOverTnu if self.munuOverTnu_mu is None else self.munuOverTnu_mu
+
+    @property
+    def xi_nu_tau(self) -> float:
+        """Effective reduced chemical potential xi_tau of nu_tau (``munuOverTnu_tau``
+        or, if None, ``munuOverTnu``). Like nu_mu, nu_tau only gravitates
+        (energy density / Neff), with no n<->p weak-rate effect.
+        """
+        return self.munuOverTnu if self.munuOverTnu_tau is None else self.munuOverTnu_tau
 
     # ------------------------------------------------------------------
     # Physical constants and unit-conversion factors

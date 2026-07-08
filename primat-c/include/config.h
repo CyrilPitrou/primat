@@ -222,6 +222,16 @@ typedef struct {
     double h;
     double DeltaNeff;
     double munuOverTnu;
+    /* Per-flavour neutrino chemical potentials (O-9). Each defaults to NAN,
+     * the "inherit munuOverTnu" sentinel (mirrors Python's None). Read the
+     * EFFECTIVE per-flavour value through cpr_config_xi_nu_e/mu/tau(), which
+     * resolve NAN -> munuOverTnu. Only xi_e enters the n<->p weak rates (nu_e
+     * appears in n <-> p + e + nu_e); all three enter the neutrino energy
+     * density / Neff (cpr_rho_nu_chempot_excess). Set via cpr_config_set_by_name
+     * as F_DOUBLE_OR_NAN (None -> NAN). */
+    double munuOverTnu_e;
+    double munuOverTnu_mu;
+    double munuOverTnu_tau;
 
     /* ---- decay-era options. The decay_era Decay-Time propagation is now
      * implemented (see nuclear_network.h's cpr_nuclear_network_decay_era):
@@ -280,6 +290,14 @@ double cpr_config_Mpl(const CPRConfig *cfg);
 double cpr_config_rhocOverh2(const CPRConfig *cfg);
 double cpr_config_T_start_cosmo(const CPRConfig *cfg); /* [K] */
 double cpr_config_T_end(const CPRConfig *cfg);         /* [K] */
+
+/* Effective per-flavour neutrino chemical potentials (O-9): resolve the NAN
+ * "inherit" sentinel of munuOverTnu_e/mu/tau back to the common munuOverTnu.
+ * Mirror PRIMATConfig.xi_nu_e / xi_nu_mu / xi_nu_tau. Only xi_nu_e feeds the
+ * n<->p weak rates; all three feed the neutrino energy density / Neff. */
+double cpr_config_xi_nu_e(const CPRConfig *cfg);
+double cpr_config_xi_nu_mu(const CPRConfig *cfg);
+double cpr_config_xi_nu_tau(const CPRConfig *cfg);
 
 /* Fills `cfg` with every DEFAULT_PARAMS value (string fields strdup'd so
  * the whole struct can later be freed uniformly by cpr_config_free).

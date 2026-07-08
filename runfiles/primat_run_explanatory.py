@@ -23,7 +23,7 @@ cfg = dict(
     # Every key below is shown at its DEFAULT_PARAMS default (see
     # primat/config.py for the authoritative, more detailed comments this
     # file summarises); uncomment and edit whichever you need to override.
-    # All 77 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
+    # All 80 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- general behaviour and numerical settings -------------------------
     # verbose=False,                  # print primat's own progress messages
@@ -118,7 +118,10 @@ cfg = dict(
     # Omegach2=0.11933,               # cold dark matter density Omega_c h^2 (Planck 2018)
     # h=0.6766,                       # reduced Hubble constant h = H_0 / (100 km/s/Mpc) (Planck 2018)
     # DeltaNeff=0.0,                  # extra relativistic species beyond SM neutrinos
-    # munuOverTnu=0.0,                # reduced neutrino chemical potential xi = mu/T
+    # munuOverTnu=0.0,                # reduced neutrino chemical potential xi = mu/T (common default for all 3 flavours)
+    # munuOverTnu_e=None,             # per-flavour xi_e of nu_e; None = inherit munuOverTnu (only xi_e shifts the n<->p weak rates)
+    # munuOverTnu_mu=None,            # per-flavour xi_mu of nu_mu; None = inherit munuOverTnu (gravitates only, via Neff)
+    # munuOverTnu_tau=None,           # per-flavour xi_tau of nu_tau; None = inherit munuOverTnu (gravitates only, via Neff)
 
     # ---- decay-era options --------------------------------------------------
     # decay_reverse_rates=False,      # compute detailed-balance reverse rates for radioactive decays

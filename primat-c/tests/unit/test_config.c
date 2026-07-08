@@ -165,6 +165,30 @@ int main(void)
     CHECK(cpr_config_validate(&cfg, &verr) == 0, "std_tau_n=0 is accepted (non-negative)");
     free(verr); verr = NULL;
 
+    /* ---- Per-flavour neutrino chemical potentials (O-9). Defaults are the NAN
+     * "inherit munuOverTnu" sentinel, resolved by cpr_config_xi_nu_e/mu/tau;
+     * None round-trips back to NAN, a number pins that one flavour. Mirrors
+     * PRIMATConfig.xi_nu_e / munuOverTnu_e=None. ---- */
+    CHECK(isnan(cfg.munuOverTnu_e) && isnan(cfg.munuOverTnu_mu)
+              && isnan(cfg.munuOverTnu_tau),
+          "per-flavour ξ default to the NAN inherit-sentinel");
+    cfg.munuOverTnu = 0.07;
+    CHECK(cpr_config_xi_nu_e(&cfg) == 0.07 && cpr_config_xi_nu_mu(&cfg) == 0.07
+              && cpr_config_xi_nu_tau(&cfg) == 0.07,
+          "unset per-flavour ξ inherit the common munuOverTnu");
+    CPRParam p_xe = { .type = CPR_DOUBLE, .v.d = 0.2 };
+    CHECK(cpr_config_set_by_name(&cfg, "munuOverTnu_e", p_xe, &set_err) == 0,
+          "munuOverTnu_e override is accepted");
+    CHECK(cpr_config_xi_nu_e(&cfg) == 0.2, "munuOverTnu_e override wins for ξ_e");
+    CHECK(cpr_config_xi_nu_mu(&cfg) == 0.07 && cpr_config_xi_nu_tau(&cfg) == 0.07,
+          "the other two flavours still inherit munuOverTnu");
+    CPRParam p_none = { .type = CPR_NONE };
+    CHECK(cpr_config_set_by_name(&cfg, "munuOverTnu_e", p_none, &set_err) == 0
+              && isnan(cfg.munuOverTnu_e),
+          "None resets munuOverTnu_e back to the NAN inherit-sentinel");
+    CHECK(cpr_config_xi_nu_e(&cfg) == 0.07,
+          "after reset ξ_e inherits munuOverTnu again");
+
     cpr_config_free(&cfg);
 
     if (failures) {

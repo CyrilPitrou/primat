@@ -218,6 +218,80 @@ def test_chemical_potential_neff_is_even_in_sign():
     assert (res_p['YPBBN'] - res_0['YPBBN']) * (res_m['YPBBN'] - res_0['YPBBN']) < 0.0
 
 
+_XI_COMMON = {
+    "network": "small", "numerical_precision": 1e-8,
+    "incomplete_decoupling": False, "thermal_corrections": False,
+    "spectral_distortions": False, "verbose": False,
+}
+
+
+def test_per_flavour_xi_defaults_reproduce_common_xi():
+    """O-9 back-compat: leaving ``munuOverTnu_e/mu/tau`` at their default None
+    means "inherit ``munuOverTnu``", so a single ``munuOverTnu`` and the three
+    per-flavour knobs all set to the same value must give BIT-IDENTICAL results
+    (same weak rates, same energy density). This guards the "all-flavours-equal
+    reproduces today's numbers exactly" acceptance criterion."""
+    xi = 0.05
+    res_common = PRIMAT(dict(_XI_COMMON, munuOverTnu=xi)).solve()
+    res_split = PRIMAT(dict(_XI_COMMON, munuOverTnu_e=xi,
+                            munuOverTnu_mu=xi, munuOverTnu_tau=xi)).solve()
+    for key in ("YPBBN", "DoH", "Neff"):
+        assert res_split[key] == res_common[key], key
+
+
+def test_xi_e_only_shifts_rates_like_common_xi():
+    """Only the electron-neutrino degeneracy ξ_e enters the n<->p weak rates
+    (n <-> p + e + ν_e). So ``munuOverTnu_e=ξ`` alone must reproduce the LARGE
+    YP shift of a common ``munuOverTnu=ξ`` at leading order, i.e. ΔYP ≈ -0.25 ξ_e
+    (Phys. Rep. §V; Parthenope/PRyMordial scan ξ_e for exactly this reason).
+    Its Neff shift, by contrast, is only ~1/3 of the common-ξ shift because just
+    one flavour (not three) carries the chemical-potential energy excess."""
+    xi = 0.05
+    res_base = PRIMAT(dict(_XI_COMMON)).solve()
+    res_e = PRIMAT(dict(_XI_COMMON, munuOverTnu_e=xi)).solve()
+
+    # (1) Weak-rate/YP effect: sizeable, negative, ~ -0.25 ξ_e (dominant term).
+    dyp = (res_e['YPBBN'] - res_base['YPBBN']) / res_base['YPBBN']
+    assert dyp < 0.0
+    assert 0.5 < abs(dyp) / xi < 1.5    # leading order -0.25 ξ / Y ~ 0.97 ξ
+
+    # (2) Neff shift is positive but only one flavour's worth of energy excess.
+    assert res_e['Neff'] - res_base['Neff'] > 0.0
+
+
+def test_xi_mu_only_gravitates_but_does_not_shift_rates():
+    """A ν_μ (or ν_τ) degeneracy gravitates only: it raises the neutrino energy
+    density / Neff but does NOT appear in the n<->p weak rates, so its effect on
+    YP is tiny (only the indirect Hubble-rate change) -- orders of magnitude
+    smaller than the same ξ applied to ν_e. This is the physical distinction
+    that motivates per-flavour degeneracies (O-9)."""
+    xi = 0.05
+    res_base = PRIMAT(dict(_XI_COMMON)).solve()
+    res_mu = PRIMAT(dict(_XI_COMMON, munuOverTnu_mu=xi)).solve()
+    res_e = PRIMAT(dict(_XI_COMMON, munuOverTnu_e=xi)).solve()
+
+    dyp_mu = abs(res_mu['YPBBN'] - res_base['YPBBN'])
+    dyp_e = abs(res_e['YPBBN'] - res_base['YPBBN'])
+    # ν_μ's YP effect is via the Hubble rate only -> at least ~100x weaker than
+    # ν_e's direct weak-rate effect.
+    assert dyp_mu < dyp_e / 100.0
+
+    # But ν_μ still gravitates: its Neff shift equals ν_e's (both add one
+    # flavour's chemical-potential energy excess -- rho is flavour-blind).
+    assert (res_mu['Neff'] - res_base['Neff']) == pytest.approx(
+        res_e['Neff'] - res_base['Neff'], rel=1e-6)
+
+
+def test_xi_e_sign_flips_yp_shift():
+    """The ξ_e weak-rate/YP effect is ODD in ξ_e (n/p equilibrium shift), so
+    +ξ_e and -ξ_e move YP in opposite directions -- the per-flavour analogue of
+    :func:`test_chemical_potential_neff_is_even_in_sign`'s YP check."""
+    res_0 = PRIMAT(dict(_XI_COMMON)).solve()
+    res_p = PRIMAT(dict(_XI_COMMON, munuOverTnu_e=0.03)).solve()
+    res_m = PRIMAT(dict(_XI_COMMON, munuOverTnu_e=-0.03)).solve()
+    assert (res_p['YPBBN'] - res_0['YPBBN']) * (res_m['YPBBN'] - res_0['YPBBN']) < 0.0
+
+
 def test_finite_mass_corrections_change_SD_FM_contribution():
     """Regression/sanity check that SD-FM (the finite-mass correction to
     the spectral-distortion n<->p rate channel, only active in

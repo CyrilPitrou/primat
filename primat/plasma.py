@@ -982,17 +982,30 @@ class Plasma:
     def drho_g_dT(self, Tg):
         return drho_g_dT(Tg)
 
-    def rho_nu(self, Tnu):
+    def rho_nu(self, Tnu, xi=None):
         """One-flavour (ν+ν̄) neutrino energy density [MeV⁴] at temperature Tnu,
-        including a genuine reduced chemical potential ``cfg.munuOverTnu``.
+        including a genuine reduced chemical potential ``xi`` = μ/T_ν.
 
         For c = μ/T_ν (antineutrino at −c) the per-flavour energy density is
         ρ(c) = T_ν⁴ (7π²/120 + c²/4 + c⁴/(8π²)) (even in c). With c = 0 this is
         the standard module-level :func:`rho_nu`. The chemical-potential excess
         is added here so it feeds the expansion rate (Hubble) and Neff through
         the background's ``thermo.rho_nu`` sums; it is NOT a spectral distortion.
+
+        Parameters
+        ----------
+        Tnu : float or ndarray
+            Neutrino temperature [MeV] of this flavour.
+        xi : float, optional
+            The reduced chemical potential of *this* flavour. Left as ``None``
+            (the default) it falls back to the common ``cfg.munuOverTnu`` — this
+            is the historical single-ξ behaviour, kept so existing callers that
+            don't distinguish flavours are unchanged. Per-flavour callers (O-9;
+            e.g. :meth:`StandardBackground.Hubble`) pass ``cfg.xi_nu_e`` /
+            ``cfg.xi_nu_mu`` / ``cfg.xi_nu_tau`` explicitly so each of ν_e, ν_μ,
+            ν_τ contributes its own degeneracy to the gravitating energy.
         """
-        c = self._cfg.munuOverTnu
+        c = self._cfg.munuOverTnu if xi is None else xi
         base = rho_nu(Tnu)
         if c != 0.:
             base = base + rho_nu_chempot_excess(Tnu, c)

@@ -83,9 +83,12 @@ _FORM_METADATA = {
     ),
     "munuOverTnu": (
         "Cosmology", r"$\xi_\nu = \mu_\nu/T_\nu$",
-        "Reduced neutrino chemical potential (same for all three flavours). "
-        "Non-zero values are physically consistent only with "
-        "incomplete_decoupling=False, since the NEVO table assumes it vanishes.",
+        "Reduced neutrino chemical potential (the common default for all three "
+        "flavours). Non-zero values are physically consistent only with "
+        "incomplete_decoupling=False, since the NEVO table assumes it vanishes. "
+        "For per-flavour scans (only xi_e shifts the n<->p weak rates, while "
+        "xi_mu/xi_tau gravitate) set munuOverTnu_e / munuOverTnu_mu / "
+        "munuOverTnu_tau from a script or the CLI; they default to this value.",
     ),
 
     # ---- Nuclear reactions ---------------------------------------------------

@@ -78,9 +78,13 @@ __all__ = ["NeutrinoHistory", "NEVOTable", "InstantaneousDecoupling",
 # (matches the weak_rates / PRIMAT exp_cutoff convention).
 _EXP_CUT = 3e2
 
-# Number of neutrino flavours sharing the distortion / chemical potential.
-# munuOverTnu and the y/gray distortions are applied identically to nu_e,
-# nu_mu, nu_tau, so the extra energy density they carry is summed over all three.
+# Number of neutrino flavours sharing the distortion. The y/gray spectral
+# distortions are applied identically to nu_e, nu_mu, nu_tau, so the extra
+# energy density they carry (rho_nu_SD) is summed over all three via _N_NU.
+# NOTE (O-9): a genuine chemical potential is NOT necessarily flavour-common
+# any more -- munuOverTnu_e/mu/tau can differ (cfg.xi_nu_e/mu/tau). Its energy
+# excess is therefore summed per-flavour in the background (Plasma.rho_nu with
+# each flavour's own xi), not folded into this shared _N_NU factor.
 _N_NU = 3.0
 
 # Standard single-particle Fermi-Dirac integral ∫₀^∞ y³ f_FD dy (zero μ).
@@ -494,7 +498,11 @@ class AnalyticDistortion(NeutrinoHistory):
         cfg = self.cfg
         # Cache the three continuous knobs as instance state so every helper
         # below can read them without re-deriving from cfg.
-        self._xi_nu  = cfg.munuOverTnu   # reduced chemical potential ξ = μ/T_ν
+        # Effective electron-neutrino ξ_e (O-9): the y/gray distortion sits on
+        # the ν_e Fermi-Dirac in the n<->p weak rates, so the relevant chemical
+        # potential is ξ_e (cfg.xi_nu_e = munuOverTnu_e, or munuOverTnu if None),
+        # not the ν_μ/ν_τ ones.
+        self._xi_nu  = cfg.xi_nu_e        # reduced chemical potential ξ_e = μ_{ν_e}/T_ν
         self._y_sz   = cfg.y_SZ
         self._y_gray = cfg.y_gray
 

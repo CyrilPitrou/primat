@@ -1182,7 +1182,11 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     double me = g_const.me * g_const.MeV;
     double mn = g_const.mn * g_const.MeV;
     double mp = g_const.mp * g_const.MeV;
-    RateCtx ctx = { cfg, nh, me, mn, mp, mn - mp, cfg->munuOverTnu, g_const.gA, cpr_deltakappa() };
+    /* Only the electron-neutrino chemical potential enters the n<->p rates
+     * (n <-> p + e + nu_e), so use the effective ξ_e (cpr_config_xi_nu_e:
+     * munuOverTnu_e, or munuOverTnu if that override is unset). Mirrors the
+     * Python _RateContext(xi_nu=cfg.xi_nu_e). */
+    RateCtx ctx = { cfg, nh, me, mn, mp, mn - mp, cpr_config_xi_nu_e(cfg), g_const.gA, cpr_deltakappa() };
 
     double T_end = cpr_config_T_end(cfg);
     double T_start = cpr_T_start(); /* fixed 10 MeV era boundary, NOT T_start_cosmo */

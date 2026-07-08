@@ -268,12 +268,13 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
      * -xi). Mirrors primat Plasma.rho_nu. It also shifts the n<->p weak rates
      * (handled in weak_rates.c via the FD_nu3 integrand). NOT a spectral
      * distortion (that's rho_nu_SD just below). */
-    if (cfg->munuOverTnu != 0.0) {
-        double xi = cfg->munuOverTnu;
-        rho_3nu += cpr_rho_nu_chempot_excess(Tnue, xi)
-                 + cpr_rho_nu_chempot_excess(Tnumu, xi)
-                 + cpr_rho_nu_chempot_excess(Tnutau, xi);
-    }
+    /* Per-flavour ξ (O-9): each flavour carries its own effective chemical
+     * potential (cpr_config_xi_nu_e/mu/tau; each = munuOverTnu unless that
+     * flavour was overridden). The excess is 0 when ξ=0, so summing
+     * unconditionally is safe and matches Python background.Hubble. */
+    rho_3nu += cpr_rho_nu_chempot_excess(Tnue,   cpr_config_xi_nu_e(cfg))
+             + cpr_rho_nu_chempot_excess(Tnumu,  cpr_config_xi_nu_mu(cfg))
+             + cpr_rho_nu_chempot_excess(Tnutau, cpr_config_xi_nu_tau(cfg));
     /* Analytic y/gray-type spectral-distortion extra energy density
      * (Python's self.rho_nu_SD term, AnalyticDistortion-only -- the
      * NEVO-table distortion needs no such correction, see
@@ -1099,12 +1100,10 @@ int cpr_bg_rho_nu_total_final(const CPRBackground *bg, double *Tg_final, double 
          * included here too so Neff reflects it. The CustomBackground branch
          * below derives rho_nu from rho_tot - rho_plasma, so it already picks
          * this up through cpr_bg_hubble. */
-        if (bg->cfg->munuOverTnu != 0.0) {
-            double xi = bg->cfg->munuOverTnu;
-            *rho_nu_tot_final += cpr_rho_nu_chempot_excess(bg->Tnue_vec[i], xi)
-                               + cpr_rho_nu_chempot_excess(bg->Tnumu_vec[i], xi)
-                               + cpr_rho_nu_chempot_excess(bg->Tnutau_vec[i], xi);
-        }
+        /* Per-flavour ξ (O-9), matching cpr_bg_Hubble. */
+        *rho_nu_tot_final += cpr_rho_nu_chempot_excess(bg->Tnue_vec[i],   cpr_config_xi_nu_e(bg->cfg))
+                           + cpr_rho_nu_chempot_excess(bg->Tnumu_vec[i],  cpr_config_xi_nu_mu(bg->cfg))
+                           + cpr_rho_nu_chempot_excess(bg->Tnutau_vec[i], cpr_config_xi_nu_tau(bg->cfg));
         /* Analytic y/gray distortion's extra energy density (see
          * cpr_bg_hubble). bg->Tnu_vec[i] is exactly the energy-weighted
          * average flavour temperature, mirroring Python's self.Tnu_vec. */
@@ -1288,13 +1287,11 @@ int cpr_bg_write_time_evolution(const CPRBackground *bg, const char *path, int n
                     double Tnu_avg = pow((pow(Tnue, 4.0) + pow(Tnumu, 4.0) + pow(Tnutau, 4.0)) / 3.0, 0.25);
                     rho_nu_tot += cpr_nu_rho_nu_SD(&bg->nh, Tnu_avg);
                 }
-                /* Chemical potential contribution */
-                if (cfg->munuOverTnu != 0.0) {
-                    double xi = cfg->munuOverTnu;
-                    rho_nu_tot += cpr_rho_nu_chempot_excess(Tnue, xi);
-                    rho_nu_tot += cpr_rho_nu_chempot_excess(Tnumu, xi);
-                    rho_nu_tot += cpr_rho_nu_chempot_excess(Tnutau, xi);
-                }
+                /* Per-flavour chemical-potential contribution (O-9), matching
+                 * cpr_bg_Hubble / Python _background_columns. */
+                rho_nu_tot += cpr_rho_nu_chempot_excess(Tnue,   cpr_config_xi_nu_e(cfg));
+                rho_nu_tot += cpr_rho_nu_chempot_excess(Tnumu,  cpr_config_xi_nu_mu(cfg));
+                rho_nu_tot += cpr_rho_nu_chempot_excess(Tnutau, cpr_config_xi_nu_tau(cfg));
 
                 data[i * n_cols + col] = rho_plasma;
                 col++;

@@ -55,7 +55,13 @@ WEAK_RATE_FORMAT_VERSION = 1
 _WEAK_RATE_BG_FIELDS = [
     "radiative_corrections",
     "finite_mass_corrections",
-    "munuOverTnu",
+    # NOTE: the neutrino chemical potential enters the weak-rate fingerprint via
+    # the EFFECTIVE ξ_e (cfg.xi_nu_e), added under the historical key name
+    # "munuOverTnu" in _weak_rate_fingerprint below -- NOT listed here. This keeps
+    # the default-run hash byte-identical to the pre-O-9 fingerprint (xi_nu_e ==
+    # munuOverTnu whenever munuOverTnu_e is unset), so the shipped data/weak/
+    # caches stay valid, while a per-flavour munuOverTnu_e override correctly
+    # produces a distinct cache. ξ_μ/ξ_τ gravitate only and never enter here.
     "QED_corrections",
     "incomplete_decoupling",
     "spectral_distortions",
@@ -182,5 +188,13 @@ def _weak_rate_fingerprint(cfg):
           "finite_mass_corrections": cfg.finite_mass_corrections}
     for key in _WEAK_RATE_BG_FIELDS:
         fp[key] = getattr(cfg, key)
+    # Neutrino chemical potential in the weak rates: only the electron-neutrino
+    # ξ_e matters (n <-> p + e + nu_e). Store the EFFECTIVE ξ_e (per-flavour
+    # override munuOverTnu_e, else the common munuOverTnu) under the historical
+    # "munuOverTnu" key so a default run (munuOverTnu_e unset) hashes exactly as
+    # before O-9 and keeps hitting the shipped data/weak/ caches; the C backend
+    # mirrors this (cpr_weak_rate_fingerprint, cache.c). ξ_μ/ξ_τ are omitted:
+    # they gravitate only and do not touch the weak rates.
+    fp["munuOverTnu"] = cfg.xi_nu_e
     return fp
 

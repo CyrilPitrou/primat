@@ -382,7 +382,9 @@ class _RateContext:
     me, mn, mp, Q : float
         Electron/neutron/proton masses and Q = mn - mp, in MeV.
     xi_nu : float
-        Reduced neutrino chemical potential mu_nu/T_nu (cfg.munuOverTnu).
+        Reduced electron-neutrino chemical potential mu_{nu_e}/T_nu, i.e. the
+        effective xi_e (cfg.xi_nu_e = cfg.munuOverTnu_e, or cfg.munuOverTnu if
+        that per-flavour override is None). Only nu_e enters the n<->p rates.
     T_nuOverT : callable
         Interpolant T_nu(T_gamma)/T_gamma as a function of T_gamma [K].
     gA, deltakappa : float
@@ -1420,7 +1422,11 @@ def _build_rate_context(Tvec, cfg):
 
     integrands._setup_fd_impls(cfg.numba_installed)
 
-    return _RateContext(cfg=cfg, me=me, mn=mn, mp=mp, Q=Q, xi_nu=cfg.munuOverTnu,
+    # Only the electron-neutrino chemical potential enters the n<->p weak rates
+    # (the reaction is n <-> p + e + nu_e), so xi_nu here is the EFFECTIVE
+    # xi_e (cfg.munuOverTnu_e, or cfg.munuOverTnu if that flavour override is
+    # left at None). xi_mu/xi_tau gravitate only and never reach this integrand.
+    return _RateContext(cfg=cfg, me=me, mn=mn, mp=mp, Q=Q, xi_nu=cfg.xi_nu_e,
                         T_nuOverT=T_nuOverT, gA=cfg.gA, deltakappa=cfg.deltakappa,
                         my_dir=cfg._resolved_data_dir)
 

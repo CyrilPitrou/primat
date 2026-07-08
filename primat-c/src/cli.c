@@ -97,6 +97,7 @@ static void usage(const char *prog)
     printf("usage: %s [-h] [--credits] [--version]\n"
            "          [--Omegabh2 VALUE] [--DeltaNeff VALUE] [--network NAME]\n"
            "          [--amax A] [--numerical_precision RTOL] [--munuOverTnu XI]\n"
+           "          [--munuOverTnu_e XI_E] [--munuOverTnu_mu XI_MU] [--munuOverTnu_tau XI_TAU]\n"
            "          [--output_file FILE] [--output_final_file FILE]\n"
            "          [--output_background_file FILE] [--output_mc_file_prefix PREFIX]\n"
            "          [--QED_corrections | --no-QED_corrections]\n"
@@ -137,8 +138,17 @@ static void usage(const char *prog)
            "  --numerical_precision RTOL\n"
            "                        Relative tolerance passed to the ODE solver\n"
            "                        (default: 1e-7).\n"
-           "  --munuOverTnu XI      Reduced neutrino chemical potential mu/T, same\n"
-           "                        for all flavours (default: 0).\n"
+           "  --munuOverTnu XI      Reduced neutrino chemical potential mu/T, the\n"
+           "                        common default for all flavours (default: 0).\n"
+           "  --munuOverTnu_e XI_E  Per-flavour ξ of nu_e; overrides --munuOverTnu\n"
+           "                        for the electron neutrino, the only flavour that\n"
+           "                        shifts the n<->p weak rates. (default: inherit).\n"
+           "  --munuOverTnu_mu XI_MU\n"
+           "                        Per-flavour ξ of nu_mu (gravitates only; default:\n"
+           "                        inherit --munuOverTnu).\n"
+           "  --munuOverTnu_tau XI_TAU\n"
+           "                        Per-flavour ξ of nu_tau (gravitates only; default:\n"
+           "                        inherit --munuOverTnu).\n"
            "  --output_file FILE    Write the full time-evolution TSV to FILE when\n"
            "                        --output_time_evolution is enabled.\n"
            "  --output_final_file FILE\n"
@@ -778,6 +788,15 @@ int cpr_cli_main(int argc, char **argv)
         } else if (strcmp(a, "--munuOverTnu") == 0 && has_val) {
             CPRParam p = cpr_parse_literal(argv[++i]);
             apply_param(&cfg, &cp, "munuOverTnu", p, "--munuOverTnu");
+        } else if (strcmp(a, "--munuOverTnu_e") == 0 && has_val) {
+            CPRParam p = cpr_parse_literal(argv[++i]);
+            apply_param(&cfg, &cp, "munuOverTnu_e", p, "--munuOverTnu_e");
+        } else if (strcmp(a, "--munuOverTnu_mu") == 0 && has_val) {
+            CPRParam p = cpr_parse_literal(argv[++i]);
+            apply_param(&cfg, &cp, "munuOverTnu_mu", p, "--munuOverTnu_mu");
+        } else if (strcmp(a, "--munuOverTnu_tau") == 0 && has_val) {
+            CPRParam p = cpr_parse_literal(argv[++i]);
+            apply_param(&cfg, &cp, "munuOverTnu_tau", p, "--munuOverTnu_tau");
         } else if (strcmp(a, "--verbose") == 0) {
             CPRParam p = {CPR_BOOL, .v.b = 1};
             apply_param(&cfg, &cp, "verbose", p, "--verbose");

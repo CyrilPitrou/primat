@@ -569,7 +569,13 @@ class StandardBackground(Background):
         cfg     = self.cfg
         thermo  = self.plasma
         rho_pl  = thermo.rho_g(Tg) + thermo.rho_e(Tg) - thermo.PQEDofT(Tg) + Tg * thermo.dPQEDdT(Tg)
-        rho_3nu = thermo.rho_nu(Tnue) + thermo.rho_nu(Tnumu) + thermo.rho_nu(Tnutau)
+        # Per-flavour neutrino energy density (O-9): each of ν_e, ν_μ, ν_τ
+        # carries its own reduced chemical potential ξ (cfg.xi_nu_e/mu/tau,
+        # each defaulting to cfg.munuOverTnu). All three gravitate; only ξ_e
+        # also shifts the weak rates (handled in weak_rates, not here).
+        rho_3nu = (thermo.rho_nu(Tnue,   cfg.xi_nu_e)
+                   + thermo.rho_nu(Tnumu,  cfg.xi_nu_mu)
+                   + thermo.rho_nu(Tnutau, cfg.xi_nu_tau))
         rho_tot = rho_pl + rho_3nu + thermo.rho_nu_extra(Tg)
         for rho_extra in self.extra_rho:
             rho_tot += rho_extra(Tg)
@@ -923,8 +929,13 @@ class StandardBackground(Background):
         Tnumu_f  = self.Tnumu_vec[-1]
         Tnutau_f = self.Tnutau_vec[-1]
 
-        rho_nu_tot_f = (thermo.rho_nu(Tnue_f) + thermo.rho_nu(Tnumu_f)
-                        + thermo.rho_nu(Tnutau_f) + thermo.rho_nu_extra(Tg_f))
+        cfg = self.cfg
+        # Per-flavour ξ (O-9), matching Hubble(): each flavour contributes its
+        # own chemical-potential excess to the final-time neutrino energy.
+        rho_nu_tot_f = (thermo.rho_nu(Tnue_f,   cfg.xi_nu_e)
+                        + thermo.rho_nu(Tnumu_f,  cfg.xi_nu_mu)
+                        + thermo.rho_nu(Tnutau_f, cfg.xi_nu_tau)
+                        + thermo.rho_nu_extra(Tg_f))
 
         if self.rho_nu_SD is not None:
             # Energy-weighted average T_ν at the final time (self.Tnu_vec is
@@ -1018,8 +1029,10 @@ class StandardBackground(Background):
 
         rho_plasma = (thermo.rho_g(T_out) + rho_e_out
                       - PQEDofT_out + T_out * dPQEDdT_out)
-        rho_nu_tot = (thermo.rho_nu(Tnue_out) + thermo.rho_nu(Tnumu_out)
-                      + thermo.rho_nu(Tnutau_out) + rho_nu_extra_out)
+        rho_nu_tot = (thermo.rho_nu(Tnue_out,   cfg.xi_nu_e)
+                      + thermo.rho_nu(Tnumu_out,  cfg.xi_nu_mu)
+                      + thermo.rho_nu(Tnutau_out, cfg.xi_nu_tau)
+                      + rho_nu_extra_out)
         if self.rho_nu_SD is not None:
             Tnu_avg_out = ((Tnue_out**4 + Tnumu_out**4 + Tnutau_out**4) / 3.)**0.25
             rho_nu_tot = rho_nu_tot + self.rho_nu_SD(Tnu_avg_out)

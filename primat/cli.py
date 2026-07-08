@@ -204,8 +204,24 @@ def _build_parser():
     )
     parser.add_argument(
         "--munuOverTnu", type=float, default=None, metavar="XI",
-        help="Reduced neutrino chemical potential mu/T, same for all flavours "
-             "(PRIMATConfig default: 0).",
+        help="Reduced neutrino chemical potential mu/T, the common default for "
+             "all flavours (PRIMATConfig default: 0).",
+    )
+    parser.add_argument(
+        "--munuOverTnu_e", type=float, default=None, metavar="XI_E",
+        help="Per-flavour reduced chemical potential of nu_e; overrides "
+             "--munuOverTnu for the electron neutrino (which alone shifts the "
+             "n<->p weak rates). Default: inherit --munuOverTnu.",
+    )
+    parser.add_argument(
+        "--munuOverTnu_mu", type=float, default=None, metavar="XI_MU",
+        help="Per-flavour reduced chemical potential of nu_mu (gravitates only). "
+             "Default: inherit --munuOverTnu.",
+    )
+    parser.add_argument(
+        "--munuOverTnu_tau", type=float, default=None, metavar="XI_TAU",
+        help="Per-flavour reduced chemical potential of nu_tau (gravitates only). "
+             "Default: inherit --munuOverTnu.",
     )
     parser.add_argument(
         "--output_file", default=None, metavar="FILE",
@@ -378,7 +394,8 @@ def main(argv=None):
     params = {}
     for key in (
         "Omegabh2", "DeltaNeff", "network", "amax", "numerical_precision",
-        "munuOverTnu", "QED_corrections", "nuclear_qed_corrections",
+        "munuOverTnu", "munuOverTnu_e", "munuOverTnu_mu", "munuOverTnu_tau",
+        "QED_corrections", "nuclear_qed_corrections",
         "radiative_corrections", "finite_mass_corrections", "thermal_corrections",
         "spectral_distortions", "output_time_evolution", "output_final_result",
         "output_background_evolution", "output_mc_samples",
