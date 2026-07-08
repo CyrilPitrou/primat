@@ -27,7 +27,7 @@ import streamlit as st
 from primat import backend
 from primat import plasma as primat_thermo
 from primat.background import StandardBackground, CustomBackground
-from primat.credits import gui_credits_text
+from primat.credits import gui_credits_text, CITATION_BIBTEX
 from primat.config import PRIMATConfig
 from primat.gui import panels
 from primat.gui.params_form import render_sidebar_form
@@ -251,7 +251,22 @@ def _quick_mc(params_items, num_mc, run):
     custom_network = json.loads(cn_json) if cn_json else None
     mc_params = {k: v for k, v in params_items if k != "custom_network"}
     quantities = [q for q in _RATIO_FORMAT if q in run.results]
-    status.markdown("### Running BBN error estimation…")
+    # Mirror the CLI's own "[MC] N samples (M reused)" counter (see
+    # primat.backend's show_progress stderr output) as best a single
+    # blocking run_mc() call allows: run_mc itself has no incremental
+    # callback (the C loop and the Python joblib loop both run to
+    # completion in one call, see backend.py's module docstring), so this
+    # cannot tick up sample-by-sample -- but stating the target count and
+    # how many are already cached from a previous identical request is a
+    # meaningful upfront signal rather than a bare "please wait" spinner.
+    n_reused = min(len(prev[quantities[0]].values), num_mc) if (prev is not None and quantities) else 0
+    if n_reused:
+        status.markdown(
+            f"### Running BBN error estimation… "
+            f"({num_mc} samples, {n_reused} reused from the previous request)"
+        )
+    else:
+        status.markdown(f"### Running BBN error estimation… ({num_mc} samples)")
     mc = backend.run_mc(num_mc, quantities,
                          params=mc_params, force_backend=_GUI_BACKEND,
                          seed=0, prev=prev, custom_network=custom_network)
@@ -534,17 +549,40 @@ def main():
         except (ValueError, RuntimeError) as exc:
             st.error(f"Could not build the background for these downloads: {exc}")
             background = None
-        panels.render_downloads_panel(run, mc=mc, background=background)
+        panels.render_downloads_panel(run, mc=mc, background=background,
+                                       run_params=stored_params)
 
 
 @st.dialog("Credits", width="large")
 def _render_credits_dialog():
-    """Popup showing the project attribution and citation text."""
+    """Popup showing the project attribution and citation text.
+
+    The BibTeX entry is shown in an ``st.code`` block rather than plain
+    ``st.markdown`` text specifically because Streamlit renders a
+    click-to-copy icon on code blocks -- letting a user grab a ready-made
+    reference without hand-selecting text (same BibTeX as
+    ``primat.__citation__``/``primat --credits``, see ``primat/credits.py``).
+    """
     st.markdown(gui_credits_text())
+    st.markdown("**Citation (BibTeX)**")
+    st.code(CITATION_BIBTEX, language="bibtex")
 
 
 def _render_footer():
-    """Sidebar footer reduced to a single Credits button."""
+    """Sidebar footer: backend status line plus a single Credits button.
+
+    The backend line answers "which engine actually ran my last solve"
+    without needing to squint at the small caption above the results tab
+    (``app.main``'s ``perf_parts``) -- e.g. useful right after launching
+    ``primat-gui`` and before clicking "Run BBN" at all, when that caption
+    doesn't exist yet.
+    """
+    backend_label = (
+        "C (fast)" if _GUI_BACKEND == "c" else
+        "Python" if _GUI_BACKEND == "python" else
+        "C (fast)" if backend.HAS_C_BACKEND else "Python (C extension unavailable)"
+    )
+    st.sidebar.caption(f"Backend: {backend_label}")
     if st.sidebar.button("Credits", use_container_width=True):
         _render_credits_dialog()
 

@@ -402,3 +402,108 @@ def test_spectral_distortions_forces_incomplete_decoupling_on():
 
     assert not at.exception
     assert not at.error
+
+
+def test_sidebar_shows_backend_status():
+    """S-15: the sidebar footer names which backend (C or Python) is active,
+    visible even before "Run BBN" is ever clicked (``app._render_footer``)."""
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    [caption] = [c.value for c in at.sidebar.caption if c.value.startswith("Backend:")]
+    assert caption in ("Backend: C (fast)", "Backend: Python (C extension unavailable)")
+
+
+def test_credits_dialog_shows_citation_bibtex():
+    """S-15: the Credits popup includes a "Copy citation" affordance -- an
+    ``st.code`` block (which Streamlit renders with a click-to-copy icon)
+    holding the same BibTeX entry as ``primat.__citation__``."""
+    from primat.credits import CITATION_BIBTEX
+
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    [credits_button] = [b for b in at.sidebar.button if b.label == "Credits"]
+    credits_button.click()
+    at.run(timeout=60)
+    assert not at.exception
+    [code_block] = [c.value for c in at.code]
+    assert code_block == CITATION_BIBTEX
+
+
+def test_downloads_panel_offers_gui_export():
+    """S-15: "Export the full run" -- the Output tab offers a "Download
+    params as .py / .ini" pair reproducing the actual solved configuration
+    (``export_params.python_export_text``/``ini_export_text`` via
+    ``panels.render_downloads_panel``'s ``run_params``).
+
+    AppTest's ``download_button`` proto only carries a mock media-storage
+    URL, not the bytes themselves (see ``test_gui_custom_network.py``'s
+    "Download zip is self-contained" test docstring for why), so this only
+    checks the buttons render; :func:`test_gui_exported_python_script_reproduces_run`
+    below exercises ``export_params`` directly with the session's own params
+    for the actual content check.
+    """
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    [omegabh2] = [ni for ni in at.sidebar.number_input if ni.key == "Omegabh2"]
+    omegabh2.set_value(0.0225)
+    at.run(timeout=60)
+    _run_bbn(at)
+    assert not at.exception
+
+    assert _download_button(at, "primat_gui_run.py") is not None
+    assert _download_button(at, "run_basic_from_gui.ini") is not None
+
+
+def test_gui_exported_python_script_reproduces_run():
+    """The exported Python script is not just well-formed text -- ``exec``ing
+    it (with ``run_bbn`` monkeypatched out to avoid a second solve) actually
+    builds the same ``cfg`` dict the GUI just ran, closing the loop on
+    S-15's "exported .py file runs standalone and reproduces the GUI
+    result" acceptance criterion without paying for a second full BBN
+    solve in the test suite. Uses ``export_params.python_export_text``
+    directly on the session's own stored params -- the same dict
+    ``panels.render_downloads_panel`` passes it as ``run_params`` -- since
+    the rendered download button's bytes are not retrievable through
+    AppTest (see :func:`test_downloads_panel_offers_gui_export`).
+    """
+    import unittest.mock
+
+    from primat.gui.export_params import python_export_text
+    from primat.gui.session_keys import SessionKeys
+
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    [omegabh2] = [ni for ni in at.sidebar.number_input if ni.key == "Omegabh2"]
+    omegabh2.set_value(0.0225)
+    at.run(timeout=60)
+    _run_bbn(at)
+    assert not at.exception
+
+    stored_params = at.session_state[SessionKeys.params]
+    script = python_export_text(
+        {k: v for k, v in stored_params.items() if k != "custom_network"})
+    assert "Omegabh2=0.0225" in script
+
+    captured = {}
+
+    def fake_run_bbn(cfg, force_backend="auto"):
+        captured["cfg"] = cfg
+        return {"Neff": 0.0, "YPBBN": 0.0, "DoH": 0.0}
+
+    with unittest.mock.patch("primat.backend.run_bbn", fake_run_bbn):
+        exec(compile(script, "primat_gui_run.py", "exec"), {})
+    assert captured["cfg"]["Omegabh2"] == 0.0225
+
+
+def test_export_params_ini_text_round_trips_values():
+    """``export_params.ini_export_text`` matches ``cpr_parse_literal``'s
+    (``primat-c/src/config.c``) expected value syntax: lower-case
+    ``true``/``false`` for bools, double-quoted strings, and a "no override"
+    comment when ``params`` is empty."""
+    from primat.gui.export_params import ini_export_text
+
+    text = ini_export_text({"verbose": True, "network": "large", "Omegabh2": 0.0225})
+    assert "verbose = true" in text
+    assert 'network = "large"' in text
+    assert "Omegabh2 = 0.0225" in text
+    assert "every parameter left at its DEFAULT_PARAMS default" in ini_export_text({})
