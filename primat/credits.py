@@ -41,6 +41,25 @@ _CREDITS_CLI_SUFFIX = (
     "use it."
 )
 
+# BibTeX entry for the primary publication, exposed as `primat.__citation__`
+# (see primat/__init__.py) and printed by `primat --credits` so users can
+# copy-paste a ready-made reference instead of hand-formatting one from the
+# arXiv/DOI links quoted elsewhere in this module.
+CITATION_BIBTEX = (
+    "@article{Pitrou:2018cgg,\n"
+    '    author = "Pitrou, Cyril and Coc, Alain and Uzan, Jean-Philippe and Vangioni, Elisabeth",\n'
+    '    title = "{Precision big bang nucleosynthesis with improved Helium-4 predictions}",\n'
+    '    eprint = "1801.08023",\n'
+    '    archivePrefix = "arXiv",\n'
+    '    primaryClass = "astro-ph.CO",\n'
+    '    doi = "10.1016/j.physrep.2018.04.005",\n'
+    '    journal = "Phys. Rept.",\n'
+    '    volume = "754",\n'
+    '    pages = "1--66",\n'
+    '    year = "2018"\n'
+    "}"
+)
+
 
 def gui_credits_text():
     """Return the full credits text shown by the Streamlit GUI.
@@ -78,4 +97,4 @@ def cli_credits_text():
         >>> "pip install primat" in cli_credits_text()
         False
     """
-    return _CREDITS_CORE + _CREDITS_CLI_SUFFIX
+    return _CREDITS_CORE + _CREDITS_CLI_SUFFIX + "\n\n" + CITATION_BIBTEX
