@@ -8,6 +8,7 @@ Task-oriented recipes for common primat workflows.
 networks
 custom-networks
 rate-variation-mc
+sensitivity
 weak-rate-cache
 output
 data-overlays

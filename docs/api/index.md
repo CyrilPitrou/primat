@@ -12,5 +12,6 @@ backend
 config
 evolution
 plotting
+sensitivity
 weak_rates
 ```

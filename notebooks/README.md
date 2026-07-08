@@ -36,7 +36,7 @@ install cell (`importlib.util.find_spec("primat") is None`) that
 | Notebook | Description |
 |----------|-------------|
 | `MonteCarloRates.ipynb` | **Full MC uncertainty budget**: draws nuclear rates, τ_n, and Ω_b h² simultaneously; shows histograms and a corner plot of the joint distribution of all observables. |
-| `Sensitivity.ipynb` | **Sensitivity tables**: computes the logarithmic derivative ∂ ln(observable) / ∂ ln(parameter) for each of the 12 nuclear rates, τ_n, G_N, Ω_b h², and ΔNeff. Results are displayed as formatted tables and a heat-map. |
+| `Sensitivity.ipynb` | **Sensitivity tables**: a thin demo of the `primat.sensitivity.sensitivity_table` API, computing the logarithmic derivative ∂ ln(observable) / ∂ ln(parameter) for each of the 12 nuclear rates, τ_n, G_N, Ω_b h², and ΔNeff. Results are displayed as formatted tables and a heat-map. |
 
 ---
 

@@ -22,6 +22,7 @@ from .credits import CITATION_BIBTEX as __citation__
 # import eagerly here since `backend.py` only imports `.main` lazily inside
 # its functions, so there is no import cycle.
 from .backend import run_bbn, run_mc, HAS_C_BACKEND
+from .sensitivity import sensitivity_table, SensitivityTable, SensTarget
 
 # Single source of truth for the version is pyproject.toml; we read it back
 # from the installed distribution metadata so the number is never duplicated.
@@ -34,4 +35,5 @@ except PackageNotFoundError:
 
 __all__ = ["PRIMAT", "mc_uncertainty", "Background", "StandardBackground",
            "NuclearNetwork", "nuclide_latex", "__version__", "__citation__",
-           "run_bbn", "run_mc", "HAS_C_BACKEND"]
+           "run_bbn", "run_mc", "HAS_C_BACKEND",
+           "sensitivity_table", "SensitivityTable", "SensTarget"]

@@ -12,6 +12,11 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Added
+- `primat.sensitivity.sensitivity_table` — a one-call API returning the
+  logarithmic-sensitivity matrix ∂ln(observable)/∂ln(parameter) as a
+  `SensitivityTable` dataclass (`.to_markdown()`/`.to_dataframe()` views),
+  with `notebooks/Sensitivity.ipynb` reduced to a thin demo and a new
+  *How-to → Sensitivity tables* docs page (O-10).
 - `primat --list-params` and `--version` (with backend build status) for CLI
   discoverability (S-11).
 - Type hints across the public API, `py.typed` marker, and a lenient mypy CI
