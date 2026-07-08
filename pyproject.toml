@@ -54,6 +54,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/CyrilPitrou/primat"
+Documentation = "https://primat.readthedocs.io"
 Repository = "https://github.com/CyrilPitrou/primat"
 Issues = "https://github.com/CyrilPitrou/primat/issues"
 Changelog = "https://github.com/CyrilPitrou/primat/commits/master/"
@@ -85,6 +86,26 @@ notebooks = [
     "matplotlib",
     "pandas",
     "papermill",
+]
+# Documentation site (Sphinx). Builds the HTML docs under ``docs/`` -- see
+# ``docs/conf.py`` for the stack rationale. ``sphinx-build -W`` is run in CI
+# and on Read the Docs, so keep these pins in step with what conf.py loads.
+docs = [
+    # Upper-pin on Sphinx: myst-parser/myst-nb lag new major Sphinx releases by
+    # a few months (Sphinx 9 broke a transform myst-parser removes at setup).
+    # Keep this at ``<9`` until myst-nb publishes Sphinx-9 support.
+    "sphinx>=7,<9",
+    "furo",
+    "myst-parser>=2",
+    "myst-nb>=1",
+    # Required by the MyST ``linkify`` extension (bare-URL autolinking) enabled
+    # in docs/conf.py's ``myst_enable_extensions``.
+    "linkify-it-py",
+    "sphinx-copybutton",
+    "sphinx-argparse",
+    # Live-reload local preview (``make docs-live``): rebuilds and refreshes the
+    # browser on every save. Not needed by CI/Read the Docs, only for local dev.
+    "sphinx-autobuild",
 ]
 gui = [
     "streamlit",

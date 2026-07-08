@@ -1,5 +1,7 @@
 # primat
 
+[![Documentation](https://readthedocs.org/projects/primat/badge/?version=latest)](https://primat.readthedocs.io/en/latest/?badge=latest)
+
 A precise Big Bang Nucleosynthesis (BBN) solver. It integrates coupled ODEs
 for the cosmological background (photon/neutrino temperatures, scale factor)
 and a nuclear reaction network to predict primordial abundances of H, D,

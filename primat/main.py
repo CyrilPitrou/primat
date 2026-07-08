@@ -117,7 +117,8 @@ class PRIMAT:
         and is appended automatically -- callers do not need to include it
         here.
 
-        Example: a constant extra radiation density of dRho [MeV^4],
+        Example: a constant extra radiation density of dRho [MeV^4]::
+
             >>> PRIMAT({"network": "small"}, extra_rho=[lambda Tg: dRho])
 
         Ignored (with a warning) if ``background`` is supplied: a caller
@@ -145,7 +146,8 @@ class PRIMAT:
         ``background`` together with ``params`` or ``extra_rho`` emits a
         warning, and the supplied ``background`` instance wins.
 
-        Example: drive the network with a hand-built background,
+        Example: drive the network with a hand-built background::
+
             >>> from primat import Background
             >>> from primat.config import PRIMATConfig
             >>> from primat.plasma import Plasma
@@ -164,7 +166,8 @@ class PRIMAT:
         rate cache fingerprint.
 
         Example: drop one reaction, override another's rate table, and add a
-        brand-new reaction (its stoichiometry is read from the name),
+        brand-new reaction (its stoichiometry is read from the name)::
+
             >>> PRIMAT({"network": "small"}, custom_network={
             ...     "removed": ["d_d__t_p"],
             ...     "replaced": {"n_p__d_g": "0.001 1.2e3\\n10.0 4.5e1\\n"},

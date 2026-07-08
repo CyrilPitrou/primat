@@ -121,7 +121,8 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     separately (``nTOp_thermal_<hash>.txt``) and recombined at point of use in
     :func:`RecomputeWeakRates` via :func:`_thermal_correction_interpolants`.
 
-    where:
+    where::
+
       _L_BORN    — Born rate ∫ p² [χ₊(E)+χ₊(−E)] dp  (Phys. Rep. Eqs. 77–78).
                    Active when cfg.radiative_corrections=False.
       _L_CCR     — Born integrand × FermiCoulomb × RadCorrResum (T=0 Coulomb
@@ -153,8 +154,10 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
                    dFDneu_moments is supplied, cfg.finite_mass_corrections=
                    True and cfg.radiative_corrections=True.
 
-    The overall rate constant K is normalised via the neutron lifetime:
+    The overall rate constant K is normalised via the neutron lifetime::
+
         K = 1 / (τ_n × Fn)     (Phys. Rep. Eq. 89–91)
+
     where Fn = ComputeFn(cfg) is the free-decay phase-space integral.
 
     Parameters
@@ -163,8 +166,10 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
                  by PRIMAT._setup_background_and_cosmo).
     cfg        : PRIMATConfig instance.
     dFDneu_func: callable or None.
-        If provided, adds the spectral-distortion correction _L_SD.  Signature:
+        If provided, adds the spectral-distortion correction _L_SD.  Signature::
+
             dFDneu_func(en, x, znu, sgnq) → float
+
         where en = E/mₑ, x = mₑ/(kB Tγ), znu = mₑ/(kB Tν), sgnq = ±1.
         Must encode the sign convention for blocking factors (en < 0), as
         described in PRIMAT._setup_background_and_cosmo.
@@ -263,10 +268,6 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     3. Otherwise call :func:`ComputeWeakRates` to recompute from scratch
        (~2 s).  If `cfg.save_nTOp` is True, save the new data and the current
        fingerprint header to that file.
-    5. Build the finite-temperature CCRTh correction with
-       :func:`_thermal_correction_interpolants` (its own
-       ``nTOp_thermal_<hash>.txt`` cache) and add it to the non-thermal
-       interpolant from step 2/3.  The returned rate is the sum of the two.
     4. **Forced recompute**: if `cfg.spectral_distortions and
        cfg.analytic_distortions`, the cache is bypassed entirely (never
        loaded, never written).  Analytic distortions are continuous knobs
@@ -274,6 +275,10 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
        caching them would write one file per parameter point and pollute
        rates/weak/.  The same rule applies to any future user-supplied
        `dFDneu_func` that cannot be fingerprinted.
+    5. Build the finite-temperature CCRTh correction with
+       :func:`_thermal_correction_interpolants` (its own
+       ``nTOp_thermal_<hash>.txt`` cache) and add it to the non-thermal
+       interpolant from step 2/3.  The returned rate is the sum of the two.
 
     ``cfg.tau_n_normalization``/``cfg.tau_n`` do not enter the fingerprint:
     the stored rates are in units of 1/τ_n (Fn already applied inside

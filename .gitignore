@@ -9,6 +9,10 @@ wheelhouse/
 *.so
 
 
+# Sphinx documentation build output (docs/conf.py); the sources stay tracked.
+docs/_build/
+docs/api/generated/
+
 # macOS
 .DS_Store
 
