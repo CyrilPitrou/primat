@@ -1159,9 +1159,9 @@ class PRIMATConfig:
         self._update_derived()
 
     # Class-level storage to avoid AttributeError if accessed before init
-    Nuclides = {}
-    NuclExcessMass = {}
-    NuclSpin = {}
+    Nuclides: dict[str, list[int]] = {}
+    NuclExcessMass: dict[str, float] = {}
+    NuclSpin: dict[str, float] = {}
 
     def _load_nuclide_data(self):
         """Load mass excesses, spins, and (N, Z) from nuclides.csv."""

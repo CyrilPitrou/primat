@@ -32,7 +32,15 @@ Example
 >>> color, ls, label = styles["He4"]
 >>> # color is the helium colour; ls distinguishes He4 from He3; label = '$^{4}$He'
 """
+from __future__ import annotations
+
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
+    from .evolution import EvolutionResult
 
 # ---------------------------------------------------------------------------
 # Fixed element -> colour map.
@@ -89,7 +97,7 @@ _SPECIAL_LABELS = {
 }
 
 
-def parse_nuclide(name):
+def parse_nuclide(name: str) -> tuple[str, int]:
     """Split a primat nuclide name into ``(element_symbol, mass_number A)``.
 
     Handles the two non-standard names used as bookkeeping aliases in the
@@ -131,14 +139,19 @@ def parse_nuclide(name):
     return (name, 0)
 
 
-def _pretty_label(name, element, A):
+def _pretty_label(name: str, element: str, A: int) -> str:
     """Return a LaTeX-free-ish display label, e.g. ``"$^{4}$He"`` or ``"D"``."""
     if name in _SPECIAL_LABELS:
         return _SPECIAL_LABELS[name]
     return rf"$^{{{A}}}${element}"
 
 
-def abundance_evolution_curves(evolution, A, names, t_grid):
+def abundance_evolution_curves(
+    evolution: "EvolutionResult",
+    A: dict[str, int],
+    names: list[str],
+    t_grid: "NDArray[np.float64]",
+) -> dict[str, tuple["NDArray[np.float64]", "NDArray[np.float64]", str, object, str]]:
     """Compute per-nuclide ``A_i Y_i(t)`` curves ready to plot, backend-agnostic.
 
     The single piece of curve-preparation logic shared by every front end that
@@ -195,7 +208,7 @@ def abundance_evolution_curves(evolution, A, names, t_grid):
     return curves
 
 
-def nuclide_styles(names):
+def nuclide_styles(names: list[str]) -> dict[str, tuple[str, object, str]]:
     """Map each nuclide name to a ``(color, linestyle, label)`` triple.
 
     Colour is fixed per chemical element (:data:`ELEMENT_COLORS`); line style
@@ -230,8 +243,8 @@ def nuclide_styles(names):
     """
     # Group the names by element and sort each group by mass number, so that the
     # isotope -> line-style assignment is by ascending A.
-    by_element = {}
-    parsed = {}
+    by_element: dict[str, list[str]] = {}
+    parsed: dict[str, tuple[str, int]] = {}
     for nm in names:
         element, A = parse_nuclide(nm)
         parsed[nm] = (element, A)
@@ -239,9 +252,10 @@ def nuclide_styles(names):
     for element in by_element:
         by_element[element].sort(key=lambda nm: parsed[nm][1])
 
-    styles = {}
+    styles: dict[str, tuple[str, object, str]] = {}
     for nm in names:
         element, A = parsed[nm]
+        ls: object
         if element == "n":
             color, ls = NEUTRON_COLOR, "solid"
         else:

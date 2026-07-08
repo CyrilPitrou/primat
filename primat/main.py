@@ -16,18 +16,25 @@ Design
 
 """
 
+from __future__ import annotations
+
 import re
 import sys
 import time
 import warnings
+from typing import Any, Callable, TYPE_CHECKING, cast
 import numpy as np
+from numpy.typing import NDArray
 
 __all__ = ['PRIMAT', 'mc_uncertainty']
 
 from .config       import PRIMATConfig
 from . import plasma      as primat_thermo
-from .background   import StandardBackground, CustomBackground
+from .background   import Background, StandardBackground, CustomBackground
 from .nuclear_network import NuclearNetwork
+
+if TYPE_CHECKING:
+    from .evolution import EvolutionResult
 
 
 # Column order for abundance interpolators; names match PRIMATConfig.Nuclides keys
@@ -62,7 +69,7 @@ _BANNER_TEMPLATE = """
 """
 
 
-def _banner():
+def _banner() -> str:
     """Render the startup banner with the installed package version.
 
     Reads ``primat.__version__`` lazily (rather than caching it at import
@@ -75,7 +82,7 @@ def _banner():
     return _BANNER_TEMPLATE.format(version=__version__)
 
 
-def _options_recap(cfg, backend):
+def _options_recap(cfg: PRIMATConfig, backend: str) -> str:
     """Render the verbose-mode "options recap" block (one line per item):
     backend, network/amax, numerical_precision, the five weak-rate flags,
     tau_n, Omegabh2/eta0b, and DeltaNeff. Printed right after the banner so
@@ -175,7 +182,10 @@ class PRIMAT:
             ... })
     """
 
-    def __init__(self, params=None, extra_rho=None, custom_network=None, background=None):
+    def __init__(self, params: dict[str, Any] | None = None,
+                 extra_rho: list[Callable[[float], float]] | None = None,
+                 custom_network: dict[str, Any] | None = None,
+                 background: Background | None = None) -> None:
 
         # ------------------------------------------------------------------
         # 1. Build configuration (+ thermodynamics, step 2) -- unless a
@@ -272,7 +282,7 @@ class PRIMAT:
 
         # Populated by solve() with the BBN observables dict (Neff, YPBBN,
         # DoH, ...); None until solve() has run (see _ensure_solved).
-        self.results = None
+        self.results: dict[str, Any] | None = None
 
         if cfg.verbose:
             print(f"[init-py]  Initialisation complete in {time.time()-self._t0:.1f} s")
@@ -281,7 +291,7 @@ class PRIMAT:
     # solve(): integrate nuclear network ODEs
     # ======================================================================
 
-    def solve(self, progress=None):
+    def solve(self, progress: bool | None = None) -> dict[str, Any]:
         """
         Integrate the nuclear network over the three temperature eras and
         return a dict of BBN observables.
@@ -410,17 +420,17 @@ class PRIMAT:
     # ======================================================================
 
     @property
-    def T_of_t(self):
+    def T_of_t(self) -> Callable[[Any], Any]:
         """T_γ(t) interpolator [MeV], available after initialisation."""
         return self.background.T_of_t
 
     @property
-    def t_of_T(self):
+    def t_of_T(self) -> Callable[[Any], Any]:
         """t(T_γ) interpolator [s], available after initialisation."""
         return self.background.t_of_T
 
     @property
-    def a_of_T(self):
+    def a_of_T(self) -> Callable[[Any], Any]:
         """Scale factor a(T_γ), available after initialisation.
 
         ``a`` follows the same normalisation as the internal a(T) ODE
@@ -437,7 +447,7 @@ class PRIMAT:
         return self.background.a_of_T
 
     @property
-    def T_of_a(self):
+    def T_of_a(self) -> Callable[[Any], Any]:
         """T_γ(a) interpolator [MeV], available after initialisation.
 
         Inverse of :attr:`a_of_T`; same normalisation convention for ``a``.
@@ -445,7 +455,7 @@ class PRIMAT:
         return self.background.T_of_a
 
     @property
-    def a_of_t(self):
+    def a_of_t(self) -> Callable[[Any], Any]:
         """Scale factor a(t), available after initialisation.
 
         Same normalisation as :attr:`a_of_T`; ``t`` is the cosmic time [s]
@@ -454,14 +464,14 @@ class PRIMAT:
         return self.background.a_of_t
 
     @property
-    def t_of_a(self):
+    def t_of_a(self) -> Callable[[Any], Any]:
         """Cosmic time t(a) [s], available after initialisation.
 
         Inverse of :attr:`a_of_t`; same normalisation convention for ``a``.
         """
         return self.background.t_of_a
 
-    def __getitem__(self, species):
+    def __getitem__(self, species: str) -> Callable[[float | NDArray[np.float64]], Any]:
         """Return Y(t) for a species name (e.g. 'H2', 'He4', 'Li7').
 
         Calls solve() automatically if needed.
@@ -479,17 +489,17 @@ class PRIMAT:
             return float(vals[0]) if np.ndim(t) == 0 else vals
         return fn
 
-    def _ensure_solved(self):
+    def _ensure_solved(self) -> None:
         if self.results is None:
             self.solve()
 
-    def primat_results(self):
+    def primat_results(self) -> dict[str, Any]:
         """Return the BBN result dict, running ``solve()`` first if needed."""
         self._ensure_solved()
-        return self.results
+        return cast(dict, self.results)
 
     @property
-    def abundance_names(self):
+    def abundance_names(self) -> list[str]:
         """Tracked nuclide names, in abundance-vector order (solves if needed).
 
         For the large network this is the full ~59-nuclide list; accessing it
@@ -499,7 +509,7 @@ class PRIMAT:
         return self.nuclear.abundance_names
 
     @property
-    def evolution(self):
+    def evolution(self) -> "EvolutionResult | None":
         """The unified time-evolution result (``primat.evolution.EvolutionResult``,
         ``None`` unless ``cfg.output_time_evolution=True``), solving first if
         needed. Thin alias for ``self.nuclear.evolution`` so callers that
@@ -510,16 +520,16 @@ class PRIMAT:
         return self.nuclear.evolution
 
     # Convenience accessors
-    def Neff(self):          self._ensure_solved(); return self.results["Neff"]
-    def Omeganurel(self):    self._ensure_solved(); return self.results["Omeganurel"]
-    def Omeganunonrel(self): self._ensure_solved(); return 1. / self.results["OneOverOmeganunr"]
-    def YPCMB(self):         self._ensure_solved(); return self.results["YPCMB"]
-    def YPBBN(self):         self._ensure_solved(); return self.results["YPBBN"]
-    def DoH(self):           self._ensure_solved(); return self.results["DoH"]
-    def He3oH(self):         self._ensure_solved(); return self.results["He3oH"]
-    def Li7oH(self):         self._ensure_solved(); return self.results["Li7oH"]
+    def Neff(self) -> float:          self._ensure_solved(); return cast(dict, self.results)["Neff"]
+    def Omeganurel(self) -> float:    self._ensure_solved(); return cast(dict, self.results)["Omeganurel"]
+    def Omeganunonrel(self) -> float: self._ensure_solved(); return 1. / cast(dict, self.results)["OneOverOmeganunr"]
+    def YPCMB(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["YPCMB"]
+    def YPBBN(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["YPBBN"]
+    def DoH(self) -> float:           self._ensure_solved(); return cast(dict, self.results)["DoH"]
+    def He3oH(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["He3oH"]
+    def Li7oH(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["Li7oH"]
 
-    def get_quantity(self, quantity):
+    def get_quantity(self, quantity: str) -> float:
         """Return a scalar BBN quantity by name.
 
         Accepts any key from the result dict ('YPBBN', 'DoH', 'He3oH',
@@ -527,7 +537,7 @@ class PRIMAT:
         cfg.Nuclides ('H2', 'He4', 'Li7', ...) for the final mass fraction Y.
         """
         self._ensure_solved()
-        results = self.results
+        results = cast(dict, self.results)
         Y_final = self.nuclear.Y_final
         if quantity in results:
             return results[quantity]
@@ -567,7 +577,12 @@ class MCQuantityResult:
     """
     __slots__ = ('central', 'mean', 'std', 'values')
 
-    def __init__(self, central, samples):
+    central: float
+    values: NDArray[np.float64]
+    mean: float
+    std: float
+
+    def __init__(self, central: float, samples: NDArray[np.float64] | list[float]) -> None:
         self.central = float(central)
         self.values  = np.asarray(samples)
         self.mean    = float(np.mean(self.values))
@@ -578,7 +593,7 @@ class MCQuantityResult:
         self.std     = (float(np.std(self.values, ddof=1))
                         if self.values.size >= 2 else 0.0)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (f"MCQuantityResult(central={self.central:.6g}, "
                 f"mean={self.mean:.6g}, std={self.std:.6g}, "
                 f"n={len(self.values)})")
@@ -620,17 +635,20 @@ class MCResult:
         compute the extension, in addition to the seed/quantities/params/
         custom_network checks above.
     """
-    def __init__(self, data, seed=None, params=None, custom_network=None, backend=None):
+    def __init__(self, data: dict[str, MCQuantityResult], seed: int | None = None,
+                 params: dict[str, Any] | None = None,
+                 custom_network: dict[str, Any] | None = None,
+                 backend: str | None = None) -> None:
         self._data = data   # dict: str -> MCQuantityResult
         self.seed = seed
         self.params = params
         self.custom_network = custom_network
         self.backend = backend
 
-    def __getitem__(self, quantity):
+    def __getitem__(self, quantity: str) -> MCQuantityResult:
         return self._data[quantity]
 
-    def quantity_names(self):
+    def quantity_names(self) -> list[str]:
         """Quantity names in their original (insertion) order.
 
         Used by :func:`primat.backend.dump_mc_samples` as the column order
@@ -640,7 +658,7 @@ class MCResult:
         """
         return list(self._data)
 
-    def samples_array(self):
+    def samples_array(self) -> NDArray[np.float64]:
         """Stack every quantity's ``values`` into one ``(num_mc, n_quantity)``
         array, columns in :meth:`quantity_names` order.
 
@@ -650,7 +668,7 @@ class MCResult:
         """
         return np.column_stack([self._data[q].values for q in self.quantity_names()])
 
-    def _quantity_index(self, name):
+    def _quantity_index(self, name: str) -> int:
         """Column index of quantity ``name`` in :meth:`samples_array`, raising
         a helpful ``KeyError`` (listing the available names) on a typo -- used
         by the scalar two-name forms of :meth:`cov`/:meth:`corr`.
@@ -664,7 +682,7 @@ class MCResult:
                 f"{names}."
             ) from None
 
-    def cov(self, a=None, b=None):
+    def cov(self, a: str | None = None, b: str | None = None) -> "NDArray[np.float64] | float":
         """Sample covariance of the MC samples.
 
         Two call forms:
@@ -717,7 +735,7 @@ class MCResult:
         pair = np.cov(samples[:, [ia, ib]], rowvar=False, ddof=1)
         return float(np.atleast_2d(pair)[0, 1])
 
-    def corr(self, a=None, b=None):
+    def corr(self, a: str | None = None, b: str | None = None) -> "NDArray[np.float64] | float":
         """Sample (Pearson) correlation of the MC samples.
 
         Same two call forms as :meth:`cov`:
@@ -773,7 +791,7 @@ class MCResult:
                                    rowvar=False, ddof=1))[0, 1]
         return float(cab / (sa * sb))
 
-    def to_flat_dict(self):
+    def to_flat_dict(self) -> dict[str, float]:
         """Flatten to a plain ``{name: value, ...}`` dict carrying both each
         quantity's nominal (``central``) value and its MC uncertainty, so
         callers get e.g. both ``YPBBN`` and ``sigma_YPBBN`` as ordinary dict
@@ -793,7 +811,7 @@ class MCResult:
     def __iter__(self):
         return iter(self._data)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         lines = [f"MCResult({len(self._data)} quantities):"]
         for k, v in self._data.items():
             lines.append(f"  {k}: central={v.central:.6g}, "
@@ -805,8 +823,9 @@ class MCResult:
 # Module-level MC worker (must be at module level for joblib pickling)
 # ---------------------------------------------------------------------------
 
-def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None,
-                  include_nuclides=False):
+def _mc_run_batch(base_params: dict[str, Any], rate_keys: list[str], quantities: list[str],
+                  seeds: list[int], custom_network: dict[str, Any] | None = None,
+                  include_nuclides: bool = False) -> list[list[float]]:
     """Run a batch of MC samples in one process, reusing a single PRIMAT.
 
     The cosmological background and n<->p weak rates depend only on
@@ -846,10 +865,15 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None
     inst = PRIMAT(params=base_params, custom_network=custom_network)
     cfg  = inst.cfg
     tau_n_central = cfg.tau_n
+    # NormWeakRates is a StandardBackground/CustomBackground-only attribute
+    # (module docstring above), not part of the minimal Background interface
+    # -- both concrete backgrounds PRIMAT can build here define it, so the
+    # cast just tells the type checker what runtime already guarantees.
+    background = cast(Any, inst.background)
     # NormWeakRates = 1/tau_n (cfg.tau_n_normalization=True), so the product
     # is 1.0 -- scaling by tau_n_central and dividing by tau_n_sample gives
     # 1/tau_n_sample without any extra computation.
-    norm_times_tau_n = inst.background.NormWeakRates * tau_n_central
+    norm_times_tau_n = background.NormWeakRates * tau_n_central
     results = []
     nuclide_names = None
     for seed in seeds:
@@ -860,7 +884,7 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None
         tau_n_sample = tau_n_central + cfg.std_tau_n * rng.standard_normal()
         if cfg.tau_n_normalization:
             cfg.tau_n = tau_n_sample
-            inst.background.NormWeakRates = norm_times_tau_n / tau_n_sample
+            background.NormWeakRates = norm_times_tau_n / tau_n_sample
         inst.solve(progress=False)
         row = [inst.get_quantity(q) for q in quantities]
         if include_nuclides:
@@ -872,9 +896,11 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None
     return results
 
 
-def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
-                         custom_network=None, include_nuclides=False,
-                         progress=False):
+def _mc_collect_samples(base_params: dict[str, Any], rate_keys: list[str], quantities: list[str],
+                         seeds: list[int], n_jobs: int,
+                         custom_network: dict[str, Any] | None = None,
+                         include_nuclides: bool = False,
+                         progress: bool = False) -> NDArray[np.float64]:
     """Run :func:`_mc_run_batch` for a list of seeds and stack the results.
 
     Splits ``seeds`` into one chunk per worker so the expensive cosmological
@@ -978,7 +1004,9 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
     return np.array(all_rows)
 
 
-def mc_prev_is_reusable(prev, seed, quantities, params, custom_network, backend):
+def mc_prev_is_reusable(prev: MCResult | None, seed: int | None, quantities: list[str],
+                         params: dict[str, Any], custom_network: dict[str, Any] | None,
+                         backend: str) -> bool:
     """Decide whether a previous MC result ``prev`` may be reused (extended)
     for a new :func:`mc_uncertainty`/:func:`primat.backend.run_mc` call,
     instead of being silently discarded and recomputed from scratch.
@@ -1037,8 +1065,11 @@ def mc_prev_is_reusable(prev, seed, quantities, params, custom_network, backend)
             and getattr(prev, 'custom_network', None) == custom_network)
 
 
-def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
-                    custom_network=None, progress=None):
+def mc_uncertainty(num_mc: int, quantity: str | list[str] | None,
+                    params: dict[str, Any] | None = None, n_jobs: int = -1,
+                    seed: int | None = 0, prev: MCResult | None = None,
+                    custom_network: dict[str, Any] | None = None,
+                    progress: bool | None = None) -> MCResult:
     """Estimate nuclear-rate and neutron-lifetime uncertainties on BBN
     observables via Monte Carlo.
 
@@ -1187,7 +1218,8 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
                                seed, base_params, custom_network)
 
 
-def _mc_resolve_rate_keys(base_params, custom_network):
+def _mc_resolve_rate_keys(base_params: dict[str, Any],
+                           custom_network: dict[str, Any] | None) -> list[str]:
     """Rate offsets to vary: all thermonuclear reactions in the selected network.
 
     Constructs a temporary config just to resolve the working directory and

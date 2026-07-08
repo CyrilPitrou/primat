@@ -82,14 +82,20 @@ computed by the other backend) is silently ignored, exactly like
 backend switch. ``custom_network`` is supported on both backends, same as
 :func:`run_bbn`.
 """
+from __future__ import annotations
+
 import os
 import sys
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .main import MCResult
 
 __all__ = ["HAS_C_BACKEND", "run_bbn", "run_mc", "dump_mc_samples",
            "dump_mc_covariance", "dump_mc_correlation", "dump_final_with_sigma"]
 
 
-def _log_backend(func_name, used, reason, log_backend):
+def _log_backend(func_name: str, used: str, reason: str, log_backend: bool) -> None:
     """Print which backend ``func_name`` (``"run_bbn"``/``"run_mc"``) actually
     used, plus why, when asked to via ``log_backend=True`` or the
     ``PRIMAT_BACKEND_LOG`` environment variable (module docstring). Printed to
@@ -118,24 +124,27 @@ _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 # (containing NEVO/, weak/, plasma/, nuclear/, csv/), not its parent.
 _C_DATA_DIR = os.path.join(_PACKAGE_DIR, "data")
 
+_c_ext: Any = None
 try:
     from . import _primat_c as _c_ext
     HAS_C_BACKEND = True
 except ImportError:
-    _c_ext = None
     HAS_C_BACKEND = False
 
 
-def _python_solve(params, extra_rho, custom_network, background, progress=True):
+def _python_solve(params: dict[str, Any] | None, extra_rho: list | None,
+                   custom_network: dict[str, Any] | None, background,
+                   progress: bool = True) -> dict[str, Any]:
     """Run the pure-Python backend and return PRIMAT.solve()'s result dict."""
     from .main import PRIMAT
     return PRIMAT(params=params, extra_rho=extra_rho,
                   custom_network=custom_network, background=background).solve(progress=progress)
 
 
-def run_bbn(params=None, force_backend=None, extra_rho=None,
-            custom_network=None, background=None, log_backend=False,
-            progress=None):
+def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = None,
+            extra_rho: list | None = None, custom_network: dict[str, Any] | None = None,
+            background=None, log_backend: bool = False,
+            progress: bool | None = None) -> dict[str, Any]:
     """Run one BBN computation, dispatching to the C or Python backend.
 
     This mirrors ``PRIMAT(params=params, ...).solve()``'s result dict (same
@@ -233,7 +242,7 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
     return _python_solve(params, extra_rho, custom_network, background, progress=progress)
 
 
-def _assemble_c_result(result):
+def _assemble_c_result(result: dict[str, Any]) -> dict[str, Any]:
     """Replaces the C extension's plain-list ``"evolution"`` dict (see
     ``primat/_primat_c/_wrapper.c``'s ``evolution_to_dict``) with the same
     :class:`primat.evolution.EvolutionResult` the Python backend attaches
@@ -254,7 +263,7 @@ def _assemble_c_result(result):
     return result
 
 
-def _default_mc_quantities(params):
+def _default_mc_quantities(params: dict[str, Any] | None) -> list[str]:
     """Every tracked nuclide's final-Y name plus the standard observables.
 
     Resolved from one ordinary :func:`run_bbn` call (cheap relative to an
@@ -270,7 +279,8 @@ def _default_mc_quantities(params):
     return names
 
 
-def _assemble_c_mc_result(raw, quantities, seed, params, custom_network):
+def _assemble_c_mc_result(raw: dict[str, Any], quantities: list[str], seed: int | None,
+                           params: dict[str, Any], custom_network: dict[str, Any] | None) -> "MCResult":
     """Converts the C extension's ``run_mc`` dict (``{name: {central, mean,
     std, values}}``, see ``_wrapper.c``) into the same
     :class:`primat.main.MCResult` :func:`primat.main.mc_uncertainty` returns,
@@ -288,7 +298,8 @@ def _assemble_c_mc_result(raw, quantities, seed, params, custom_network):
     return MCResult(data, seed=seed, params=params, custom_network=custom_network, backend="c")
 
 
-def _c_prev_reuse(prev, seed, quantities, base_params, custom_network):
+def _c_prev_reuse(prev: "MCResult | None", seed: int | None, quantities: list[str],
+                   base_params: dict[str, Any], custom_network: dict[str, Any] | None) -> bool:
     """The C-path counterpart of ``mc_uncertainty``'s internal ``reuse``
     check (``primat/main.py``): delegates to the shared
     :func:`primat.main.mc_prev_is_reusable` guard with ``backend='c'``, so
@@ -303,9 +314,11 @@ def _c_prev_reuse(prev, seed, quantities, base_params, custom_network):
                                 custom_network, backend='c')
 
 
-def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
-           n_jobs=-1, prev=None, custom_network=None, log_backend=False,
-           progress=None):
+def run_mc(num_mc: int, quantities: str | list[str] | None = None,
+           params: dict[str, Any] | None = None, force_backend: str | None = None,
+           seed: int | None = 0, n_jobs: int = -1, prev: "MCResult | None" = None,
+           custom_network: dict[str, Any] | None = None, log_backend: bool = False,
+           progress: bool | None = None) -> "MCResult":
     """Run an MC nuclear-rate/tau_n uncertainty propagation, dispatching to
     the C or Python backend (the MC counterpart of :func:`run_bbn`).
 
@@ -457,7 +470,7 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
     return _python_mc()
 
 
-def dump_mc_samples(mc):
+def dump_mc_samples(mc: "MCResult") -> str:
     """Serialise an :class:`primat.main.MCResult` to TSV text: one column per
     quantity (header = quantity names, in their original order), one row per
     MC sample -- the on-disk "common language" for MC results shared by both
@@ -478,7 +491,7 @@ def dump_mc_samples(mc):
     return "\n".join(lines) + "\n"
 
 
-def _mc_num_and_seed(mc):
+def _mc_num_and_seed(mc: "MCResult") -> tuple[int, str]:
     """Helper for the covariance/correlation writers: return ``(N, seed_str)``
     where ``N`` is the MC sample count (rows of :meth:`~primat.main.MCResult.samples_array`)
     and ``seed_str`` is the base seed rendered for the file header (the integer,
@@ -492,7 +505,7 @@ def _mc_num_and_seed(mc):
     return n, ("None" if seed is None else str(seed))
 
 
-def dump_mc_covariance(mc):
+def dump_mc_covariance(mc: "MCResult") -> str:
     """Serialise an :class:`primat.main.MCResult`'s full sample **covariance**
     matrix (``mc.cov()``; ddof=1, all MC quantities in ``quantity_names``
     order) to the two-header-line TSV written to
@@ -534,7 +547,7 @@ def dump_mc_covariance(mc):
     return "\n".join(lines) + "\n"
 
 
-def dump_mc_correlation(mc):
+def dump_mc_correlation(mc: "MCResult") -> str:
     """Serialise an :class:`primat.main.MCResult`'s full sample **correlation**
     matrix (``mc.corr()``; unit diagonal, ddof=1) to the two-header-line TSV
     written to ``<output_mc_file_prefix>_correlation.tsv`` when
@@ -566,7 +579,9 @@ def dump_mc_correlation(mc):
     return "\n".join(lines) + "\n"
 
 
-def dump_final_with_sigma(names, Y, sigma=None, num_mc=None):
+def dump_final_with_sigma(names: list[str], Y: dict[str, float],
+                           sigma: dict[str, float] | None = None,
+                           num_mc: int | None = None) -> str:
     """Render the ``output_final.dat``-format final-abundances text.
 
     Two columns (``nuclide  Y``) when ``sigma`` is ``None`` -- identical to

@@ -30,8 +30,10 @@ from __future__ import annotations
 import io
 import os
 from dataclasses import dataclass, field
+from typing import Any, Callable
 
 import numpy as np
+from numpy.typing import NDArray
 
 # Column order for the always-present, cross-backend-comparable block.  The
 # Y_<nuclide> block (network-dependent) follows these six.
@@ -60,14 +62,14 @@ class EvolutionResult:
         Per-nuclide mass-fraction abundance, keyed by nuclide name, in
         network order (``n``/``p`` first).
     """
-    t: np.ndarray
-    a: np.ndarray
-    T_gamma: np.ndarray
-    T_nu: dict
-    Y: dict = field(default_factory=dict)
+    t: NDArray[np.float64]
+    a: NDArray[np.float64]
+    T_gamma: NDArray[np.float64]
+    T_nu: dict[str, NDArray[np.float64]]
+    Y: dict[str, NDArray[np.float64]] = field(default_factory=dict)
 
 
-def dump_evolution(result, path=None):
+def dump_evolution(result: EvolutionResult, path: str | None = None) -> str:
     """Serialise ``result`` to the shared TSV schema (module docstring).
 
     Always returns the TSV text; additionally writes it to ``path`` if
@@ -112,7 +114,7 @@ def dump_evolution(result, path=None):
     return text
 
 
-def Y_interpolator(result, name):
+def Y_interpolator(result: EvolutionResult, name: str) -> Callable[[float | NDArray[np.float64]], Any]:
     """Build a ``Y(t)`` callable for nuclide ``name`` from ``result.t``/
     ``result.Y[name]`` alone -- the backend-agnostic counterpart of
     ``primat.main.PRIMAT.__getitem__``'s live SciPy interpolator, usable on a
@@ -139,7 +141,7 @@ def Y_interpolator(result, name):
     return interp1d(result.t, Y, bounds_error=False, fill_value=(0.0, Y[-1]))
 
 
-def T_gamma_interpolator(result):
+def T_gamma_interpolator(result: EvolutionResult) -> Callable[[float | NDArray[np.float64]], Any]:
     """Build a ``T_gamma(t)`` [MeV] callable from ``result.t``/``result.T_gamma``
     alone -- the backend-agnostic counterpart of ``primat.main.PRIMAT.T_of_t``,
     usable on a plain :class:`EvolutionResult` from either backend.
@@ -159,7 +161,7 @@ def T_gamma_interpolator(result):
     return interp1d(result.t, T, bounds_error=False, fill_value=(T[0], T[-1]))
 
 
-def t_of_T_interpolator(result):
+def t_of_T_interpolator(result: EvolutionResult) -> Callable[[float | NDArray[np.float64]], Any]:
     """Build a ``T_gamma -> t`` [s] inverse-lookup callable, backend-agnostic.
 
     The counterpart of :func:`T_gamma_interpolator`, useful e.g. to add a
@@ -184,7 +186,7 @@ def t_of_T_interpolator(result):
     return lambda T: np.interp(T, T_asc, t_asc)
 
 
-def load_evolution(path):
+def load_evolution(path: str) -> EvolutionResult:
     """Parse the shared TSV schema written by either backend's
     ``dump_evolution``/equivalent writer, returning the same
     :class:`EvolutionResult` structure as ``solve()``'s in-memory

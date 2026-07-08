@@ -56,6 +56,24 @@ jobs:
           name: junit-${{ matrix.os }}-${{ matrix.python-version }}
           path: junit-${{ matrix.os }}-${{ matrix.python-version }}.xml
 
+  typecheck:
+    # Lenient mypy pass (see pyproject.toml's [tool.mypy]) scoped to the
+    # handful of public-API modules that carry real type annotations
+    # (S-10, FABLEADVICE.md) -- not a project-wide strictness gate.
+    if: github.event_name != 'schedule'
+    name: mypy (annotated modules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install primat + mypy
+        run: python -m pip install -e "." mypy
+      - name: Type-check annotated modules
+        run: mypy primat/backend.py primat/evolution.py primat/config.py primat/main.py primat/plotting.py
+
   docs:
     # Build the Sphinx documentation site (docs/) with warnings-as-errors, so a
     # broken cross-reference, a missing toctree entry, or an autodoc import
