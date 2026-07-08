@@ -52,6 +52,13 @@ FAST_RUNFILES = [
 # since it takes an extra CLI argument the others don't.
 MC_RUNFILE = "primat_mc.py"
 
+# benchmark.py (FABLEADVICE.md S-16) also needs "--quick" (5 MC samples
+# instead of 100; still 3 repeats per network/backend solve) to stay within
+# this smoke test's time budget -- its numbers under --quick are not
+# meaningful as a benchmark, only as a "did it run" check (see its module
+# docstring).
+BENCHMARK_RUNFILE = "benchmark.py"
+
 
 @pytest.mark.parametrize("name", FAST_RUNFILES)
 def test_runfile_executes_cleanly(name, tmp_path):
@@ -101,3 +108,24 @@ def test_primat_mc_runfile_executes_cleanly(tmp_path):
 
     for suffix in ("samples", "covariance", "correlation"):
         assert (tmp_path / "results" / f"output_mc_{suffix}.tsv").exists()
+
+
+def test_benchmark_runfile_executes_cleanly(tmp_path):
+    """Run benchmark.py --quick (5 MC samples, 3 repeats/solve) as a
+    subprocess; fail on a nonzero exit code or a traceback, and sanity-check
+    it printed the regenerated Markdown timing table."""
+    result = subprocess.run(
+        [sys.executable, str(RUNFILES_DIR / BENCHMARK_RUNFILE), "--quick"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, (
+        f"{BENCHMARK_RUNFILE} exited with code {result.returncode}\n"
+        f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+    )
+    assert "Traceback" not in result.stderr, result.stderr
+    assert "Markdown table" in result.stdout
+    assert "| Run | Wall time |" in result.stdout

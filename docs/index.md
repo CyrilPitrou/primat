@@ -88,6 +88,7 @@ howto/index
 
 physics
 extending
+performance
 api/index
 cli
 ```
