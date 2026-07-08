@@ -29,7 +29,7 @@ int main(void)
     }
     CHECK(strcmp(cfg.network, "large") == 0, "network == large after ini load");
     CHECK(cfg.amax == 8, "amax == 8 after ini load");
-    CHECK(cfg.Omegabh2_ == 0.022425, "Omegabh2 == 0.022425 after ini load");
+    CHECK(cfg.Omegabh2_ == 0.02242, "Omegabh2 == 0.02242 after ini load");
 
     if (cpr_config_validate(&cfg, &err)) {
         printf("FAIL cpr_config_validate: %s\n", err);

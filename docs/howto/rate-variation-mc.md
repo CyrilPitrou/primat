@@ -65,7 +65,7 @@ uncertainty.
 ```python
 from primat.backend import run_mc
 
-mc = run_mc(100, ["YPBBN", "DoH"], params={"Omegabh2": 0.022425})
+mc = run_mc(100, ["YPBBN", "DoH"], params={"Omegabh2": 0.02242})
 
 mc["DoH"].central   # nominal (best-estimate) value
 mc["DoH"].mean      # mean over the 100 MC samples
@@ -101,7 +101,7 @@ Add `--mc N`; the summary prints the 4×4 correlation and covariance matrices
 of the four main products (`YPBBN`, `DoH`, `He3oHe4`, `Li7oH`):
 
 ```bash
-primat --Omegabh2 0.022425 --mc 100
+primat --Omegabh2 0.02242 --mc 100
 # YP (BBN)   = 0.24700028 +/- 0.00003123
 # D/H        = 2.4350000e-05 +/- 1.2000000e-07
 # ...

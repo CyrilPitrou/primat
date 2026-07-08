@@ -204,6 +204,18 @@ def test_readme_python_only_features_list_matches_backend():
     assert "both are supported on the C backend too" in python_only_section
 
 
+def test_notebooks_readme_lists_every_notebook():
+    """notebooks/README.md's table must mention every notebooks/*.ipynb file
+    (FABLEADVICE.md S-8) -- a new notebook silently missing from the README
+    is undiscoverable from the folder's own index."""
+    notebooks_dir = os.path.join(REPO_ROOT, "notebooks")
+    readme_text = open(os.path.join(notebooks_dir, "README.md")).read()
+    ipynb_files = sorted(f for f in os.listdir(notebooks_dir) if f.endswith(".ipynb"))
+    assert ipynb_files, "no notebooks found in notebooks/"
+    missing = [f for f in ipynb_files if f not in readme_text]
+    assert not missing, f"notebooks/README.md is missing rows for: {missing}"
+
+
 class _no_warning_context:
     """Fail the test if PRIMATConfig(options) emits an 'unknown parameter' warning."""
 

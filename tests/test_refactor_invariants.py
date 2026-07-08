@@ -44,17 +44,17 @@ def test_mc_njobs_independence():
 # ---------------------------------------------------------------------------
 
 def test_eta0b_tracks_omegabh2_attribute():
-    cfg = PRIMATConfig({"Omegabh2": 0.022425})
+    cfg = PRIMATConfig({"Omegabh2": 0.02242})
     e0 = cfg.eta0b
     cfg.Omegabh2 = 0.024
-    assert cfg.eta0b == pytest.approx(e0 * 0.024 / 0.022425, rel=1e-12)
+    assert cfg.eta0b == pytest.approx(e0 * 0.024 / 0.02242, rel=1e-12)
 
 
 def test_eta0b_tracks_omegabh2_setitem():
-    cfg = PRIMATConfig({"Omegabh2": 0.022425})
+    cfg = PRIMATConfig({"Omegabh2": 0.02242})
     e0 = cfg.eta0b
     cfg["Omegabh2"] = 0.024
-    assert cfg.eta0b == pytest.approx(e0 * 0.024 / 0.022425, rel=1e-12)
+    assert cfg.eta0b == pytest.approx(e0 * 0.024 / 0.02242, rel=1e-12)
 
 
 def test_gn_and_taun_come_from_defaults():

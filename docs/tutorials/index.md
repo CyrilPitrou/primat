@@ -52,8 +52,8 @@ jupyter lab notebooks/
 :::{note}
 Common conventions across the parameter-scan notebooks: a fixed MC seed
 (`MC_SEED = 0`) at every grid point so finite-sample MC bias cancels across
-the grid; observational constraints shown as grey bands; the Planck baryon
-density Ω_b h² = 0.02285 ± 0.00016 shown as a red vertical band; and
+the grid; observational constraints shown as grey bands; the baryon
+density Ω_b h² = 0.02242 ± 0.00014 (Planck 2018 + BAO) shown as a red vertical band; and
 `num_mc = 500`+ for publication-quality uncertainty bands (the notebooks
 default to 50 for speed).
 :::

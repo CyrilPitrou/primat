@@ -17,18 +17,20 @@ n<->p weak-rate / background machinery.
 # Default small-network run (network="small", spectral_distortions=True,
 # nuclear_qed_corrections=True -- the PRIMATConfig defaults), as produced by
 # `primat.cli.main([])`, `primat-gui`'s default "Run BBN", and
-# `runfiles/primat_run.py`. Snapshotted after commit e00f062 (rate_grid_npts
-# 500->1000, sampling_temperature_per_decade 400->600).
+# `runfiles/primat_run.py`. Re-snapshotted 2026-07-08 after the default
+# `Omegabh2` was changed to 0.02242 (Planck 2018 + BAO); values are the
+# auto-backend (C, when available) CLI output, matching what these tests
+# actually invoke.
 NEFF_REFERENCE  = 3.0439772986
-YPBBN_REFERENCE = 0.24700028   # CLAUDE.md "Validation before committing" table
-DOH_REFERENCE   = 2.43500e-5   # CLAUDE.md "Validation before committing" table
+YPBBN_REFERENCE = 0.24699701   # primat.cli.main() default (auto backend), Omegabh2=0.02242
+DOH_REFERENCE   = 2.435908e-5  # primat.cli.main() default (auto backend), Omegabh2=0.02242
 
 # Tolerances (CLAUDE.md: "A result outside these bounds indicates a regression").
 NEFF_ABS_TOL  = 1e-5
 YPBBN_ABS_TOL = 1e-5
 DOH_ABS_TOL   = 3e-9
 
-# Per-nuclide final mass fractions, small network (CLAUDE.md per-nuclide table).
-P_REFERENCE   = 7.529409e-01
-HE4_REFERENCE = 6.174973e-02
+# Per-nuclide final mass fractions, small network (primat.cli.main() default, auto backend).
+P_REFERENCE   = 7.529428e-01
+HE4_REFERENCE = 6.174925e-02
 NUCLIDE_ABS_TOL = 1e-4  # mirrors the table's own documented precision

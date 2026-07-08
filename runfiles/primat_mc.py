@@ -31,9 +31,9 @@ from primat.backend import dump_mc_correlation, dump_mc_covariance, dump_mc_samp
 _quick = "--quick" in sys.argv or bool(os.environ.get("PRIMAT_MC_QUICK"))
 NUM_MC = 20 if _quick else 500
 
-# Same default cosmology as primat_run_explanatory.py (Omegabh2 = 0.022425,
+# Same default cosmology as primat_run_explanatory.py (Omegabh2 = 0.02242,
 # the code's DEFAULT_PARAMS default -- see CLAUDE.md's baryon-density note).
-PARAMS = {"Omegabh2": 0.022425}
+PARAMS = {"Omegabh2": 0.02242}
 
 # `quantities=None` still returns every standard observable (Neff, YPBBN,
 # YPCMB, DoH, He3oH, He3oHe4, Li7oH, Li6oLi7, YCNO) plus every tracked

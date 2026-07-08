@@ -453,7 +453,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->nuclear_qed_corrections = 1;
     cfg->user_nuclear_dir = NULL;
 
-    cfg->Omegabh2_ = 0.022425;
+    cfg->Omegabh2_ = 0.02242;
     cfg->Omegach2 = 0.11933;
     cfg->h = 0.6766;
     cfg->DeltaNeff = 0.;

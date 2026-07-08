@@ -408,8 +408,9 @@ class StandardBackground(Background):
         References
         ----------
         See ``primat.config.PRIMATConfig.rhocOverh2`` for the unit convention.
-        Planck 2018 fiducial values (Aghanim et al. 2020, A&A 641, A6):
-        Ω_b h² = 0.022425, Ω_c h² = 0.11933, h = 0.6766.
+        Planck 2018 + BAO fiducial values (Aghanim et al. 2020, A&A 641, A6,
+        TT,TE,EE+lowE+lensing+BAO column): Ω_b h² = 0.02242, Ω_c h² = 0.11933,
+        h = 0.6766.
 
         Example
         -------

@@ -74,7 +74,7 @@ from primat.backend import run_bbn
 result = run_bbn({
     "custom_background": "my_cosmology.tsv",
     "network": "small",
-    "Omegabh2": 0.022425,
+    "Omegabh2": 0.02242,
 })
 
 print(f"YP (BBN) = {result['YPBBN']:.8f}")

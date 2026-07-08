@@ -97,7 +97,7 @@ After compilation, run from the `primat-c/` directory:
 ```
 
 **Common options:**
-- `--Omegabh2 VALUE` - Baryon density Ω_b h² (default: 0.022425)
+- `--Omegabh2 VALUE` - Baryon density Ω_b h² (default: 0.02242)
 - `--DeltaNeff VALUE` - Extra relativistic degrees of freedom (default: 0)
 - `--network NAME` - Nuclear reaction network: small, small_parthenope, large (default: small)
 - `--amax N` - Maximum mass number A for reactions (filters any network)
@@ -123,10 +123,10 @@ The C backend is automatically used as the default by `primat.backend.run_bbn()`
 from primat.backend import run_bbn
 
 # Automatically uses C backend if available
-result = run_bbn({"Omegabh2": 0.022425, "network": "large"})
+result = run_bbn({"Omegabh2": 0.02242, "network": "large"})
 
 # Force C backend explicitly
-result = run_bbn({"Omegabh2": 0.022425}, force_backend="c")
+result = run_bbn({"Omegabh2": 0.02242}, force_backend="c")
 ```
 
 ### Custom networks

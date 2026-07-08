@@ -5,7 +5,7 @@ primat — core package for the PRIMAT BBN solver.
 Public API::
 
     from primat import PRIMAT
-    result = PRIMAT({"Omegabh2": 0.022425}).solve()
+    result = PRIMAT({"Omegabh2": 0.02242}).solve()
 """
 
 from importlib.metadata import version as _version, PackageNotFoundError

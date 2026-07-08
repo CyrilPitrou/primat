@@ -145,7 +145,7 @@ def _build_parser():
     )
     parser.add_argument(
         "--Omegabh2", type=float, default=None, metavar="VALUE",
-        help="Baryon density Omega_b h^2 (PRIMATConfig default: 0.022425).",
+        help="Baryon density Omega_b h^2 (PRIMATConfig default: 0.02242).",
     )
     parser.add_argument(
         "--DeltaNeff", type=float, default=None, metavar="VALUE",

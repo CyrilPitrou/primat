@@ -26,7 +26,7 @@ from primat import backend
 # Cosmological parameters
 # ---------------------------------------------------------------------------
 Nrelat   = 0.
-omegabh2 = 0.022425
+omegabh2 = 0.02242
 
 _base_opts = {
     "verbose":              True,

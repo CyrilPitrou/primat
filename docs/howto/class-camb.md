@@ -14,7 +14,7 @@ from primat.backend import run_bbn
 result = run_bbn({
     "custom_background": "class_output.tsv",
     "network": "small",
-    "Omegabh2": 0.022425,
+    "Omegabh2": 0.02242,
 })
 ```
 

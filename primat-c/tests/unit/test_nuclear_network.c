@@ -153,7 +153,7 @@ int main(void)
     cpr_constants_init();
 
     /* CLAUDE.md "Validation before committing" reference numbers (small
-     * network, default config: Omegabh2=0.022425, spectral_distortions=
+     * network, default config: Omegabh2=0.02242, spectral_distortions=
      * QED_corrections=True, numerical_precision=1e-7). 0.1% comfortably
      * covers this port's worst-observed deviation (Yn, the most sensitive
      * trace quantity, ~0.012%) with ~10x margin -- see this file's header

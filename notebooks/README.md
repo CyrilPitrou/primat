@@ -4,6 +4,12 @@ This folder contains demonstration notebooks for PRIMAT.
 Each notebook is self-contained and can be run from this directory.
 Figures are saved to `plots/`.
 
+Every notebook has an "Open in Colab" badge in its header cell, so it can
+also be run with zero local setup. The header is followed by a guarded
+install cell (`importlib.util.find_spec("primat") is None`) that
+`pip install`s the released package only when it isn't already importable
+— i.e. on Colab, not on a local dev checkout.
+
 ---
 
 ## Notebooks
@@ -14,6 +20,8 @@ Figures are saved to `plots/`.
 |----------|-------------|
 | `StandardPlots.ipynb` | **Schramm diagram**: primordial abundances vs η_b with 1σ nuclear-rate uncertainty bands and observational constraints (YP, D/H, ³He/⁴He, ⁷Li/H). |
 | `AbundanceEvolution.ipynb` | **Time evolution** of A_i Y_i(t) for all nuclides from 1 s to 10⁵ s, for both the 12-reaction (small) and ~429-reaction (large) networks. |
+| `AnimatedAbundances.ipynb` | **Animated time evolution**: two GIFs of the small-network A_i Y_i(t) tracks, sweeping ΔNeff and Ω_b h² respectively. |
+| `CompareSmallNetworks.ipynb` | **Network comparison**: `small` vs `small_parthenope` — abundances and time evolution side by side. |
 
 ### Parameter scans
 
@@ -37,8 +45,14 @@ Figures are saved to `plots/`.
 - **Fixed MC seed across grids**: when scanning a parameter, `MC_SEED = 0`
   is used at every grid point so that finite-sample MC bias cancels across the grid.
 - **Observational constraints** shown as grey horizontal/vertical bands.
-- **Planck baryon density** Ω_b h² = 0.02285 ± 0.00016 shown as a red vertical band.
+- **Baryon density** Ω_b h² = 0.02242 ± 0.00014 (Planck 2018 + BAO, TT,TE,EE+lowE+lensing+BAO;
+  also PRIMAT's default `Omegabh2`) shown as a red vertical band.
 - Set `num_mc = 500` or more for publication-quality uncertainty bands (default is 50 for speed).
+- **Notebook outputs**: all notebooks in this folder are committed *with*
+  their outputs (plots, printed tables) so they render fully on GitHub and
+  in the documentation site without needing to be re-executed. Re-run a
+  notebook top-to-bottom before committing if you change its code, so the
+  saved outputs stay in sync with the source cells.
 
 ---
 

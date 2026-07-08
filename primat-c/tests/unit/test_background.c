@@ -1,7 +1,7 @@
 /* test_background.c -- checks cpr_bg_init_standard/cpr_bg_init_custom
  * (Phase 5: background.c) against reference values from a live
  * primat.background.StandardBackground/CustomBackground run with the
- * default PRIMATConfig() (Omegabh2=0.022425, incomplete_decoupling=
+ * default PRIMATConfig() (Omegabh2=0.02242, incomplete_decoupling=
  * spectral_distortions=QED_corrections=True, T_start_cosmo_MeV=40,
  * T_end_MeV=1e-3).
  *
@@ -84,7 +84,7 @@ static void test_standard(void)
     CHECK(close_rel(cpr_bg_weak_nTOp_bkwrd(&bg, 1.0e9), 7.970623324614784e-11, 1e-2),
           "weak_nTOp_bkwrd(1e9 K) matches Python");
 
-    CHECK(close_rel(cpr_bg_rhoB_BBN(&bg, cpr_bg_t_of_T(&bg, 0.1)), 3.9506409068149353e-05, 1e-2),
+    CHECK(close_rel(cpr_bg_rhoB_BBN(&bg, cpr_bg_t_of_T(&bg, 0.1)), 3.9497600504254556e-05, 1e-2),
           "rhoB_BBN(t_of_T(0.1 MeV)) matches Python");
 
     double relnu, nrnu;
@@ -165,7 +165,7 @@ static void test_custom(const char *path)
           "custom: a_of_t(100 s) matches Python");
     CHECK(close_rel(cpr_bg_weak_nTOp_frwrd(&bg, 1.0e9), 0.0011508476841614137, 1e-2),
           "custom: weak_nTOp_frwrd(1e9 K) matches Python");
-    CHECK(close_rel(cpr_bg_rhoB_BBN(&bg, 100.0), 5.15134315378115e-05, 1e-6),
+    CHECK(close_rel(cpr_bg_rhoB_BBN(&bg, 100.0), 5.150194582286438e-05, 1e-6),
           "custom: rhoB_BBN(100 s) matches Python");
 
     double Tg_f, rho_nu_f;

@@ -135,7 +135,7 @@ int main(void)
     CHECK(cpr_config_validate(&cfg, &verr) != 0 && verr && strstr(verr, "Omegabh2"),
           "negative Omegabh2 is rejected with a naming message");
     free(verr); verr = NULL;
-    cpr_config_set_Omegabh2(&cfg, 0.022425); /* restore */
+    cpr_config_set_Omegabh2(&cfg, 0.02242); /* restore */
 
     /* Non-positive tau_n. */
     cfg.tau_n = 0.0;

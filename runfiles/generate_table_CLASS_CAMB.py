@@ -299,7 +299,7 @@ if __name__ == "__main__":
             _seed_params = {
                 **BASE_OPTS,
                 'save_nTOp':    True,
-                'Omegabh2': 0.022425,
+                'Omegabh2': 0.02242,
                 'DeltaNeff': float(DeltaN),
             }
             backend.run_bbn(_seed_params, force_backend="python")   # side-effect: saves rates/weak/*.txt

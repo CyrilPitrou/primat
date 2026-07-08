@@ -405,13 +405,12 @@ right after Installation (done).
 - **Replace the baryon-density band with the author's choice**: everywhere
   the notebooks (and notebooks/README.md) draw or quote the CMB baryon
   density band — currently "Planck Ω_b h² = 0.02285 ± 0.00016" — use
-  **Ω_b h² = 0.022425 ± 0.000136** instead (author decision, 2026-07-07;
-  note this is also the code's default `Omegabh2`). Update the band in
+  **Ω_b h² = 0.02242 ± 0.00014, labelled "Planck 2018 + BAO"** instead
+  (author decision, 2026-07-08; also made the code's default `Omegabh2`,
+  see `primat/config.py`/`primat-c/src/config.c`). Update the band in
   every notebook that hard-codes it (StandardPlots, PosteriorBaryons, …),
   the README prose, and regenerate the affected plots in
-  `notebooks/plots/`. Ask the author for the citation to print next to the
-  number (Planck/ACT combination?) rather than inventing one, and stop
-  labelling it bare "Planck" if the reference is a combination.
+  `notebooks/plots/`.
 - Add "Open in Colab" badges to each notebook header cell (they must then
   `pip install primat` in the first cell, guarded by an
   `importlib.util.find_spec` check so local runs don't reinstall).
@@ -419,7 +418,9 @@ right after Installation (done).
   kept outputs (pick one policy; recommend cleared + rendered on the docs
   site) and record the chosen policy in `notebooks/README.md`.
 - `runfiles/primat_run_explanatory.py` and `run_basic.ini`: spot-check the
-  74-key sync (CLAUDE.md mandates it) and fix the "73"/"74" count comments.
+  77-key sync (CLAUDE.md mandates it). Already in sync as of 2026-07-08 —
+  both templates list all 77 `DEFAULT_PARAMS` keys with the correct count
+  comment, no fix needed.
 **Accept**: `pytest -m notebook` green; docs-consistency test extended to
 assert the notebooks README lists every `*.ipynb` in the folder.
 
@@ -646,7 +647,7 @@ regenerates the table.
 - Any 🔴 PyPiGuide step (PyPI name claim, release tagging/publishing).
 - Changing the license.
 - Silently "fixing" physics numbers beyond what the author has explicitly
-  decided (the Ω_b h² band value in S-8 is decided: 0.022425 ± 0.000136;
-  its printed citation still needs the author's input).
+  decided (the Ω_b h² band value in S-8 is decided and implemented:
+  0.02242 ± 0.00014, "Planck 2018 + BAO", 2026-07-08).
 - Porting the LaTeX physics manual to Sphinx (link it; porting is a separate
   project).

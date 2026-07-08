@@ -64,7 +64,7 @@ def test_cli_omegabh2_override_changes_doh(capsys):
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
     # A higher baryon density measurably increases D/H away from the
-    # Omegabh2=0.022425 reference value above.
+    # Omegabh2=0.02242 reference value above.
     assert results["DoH"] != pytest.approx(2.4349347363779478e-05, rel=1e-6)
 
 

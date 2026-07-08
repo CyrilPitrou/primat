@@ -114,7 +114,7 @@ cfg = dict(
     # nuclear_qed_corrections=True,   # QED correction to select radiative-capture rates (Pitrou & Pospelov 2020)
 
     # ---- cosmological inputs ------------------------------------------------
-    # Omegabh2=0.022425,              # baryon density Omega_b h^2 (Planck 2018 default)
+    # Omegabh2=0.02242,              # baryon density Omega_b h^2 (Planck 2018 default)
     # Omegach2=0.11933,               # cold dark matter density Omega_c h^2 (Planck 2018)
     # h=0.6766,                       # reduced Hubble constant h = H_0 / (100 km/s/Mpc) (Planck 2018)
     # DeltaNeff=0.0,                  # extra relativistic species beyond SM neutrinos

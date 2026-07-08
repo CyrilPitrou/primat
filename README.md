@@ -89,7 +89,7 @@ tutorials, how-to guides, the API reference, and the CLI reference.
 ```python
 from primat.backend import run_bbn
 
-result = run_bbn({"Omegabh2": 0.022425})
+result = run_bbn({"Omegabh2": 0.02242})
 
 print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699911
 print(f"D/H = {result['DoH']:.7e}")          # 2.4350167e-05
@@ -110,7 +110,7 @@ There are four ways to use primat, all of which produce identical results:
 from primat.backend import run_bbn
 
 # Automatically selects C backend if available, falls back to pure-Python
-result = run_bbn({"Omegabh2": 0.022425, "network": "large"})
+result = run_bbn({"Omegabh2": 0.02242, "network": "large"})
 ```
 
 To force a specific backend:
@@ -141,7 +141,7 @@ Li6/Li7    = 1.418945e-05
 
 | Flag | Description |
 |------|-------------|
-| `--Omegabh2 VALUE` | Baryon density Ω_b h² (default: 0.022425) |
+| `--Omegabh2 VALUE` | Baryon density Ω_b h² (default: 0.02242) |
 | `--DeltaNeff VALUE` | Extra relativistic degrees of freedom (default: 0) |
 | `--network {small,small_parthenope,large}` | Nuclear reaction network (default: small) |
 | `--amax A` | Drop reactions involving any nuclide with mass number > A; applies to any network |
@@ -211,7 +211,7 @@ information for various platforms.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `Omegabh2` | 0.022425 | Baryon density Ω_b h² |
+| `Omegabh2` | 0.02242 | Baryon density Ω_b h² |
 | `DeltaNeff` | 0.0 | Extra relativistic degrees of freedom |
 | `tau_n` | 878.4 | Neutron lifetime [s] |
 | `network` | `"small"` | `"small"` (12 reactions) / `"small_parthenope"` (12, Parthenope 3.0 tables) / `"large"` (~429), optionally restricted via `amax`. |
@@ -345,7 +345,7 @@ from primat.backend import run_mc
 mc_result = run_mc(
     100,                              # number of MC samples
     ["DoH", "YPBBN"],                 # quantities to compute statistics for
-    params={"Omegabh2": 0.022425},
+    params={"Omegabh2": 0.02242},
 )
 
 print(f"D/H mean: {mc_result['DoH'].mean:.8e} ± {mc_result['DoH'].std:.8e}")
@@ -390,7 +390,7 @@ uncertainty.
 ```python
 from primat.backend import run_mc
 
-mc = run_mc(100, ["YPBBN", "DoH"], params={"Omegabh2": 0.022425})
+mc = run_mc(100, ["YPBBN", "DoH"], params={"Omegabh2": 0.02242})
 
 mc["DoH"].central   # nominal (best-estimate) value
 mc["DoH"].mean      # mean over the 100 MC samples
@@ -424,7 +424,7 @@ correlation and covariance matrices of the four main products
 (`YPBBN`, `DoH`, `He3oHe4`, `Li7oH`):
 
 ```bash
-primat --Omegabh2 0.022425 --mc 100
+primat --Omegabh2 0.02242 --mc 100
 # YP (BBN)   = 0.24700028 +/- 0.00003123
 # D/H        = 2.4350000e-05 +/- 1.2000000e-07
 # ...

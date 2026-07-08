@@ -381,7 +381,7 @@ DEFAULT_PARAMS: dict = {
     "nuclear_qed_corrections":    True,
 
     # ---- cosmological inputs ----------------------------------------------
-    "Omegabh2":                   0.022425,
+    "Omegabh2":                   0.02242,   # baryon density Omega_b h^2 = 0.02242 +/- 0.00014 (Planck 2018 + BAO, author decision 2026-07-08)
     "Omegach2":                   0.11933,  # cold dark matter density parameter Omega_c h^2 (Planck 2018)
     "h":                          0.6766,   # reduced Hubble constant h = H_0 / (100 km/s/Mpc) (Planck 2018)
     "DeltaNeff":                  0.,

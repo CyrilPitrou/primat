@@ -24,22 +24,22 @@ pytestmark = pytest.mark.slow
 
 @pytest.mark.solve
 def test_small_network_YPBBN(solved_small):
-    assert solved_small.results["YPBBN"] == pytest.approx(0.2469983, abs=1e-4)
+    assert solved_small.results["YPBBN"] == pytest.approx(0.2469971, abs=1e-4)
 
 
 @pytest.mark.solve
 def test_small_network_DoH(solved_small):
-    assert solved_small.results["DoH"] == pytest.approx(2.43490e-5, rel=2e-3)
+    assert solved_small.results["DoH"] == pytest.approx(2.43590e-5, rel=2e-3)
 
 
 @pytest.mark.solve
 def test_large_network_YPBBN(solved_large):
-    assert solved_large.results["YPBBN"] == pytest.approx(0.2470017, abs=1e-4)
+    assert solved_large.results["YPBBN"] == pytest.approx(0.2470005, abs=1e-4)
 
 
 @pytest.mark.solve
 def test_large_network_DoH(solved_large):
-    assert solved_large.results["DoH"] == pytest.approx(2.43561e-5, rel=2e-3)
+    assert solved_large.results["DoH"] == pytest.approx(2.43658e-5, rel=2e-3)
 
 
 @pytest.mark.solve
@@ -79,7 +79,7 @@ def test_He3oH_order_of_magnitude(solved_small):
 # Settings used to produce the published reference values.
 _REF_PARAMS = dict(numerical_precision=1e-10, sampling_temperature_per_decade=2000,
                    sampling_nTOp_per_decade=125, T_start_cosmo_MeV=100.0,
-                   Omegabh2=0.022425, verbose=False, debug=False)
+                   Omegabh2=0.02242, verbose=False, debug=False)
 
 
 @pytest.fixture(scope="session")
@@ -96,22 +96,22 @@ def ref_large():
 
 @pytest.mark.reference
 def test_reference_small_YPBBN(ref_small):
-    assert ref_small["YPBBN"] == pytest.approx(0.2469983, abs=1e-5)
+    assert ref_small["YPBBN"] == pytest.approx(0.24699814, abs=1e-5)
 
 
 @pytest.mark.reference
 def test_reference_small_DoH(ref_small):
-    assert ref_small["DoH"] == pytest.approx(2.43490e-5, abs=3e-9)
+    assert ref_small["DoH"] == pytest.approx(2.43589e-5, abs=3e-9)
 
 
 @pytest.mark.reference
 def test_reference_large_YPBBN(ref_large):
-    assert ref_large["YPBBN"] == pytest.approx(0.2470017, abs=1e-5)
+    assert ref_large["YPBBN"] == pytest.approx(0.24700149, abs=1e-5)
 
 
 @pytest.mark.reference
 def test_reference_large_DoH(ref_large):
-    assert ref_large["DoH"] == pytest.approx(2.43561e-5, abs=3e-9)
+    assert ref_large["DoH"] == pytest.approx(2.43660e-5, abs=3e-9)
 
 
 # ---------------------------------------------------------------------------

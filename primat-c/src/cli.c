@@ -122,7 +122,7 @@ static void usage(const char *prog)
            "  -h, --help            Show this help message and exit.\n"
            "  --credits             Print the project credits and exit.\n"
            "  --version             Print the primat-c version and exit.\n"
-           "  --Omegabh2 VALUE      Baryon density Omega_b h^2 (default: 0.022425).\n"
+           "  --Omegabh2 VALUE      Baryon density Omega_b h^2 (default: 0.02242).\n"
            "  --DeltaNeff VALUE     Extra relativistic degrees of freedom on top of\n"
            "                        the SM neutrino sector (default: 0).\n"
            "  --network NAME        Nuclear reaction network used in the LT era\n"

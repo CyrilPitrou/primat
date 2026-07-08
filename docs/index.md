@@ -21,7 +21,7 @@ pip install primat
 ```python
 from primat.backend import run_bbn
 
-result = run_bbn({"Omegabh2": 0.022425})
+result = run_bbn({"Omegabh2": 0.02242})
 
 print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699911
 print(f"D/H       = {result['DoH']:.7e}")    # 2.4350167e-05
