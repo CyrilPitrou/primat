@@ -93,8 +93,16 @@ notebooks = [
 docs = [
     # Upper-pin on Sphinx: myst-parser/myst-nb lag new major Sphinx releases by
     # a few months (Sphinx 9 broke a transform myst-parser removes at setup).
-    # Keep this at ``<9`` until myst-nb publishes Sphinx-9 support.
-    "sphinx>=7,<9",
+    # Additionally, Sphinx >=8.2 enables parallel doc reading more eagerly, and
+    # sphinx-argparse 0.6.0 (latest as of writing) doesn't implement
+    # ArgParseDomain.merge_domaindata, so a parallel read crashes with
+    # "NotImplementedError: merge_domaindata must be implemented ... to be able
+    # to do parallel builds" -- this bit Read the Docs's build (which resolved
+    # 8.2.3) even though a local ``pip install`` had backed off to 8.1.3 on its
+    # own. Pin below 8.2 explicitly rather than relying on the resolver to
+    # pick a safe version by accident. Revisit once sphinx-argparse ships
+    # parallel-read support.
+    "sphinx>=7,<8.2",
     "furo",
     "myst-parser>=2",
     "myst-nb>=1",
