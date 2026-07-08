@@ -13,11 +13,23 @@ build:
   os: ubuntu-24.04
   tools:
     python: "3.12"
+  jobs:
+    # RTD's managed Sphinx invocation (the ``sphinx:`` config block below)
+    # runs with ``-j auto``, parallelising the doc-reading phase across every
+    # CPU on the build machine. sphinx-argparse 0.6.0 (latest as of writing,
+    # used by docs/cli.md to autogenerate the CLI reference) doesn't
+    # implement ArgParseDomain.merge_domaindata, which parallel reads require
+    # -- so any nproc > 1 crashes with "NotImplementedError: merge_domaindata
+    # must be implemented ... to be able to do parallel builds". This never
+    # showed up locally (a plain ``sphinx-build`` with no ``-j`` flag is
+    # serial), only on RTD's runner. Override the html build command to force
+    # ``-j 1`` explicitly rather than relying on RTD's default.
+    build:
+      html:
+        - python -m sphinx -j 1 -T -W --keep-going -b html -d docs/_build/doctrees docs $READTHEDOCS_OUTPUT/html
 
 sphinx:
   configuration: docs/conf.py
-  # Match the CI docs job: warnings are errors, so broken cross-references or
-  # missing toctree entries fail the RTD build too.
   fail_on_warning: true
 
 python:
