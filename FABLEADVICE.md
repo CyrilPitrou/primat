@@ -376,19 +376,28 @@ add intersphinx links to numpy/scipy; screenshot the GUI for its page.
 **Accept**: `sphinx-build -W` clean in CI (add to tests.yml); RTD preview
 renders; README slims to ~150 lines that link out (see S-7).
 
-### S-7. README facelift  «Sonnet» (after O-3 skeleton exists)
-- Badges: PyPI version, Python versions, CI status, docs status, license,
-  arXiv:1801.08023 (the Phys. Rep.), later Zenodo DOI.
-- A hero figure: the Schramm plot from `notebooks/plots/schramm_plot.jpg`
-  (or regenerate as SVG/PNG at repo-friendly size).
-- Keep: what it is, install, 10-line quick start, the four ways to run,
-  backend table, citation, links to docs for everything else.
-- One short "primat vs other BBN codes" positioning paragraph (PArthENoPE,
+### S-7. README facelift  «Sonnet» (after O-3 skeleton exists) — SCOPE CUT (author decision, 2026-07-08)
+
+Author likes the README's current length/depth and does not want it slimmed
+down. Done instead: a docs badge (top of README) plus a
+"Full documentation: primat.readthedocs.io" link right after the Installation
+section, pointing to the new O-3 docs site. The badges/hero-figure/positioning
+paragraph ideas below remain available if the author asks for them later, but
+are not planned work.
+
+- ~~Badges: PyPI version, Python versions, CI status, docs status, license,
+  arXiv:1801.08023 (the Phys. Rep.), later Zenodo DOI.~~
+- ~~A hero figure: the Schramm plot from `notebooks/plots/schramm_plot.jpg`
+  (or regenerate as SVG/PNG at repo-friendly size).~~
+- ~~Keep: what it is, install, 10-line quick start, the four ways to run,
+  backend table, citation, links to docs for everything else.~~
+- ~~One short "primat vs other BBN codes" positioning paragraph (PArthENoPE,
   PRyMordial, AlterBBN exist; state primat's differentiators — precision
   physics (CCRTh/SD/FM corrections), C speed + Python flexibility, MC
-  uncertainty machinery, GUI — without disparaging others).
-**Accept**: README under ~200 lines, zero deep parameter tables (those live
-in docs), every claim still test-pinned where feasible.
+  uncertainty machinery, GUI — without disparaging others).~~
+**Accept**: ~~README under ~200 lines, zero deep parameter tables (those live
+in docs), every claim still test-pinned where feasible.~~ Docs link present
+right after Installation (done).
 
 ### S-8. Notebook and template polish  «Sonnet»
 - `notebooks/README.md` table is missing `AnimatedAbundances.ipynb` and

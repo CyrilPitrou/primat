@@ -81,6 +81,9 @@ pip install -e ".[notebooks]"
 |---------|------|
 | `matplotlib`, `pandas` | Plotting and tabular display in the notebooks |
 
+**Full documentation:** [primat.readthedocs.io](https://primat.readthedocs.io) —
+tutorials, how-to guides, the API reference, and the CLI reference.
+
 ## Quick start
 
 ```python
