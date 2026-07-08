@@ -1,27 +1,51 @@
 # Choose a network and `amax`
 
-:::{note}
-*(stub — FABLEADVICE O-3)* Migrate from the README "Key configuration flags"
-table and CLAUDE.md's network discussion: `small` / `small_parthenope` /
-`large`, the `amax` A≤N filter (e.g. `network="large", amax=8` = the old
-"medium" 68-reaction network), the shared HT/MT eras, and the accuracy notes
-for the heavy-nuclide tail.
-:::
-
-Set the network at construction time:
+Set the network at construction time — via the `network` parameter (Python
+API/CLI) or the `--network`/`--amax` flags:
 
 ```python
-from primat import PRIMAT
+from primat.backend import run_bbn
 
-bbn = PRIMAT({"network": "large", "amax": 8})
-results = bbn.solve()
+result = run_bbn({"network": "large", "amax": 8})
 ```
 
-| `network` | Reactions | Notes |
-|-----------|-----------|-------|
-| `small` (default) | 12 | fast, light elements only |
-| `small_parthenope` | 12 | Parthenope 3.0 rate tables |
-| `large` | ~429 | full network, ~59 nuclides |
-| any name | — | loads `data/nuclear/networks/<name>.txt` |
+```bash
+primat --network large --amax 8
+```
 
-The `amax` flag filters *any* network to reactions with A ≤ `amax`.
+## Available networks
+
+Two named networks (plus a Parthenope-rates variant of the small one) are
+available via `network`; `amax` (any positive integer) further restricts
+*any* of them to reactions whose nuclides all have mass number A ≤ `amax`:
+
+| `network` | Reactions | Nuclides | Notes |
+|-----------|-----------|----------|-------|
+| `"small"` (default) | 12 | 8 | the key reactions; fastest |
+| `"small_parthenope"` | 12 | 8 | same reactions, Parthenope 3.0 rate tables (comparison runs) |
+| `"large"` | ~429 | ~59 | from the AC2024 compilation; LT era only |
+| `"large"`, `amax=8` | 68 | 12 | the old "medium" network's exact equivalent |
+| `"large"`, `amax=2` | 3 | 3 | the old "deuterium" network's equivalent (n↔p + n_p__d_g + p_p_n__d_p) |
+| any other name | — | — | loads `data/nuclear/networks/<name>.txt` |
+
+All networks share the HT (n↔p) and MT eras — the MT era always uses a fixed
+18-reaction subset, too stiff to run the full network; only the LT reaction
+set is filtered by `network`/`amax`. The light-element abundances of the
+full `large` network match the `amax=8` restriction to ≲1e-4; its
+heavy-nuclide tail (B, C, N, O, …) is approximate (limited by the AC2024
+rate floors). See the {doc}`../tutorials/AbundanceEvolution` notebook for
+evolution plots across networks.
+
+## Related physics-configuration flags
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `radiative_corrections` | `True` | Coulomb + T=0 resummed radiative corrections to n↔p (CCR) |
+| `finite_mass_corrections` | `True` | Fokker-Planck finite-nucleon-mass correction (FM) |
+| `thermal_corrections` | `True` | Finite-temperature radiative corrections to n↔p (CCRTh) |
+| `spectral_distortions` | `True` | Correct n↔p rates for non-FD neutrino distributions (SD) |
+| `tau_n_normalization` | `True` | Normalise weak rates using τ_n (neutron lifetime) |
+| `numerical_precision` | `1e-7` | `solve_ivp` relative tolerance (rtol) for all ODE integration |
+
+See {doc}`weak-rate-cache` for how changing these flags interacts with the
+n↔p rate cache.

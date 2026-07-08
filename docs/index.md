@@ -12,12 +12,6 @@ development. It integrates the coupled ODEs of the cosmological background
 network to predict the primordial abundances of H, D, ³He, ⁴He, ⁷Li and heavier
 nuclides.
 
-:::{note}
-This documentation site is being migrated from the project's README, LaTeX
-manual, and notebook galleries. Pages marked *(stub)* are scaffolding for the
-in-progress content migration (FABLEADVICE O-3).
-:::
-
 ## Quick start
 
 ```bash
@@ -25,20 +19,41 @@ pip install primat
 ```
 
 ```python
-from primat import PRIMAT
+from primat.backend import run_bbn
 
-# A standard-model run at the Planck baryon density.
-bbn = PRIMAT({"Omegabh2": 0.022425, "network": "small"})
-results = bbn.solve()
-print(f"YP  = {results['YPBBN']:.8f}")
-print(f"D/H = {results['DoH']:.7e}")
+result = run_bbn({"Omegabh2": 0.022425})
+
+print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699911
+print(f"D/H       = {result['DoH']:.7e}")    # 2.4350167e-05
 ```
 
-Or straight from the command line:
+`run_bbn()` is the main entry point and automatically selects the best
+available backend (fast C engine by default, pure-Python fallback if
+needed). Pass an optional parameter dict to override defaults; all keys are
+optional and drawn from `primat/config.py`'s `DEFAULT_PARAMS`.
 
-```bash
-primat --Omegabh2 0.022425 --network large --amax 8
-```
+## Four ways to use primat
+
+All four produce identical results (to the cross-backend tolerance described
+in {doc}`api/backend`).
+
+1. **Python API** (recommended) — `primat.backend.run_bbn(params)`, shown
+   above. Force a specific backend with `force_backend="c"` /
+   `force_backend="python"`.
+2. **Command-line interface**:
+   ```bash
+   primat --Omegabh2 0.02242 --network large --amax 8
+   ```
+   See {doc}`cli` for the full flag reference (auto-generated from
+   `primat --help`); anything not exposed as a flag is reachable via the
+   repeatable `--set KEY=VALUE` escape hatch.
+3. **Graphical interface** — after `pip install "primat[gui]"`, run
+   `primat-gui` for a browser-based parameter form, interactive
+   abundance-evolution plot, and final-abundances panel. Supports custom
+   networks (see {doc}`howto/custom-networks`) and either backend.
+4. **Example scripts** (development/source-only) — `python
+   runfiles/primat_run.py`, `primat_compare.py`, `primat_reference_run.py`,
+   `primat_mc.py`; run from a source checkout's repo root.
 
 ## Citing primat
 
@@ -72,6 +87,7 @@ howto/index
 :hidden:
 
 physics
+extending
 api/index
 cli
 ```

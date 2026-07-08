@@ -1,8 +1,6 @@
 # How-to guides
 
-Task-oriented recipes for common primat workflows. Each page is being migrated
-from the corresponding deep section of the README / `EXTENDING.md`
-*(FABLEADVICE O-3)*.
+Task-oriented recipes for common primat workflows.
 
 ```{toctree}
 :maxdepth: 1
@@ -10,6 +8,8 @@ from the corresponding deep section of the README / `EXTENDING.md`
 networks
 custom-networks
 rate-variation-mc
+weak-rate-cache
+output
 data-overlays
 nevo-tables
 backgrounds
