@@ -25,8 +25,13 @@ Early Dark Energy (`cfg.fEDE > 0`) is itself implemented this way
 method as a worked example of a temperature-dependent, parametrised
 contribution rather than a flat constant.
 
-`extra_rho` is Python-only: any non-`None` value forces the Python backend
-regardless of `force_backend="auto"` (and raises if `force_backend="c"`).
+`extra_rho` works on **both** backends. On the C backend, the summed
+`rho(Tg)` callables are sampled once onto a dense log-`Tg` grid and the
+`(Tg, rho)` table is passed to the C solver, which splines it and adds
+`rho(Tg)` to the Friedmann equation — so `force_backend="auto"`/`"c"` are
+both fine and agree with the Python backend to the cross-backend tolerance.
+(A live Python callable cannot cross the C ABI, hence the tabulated handoff;
+it is exact for smooth `rho(Tg)`.)
 
 ## `custom_background` — replace the expansion history with a table
 
@@ -122,7 +127,11 @@ PRIMAT(background=MyBackground(cfg, plasma))
 dispatch. `background=` is mutually exclusive with `params`/`extra_rho`/
 `cfg.custom_background` (only meaningful for the default dispatch);
 supplying `background` together with either emits a warning, and the
-supplied `background` instance wins. Like `extra_rho`, this is Python-only.
+supplied `background` instance wins. `background=` is **Python-only** — an
+arbitrary user-supplied `Background` subclass cannot cross the C ABI, so it
+always forces the Python backend under `force_backend="auto"` and raises
+under `force_backend="c"`. It is the one remaining backend feature gap
+(unlike `extra_rho`, which is now supported on both backends, see above).
 
 ## Which mechanism to reach for
 

@@ -8,6 +8,7 @@
 #include "network_builder.h"
 #include "ode_rk.h"
 #include "ode_bdf.h"
+#include "linalg.h"
 #include "log.h"
 
 #include <math.h>
@@ -568,5 +569,293 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     free(Tnue_out); free(Tnumu_out); free(Tnutau_out); free(Y_out);
     printf("[output] Time-evolution data (%zu rows) written to %s\n", n, path);
     fflush(stdout);
+    return 0;
+}
+
+/* =====================================================================
+ * Decay Time (DT) era -- port of nuclear_network.py's _build_decay_matrix
+ * / _integrate_decay_era / _write_decay_evolution (O-8; see CLAUDE.md's
+ * backend feature gaps). After BBN ends at t_end, long-lived radioactive
+ * isotopes (C14, Be10, Na22, the residual free neutron, ...) keep decaying
+ * for years to Myr under the *constant* decay-rate matrix D alone (no Hubble
+ * expansion, no thermal production, since T is far too low for any thermal
+ * activation): dY/dt = D.Y, solved exactly by Y(t) = exp(D*(t-t_end)) Y0.
+ *
+ * Only the `large` network carries the decays.txt beta/EC reactions this era
+ * needs, so (mirroring Python) the whole era is gated on
+ * cfg->decay_era && is_large. It changes no BBN *observable* (Y_final and the
+ * result dict are the end-of-LT state, unchanged by the DT era in Python
+ * too); its only output is the optional output_decay_evolution TSV, so the C
+ * port computes it only when that file was requested.
+ * ===================================================================== */
+
+/* Dense n x n matrix multiply C = A*B, row-major. n is small (<= ~60, the
+ * large network's LT nuclide count), so the naive triple loop is fine. */
+static void dt_mat_mul(const double *A, const double *B, double *C, size_t n)
+{
+    for (size_t i = 0; i < n; i++)
+        for (size_t j = 0; j < n; j++) {
+            double s = 0.0;
+            for (size_t k = 0; k < n; k++) s += A[i * n + k] * B[k * n + j];
+            C[i * n + j] = s;
+        }
+}
+
+/* Dense matrix exponential E = expm(A) (A n x n row-major, left unchanged),
+ * via the scaling-and-squaring + degree-13 Padé algorithm of Higham (2005) --
+ * the same method scipy.linalg.expm uses, and the reason Python's
+ * _integrate_decay_era can handle D's ~16-decade eigenvalue spread (the
+ * fastest residual decay vs. a ~Gyr Delta-t) in milliseconds: the squaring
+ * count grows only logarithmically in ||A||. Degree 13 alone (scipy also
+ * uses lower degrees for small ||A|| purely as an optimisation) reproduces
+ * exp to ~machine precision at every norm once scaled below theta13, far
+ * finer than the cross-backend tolerance. Returns 0 on success, nonzero
+ * with *errmsg set (caller frees) on OOM or a singular Pade denominator.
+ *
+ * Reference: N. J. Higham, "The Scaling and Squaring Method for the Matrix
+ * Exponential Revisited", SIAM J. Matrix Anal. Appl. 26 (2005) 1179-1193. */
+static int dt_expm(const double *A_in, size_t n, double *E, char **errmsg)
+{
+    /* Degree-13 Pade numerator/denominator coefficients (Higham 2005 Table). */
+    static const double b[14] = {
+        64764752532480000.0, 32382376266240000.0, 7771770303897600.0,
+        1187353796428800.0, 129060195264000.0, 10559470521600.0,
+        670442572800.0, 33522128640.0, 1323241920.0, 40840800.0,
+        960960.0, 16380.0, 182.0, 1.0
+    };
+    const double theta13 = 5.371920351148152; /* scaling threshold for degree 13 */
+
+    size_t nn = n * n;
+    /* One workspace block, carved into the matrices the algorithm needs. */
+    double *A  = malloc(nn * sizeof(double));
+    double *A2 = malloc(nn * sizeof(double));
+    double *A4 = malloc(nn * sizeof(double));
+    double *A6 = malloc(nn * sizeof(double));
+    double *U  = malloc(nn * sizeof(double));
+    double *V  = malloc(nn * sizeof(double));
+    double *W  = malloc(nn * sizeof(double));  /* scratch */
+    double *P  = malloc(nn * sizeof(double));  /* V + U (numerator) */
+    double *Q  = malloc(nn * sizeof(double));  /* V - U (denominator) */
+    size_t *piv = malloc(n * sizeof(size_t));
+    double *col = malloc(n * sizeof(double));
+    if (!A || !A2 || !A4 || !A6 || !U || !V || !W || !P || !Q || !piv || !col) {
+        free(A); free(A2); free(A4); free(A6); free(U); free(V);
+        free(W); free(P); free(Q); free(piv); free(col);
+        if (errmsg) *errmsg = strdup("dt_expm: out of memory");
+        return 1;
+    }
+    memcpy(A, A_in, nn * sizeof(double));
+
+    /* 1-norm (max absolute column sum) sets the scaling s so ||A/2^s|| <= theta13. */
+    double norm1 = 0.0;
+    for (size_t j = 0; j < n; j++) {
+        double colsum = 0.0;
+        for (size_t i = 0; i < n; i++) colsum += fabs(A[i * n + j]);
+        if (colsum > norm1) norm1 = colsum;
+    }
+    int s = 0;
+    if (norm1 > theta13) {
+        s = (int)ceil(log2(norm1 / theta13));
+        if (s < 0) s = 0;
+        double scale = ldexp(1.0, -s); /* 2^-s */
+        for (size_t i = 0; i < nn; i++) A[i] *= scale;
+    }
+
+    /* Even powers of the (scaled) A. */
+    dt_mat_mul(A, A, A2, n);
+    dt_mat_mul(A2, A2, A4, n);
+    dt_mat_mul(A4, A2, A6, n);
+
+    /* U = A * (A6*(b13*A6 + b11*A4 + b9*A2) + b7*A6 + b5*A4 + b3*A2 + b1*I)
+     * V =      A6*(b12*A6 + b10*A4 + b8*A2) + b6*A6 + b4*A4 + b2*A2 + b0*I */
+    for (size_t i = 0; i < nn; i++)
+        W[i] = b[13] * A6[i] + b[11] * A4[i] + b[9] * A2[i];
+    dt_mat_mul(A6, W, V, n);                 /* reuse V as scratch for A6*W */
+    for (size_t i = 0; i < nn; i++)
+        V[i] += b[7] * A6[i] + b[5] * A4[i] + b[3] * A2[i];
+    for (size_t i = 0; i < n; i++)
+        V[i * n + i] += b[1];                /* + b1*I */
+    dt_mat_mul(A, V, U, n);                  /* U = A * (...) */
+
+    for (size_t i = 0; i < nn; i++)
+        W[i] = b[12] * A6[i] + b[10] * A4[i] + b[8] * A2[i];
+    dt_mat_mul(A6, W, V, n);                 /* V = A6*(...) */
+    for (size_t i = 0; i < nn; i++)
+        V[i] += b[6] * A6[i] + b[4] * A4[i] + b[2] * A2[i];
+    for (size_t i = 0; i < n; i++)
+        V[i * n + i] += b[0];                /* + b0*I */
+
+    /* Solve (V - U) R = (V + U). R = E (result before squaring). */
+    for (size_t i = 0; i < nn; i++) { P[i] = V[i] + U[i]; Q[i] = V[i] - U[i]; }
+    if (cpr_lu_factor(Q, n, piv)) {
+        free(A); free(A2); free(A4); free(A6); free(U); free(V);
+        free(W); free(P); free(Q); free(piv); free(col);
+        if (errmsg) *errmsg = strdup("dt_expm: singular Pade denominator");
+        return 1;
+    }
+    /* Solve column by column: Q * E[:,j] = P[:,j]. */
+    for (size_t j = 0; j < n; j++) {
+        for (size_t i = 0; i < n; i++) col[i] = P[i * n + j];
+        cpr_lu_solve(Q, n, piv, col);
+        for (size_t i = 0; i < n; i++) E[i * n + j] = col[i];
+    }
+
+    /* Undo the scaling: square E s times (E <- E*E). */
+    for (int k = 0; k < s; k++) {
+        dt_mat_mul(E, E, W, n);
+        memcpy(E, W, nn * sizeof(double));
+    }
+
+    free(A); free(A2); free(A4); free(A6); free(U); free(V);
+    free(W); free(P); free(Q); free(piv); free(col);
+    return 0;
+}
+
+/* Build the constant N x N decay-rate matrix D [s^-1] for the DT era (port
+ * of _build_decay_matrix). dY/dt = D.Y with Y in mass fractions and D's
+ * columns index the *parent*: each decay X -> products with rate lambda
+ * contributes D[X,X] -= lambda*mult_X and D[P,X] += lambda*mult_P*A_P/A_X
+ * (the A_P/A_X factor converts a number-fraction flux to a mass-fraction
+ * one). Decay reactions are the LT network's weak reactions other than n__p
+ * (index 0, handled by the HT/MT/LT thermal weak rate); their rate is the
+ * T9-independent decays.txt constant, stored uniformly across the master T9
+ * grid, so grid index 0 is representative. The free-neutron beta decay
+ * n -> p (lambda = 1/tau_n) is added explicitly -- it is the T->0 limit of
+ * the thermal n<->p rate, absent from decays.txt, so without it the residual
+ * free neutrons at t_end would never decay. D is written into the caller's
+ * N*N buffer (row-major, zeroed here first). */
+static void dt_build_decay_matrix(const CPRNetworkDef *net, const CPRConfig *cfg, double *D)
+{
+    size_t N = net->n_species;
+    memset(D, 0, N * N * sizeof(double));
+
+    for (size_t rxn = 1; rxn < net->n_reac; rxn++) {   /* skip index 0 (n__p) */
+        if (!net->weak_flags[rxn]) continue;           /* decays are the weak reactions */
+        double rate = net->fwd_median[(rxn - 1) * net->n_grid + 0]; /* [s^-1], T9-independent */
+        if (rate == 0.0) continue;
+
+        const CPRStoichSide *react = &net->network[rxn].reactants;
+        const CPRStoichSide *prod  = &net->network[rxn].products;
+        for (size_t a = 0; a < react->n; a++) {
+            long X = react->species_idx[a];
+            double X_mult = (double)react->mult[a];
+            double A_X = (double)(net->N[X] + net->Z[X]);
+            D[(size_t)X * N + (size_t)X] -= rate * X_mult;   /* parent loss */
+            for (size_t p = 0; p < prod->n; p++) {
+                long P = prod->species_idx[p];
+                double P_mult = (double)prod->mult[p];
+                double A_P = (double)(net->N[P] + net->Z[P]);
+                /* mass-fraction gain, weighted by A_P/A_X */
+                D[(size_t)P * N + (size_t)X] += rate * P_mult * A_P / A_X;
+            }
+        }
+    }
+
+    /* Free-neutron beta decay n -> p (rate 1/tau_n); A_n = A_p = 1. */
+    long n_idx = -1, p_idx = -1;
+    for (size_t i = 0; i < N; i++) {
+        if (strcmp(net->species[i], "n") == 0) n_idx = (long)i;
+        else if (strcmp(net->species[i], "p") == 0) p_idx = (long)i;
+    }
+    if (n_idx >= 0 && p_idx >= 0) {
+        double lam_n = 1.0 / cfg->tau_n;
+        D[(size_t)n_idx * N + (size_t)n_idx] -= lam_n;
+        D[(size_t)p_idx * N + (size_t)n_idx] += lam_n;
+    }
+}
+
+int cpr_nuclear_network_decay_era(const CPRNuclearNetwork *nn, char **errmsg)
+{
+    const CPRConfig *cfg = nn->cfg;
+    /* Gated exactly like Python's solve(): only the `large` network carries
+     * the decays.txt reactions this era propagates. Its only output is the
+     * optional decay-evolution TSV (no BBN observable changes -- see this
+     * section's top comment), so skip the work entirely when that file was
+     * not requested. */
+    if (!cfg->decay_era || !cpr_config_is_large(cfg) || !cfg->output_decay_evolution)
+        return 0;
+
+    const CPRNetworkDef *net = &nn->nucl->lt_net;
+    size_t N = net->n_species;
+    int M = cfg->decay_n_points;
+    if (M < 1) return 0;
+
+    double *D      = malloc(N * N * sizeof(double));
+    double *Y0     = malloc(N * sizeof(double));
+    double *t_grid = malloc((size_t)M * sizeof(double));
+    double *Y_DT   = malloc((size_t)M * N * sizeof(double));
+    double *E      = malloc(N * N * sizeof(double));
+    double *Ddt    = malloc(N * N * sizeof(double));
+    if (!D || !Y0 || !t_grid || !Y_DT || !E || !Ddt) {
+        free(D); free(Y0); free(t_grid); free(Y_DT); free(E); free(Ddt);
+        if (errmsg) *errmsg = strdup("cpr_nuclear_network_decay_era: out of memory");
+        return 1;
+    }
+
+    dt_build_decay_matrix(net, cfg, D);
+
+    /* Y0 = end-of-LT abundances, in abundance_names (== lt_net.species) order. */
+    for (size_t i = 0; i < N; i++) Y0[i] = nn->Y_final[i];
+
+    /* Time grid log-spaced in the *elapsed* time Delta-t = t - t_end from
+     * Delta-t = 1 s to t_decay_end, then offset to absolute cosmic time --
+     * mirrors solve()'s `t_end + np.logspace(log10(1), log10(t_decay_end),
+     * decay_n_points)`. Spacing in Delta-t (not absolute t) is essential to
+     * resolve the fast residual free-neutron decay (tau_n ~ 880 s), ~10
+     * decades below t_end (~1.3e6 s). */
+    double log_lo = log10(1.0), log_hi = log10(cfg->t_decay_end);
+    for (int k = 0; k < M; k++) {
+        double frac = (M == 1) ? 0.0 : (double)k / (double)(M - 1);
+        t_grid[k] = nn->t_end + pow(10.0, log_lo + frac * (log_hi - log_lo));
+    }
+
+    /* Y(t_k) = expm(D * (t_k - t_end)) @ Y0, per output time. */
+    for (int k = 0; k < M; k++) {
+        double dt = t_grid[k] - nn->t_end;
+        for (size_t i = 0; i < N * N; i++) Ddt[i] = D[i] * dt;
+        if (dt_expm(Ddt, N, E, errmsg)) {
+            free(D); free(Y0); free(t_grid); free(Y_DT); free(E); free(Ddt);
+            return 1;
+        }
+        for (size_t i = 0; i < N; i++) {
+            double acc = 0.0;
+            for (size_t j = 0; j < N; j++) acc += E[i * N + j] * Y0[j];
+            /* Clip tiny negatives from matrix-exp cancellation (mirrors
+             * np.clip(..., 0, None) in _integrate_decay_era). */
+            Y_DT[(size_t)k * N + i] = acc < 0.0 ? 0.0 : acc;
+        }
+    }
+
+    /* Write the decay-evolution TSV (port of _write_decay_evolution):
+     * header "t\tY<species>...", then one row per time point. np.savetxt's
+     * default %.18e format is matched so a loader sees identical precision. */
+    char path[4300];
+    snprintf(path, sizeof(path), "%s", cfg->output_decay_file);
+    char dir[4300];
+    snprintf(dir, sizeof(dir), "%s", path);
+    char *slash = strrchr(dir, '/');
+    if (slash) { *slash = '\0'; mkdir_p(dir); }
+
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        free(D); free(Y0); free(t_grid); free(Y_DT); free(E); free(Ddt);
+        char buf[4400];
+        snprintf(buf, sizeof(buf), "cpr_nuclear_network_decay_era: cannot open %s", path);
+        if (errmsg) *errmsg = strdup(buf);
+        return 1;
+    }
+    fprintf(f, "t");
+    for (size_t s = 0; s < N; s++) fprintf(f, "\tY%s", nn->abundance_names[s]);
+    fprintf(f, "\n");
+    for (int k = 0; k < M; k++) {
+        fprintf(f, "%.18e", t_grid[k]);
+        for (size_t s = 0; s < N; s++) fprintf(f, "\t%.18e", Y_DT[(size_t)k * N + s]);
+        fprintf(f, "\n");
+    }
+    fclose(f);
+    printf("[output] Decay-era evolution (%d rows) written to %s\n", M, path);
+    fflush(stdout);
+
+    free(D); free(Y0); free(t_grid); free(Y_DT); free(E); free(Ddt);
     return 0;
 }

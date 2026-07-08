@@ -285,6 +285,12 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
     }
     double rho_tot = rho_pl + rho_3nu + cpr_plasma_rho_nu_extra(thermo, Tg);
 
+    /* User-supplied tabulated extra energy density (Python's self.extra_rho
+     * sum -- see background.h's extra_rho_spline / config.h). Evaluated at
+     * log10(Tg), the abscissa the spline was fit on. */
+    if (bg->has_extra_rho)
+        rho_tot += cpr_cubic_spline_eval(&bg->extra_rho_spline, log10(Tg));
+
     if (bg->has_lcdm) {
         /* `a` is always supplied exactly by the caller now (Branch E: the
          * combined a(T)/t(T) ODE below always carries x=ln(a*T) in its own
@@ -749,6 +755,30 @@ int cpr_bg_init_standard(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasm
     if (cpr_neutrino_history_init(&bg->nh, cfg, plasma, errmsg)) return 1;
     bg->nh_owned = 1;
 
+    /* Tabulated extra_rho (config.h): fit a cubic spline over (log10(Tg),
+     * rho) so cpr_bg_Hubble can add the user's extra energy density at any
+     * Tg the a(T)/t(T) ODE queries. log10(Tg) as the spline abscissa (not
+     * Tg itself) makes the nodes uniform for backend.py's log-spaced grid,
+     * so a smooth rho(Tg) (constant, or a power law like rho_CDM ~ Tg^3) is
+     * reproduced to ~machine precision on the shipped grid density; the
+     * ordinate stays linear rho so negative/zero contributions are allowed.
+     * Not-a-knot needs >= 4 nodes; backend.py always sends far more. */
+    if (cfg->extra_rho_n >= 4) {
+        double *logT = malloc(cfg->extra_rho_n * sizeof(double));
+        if (!logT) { *errmsg = strdup("cpr_bg_init_standard: OOM for extra_rho log-grid"); return 1; }
+        for (size_t i = 0; i < cfg->extra_rho_n; i++)
+            logT[i] = log10(cfg->extra_rho_T[i]);
+        char *sp_err = NULL;
+        if (cpr_cubic_spline_fit_notaknot(logT, cfg->extra_rho_val, cfg->extra_rho_n,
+                                           &bg->extra_rho_spline, &sp_err)) {
+            free(logT);
+            *errmsg = sp_err ? sp_err : strdup("cpr_bg_init_standard: extra_rho spline fit failed");
+            return 1;
+        }
+        free(logT);
+        bg->has_extra_rho = 1;
+    }
+
     cpr_log(cfg, "bg", "Solving cosmological background a(t,T) ...");
     clock_t _t_bg0 = clock();
     if (setup_background_and_cosmo(bg, errmsg)) return 1;
@@ -965,6 +995,7 @@ void cpr_background_free(CPRBackground *bg)
     free(bg->t_asc); free(bg->T_by_t); free(bg->a_by_t);
     free(bg->T_asc); free(bg->t_by_T); free(bg->a_by_T);
     free(bg->a_sort); free(bg->T_by_a); free(bg->t_by_a);
+    if (bg->has_extra_rho) cpr_cubic_spline_free(&bg->extra_rho_spline);
     cpr_weak_rates_free(&bg->wr);
     memset(bg, 0, sizeof(*bg));
 }
@@ -1205,8 +1236,9 @@ int cpr_bg_write_time_evolution(const CPRBackground *bg, const char *path, int n
     /* Columns: T, t, a, H, Tnue, Tnumu, Tnutau, [Nheating], rho_plasma, rho_nu_tot, [rho_extra], rho_tot */
     size_t n_cols = 10;
     if (has_nheating) n_cols++;
-    /* rho_extra column is added if there are any extra energy-density contributions (LCDM/EDE) */
-    int has_extra = bg->has_lcdm || bg->has_ede;
+    /* rho_extra column is added if there are any extra energy-density
+     * contributions (LCDM/EDE, or the user's tabulated extra_rho) */
+    int has_extra = bg->has_lcdm || bg->has_ede || bg->has_extra_rho;
     if (has_extra) n_cols++;
     double *data = calloc(n_points * n_cols, sizeof(double));
     if (!data) {
@@ -1276,6 +1308,9 @@ int cpr_bg_write_time_evolution(const CPRBackground *bg, const char *path, int n
                 }
                 if (bg->has_ede) {
                     rho_extra += 2.0 * bg->rhocEDEac / (1.0 + pow(bg->TcEDE / T, bg->EDE_exponent));
+                }
+                if (bg->has_extra_rho) {
+                    rho_extra += cpr_cubic_spline_eval(&bg->extra_rho_spline, log10(T));
                 }
                 if (has_extra) {
                     data[i * n_cols + col] = rho_extra;

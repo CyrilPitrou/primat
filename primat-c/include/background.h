@@ -25,7 +25,8 @@
  * Out of scope, not ported: analytic mu/y-type spectral
  * distortions (rho_nu_SD is always NULL/inactive here, since
  * neutrino_history.c never sets has_distortion's analytic-mode sibling --
- * see neutrino_history.h's top comment); decay_era.
+ * see neutrino_history.h's top comment). (The decay_era, once out of scope
+ * here, is now ported -- see nuclear_network.h's cpr_nuclear_network_decay_era.)
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095).
  */
@@ -60,6 +61,15 @@ typedef struct {
     double TcEDE;          /* [MeV] */
     double rhocEDEac;      /* [MeV^4] */
     double EDE_exponent;   /* 3*wnEDE + 3 */
+    /* Tabulated user extra_rho (config.h's cfg->extra_rho_*): the C-side
+     * stand-in for Python's arbitrary self.extra_rho callables. Built once
+     * in cpr_bg_init_standard as a cubic spline over (log10(Tg), rho) from
+     * the (Tg[], rho[]) grid backend.py evaluated; cpr_bg_Hubble adds
+     * extra_rho_spline(log10(Tg)) to rho_tot. has_extra_rho=0 => not built
+     * (cfg->extra_rho_n was 0), spline left zeroed. Owned; freed by
+     * cpr_background_free. */
+    int has_extra_rho;
+    CPRCubicSpline extra_rho_spline;
     /* Historical note (pre-Branch E): CDM used to use the radiation-
      * domination approximation a(T)~=T0CMB/T while the a(T)/t(a) ODEs were
      * being solved sequentially (cpr_bg_Hubble had no way to know `a`

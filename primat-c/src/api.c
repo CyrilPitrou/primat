@@ -311,6 +311,17 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
             return 1;
         }
     }
+    /* Decay-Time (DT) era: long-lived-isotope decay past T_end (O-8). No-op
+     * unless cfg->decay_era && large network && output_decay_evolution -- it
+     * changes no result-dict observable, only the decay-evolution TSV
+     * (mirrors solve()'s post-LT DT block). */
+    if (cpr_nuclear_network_decay_era(&nn, errmsg)) {
+        cpr_nuclear_network_free(&nn);
+        cpr_background_free(&bg);
+        cpr_nuclear_rates_free(&nr);
+        cpr_plasma_free(&pl);
+        return 1;
+    }
     cpr_nuclear_network_free(&nn);
     cpr_background_free(&bg);
     cpr_nuclear_rates_free(&nr);

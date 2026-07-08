@@ -223,10 +223,11 @@ typedef struct {
     double DeltaNeff;
     double munuOverTnu;
 
-    /* ---- decay-era options (decay_era execution itself is out of scope
-     * here; the flags are kept so cpr_config_set_by_name() round-
-     * trips every DEFAULT_PARAMS key, same rationale as analytic_distortions
-     * above) ---- */
+    /* ---- decay-era options. The decay_era Decay-Time propagation is now
+     * implemented (see nuclear_network.h's cpr_nuclear_network_decay_era):
+     * decay_era + output_decay_evolution + the `large` network writes the
+     * output_decay_file TSV. decay_reverse_rates still only affects rate
+     * loading, not a distinct solver era. ---- */
     int decay_reverse_rates;
     int decay_era;
     double t_decay_end;
@@ -249,6 +250,22 @@ typedef struct {
     CPRRxnMap delta_rxn;
 
     CPRNuclideTable nuclides;
+
+    /* ---- Tabulated extra energy density (mirrors PRIMAT.__init__'s
+     * `extra_rho` list of rho(Tg) callables; see CLAUDE.md's backend feature
+     * gaps and O-8). Python cannot ship a live callable across the C ABI, so
+     * backend.py evaluates the *sum* of the user's extra_rho callables on a
+     * dense log-spaced Tg grid once and hands the (Tg[], rho[]) arrays here;
+     * cpr_bg_init_standard fits a cubic spline over them (in log10(Tg)) and
+     * cpr_bg_Hubble adds rho(Tg) to rho_tot -- the exact place Python's
+     * StandardBackground.Hubble sums self.extra_rho. Tg is [MeV], rho is
+     * [MeV^4]. NULL/0 = no extra energy density (the common case). Owned
+     * (malloc'd by the _wrapper.c bridge); freed by cpr_config_free. Not a
+     * DEFAULT_PARAMS key and not routed through cpr_config_set_by_name -- it
+     * is array-valued, set directly on the struct by the caller. */
+    double *extra_rho_T;    /* Tg grid [MeV], strictly increasing, length extra_rho_n */
+    double *extra_rho_val;  /* summed extra rho [MeV^4] at each extra_rho_T node */
+    size_t  extra_rho_n;    /* number of grid points (>= 4 required by the cubic spline) */
 
     char data_dir[CPR_DATA_DIR_LEN]; /* the data folder itself (NEVO/, weak/, plasma/, nuclear/, csv/) */
 } CPRConfig;

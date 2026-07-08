@@ -195,12 +195,15 @@ python runfiles/primat_mc.py            # MC uncertainty + covariance/correlatio
 
 Python-only features (that force fallback to pure-Python even with
 `force_backend="auto"`; raise instead if `force_backend="c"`):
-- `extra_rho`, `background=` arguments (custom `PRIMAT.__init__` overrides)
-- `decay_era`
+- `background=` argument (a custom `Background` object — an inherently-Python
+  extension point, so it has no C-side equivalent)
 - MC `prev` (incremental sample reuse across `run_mc()` calls)
 
-Note that `custom_network` and `output_time_evolution=True` are **not** in
-this list — both are supported on the C backend too.
+Note that `custom_network`, `output_time_evolution=True`, `extra_rho`, and
+`decay_era` are **not** in this list — all four are supported on the C
+backend too. (`extra_rho` is handed to C as a table sampled from the
+callables; `decay_era`'s only output, the `output_decay_evolution` TSV, is
+written identically by both backends.)
 
 ### Using primat-c directly
 

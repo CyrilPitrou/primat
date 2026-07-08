@@ -368,11 +368,15 @@ static PyObject *primat_c_run_bbn(PyObject *self, PyObject *args, PyObject *kwar
     PyObject *params;
     const char *data_dir;
     PyObject *custom_network = NULL;
+    PyObject *extra_rho_T_obj = NULL;
+    PyObject *extra_rho_val_obj = NULL;
 
     int show_progress = 1; /* default: show phase markers (matches Python backend) */
-    static char *kwlist[] = {"params", "data_dir", "custom_network", "show_progress", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Os|Oi", kwlist,
-                                       &params, &data_dir, &custom_network, &show_progress))
+    static char *kwlist[] = {"params", "data_dir", "custom_network", "show_progress",
+                              "extra_rho_T", "extra_rho_val", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Os|OiOO", kwlist,
+                                       &params, &data_dir, &custom_network, &show_progress,
+                                       &extra_rho_T_obj, &extra_rho_val_obj))
         return NULL;
     if (!PyDict_Check(params)) {
         PyErr_SetString(PyExc_TypeError, "params must be a dict");
@@ -434,6 +438,40 @@ static PyObject *primat_c_run_bbn(PyObject *self, PyObject *args, PyObject *kwar
         return NULL;
     }
     cfg.show_progress = show_progress;
+
+    /* Tabulated extra_rho (config.h / O-8): backend.py passes the summed
+     * user extra_rho(Tg) already evaluated on a dense log-Tg grid as two
+     * equal-length float sequences. Set directly on cfg (array-valued, not a
+     * cpr_config_set_by_name scalar); cpr_config_free owns/frees the arrays.
+     * Both must be given together and be the same length; the >= 4 minimum
+     * is the cubic spline's requirement (cpr_bg_init_standard). */
+    int have_T = (extra_rho_T_obj != NULL && extra_rho_T_obj != Py_None);
+    int have_val = (extra_rho_val_obj != NULL && extra_rho_val_obj != Py_None);
+    if (have_T != have_val) {
+        PyErr_SetString(PyExc_ValueError,
+                        "extra_rho_T and extra_rho_val must be provided together");
+        cpr_config_free(&cfg);
+        free_custom_network(&custom);
+        return NULL;
+    }
+    if (have_T) {
+        size_t nT = 0, nV = 0;
+        double *T_arr = seq_to_doubles(extra_rho_T_obj, &nT);
+        if (!T_arr) { cpr_config_free(&cfg); free_custom_network(&custom); return NULL; }
+        double *V_arr = seq_to_doubles(extra_rho_val_obj, &nV);
+        if (!V_arr) { free(T_arr); cpr_config_free(&cfg); free_custom_network(&custom); return NULL; }
+        if (nT != nV || nT < 4) {
+            free(T_arr); free(V_arr);
+            PyErr_SetString(PyExc_ValueError,
+                            "extra_rho_T and extra_rho_val must have equal length >= 4");
+            cpr_config_free(&cfg);
+            free_custom_network(&custom);
+            return NULL;
+        }
+        cfg.extra_rho_T = T_arr;
+        cfg.extra_rho_val = V_arr;
+        cfg.extra_rho_n = nT;
+    }
 
     CPRResults results;
     int rc = cprimat_run(&cfg, &custom, &results, &errmsg);
@@ -781,7 +819,11 @@ static PyMethodDef primat_c_methods[] = {
      "dict (same keys as primat.PRIMAT.solve()), plus a 'Y_final' sub-dict "
      "of every tracked nuclide's final mass fraction. `custom_network` is "
      "the GUI 'Customise Reactions' override ({'removed': [...], "
-     "'replaced': {...}, 'added': {...}}, see network_data.h's CPRCustomNetwork)."},
+     "'replaced': {...}, 'added': {...}}, see network_data.h's CPRCustomNetwork). "
+     "`extra_rho_T`/`extra_rho_val` (both optional, given together) are the "
+     "tabulated (Tg [MeV], rho [MeV^4]) form of Python's extra_rho callables, "
+     "already summed and evaluated on a dense grid by primat/backend.py; the C "
+     "background splines them and adds rho(Tg) to the Friedmann equation."},
     {"run_mc", (PyCFunction)primat_c_run_mc, METH_VARARGS | METH_KEYWORDS,
      "run_mc(params, data_dir, num_mc, quantities, seed=0, n_jobs=-1, custom_network=None,\n"
      "       prev_centrals=None, prev_values=None) -> dict\n\n"

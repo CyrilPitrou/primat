@@ -36,6 +36,13 @@ in this repository is the authoritative source.
   (FABLEADVICE O-3).
 
 ### Changed
+- The C backend now supports `extra_rho` and `decay_era`, closing two of the
+  three former Python-only feature gaps (O-8). `extra_rho` callables are
+  sampled onto a dense temperature grid and splined into the C Friedmann
+  equation; `decay_era`'s long-lived-isotope Decay-Time propagation is ported
+  via a scaling-and-squaring Padé matrix exponential, writing an identical
+  `output_decay_evolution` TSV. Only `background=` (a custom `Background`
+  object) remains Python-only.
 - Default `Omegabh2` changed to the Planck 2018 + BAO value (`0.02242`),
   from the previous default (S-8).
 - `plotly` and `joblib` moved from hard dependencies to the `mc`/`plots`/

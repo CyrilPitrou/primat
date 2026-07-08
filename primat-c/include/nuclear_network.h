@@ -17,12 +17,12 @@
  *   LT  (T_nucl -> T_end ~ 0.001 MeV): the chosen network
  *                                       (nr->lt_net/lt_compiled), stiff BDF.
  *
- * Out of scope, not ported: the Decay-Time (DT) era
- * (_build_decay_matrix/_integrate_decay_era/_write_decay_evolution) --
- * long-lived-isotope decay propagation past T_end via matrix
- * exponentiation, gated by cfg->decay_era. The per-reaction flux columns
+ * The Decay-Time (DT) era (_build_decay_matrix/_integrate_decay_era/
+ * _write_decay_evolution -- long-lived-isotope decay propagation past T_end
+ * via matrix exponentiation, gated by cfg->decay_era) *is* now ported: see
+ * cpr_nuclear_network_decay_era below. The per-reaction flux columns
  * of write_time_evolution (cfg->output_rates_time_evolution, network=
- * "small" only) are also not ported -- a niche debugging aid, not needed
+ * "small" only) are still not ported -- a niche debugging aid, not needed
  * by any reference-number check; cpr_nuclear_network_write_time_evolution
  * always omits them (documented there).
  *
@@ -128,5 +128,18 @@ void cpr_nuclear_network_sample_time_evolution(const CPRNuclearNetwork *nn, int 
  * on a file-write failure. */
 int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_points,
                                                 char **errmsg);
+
+/* Decay-Time (DT) era: propagate the end-of-LT abundances past T_end under
+ * the constant radioactive-decay matrix D (Y(t) = exp(D*(t-t_end)) Y0), via
+ * scaling-and-squaring Pade-13 matrix exponentiation -- port of
+ * nuclear_network.py's _build_decay_matrix/_integrate_decay_era/
+ * _write_decay_evolution (O-8). No-op (returns 0) unless
+ * cfg->decay_era && the `large` network && cfg->output_decay_evolution: the
+ * era changes no BBN observable (Y_final is the end-of-LT state on both
+ * backends), so its only effect is the output_decay_evolution TSV (columns
+ * t, then Y<nuclide> per species; np.savetxt-compatible %.18e). Returns 0 on
+ * success, nonzero with *errmsg set (caller frees) on OOM / file-write /
+ * singular-Pade failure. */
+int cpr_nuclear_network_decay_era(const CPRNuclearNetwork *nn, char **errmsg);
 
 #endif /* CPRIMAT_NUCLEAR_NETWORK_H */

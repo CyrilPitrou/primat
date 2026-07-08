@@ -180,28 +180,32 @@ def test_readme_set_syntax_is_key_equals_value():
 
 def test_readme_python_only_features_list_matches_backend():
     """README's 'Python-only features' list (FABLEADVICE.md S-3) must match
-    primat/backend.py's actual auto-fallback gate: extra_rho/background/
-    decay_era/MC prev force Python, but custom_network and
-    output_time_evolution do NOT (both backends support them)."""
+    primat/backend.py's actual auto-fallback gate. After O-8 the only
+    inherently-Python run_bbn feature is background= (a custom Background
+    object); extra_rho, decay_era, custom_network and output_time_evolution
+    are all supported on the C backend (only MC prev is additionally
+    Python-only, on the run_mc side)."""
     backend_path = os.path.join(REPO_ROOT, "primat", "backend.py")
     backend_text = open(backend_path).read()
-    # The features actually gated in backend.py's run_bbn()/run_mc() fallback
-    # logic -- if this string disappears from backend.py, the module was
-    # refactored and README's list needs re-verifying against the new code.
-    assert "extra_rho/background/decay_era" in backend_text
+    # The feature actually gated in run_bbn()'s fallback logic -- if this
+    # string disappears from backend.py, the module was refactored and
+    # README's list needs re-verifying against the new code.
+    assert "python_only_feature = background is not None" in backend_text
 
     readme_path = os.path.join(REPO_ROOT, "README.md")
     readme_text = open(readme_path).read()
-    assert "extra_rho" in readme_text
-    assert "decay_era" in readme_text
+    assert "background=" in readme_text
     assert "MC `prev`" in readme_text
-    # custom_network/output_time_evolution must NOT be listed as Python-only
-    # any more -- both are supported on the C backend (CLAUDE.md, F-1 era).
+    # extra_rho/decay_era/custom_network/output_time_evolution must NOT be
+    # listed as Python-only any more -- all supported on the C backend (O-8).
     python_only_section = readme_text[readme_text.index("Python-only features"):]
     python_only_section = python_only_section[:python_only_section.index("### Using primat-c directly")]
     assert "custom_network` (GUI" not in python_only_section
     assert "output_time_evolution=True (write full time series)" not in python_only_section
-    assert "both are supported on the C backend too" in python_only_section
+    # ...they appear only in the sentence explicitly excluding them from the
+    # Python-only list.
+    assert "extra_rho" in python_only_section and "decay_era" in python_only_section
+    assert "all four are supported on the C" in python_only_section
 
 
 def test_notebooks_readme_lists_every_notebook():

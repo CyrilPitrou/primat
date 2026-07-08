@@ -354,25 +354,105 @@ def test_run_bbn_validates_params_regardless_of_backend():
 
 
 def test_run_bbn_python_only_features_force_python_backend(monkeypatch):
-    """extra_rho/background always force the Python backend, even when the
-    C backend is requested implicitly via 'auto' (custom_network is *not*
-    one of these any more -- see primat/backend.py's module docstring)."""
+    """background= (a custom Background object) always forces the Python
+    backend, even when the C backend is requested implicitly via 'auto' --
+    it is the last inherently-Python extension point (O-8 priority 3).
+    extra_rho and decay_era are *no longer* python_only_features (both are
+    now supported on the C backend -- see the parity tests below and
+    primat/backend.py's module docstring); custom_network never was."""
     calls = []
     import primat.backend as backend_mod
+    from primat.background import StandardBackground
+    from primat.config import PRIMATConfig
+    from primat.plasma import Plasma
 
     def fake_python_solve(params, extra_rho, custom_network, background, **kw):
         calls.append((extra_rho, custom_network, background))
         return {"YPBBN": 0.0}
 
     monkeypatch.setattr(backend_mod, "_python_solve", fake_python_solve)
-    run_bbn({"network": "small"}, extra_rho=[lambda Tg: 0.0])
+    cfg = PRIMATConfig({"network": "small"})
+    bg = StandardBackground(cfg, Plasma(cfg))
+    run_bbn({"network": "small"}, background=bg)
     assert len(calls) == 1
 
 
 @requires_c_backend
-def test_run_bbn_c_backend_rejects_python_only_features():
+def test_run_bbn_c_backend_rejects_background_object():
+    """force_backend='c' with a custom background= object raises (the one
+    remaining Python-only extension point); extra_rho/decay_era do *not*
+    raise any more (see their dedicated parity tests below)."""
+    from primat.background import StandardBackground
+    from primat.config import PRIMATConfig
+    from primat.plasma import Plasma
+    cfg = PRIMATConfig({"network": "small"})
+    bg = StandardBackground(cfg, Plasma(cfg))
     with pytest.raises(ValueError, match="incompatible"):
-        run_bbn({"network": "small"}, force_backend="c", extra_rho=[lambda Tg: 0.0])
+        run_bbn({"network": "small"}, force_backend="c", background=bg)
+
+
+@requires_c_backend
+def test_run_bbn_extra_rho_parity_constant():
+    """A constant extra energy density (extra_rho=[lambda Tg: const]) shifts
+    the Friedmann expansion identically on both backends (O-8 priority 1: the
+    tabulated (Tg[], rho[]) handoff + C-side spline). The C spline is exact
+    for a constant, so the two backends agree to the cross-backend tolerance,
+    and the constant genuinely perturbs YP away from the unperturbed run."""
+    const = 1.0e-3  # MeV^4
+    er = [lambda Tg: const]
+    r_c = run_bbn({"network": "small"}, force_backend="c", extra_rho=er, progress=False)
+    r_py = run_bbn({"network": "small"}, force_backend="python", extra_rho=er, progress=False)
+    for key in ("YPBBN", "DoH", "He3oH", "Li7oH"):
+        assert r_c[key] == pytest.approx(r_py[key], rel=5e-5), key
+    # The extra rho must actually change the answer (guard against a silent no-op).
+    r0 = run_bbn({"network": "small"}, force_backend="c", progress=False)
+    assert r_c["YPBBN"] != pytest.approx(r0["YPBBN"], rel=1e-3)
+
+
+@requires_c_backend
+def test_run_bbn_extra_rho_equals_deltaneff():
+    """An extra_rho callable reproducing DeltaNeff worth of decoupled
+    relativistic energy density gives the same YP as a genuine DeltaNeff run,
+    on both backends (the O-8 acceptance check: "extra_rho=[...] must equal
+    DeltaNeff-equivalent runs on both backends"). extra_rho only feeds the
+    Friedmann equation (not the reported Neff, which counts only the neutrino
+    sector), so it is YP/DoH that must coincide, not Neff."""
+    import numpy as np
+    from primat.config import PRIMATConfig
+    from primat.plasma import Plasma
+    dNeff = 0.5
+    pl = Plasma(PRIMATConfig({"network": "small"}))
+
+    def er(Tg):
+        Tnu = pl.T_nu_decoupling(Tg)
+        return dNeff * 2.0 * (7.0 / 8.0) * (np.pi ** 2 / 30.0) * Tnu ** 4
+
+    for be in ("c", "python"):
+        r_dn = run_bbn({"network": "small", "DeltaNeff": dNeff}, force_backend=be, progress=False)
+        r_er = run_bbn({"network": "small"}, force_backend=be, extra_rho=[er], progress=False)
+        assert r_er["YPBBN"] == pytest.approx(r_dn["YPBBN"], rel=5e-5), be
+        assert r_er["DoH"] == pytest.approx(r_dn["DoH"], rel=5e-5), be
+
+
+def test_run_bbn_auto_prefers_c_backend_for_extra_rho(monkeypatch):
+    """'auto' dispatches an extra_rho request to the C backend (tabulated),
+    now that it is no longer a python_only_feature -- and hands the callables
+    across as the extra_rho_T/extra_rho_val tabulated kwargs."""
+    import primat.backend as backend_mod
+
+    calls = []
+
+    def fake_c_run_bbn(params, data_dir, custom_network=None, **kw):
+        calls.append(kw)
+        return {"YPBBN": 0.0}
+
+    monkeypatch.setattr(backend_mod, "HAS_C_BACKEND", True)
+    monkeypatch.setattr(backend_mod, "_c_ext", type("M", (), {"run_bbn": staticmethod(fake_c_run_bbn)}))
+    run_bbn({"network": "small"}, extra_rho=[lambda Tg: 1.0e-4])
+    assert len(calls) == 1
+    # The tabulated arrays were passed through, equal-length and non-trivial.
+    assert "extra_rho_T" in calls[0] and "extra_rho_val" in calls[0]
+    assert len(calls[0]["extra_rho_T"]) == len(calls[0]["extra_rho_val"]) >= 4
 
 
 @requires_c_backend
@@ -550,3 +630,90 @@ def test_backend_mc_cov_corr_parity():
     # two RNG streams give different samples, only convergent statistics).
     assert mc_c.corr("YPBBN", "DoH") == pytest.approx(
         mc_py.corr("YPBBN", "DoH"), abs=0.25)
+
+
+# ---------------------------------------------------------------------------
+# Decay-Time (DT) era parity (O-8 priority 2)
+# ---------------------------------------------------------------------------
+
+@requires_c_backend
+def test_run_bbn_decay_era_not_python_only(monkeypatch):
+    """'auto' dispatches a decay_era request to the C backend now that
+    cpr_nuclear_network_decay_era ports _integrate_decay_era -- decay_era is
+    no longer a python_only_feature (see primat/backend.py)."""
+    import primat.backend as backend_mod
+
+    calls = []
+
+    def fake_c_run_bbn(params, data_dir, custom_network=None, **kw):
+        calls.append(params)
+        return {"YPBBN": 0.0}
+
+    monkeypatch.setattr(backend_mod, "HAS_C_BACKEND", True)
+    monkeypatch.setattr(backend_mod, "_c_ext", type("M", (), {"run_bbn": staticmethod(fake_c_run_bbn)}))
+    run_bbn({"network": "large", "amax": 8, "decay_era": True})
+    assert len(calls) == 1
+
+
+@requires_c_backend
+def test_run_bbn_c_backend_accepts_decay_era():
+    """force_backend='c' with decay_era=True no longer raises (it did before
+    O-8, when decay_era was a python_only_feature)."""
+    r = run_bbn({"network": "large", "amax": 8, "decay_era": True},
+                force_backend="c", progress=False)
+    assert "YPBBN" in r  # the ordinary result dict is unaffected by the DT era
+
+
+@requires_c_backend
+def test_decay_era_tsv_parity(tmp_path):
+    """The decay-evolution TSV is byte-schema- and value-compatible across
+    backends (O-8 priority 2). Both backends run the DT-era matrix-exponential
+    propagation (Python: scipy.linalg.expm; C: scaling-and-squaring Pade-13)
+    on the same end-of-LT abundances and write the same 't  Y<species>...'
+    layout; the per-value agreement is at the cross-backend solver tolerance,
+    driven by the underlying <~1e-5 D/H-level difference between the two
+    solver stacks, not by the (far finer) matrix-exponential."""
+    import numpy as np
+
+    def _run(be):
+        out = tmp_path / f"decay_{be}.tsv"
+        run_bbn({"network": "large", "amax": 8, "decay_era": True,
+                 "output_decay_evolution": True, "decay_n_points": 40,
+                 "output_decay_file": str(out)},
+                force_backend=be, progress=False)
+        with open(out) as fh:
+            header = fh.readline().strip().split("\t")
+            data = np.loadtxt(fh)
+        return header, data
+
+    hc, dc = _run("c")
+    hp, dp = _run("python")
+
+    # Identical schema: header column names and grid shape.
+    assert hc == hp
+    assert hc[0] == "t" and all(c.startswith("Y") for c in hc[1:])
+    assert dc.shape == dp.shape
+
+    # Absolute cosmic-time grid coincides (both = t_end + logspace(...)); the
+    # elapsed offset is identical, so the only spread is the ~few-e-6
+    # cross-backend difference in t_end itself (the D/H-level solver-stack
+    # residual documented at the top of this module), largest at early rows
+    # where t_end dominates the absolute t.
+    assert dc[:, 0] == pytest.approx(dp[:, 0], rel=5e-5)
+
+    # Per-species abundance agreement across backends (skip machine-noise Ys).
+    for j, name in enumerate(hc[1:], start=1):
+        a, b = dc[:, j], dp[:, j]
+        mask = np.abs(b) > 1e-25
+        if mask.any():
+            rel = np.max(np.abs(a[mask] - b[mask]) / np.abs(b[mask]))
+            assert rel < 5e-5, f"{name} differs by {rel:.2e} across backends"
+
+    # DT-era physics sanity (same on both): the residual free neutron fully
+    # decays (n -> p), and a stable species (He4) does not drift.
+    col = {h: i for i, h in enumerate(hc)}
+    if "Yn" in col:
+        assert dc[-1, col["Yn"]] < 1e-25
+    if "YHe4" in col:
+        he4 = dc[:, col["YHe4"]]
+        assert np.max(np.abs(he4 - he4[0])) / he4[0] < 1e-6

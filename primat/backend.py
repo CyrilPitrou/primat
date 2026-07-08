@@ -12,21 +12,32 @@ built successfully -- see ``setup.py``'s ``optional_build_ext``, which lets
 ``pip install`` succeed even without a C compiler). :func:`run_bbn` is the
 single dispatch entry point; everything else in this module supports it.
 
-Feature gaps (C side does not implement these -- mirrors
-``primat-c/include/api.h``'s own "out of scope" notes):
+Feature gap (the one remaining C-unsupported ``PRIMAT.__init__``
+extension):
 
-* ``extra_rho``, ``background=`` (the Python-only ``PRIMAT.__init__``
-  constructor extensions) -- always force the Python backend.
+* ``background=`` (a custom :class:`primat.background.Background` object) --
+  an inherently-Python extension point (arbitrary user Python subclassing the
+  background), with no way to cross the C ABI. A non-``None`` ``background=``
+  always forces the Python backend under ``force_backend in (None, "auto")``,
+  and raises ``ValueError`` under ``force_backend="c"``.
 
-* ``decay_era`` (the long-lived-isotope Decay-Time era past ``T_end``,
-  see ``primat/nuclear_network.py``'s ``_integrate_decay_era`` and
-  ``primat-c/include/nuclear_network.h``'s "Out of scope" note) --
-  ``params={"decay_era": True}`` always forces the
-  Python backend under ``force_backend in (None, "auto")``, and raises
-  ``ValueError`` under ``force_backend="c"``, exactly like
-  ``extra_rho``/``background=`` above. The C backend's ``CPRConfig`` still
-  has a ``decay_era`` field (so ``cpr_config_set_by_name`` round-trips every
-  ``DEFAULT_PARAMS`` key) but its solver never acts on it.
+The former ``extra_rho`` and ``decay_era`` gaps are now *closed* (O-8):
+
+* ``extra_rho`` (extra Friedmann energy-density callables) is supported on
+  the C backend via a tabulated handoff -- :func:`_tabulate_extra_rho`
+  evaluates the summed ``rho(Tg)`` on a dense log-Tg grid and passes the
+  ``(Tg[], rho[])`` arrays to the C extension, which splines them and adds
+  ``rho(Tg)`` inside ``cpr_bg_Hubble`` (see ``primat-c/src/background.c`` and
+  ``config.h``'s ``extra_rho_*`` fields). Both backends agree to the
+  cross-backend tolerance.
+
+* ``decay_era`` (the long-lived-isotope Decay-Time era past ``T_end``) is
+  ported: ``cpr_nuclear_network_decay_era`` (``primat-c/src/nuclear_network.c``)
+  mirrors ``_integrate_decay_era``'s matrix-exponential decay propagation
+  (scaling-and-squaring Padé-13). It changes no result-dict observable on
+  either backend (``Y_final`` is the end-of-LT state); its only output is the
+  optional ``output_decay_evolution`` TSV, which both backends write in the
+  identical schema.
 
 Set ``PRIMAT_BACKEND_LOG=1`` in the environment (or call with
 ``log_backend=True``) to print, on every :func:`run_bbn`/:func:`run_mc` call,
@@ -141,6 +152,57 @@ def _python_solve(params: dict[str, Any] | None, extra_rho: list | None,
                   custom_network=custom_network, background=background).solve(progress=progress)
 
 
+# Number of log-spaced Tg nodes used to tabulate extra_rho for the C backend
+# (see _tabulate_extra_rho). Dense enough that a cubic spline over log10(Tg)
+# reproduces any smooth rho(Tg) to well below the cross-backend tolerance;
+# cheap since it is one array evaluation of the (already fast) callables.
+_EXTRA_RHO_GRID_NPTS = 4000
+
+
+def _tabulate_extra_rho(extra_rho: list, cfg) -> tuple[list[float], list[float]]:
+    """Evaluate the *sum* of the ``extra_rho`` callables on a dense log-spaced
+    Tg grid, for handoff to the C backend (O-8's tabulated interface -- see
+    ``primat-c/include/config.h``'s ``extra_rho_*`` fields and
+    ``primat/_primat_c/_wrapper.c``).
+
+    Python's ``extra_rho`` is a list of ``rho(Tg) -> MeV^4`` callables summed
+    inside ``StandardBackground.Hubble``; a live callable cannot cross the C
+    ABI, so instead we sample the summed contribution once here and let the C
+    background spline it. The grid spans the full temperature range the C
+    background's Friedmann ODE queries (``[T_end_MeV, T_start_cosmo_MeV]``)
+    with a generous half-decade margin each side, so the C-side cubic spline
+    never has to *extrapolate* over the physical range -- it only interpolates,
+    where a dense log grid is essentially exact for smooth ``rho(Tg)``.
+
+    Args:
+        extra_rho: list of callables ``Tg[MeV] -> rho[MeV^4]``.
+        cfg: the :class:`primat.config.PRIMATConfig` for this run (read for
+            ``T_end_MeV``/``T_start_cosmo_MeV`` to size the grid).
+
+    Returns:
+        ``(T_list, val_list)``: two equal-length lists of floats -- the Tg
+        nodes [MeV] (strictly increasing) and the summed extra rho [MeV^4]
+        at each node.
+
+    Example:
+        >>> T, v = _tabulate_extra_rho([lambda Tg: 1.0e-3], cfg)
+        >>> all(abs(x - 1.0e-3) < 1e-15 for x in v)   # constant -> flat table
+        True
+    """
+    import numpy as np
+    # Half-decade (factor ~3.16) margin below T_end and above T_start so the
+    # spline interpolates -- never extrapolates -- across the queried range.
+    T_lo = cfg.T_end_MeV / (10.0 ** 0.5)
+    T_hi = cfg.T_start_cosmo_MeV * (10.0 ** 0.5)
+    T_grid = np.logspace(np.log10(T_lo), np.log10(T_hi), _EXTRA_RHO_GRID_NPTS)
+    total = np.zeros_like(T_grid)
+    for fn in extra_rho:
+        # Each callable may be scalar-only; evaluate element-wise to be safe
+        # (matches how StandardBackground calls them one Tg at a time).
+        total += np.array([float(fn(T)) for T in T_grid])
+    return T_grid.tolist(), total.tolist()
+
+
 def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = None,
             extra_rho: list | None = None, custom_network: dict[str, Any] | None = None,
             background=None, log_backend: bool = False,
@@ -203,10 +265,23 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
     if progress is None:
         progress = cfg.show_progress
 
-    # decay_era has no C-side implementation (module docstring), exactly
-    # like extra_rho/background -- lumped into the same gate.
-    python_only_feature = (extra_rho is not None or background is not None
-                            or params.get("decay_era", False))
+    # background= (a custom Background object) is an inherently-Python
+    # extension point with no C-side equivalent (O-8 priority 3): it forces
+    # the Python backend. extra_rho and decay_era are now BOTH supported on
+    # the C backend -- extra_rho via the tabulated (Tg[], rho[]) handoff below
+    # (_tabulate_extra_rho + the C spline), decay_era via cprimat_run's own
+    # DT-era matrix-exponential propagation (mirrors _integrate_decay_era) --
+    # so neither is a python_only_feature any more.
+    python_only_feature = background is not None
+
+    def _c_extra_rho_kwargs() -> dict[str, Any]:
+        """Tabulate extra_rho for the C wrapper's extra_rho_T/extra_rho_val
+        kwargs (empty when no extra_rho was given, so the call shape is
+        unchanged for the common case)."""
+        if extra_rho is None:
+            return {}
+        T_list, val_list = _tabulate_extra_rho(extra_rho, cfg)
+        return {"extra_rho_T": T_list, "extra_rho_val": val_list}
 
     if force_backend == "python":
         _log_backend("run_bbn", "Python", "force_backend='python'", log_backend)
@@ -221,13 +296,15 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
             )
         if python_only_feature:
             raise ValueError(
-                "force_backend='c' is incompatible with extra_rho/background/"
-                "decay_era (Python-only features, no C-side equivalent)."
+                "force_backend='c' is incompatible with background= "
+                "(a custom Background object is a Python-only extension point, "
+                "no C-side equivalent)."
             )
         _log_backend("run_bbn", "C", "force_backend='c'", log_backend)
         _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
         return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network,
-                                                   show_progress=int(progress)))
+                                                   show_progress=int(progress),
+                                                   **_c_extra_rho_kwargs()))
 
     # force_backend in (None, "auto"): use the C backend opportunistically,
     # falling back to Python for anything it cannot express.
@@ -235,8 +312,9 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
         _log_backend("run_bbn", "C", "auto, no C-unsupported feature requested", log_backend)
         _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
         return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network,
-                                                   show_progress=int(progress)))
-    reason = ("auto fallback: extra_rho/background/decay_era requested"
+                                                   show_progress=int(progress),
+                                                   **_c_extra_rho_kwargs()))
+    reason = ("auto fallback: background= requested"
               if python_only_feature else "auto fallback: C extension unavailable")
     _log_backend("run_bbn", "Python", reason, log_backend)
     return _python_solve(params, extra_rho, custom_network, background, progress=progress)

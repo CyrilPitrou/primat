@@ -470,6 +470,12 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->zcEDE = 1.e8;
     cfg->wnEDE = 1.;
 
+    /* Tabulated extra_rho: empty by default (set directly by the caller when
+     * the Python `extra_rho` constructor argument was used -- see config.h). */
+    cfg->extra_rho_T = NULL;
+    cfg->extra_rho_val = NULL;
+    cfg->extra_rho_n = 0;
+
     if (load_nuclides(cfg, errmsg))
         return 1;
 
@@ -862,4 +868,11 @@ void cpr_config_free(CPRConfig *cfg)
     free(cfg->nuclides.items);
     cfg->nuclides.items = NULL;
     cfg->nuclides.n = 0;
+    /* Tabulated extra_rho arrays (config.h): owned here, malloc'd by the
+     * caller (the _wrapper.c bridge) after cpr_config_init_defaults. */
+    free(cfg->extra_rho_T);
+    free(cfg->extra_rho_val);
+    cfg->extra_rho_T = NULL;
+    cfg->extra_rho_val = NULL;
+    cfg->extra_rho_n = 0;
 }

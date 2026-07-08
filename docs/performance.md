@@ -83,7 +83,7 @@ particular check.
 | `sampling_nTOp_per_decade` / `sampling_nTOp_thermal_per_decade` | see `primat/config.py` | Only affects *cold-cache* weak-rate computation time (see above); irrelevant once cached. |
 | `amax` | `None` | Filters any named network to reactions with `A <= amax` — the single biggest lever for LT-era solve time on the `large` network (see the `large` vs `large, amax=8` gap above). |
 | `n_jobs` (`run_mc`) | `-1` (all cores) | MC samples are embarrassingly parallel (independent solves); `n_jobs=1` is useful for reproducible profiling of a single sample's cost, not for a production MC run. |
-| `force_backend` | `None`/`"auto"` (prefers C) | The C backend has no equivalent yet for `extra_rho`/`background=` (Python-only `PRIMAT.__init__` features) — seeing an unexpected Python-backend fallback in `log_backend=True` output usually means one of those is set. |
+| `force_backend` | `None`/`"auto"` (prefers C) | The only `PRIMAT.__init__` feature the C backend cannot express is `background=` (a custom `Background` object) — seeing an unexpected Python-backend fallback in `log_backend=True` output usually means that is set. (`extra_rho` and `decay_era` *are* supported on the C backend.) |
 
 The high-precision reference-run settings documented in `CLAUDE.md`
 (`numerical_precision=1e-10`, `sampling_temperature_per_decade=2000`,
