@@ -14,8 +14,13 @@
 #   pip install -e ".[docs]"
 
 # Where the docs sources live (this directory) and where the built site goes.
-SRC = .
-OUT = _build/html
+SRC  = .
+OUT  = _build/html
+# Port for `make live`'s local server. 0 = let sphinx-autobuild pick any free
+# port itself, so this never collides with some unrelated local server (e.g.
+# something else already bound to 8000). Pin one explicitly if you want a
+# stable, bookmarkable URL: `make live PORT=8009`.
+PORT = 0
 
 .PHONY: html live clean strict
 
@@ -26,11 +31,11 @@ html:
 	@echo "Docs built. Open: docs/$(OUT)/index.html"
 
 ## Live preview: watches this directory and ../primat, auto-refreshes the
-## browser. Needs sphinx-autobuild (included in the "docs" extra). Serves at
-## the URL it prints, usually http://127.0.0.1:8000 -- leave it running while
-## you edit.
+## browser. Needs sphinx-autobuild (included in the "docs" extra).
+## --open-browser opens the URL it lands on -- watch the terminal if the
+## browser tab doesn't pop up. Leave it running while you edit.
 live:
-	sphinx-autobuild $(SRC) $(OUT) --open-browser --watch ../primat
+	sphinx-autobuild $(SRC) $(OUT) --port $(PORT) --open-browser --watch ../primat
 
 ## Same strict build CI and Read the Docs run: any warning fails the build.
 strict:
