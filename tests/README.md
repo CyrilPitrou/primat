@@ -88,3 +88,74 @@ yet done, so the `solve` tier still runs full three-era solves.
 | `test_wheel_smoke.py` | The `wheel`-marked "pip install" smoke test: builds a wheel, installs it into a clean venv, and runs a small-network solve there to catch package-data/path regressions (e.g. `rates/` not shipped, or a path computed relative to the source tree instead of the installed package) that an editable install would not reveal. |
 | `test_docs_consistency.py` | Guards README claims that aren't checked anywhere else: `PRIMATConfig`'s `save_nTOp`/`save_nTOp_thermal` defaults match what README states, and the parameter names/values documented for `runfiles/primat_reference_run.py` (`sampling_temperature_per_decade`, `numerical_precision`, `sampling_nTOp_per_decade`, `T_start_cosmo_MeV`) still exist verbatim in that script and are recognised by `PRIMATConfig` (no "unknown parameter" warning). |
 | `test_gui.py` | The optional Streamlit GUI (`primat.gui`): `import primat` does not pull in `primat.gui`/streamlit; the parameter-form metadata covers `amax` (the one `None`-default key) and the network choices; an end-to-end `AppTest` run of `primat/gui/app.py` reproduces `test_cli.py`'s pinned default-run values (Neff/YPBBN/D-H and the per-nuclide table) -- i.e. the GUI drives `PRIMAT` identically to the CLI; the abundance-evolution panel renders with its default "light elements" nuclide selection; the `amax` widget appears only for `network='large'`; and an invalid flag combination (`spectral_distortions=True` with `incomplete_decoupling=False`) is shown as a clean `st.error` rather than a traceback. Skipped entirely if the `gui` extra is not installed. |
+
+## Validation reference (authoritative copy)
+
+After any modification, run `python runfiles/primat_run.py` from the repo
+root and check the output against these tables. A result outside these
+bounds indicates a regression. (This section moved here from the untracked
+CLAUDE.md so that CI and public clones carry it; tests parse THESE tables
+— see tests/test_docs_consistency.py.)
+
+The following values must hold (`Omegabh2=0.02242`, `spectral_distortions=True`
+and `nuclear_qed_corrections=True`, both defaults (the latter from the
+radiative-capture QED corrections of Pitrou & Pospelov 2020).
+References were produced by `runfiles/primat_reference_run.py` (high-precision
+run, `numerical_precision=1e-10`, `sampling_temperature_per_decade=2000`,
+`sampling_nTOp_per_decade=125`, `T_start_cosmo_MeV=100`, `rate_grid_npts=4000`
+explicit so this reference stays decoupled from the routine-run default below).
+
+**Small network** (`network="small"`):
+
+| Observable | Expected | Tolerance |
+|------------|----------|-----------|
+| YP (BBN) | 0.24699814 | ±1e-5 |
+| D/H | 2.43589e-5 | ±3e-9 |
+
+**`large, amax=8`** (the old "medium" network's exact 68-reaction equivalent):
+
+| Observable | Expected | Tolerance |
+|------------|----------|-----------|
+| YP (BBN) | 0.24700149 | ±1e-5 |
+| D/H | 2.43660e-5 | ±3e-9 |
+
+A result outside these bounds indicates a regression.
+
+### Per-nuclide final abundances (small / large+amax=8 / large)
+
+Final mass-fraction abundances `Y` of the small-network nuclides at the end of
+BBN, from the default run (`numerical_precision=1e-7`, generic kernels). The
+full large network must match `large, amax=8` (the old "medium" network's
+exact equivalent) on every light element to ≲1e-3, and now also on the free
+neutron `n` (≲1e-3): the reverse-rate clamp in `primat/network_data.py`
+(see its module docstring, "exothermic blow-up") removed the spurious low-T
+flooding of heavy nuclides such as B10, which previously fed β-delayed
+neutron emission and inflated `n` to ~7e-13. With the clamp the heavy tail is
+negligible and `n` tracks the `amax=8` value.
+
+| Nuclide | small | large, amax=8 | large |
+|---------|-------|----------------|-------|
+| n   | 3.997327e-16 | 3.996466e-16 | 3.996457e-16 |
+| p   | 7.529428e-01 | 7.529393e-01 | 7.529393e-01 |
+| H2  | 1.834091e-05 | 1.834593e-05 | 1.834595e-05 |
+| H3  | 5.851999e-08 | 5.839058e-08 | 5.839065e-08 |
+| He4 | 6.174927e-02 | 6.175012e-02 | 6.175013e-02 |
+| Li7 | 2.181387e-11 | 9.178094e-11 | 9.178023e-11 |
+| Be7 | 3.966396e-10 | 3.223639e-10 | 3.223612e-10 |
+
+Baryon number is conserved exactly by every network (`sum_s A_s Y_s = 1` to ~1e-10).
+
+**`small`-only exception (H3/Li7/Be7).** Commit `6221e43` added the
+`tTOHe3Bm` and `Be7TOLi7Bp` analytic beta-decay/electron-capture reactions to
+`primat/data/nuclear/networks/large.txt` (present at every `amax` that keeps A ≤ 8,
+including `amax=8` itself) but not to `small`'s hard-coded `ORDER_SMALL`.
+Their rates are the *laboratory* decay constants (`ln2/τ_{1/2}`,
+τ_{1/2}(H3) = 12.32 yr, τ_{1/2}(Be7) = 53.29 d) and act over the full
+integration window down to `T_end = 0.001 MeV` (`t_end ≈ 1.3e6 s ≈ 15 days`,
+see `nuclear_network.py`'s `_setup_evolution`), so by `t_end` they convert a
+non-negligible fraction of H3 -> He3 (~0.23%) and Be7 -> Li7 (~18%) in both
+the `large, amax=8` and full `large` columns above (hence both differing
+sharply from `small` on these three rows, while agreeing closely with each
+other). `tests/test_large_network.py` nonetheless excludes H3/Li7/Be7 from
+its large-vs-amax=8 ≲1e-3 assertions, out of caution against this shared
+decay-channel sensitivity.
