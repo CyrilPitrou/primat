@@ -55,7 +55,8 @@ from scipy.interpolate import interp1d
 from . import integrands
 from .integrands import exp_cutoff
 from .cache import n_points_per_decade, _thermal_fingerprint
-from ..cache_utils import fingerprint_hash, write_cache_with_fingerprint
+from ..cache_utils import (fingerprint_hash, write_cache_with_fingerprint,
+                           resolve_cache_file, cache_write_dir)
 
 __all__ = [
     'FermiCoulomb', 'RadCorrResum', 'ComputeFn',
@@ -1209,12 +1210,14 @@ def _compute_or_load_L_CCRTh_grid(ctx):
     docstring for the caching policy.
     """
     cfg = ctx.cfg
-    my_dir = ctx.my_dir
 
-    _td        = my_dir + "/weak/"
-    _th_fp     = _thermal_fingerprint(cfg)
-    _th_hash   = fingerprint_hash(_th_fp)
-    _th_path   = _td + "nTOp_thermal_" + _th_hash + ".txt"
+    _th_fp       = _thermal_fingerprint(cfg)
+    _th_hash     = fingerprint_hash(_th_fp)
+    _th_fname    = "nTOp_thermal_" + _th_hash + ".txt"
+    # Overlay read (cache_dir first, else shipped copy); write to the writable
+    # base's weak/ subdir (cache_dir if set, else the package tree).
+    _th_path     = resolve_cache_file(cfg, "weak", _th_fname)
+    _th_write    = os.path.join(cache_write_dir(cfg, "weak"), _th_fname)
 
     if os.path.exists(_th_path):
         if cfg.verbose:
@@ -1253,10 +1256,11 @@ def _compute_or_load_L_CCRTh_grid(ctx):
     L_pTh_data = np.vectorize(lambda T: _L_CCRTh_compute(ctx, T, -1, opts))(_T_th)
 
     if cfg.save_nTOp_thermal:
-        os.makedirs(_td, exist_ok=True)
+        # write_cache_with_fingerprint creates the dir and degrades to a
+        # warning (returning False) on a read-only install -- never fatal.
         _algo = "vegas" if use_vegas else "scipy.dblquad"
         write_cache_with_fingerprint(
-            _th_path, _th_fp, [_T_th, L_nTh_data, L_pTh_data],
+            _th_write, _th_fp, [_T_th, L_nTh_data, L_pTh_data],
             col_header="T[K] L_nTOpCCRTh L_pTOnCCRTh",
             provenance=f"backend=python algorithm={_algo} "
                        f"vegas_n_eval={cfg.vegas_n_eval} vegas_n_itn={cfg.vegas_n_itn}")

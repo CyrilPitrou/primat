@@ -47,10 +47,12 @@ static void print_credits(void)
           stdout);
 }
 
-static int list_or_clear_weak_cache(const char *data_dir, int clear)
+static int list_or_clear_weak_cache(const CPRConfig *cfg, int clear)
 {
-    char dir_path[CPR_PATH_BUF_LEN];
-    snprintf(dir_path, sizeof(dir_path), "%s/weak", data_dir);
+    /* Overlay-aware: the writable weak cache dir is cache_dir/weak if set,
+     * else <data_dir>/cache_plasma_weak/weak (B-1). */
+    char dir_path[CPR_PATH_BUF_LEN2];
+    cpr_config_cache_write_dir(cfg, "weak", dir_path, sizeof(dir_path));
 
     DIR *d = opendir(dir_path);
     if (!d) {
@@ -226,8 +228,8 @@ static void usage(const char *prog)
            "                        safely regenerable.\n"
            "  --ini PATH            Load parameters from an INI file (applied after\n"
            "                        defaults, before named flags and --set).\n"
-           "  --data_dir PATH       Replace the entire data tree (NEVO/, weak/,\n"
-           "                        plasma/, nuclear/, csv/) with PATH.\n"
+           "  --data_dir PATH       Replace the entire data tree (NEVO/, nuclear/,\n"
+           "                        csv/, cache_plasma_weak/) with PATH.\n"
            "                        Default: auto-detected from the executable location\n"
            "                        or CPRIMAT_DATA_DIR environment variable.\n"
            "  --user_nuclear_dir PATH\n"
@@ -729,11 +731,13 @@ int cpr_cli_main(int argc, char **argv)
     }
 
     if (cache_info || cache_clear) {
-        int n = list_or_clear_weak_cache(cfg.data_dir, cache_clear);
+        int n = list_or_clear_weak_cache(&cfg, cache_clear);
+        char wdir[CPR_PATH_BUF_LEN2];
+        cpr_config_cache_write_dir(&cfg, "weak", wdir, sizeof(wdir));
         if (cache_clear)
-            printf("Removed %d cached weak-rate file(s) from %s/weak/.\n", n, cfg.data_dir);
+            printf("Removed %d cached weak-rate file(s) from %s/.\n", n, wdir);
         else
-            printf("%d cached weak-rate file(s) in %s/weak/.\n", n, cfg.data_dir);
+            printf("%d cached weak-rate file(s) in %s/.\n", n, wdir);
         cpr_config_free(&cfg);
         return 0;
     }

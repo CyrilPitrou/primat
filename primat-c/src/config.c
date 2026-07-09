@@ -288,6 +288,7 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(mc_rate_rescale_cap, F_DOUBLE_OR_NONE),
     FLD(nuclear_qed_corrections, F_BOOL),
     FLD(user_nuclear_dir, F_STRING),
+    FLD(cache_dir, F_STRING),
     FLD(Omegach2, F_DOUBLE),
     FLD(h, F_DOUBLE),
     FLD(DeltaNeff, F_DOUBLE),
@@ -321,6 +322,7 @@ static int cpr_is_path_field(const char *name)
         || strcmp(name, "nevo_grid_file") == 0
         || strcmp(name, "custom_background") == 0
         || strcmp(name, "user_nuclear_dir") == 0
+        || strcmp(name, "cache_dir") == 0
         || strcmp(name, "output_file") == 0
         || strcmp(name, "output_final_file") == 0
         || strcmp(name, "output_background_file") == 0
@@ -459,6 +461,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->mc_rate_rescale_cap = 30.0; /* 0.0 = no cap (mirrors Python None) */
     cfg->nuclear_qed_corrections = 1;
     cfg->user_nuclear_dir = NULL;
+    cfg->cache_dir = NULL;
 
     cfg->Omegabh2_ = 0.02242;
     cfg->Omegach2 = 0.11933;
@@ -568,6 +571,36 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
      * location). cfg->data_dir is the data folder itself
      * (e.g. .../primat/data), not its parent. */
     snprintf(out, outsize, "%s/%s", cfg->data_dir, relpath);
+}
+
+/* Cache-tree overlay (B-1) -- mirror of primat/cache_utils.py's
+ * {cache_write_dir, resolve_cache_file}. Cache LOCATION only, never part of
+ * any fingerprint. `sub` is "weak" or "plasma". */
+void cpr_config_cache_write_dir(const CPRConfig *cfg, const char *sub,
+                                char *out, size_t outsize)
+{
+    if (cfg->cache_dir && cfg->cache_dir[0])
+        snprintf(out, outsize, "%s/%s", cfg->cache_dir, sub);
+    else
+        snprintf(out, outsize, "%s/cache_plasma_weak/%s", cfg->data_dir, sub);
+}
+
+void cpr_config_resolve_cache_file(const CPRConfig *cfg, const char *sub,
+                                   const char *file, char *out, size_t outsize)
+{
+    char cand[CPR_PATH_BUF_LEN2];
+    if (cfg->cache_dir && cfg->cache_dir[0]) {          /* overlay: redirect first */
+        snprintf(cand, sizeof(cand), "%s/%s/%s", cfg->cache_dir, sub, file);
+        if (path_exists(cand)) { snprintf(out, outsize, "%s", cand); return; }
+    }
+    /* shipped package copy (always tried, always last) */
+    snprintf(cand, sizeof(cand), "%s/cache_plasma_weak/%s/%s",
+             cfg->data_dir, sub, file);
+    if (path_exists(cand)) { snprintf(out, outsize, "%s", cand); return; }
+    /* miss -> the write path (where it WILL be written) */
+    cpr_config_cache_write_dir(cfg, sub, out, outsize);
+    size_t n = strlen(out);
+    snprintf(out + n, outsize - n, "/%s", file);
 }
 
 void cpr_config_set_Omegabh2(CPRConfig *cfg, double value)

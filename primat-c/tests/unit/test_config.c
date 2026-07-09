@@ -189,6 +189,47 @@ int main(void)
     CHECK(cpr_config_xi_nu_e(&cfg) == 0.07,
           "after reset ξ_e inherits munuOverTnu again");
 
+    /* ---- cache_dir redirect + cache_plasma_weak/ overlay (B-1). Mirrors
+     * tests/test_cache_utils.py's cache_dir tests: unset -> the write dir is
+     * <data_dir>/cache_plasma_weak/<sub>; set -> <cache_dir>/<sub>; and the
+     * READ resolver still finds a shipped file (present only in the package
+     * tree) even when cache_dir points elsewhere (overlay, never shadowed). ---- */
+    {
+        char buf[CPR_PATH_BUF_LEN2];
+
+        /* Unset (default): write dir under <data_dir>/cache_plasma_weak/. */
+        cpr_config_cache_write_dir(&cfg, "weak", buf, sizeof(buf));
+        CHECK(strcmp(buf, "../primat/data/cache_plasma_weak/weak") == 0,
+              "cache_write_dir(weak) defaults to <data_dir>/cache_plasma_weak/weak");
+        cpr_config_cache_write_dir(&cfg, "plasma", buf, sizeof(buf));
+        CHECK(strcmp(buf, "../primat/data/cache_plasma_weak/plasma") == 0,
+              "cache_write_dir(plasma) defaults to <data_dir>/cache_plasma_weak/plasma");
+
+        /* A file present only in the shipped tree resolves there even before
+         * cache_dir is set (overlay base = the package copy, always last). */
+        cpr_config_resolve_cache_file(&cfg, "weak",
+            "nTOp_2218248995f018af.txt", buf, sizeof(buf));
+        CHECK(strcmp(buf, "../primat/data/cache_plasma_weak/weak/"
+                          "nTOp_2218248995f018af.txt") == 0,
+              "resolve_cache_file finds the shipped weak cache (default)");
+
+        /* Set cache_dir: writes redirect, but the shipped file (absent under
+         * cache_dir) still resolves to the package copy (overlay fallback). */
+        CPRParam p_cdir = { .type = CPR_STRING, .v.s = "/tmp/primat-cache-xyz" };
+        CHECK(cpr_config_set_by_name(&cfg, "cache_dir", p_cdir, &set_err) == 0,
+              "cache_dir override is accepted (generic string field)");
+        free(set_err); set_err = NULL;
+        cpr_config_cache_write_dir(&cfg, "weak", buf, sizeof(buf));
+        CHECK(strcmp(buf, "/tmp/primat-cache-xyz/weak") == 0,
+              "cache_write_dir(weak) redirects under cache_dir");
+        cpr_config_resolve_cache_file(&cfg, "weak",
+            "nTOp_2218248995f018af.txt", buf, sizeof(buf));
+        CHECK(strcmp(buf, "../primat/data/cache_plasma_weak/weak/"
+                          "nTOp_2218248995f018af.txt") == 0,
+              "resolve_cache_file falls back to the shipped weak cache when "
+              "cache_dir lacks it (overlay, never shadowed)");
+    }
+
     cpr_config_free(&cfg);
 
     if (failures) {

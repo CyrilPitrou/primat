@@ -214,6 +214,18 @@ typedef struct {
      * reflects any user override before any field is set. */
     char *user_nuclear_dir;  /* additive nuclear overlay, checked before the shipped default */
 
+    /* ---- writable cache redirect (mirrors PRIMATConfig.cache_dir; B-1).
+     * NULL = unset: both regenerable cache trees (the n<->p weak rates and the
+     * plasma electron-thermo/QED tables) live under
+     * <data_dir>/cache_plasma_weak/{weak,plasma}/. When set, cache files are
+     * READ from <cache_dir>/{weak,plasma}/ first and, on a miss, from the
+     * shipped <data_dir>/cache_plasma_weak/ (overlay -- shipped caches never
+     * shadowed), and WRITTEN only to <cache_dir> (created on demand). Set it
+     * when the install location is read-only. Wired through
+     * cpr_config_cache_write_dir()/cpr_config_resolve_cache_file() below. Cache
+     * LOCATION only: never part of any fingerprint. */
+    char *cache_dir;
+
     /* ---- cosmological inputs ---- */
     double Omegabh2_; /* backing field; use cpr_config_set_Omegabh2() to set
                           (mirrors the Python @property that recomputes
@@ -277,7 +289,7 @@ typedef struct {
     double *extra_rho_val;  /* summed extra rho [MeV^4] at each extra_rho_T node */
     size_t  extra_rho_n;    /* number of grid points (>= 4 required by the cubic spline) */
 
-    char data_dir[CPR_DATA_DIR_LEN]; /* the data folder itself (NEVO/, weak/, plasma/, nuclear/, csv/) */
+    char data_dir[CPR_DATA_DIR_LEN]; /* the data folder itself (NEVO/, nuclear/, csv/, cache_plasma_weak/) */
 } CPRConfig;
 
 /* True iff cfg->network == "small" / "large" (mirrors is_small/is_large). */
@@ -302,7 +314,7 @@ double cpr_config_xi_nu_tau(const CPRConfig *cfg);
 /* Fills `cfg` with every DEFAULT_PARAMS value (string fields strdup'd so
  * the whole struct can later be freed uniformly by cpr_config_free).
  * `data_dir` is the data folder itself (e.g. .../primat/data, containing
- * NEVO/, weak/, plasma/, nuclear/, csv/) -- passed in rather than derived
+ * NEVO/, nuclear/, csv/, cache_plasma_weak/) -- passed in rather than derived
  * from argv[0], since CPRIMAT supports --data-dir / the CPRIMAT_DATA_DIR
  * env var ahead of the executable-relative default -- see cli.c). Loads
  * nuclides.csv from `data_dir`/csv/. Returns 0 on success, nonzero (with
@@ -324,6 +336,21 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
  * truncated/snprintf-safe like every other path builder in this codebase). */
 void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
                                     char *out, size_t outsize);
+
+/* Cache-tree overlay (B-1; mirror of primat/cache_utils.py's
+ * {cache_write_dir, resolve_cache_file}). `sub` is "weak" or "plasma".
+ *
+ * cpr_config_cache_write_dir: writes the WRITE directory
+ *   <cache_dir>/<sub> if cache_dir is set, else <data_dir>/cache_plasma_weak/<sub>.
+ * cpr_config_resolve_cache_file: writes the READ path for `file` through the
+ *   overlay -- <cache_dir>/<sub>/<file> if it exists, else the shipped
+ *   <data_dir>/cache_plasma_weak/<sub>/<file> if it exists, else the write
+ *   path (where the file WILL be written). snprintf-safe like every other
+ *   path builder here. Cache LOCATION only: never part of any fingerprint. */
+void cpr_config_cache_write_dir(const CPRConfig *cfg, const char *sub,
+                                char *out, size_t outsize);
+void cpr_config_resolve_cache_file(const CPRConfig *cfg, const char *sub,
+                                   const char *file, char *out, size_t outsize);
 
 /* Sets cfg->Omegabh2_ and recomputes Omegabh2_to_eta0b/eta0b (the C
  * equivalent of the Python Omegabh2 property setter). */

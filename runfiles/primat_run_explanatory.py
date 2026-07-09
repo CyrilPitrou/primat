@@ -23,7 +23,7 @@ cfg = dict(
     # Every key below is shown at its DEFAULT_PARAMS default (see
     # primat/config.py for the authoritative, more detailed comments this
     # file summarises); uncomment and edit whichever you need to override.
-    # All 80 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
+    # All 81 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- general behaviour and numerical settings -------------------------
     # verbose=False,                  # print primat's own progress messages
@@ -74,10 +74,11 @@ cfg = dict(
     # radiative_corrections=True,     # Coulomb + T=0 resummed radiative corrections (CCR); False: Born approximation
     # finite_mass_corrections=True,   # Fokker-Planck finite-nucleon-mass correction
     # thermal_corrections=True,       # finite-temperature radiative corrections (CCRTh)
+    # cache_dir=None,                 # writable dir for ALL regenerable caches (weak-rate + plasma); None = <data_dir>/cache_plasma_weak/. Set on read-only installs: caches are written to <cache_dir>/{weak,plasma}/ and read from there first, falling back to the shipped caches (overlay). Not part of any fingerprint.
     # weak_rate_cache=True,           # if False, never load the weak-rate cache (always recompute)
-    # save_nTOp=True,                 # save computed n<->p rates to data/weak/
+    # save_nTOp=True,                 # save computed n<->p rates to cache_plasma_weak/weak/ (or the cache_dir redirect)
     # sampling_nTOp_per_decade=80,    # points per decade of T in the n<->p rate grid
-    # save_nTOp_thermal=True,         # save computed thermal n<->p rates to data/weak/
+    # save_nTOp_thermal=True,         # save computed thermal n<->p rates to cache_plasma_weak/weak/ (or the cache_dir redirect)
     # sampling_nTOp_thermal_per_decade=20,  # points per decade of T for the thermal-correction table
     # tau_n_normalization=True,       # normalise weak rates using the neutron lifetime tau_n
     # tau_n=878.4,                    # neutron lifetime [s]

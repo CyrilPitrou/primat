@@ -86,7 +86,7 @@ def _rates_overlay_notice(field: str, path: str) -> str:
     """
     if field == "data_dir":
         label = "full-takeover data directory"
-        detail = "entire data tree (NEVO/, nuclear/, weak/, plasma/, csv/) replaced"
+        detail = "entire data tree (NEVO/, nuclear/, csv/, cache_plasma_weak/) replaced"
     else:
         label = "additive nuclear overlay"
         detail = "nuclear networks and rate tables"
@@ -142,8 +142,8 @@ DEFAULT_PARAMS: dict = {
     # ---- electromagnetic plasma -------------------
     "QED_corrections":            True,  # Whether to include QED interaction corrections to the EM plasma equation of state.
     "n_electron_table":           2000,  # number of log-spaced grid points for the electron-thermo (rho_e/p_e and derivatives) tables
-    "recompute_electron_thermo":  False, # If False, load rates/plasma/electron_thermo_cache.txt when its fingerprint matches; otherwise (or if True) recompute and overwrite it. See plasma.Plasma._build_electron_tables.
-    "recompute_qed_corrections":  False, # True: always compute analytically and overwrite rates/plasma/QED_*.txt; False: load from files if present, otherwise compute on the fly without saving
+    "recompute_electron_thermo":  False, # If False, load cache_plasma_weak/plasma/electron_thermo_cache.txt (via the cache_dir overlay) when its fingerprint matches; otherwise (or if True) recompute and overwrite it. See plasma.Plasma._build_electron_tables.
+    "recompute_qed_corrections":  False, # True: always compute analytically and overwrite cache_plasma_weak/plasma/QED_*.txt (via the cache_dir overlay); False: load from files if present, otherwise compute on the fly without saving
 
     # ---- spectral distortions ---------------------
     "spectral_distortions":       True, # Corrections to n<->p weak rates from deviations of the neutrino phase-space distribution from a perfect Fermi-Dirac.
@@ -186,8 +186,11 @@ DEFAULT_PARAMS: dict = {
     # ---- data directory override and nuclear overlay -----------------------
     # See PRIMATConfig.resolve_rates_path and _resolved_data_dir. Both default
     # to None (shipped primat/data/ tree). When data_dir is set it completely
-    # replaces the shipped data tree (NEVO/, weak/, plasma/, nuclear/, csv/
-    # must all be present under that directory). When user_nuclear_dir is set
+    # replaces the shipped data tree (NEVO/, nuclear/, csv/, cache_plasma_weak/
+    # must all be present under that directory; the regenerable weak-rate and
+    # plasma caches live together under cache_plasma_weak/{weak,plasma}/, and
+    # can be redirected to a writable location via cache_dir -- see below).
+    # When user_nuclear_dir is set
     # it is an additive overlay for nuclear networks and rate tables only
     # (checked before the shipped tree, so "small"/"large" remain available
     # even if only user_nuclear_dir is set and it doesn't contain them).
@@ -223,7 +226,7 @@ DEFAULT_PARAMS: dict = {
     "sampling_temperature_per_decade": 600,  # points per decade of T for the background a(T)/t(T) grid
 
     # ---- n <--> p weak rates ----------------------------------------------
-    # rates/weak/nTOp_*.txt carry a fingerprint header recording the config
+    # cache_plasma_weak/weak/nTOp_*.txt carry a fingerprint header recording the config
     # fields that affect their content; RecomputeWeakRates loads the cache
     # only if its fingerprint matches, and otherwise recomputes from scratch
     # (~2 s).  See weak_rates.RecomputeWeakRates for the full cache logic.
@@ -252,11 +255,12 @@ DEFAULT_PARAMS: dict = {
     "finite_mass_corrections":    True,  # True: add Fokker-Planck finite-nucleon-mass correction (FMCCR or FMNoCCR).
     "thermal_corrections":        True,  # True: add finite-temperature radiative corrections (CCRTh; Brown & Sawyer 2001).
     ##################### caching/saving options
+    "cache_dir": None, # single writable directory for ALL regenerable caches (n<->p weak-rate nTOp_*.txt AND the plasma electron-thermo/QED tables); None (default) = <data_dir>/cache_plasma_weak/ inside the (possibly installed) package, with weak/ and plasma/ subdirs. Set it when the install location is read-only (e.g. system-wide site-packages): caches are then WRITTEN to <cache_dir>/{weak,plasma}/ (created on demand) and READ from there first, falling back to the shipped caches in the package (overlay -- shipped caches are never shadowed). Not part of any fingerprint -- the cache LOCATION cannot affect physics.
     "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
-    "save_nTOp":                  True,  # If True, the computed n<->p rates are saved to rates/weak/ as nTOp_<hash>.txt (forward and backward columns together).
+    "save_nTOp":                  True,  # If True, the computed n<->p rates are saved to cache_plasma_weak/weak/ (or the cache_dir redirect) as nTOp_<hash>.txt (forward and backward columns together).
     "sampling_nTOp_per_decade":   80,    # points per decade of T (T_end -> T_start) in the single n<->p rate grid
 
-    "save_nTOp_thermal":          True,  # If True, the computed thermal n<->p rates are saved to rates/weak/ as nTOp_thermal_<hash>.txt (both directions in one file).
+    "save_nTOp_thermal":          True,  # If True, the computed thermal n<->p rates are saved to cache_plasma_weak/weak/ (or the cache_dir redirect) as nTOp_thermal_<hash>.txt (both directions in one file).
     "sampling_nTOp_thermal_per_decade": 20,   # points per decade of T (T_end -> T_start) for the thermal-correction table
     ##################### Normalization of weak rates
     "tau_n_normalization":        True,  # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
@@ -537,6 +541,7 @@ _PARAM_TYPESPEC = {
     "custom_background":      ("str", "none"),
     "data_dir":              ("str", "none"),
     "user_nuclear_dir":      ("str", "none"),
+    "cache_dir":             ("str", "none"),
     "output_file":           ("str", "none"),
     "output_final_file":     ("str", "none"),
     "output_background_file": ("str", "none"),

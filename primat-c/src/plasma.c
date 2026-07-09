@@ -95,17 +95,20 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
                 cfg->T_start_cosmo_MeV);
     }
 
-    char plasma_dir[CPR_PATH_BUF_LEN];
     char e2_file[CPR_PATH_BUF_LEN2], e3_file[CPR_PATH_BUF_LEN2], old_file[CPR_PATH_BUF_LEN2];
     /* Legacy 3-file names for backward compat with old cached copies. */
     char p_file_leg[CPR_PATH_BUF_LEN2], dp_file_leg[CPR_PATH_BUF_LEN2], d2p_file_leg[CPR_PATH_BUF_LEN2];
-    snprintf(plasma_dir,   sizeof(plasma_dir),   "%s/plasma", cfg->data_dir);
-    snprintf(e2_file,      sizeof(e2_file),       "%s/QED_pressure_correction_e2.txt", plasma_dir);
-    snprintf(e3_file,      sizeof(e3_file),       "%s/QED_pressure_correction_e3.txt", plasma_dir);
-    snprintf(old_file,     sizeof(old_file),      "%s/QED_tables.txt", plasma_dir);
-    snprintf(p_file_leg,   sizeof(p_file_leg),    "%s/QED_P_int.txt", plasma_dir);
-    snprintf(dp_file_leg,  sizeof(dp_file_leg),   "%s/QED_dP_intdT.txt", plasma_dir);
-    snprintf(d2p_file_leg, sizeof(d2p_file_leg),  "%s/QED_d2P_intdT2.txt", plasma_dir);
+    /* Overlay reads: each QED table is resolved individually through the
+     * cache_dir->shipped overlay; any recompute is WRITTEN to the writable
+     * base's plasma/ subdir (plasma_wdir). Mirrors plasma.py (B-1). */
+    char plasma_wdir[CPR_PATH_BUF_LEN];
+    cpr_config_cache_write_dir(cfg, "plasma", plasma_wdir, sizeof(plasma_wdir));
+    cpr_config_resolve_cache_file(cfg, "plasma", "QED_pressure_correction_e2.txt", e2_file, sizeof(e2_file));
+    cpr_config_resolve_cache_file(cfg, "plasma", "QED_pressure_correction_e3.txt", e3_file, sizeof(e3_file));
+    cpr_config_resolve_cache_file(cfg, "plasma", "QED_tables.txt", old_file, sizeof(old_file));
+    cpr_config_resolve_cache_file(cfg, "plasma", "QED_P_int.txt", p_file_leg, sizeof(p_file_leg));
+    cpr_config_resolve_cache_file(cfg, "plasma", "QED_dP_intdT.txt", dp_file_leg, sizeof(dp_file_leg));
+    cpr_config_resolve_cache_file(cfg, "plasma", "QED_d2P_intdT2.txt", d2p_file_leg, sizeof(d2p_file_leg));
 
     int split_present  = file_exists(e2_file) && file_exists(e3_file);
     int old_present    = file_exists(old_file);
@@ -125,7 +128,17 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
         if (cpr_qed_compute_tables(1e-3, 1e2, 500, g_const.alphaem, g_const.me, &t, errmsg))
             return 1;
         if (recompute) {
-            if (cpr_qed_save_tables(&t, plasma_dir, errmsg)) { cpr_qed_tables_free(&t); return 1; }
+            /* Non-fatal on a read-only install (B-1): the freshly computed
+             * tables below are valid, only the disk cache is skipped -- warn
+             * and point the user at the cache_dir remedy, do NOT abort. */
+            if (cpr_qed_save_tables(&t, plasma_wdir, errmsg)) {
+                cpr_log(cfg, "plasma",
+                        "could not write cache to %s: results are unaffected, "
+                        "but the next run will recompute. Set the cache_dir "
+                        "parameter to redirect the cache to a writable directory.",
+                        plasma_wdir);
+                if (errmsg && *errmsg) { free(*errmsg); *errmsg = NULL; }
+            }
         }
         double *sumP = malloc(t.n * sizeof(double));
         double *sumdP = malloc(t.n * sizeof(double));
@@ -311,8 +324,11 @@ static double dp_e_dT_exact(double Tg)
 
 static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
 {
-    char cache_path[4224];
-    snprintf(cache_path, sizeof(cache_path), "%s/plasma/electron_thermo_cache.txt", cfg->data_dir);
+    /* Overlay read (cache_dir first, else shipped copy); write to the writable
+     * base's plasma/ subdir (cache_dir if set, else the package tree). B-1. */
+    char cache_read[CPR_PATH_BUF_LEN2];
+    cpr_config_resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt",
+                                  cache_read, sizeof(cache_read));
 
     double Tmin = g_const.me / ELEC_THERMO_LOWT_RATIO;
     double Tmax = fmax(cfg->T_start_cosmo_MeV, 100.0) * 1.5;
@@ -325,11 +341,11 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
     char *fp_hash = cpr_fingerprint_hash(fields, 3);
 
     if (!cfg->recompute_electron_thermo) {
-        char *cached_hash = cpr_cache_read_fingerprint_hash(cache_path);
+        char *cached_hash = cpr_cache_read_fingerprint_hash(cache_read);
         if (cached_hash && strcmp(cached_hash, fp_hash) == 0) {
             free(cached_hash);
             CPRTable tab;
-            if (cpr_table_read(cache_path, 5, &tab, errmsg) == 0) {
+            if (cpr_table_read(cache_read, 5, &tab, errmsg) == 0) {
                 int rc = cpr_cubic_spline_fit_notaknot(tab.cols[0], tab.cols[1], tab.n_rows, &pl->rho_e_tab, errmsg)
                       || cpr_cubic_spline_fit_notaknot(tab.cols[0], tab.cols[2], tab.n_rows, &pl->p_e_tab, errmsg)
                       || cpr_cubic_spline_fit_notaknot(tab.cols[0], tab.cols[3], tab.n_rows, &pl->drho_e_dT_tab, errmsg)
@@ -371,11 +387,28 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
 
     if (rc == 0) {
         double *columns[5] = { grid, rho_e_arr, p_e_arr, drho_e_dT_arr, dp_e_dT_arr };
-        /* A cache-write failure is non-fatal (matches Python's warn-and-
-         * continue): the tables we just built in memory are still valid
-         * for this run, only the on-disk cache for future runs is stale. */
-        cpr_cache_write(cache_path, fields, 3, "grid rho_e p_e drho_e_dT dp_e_dT",
-                         columns, 5, npts, NULL);
+        /* Write to the writable base (cache_dir if set, else the package's
+         * cache_plasma_weak/plasma/). A cache-write failure is non-fatal
+         * (matches Python's warn-and-continue): the tables we just built in
+         * memory are still valid for this run, only the on-disk cache for
+         * future runs is skipped -- warn and name the cache_dir remedy. */
+        char cache_wdir[CPR_PATH_BUF_LEN];
+        cpr_config_cache_write_dir(cfg, "plasma", cache_wdir, sizeof(cache_wdir));
+        char cache_write[CPR_PATH_BUF_LEN2];
+        snprintf(cache_write, sizeof(cache_write), "%s/electron_thermo_cache.txt", cache_wdir);
+        /* Create the dir tree on demand (a fresh cache_dir has no plasma/). */
+        char mkdir_cmd[CPR_PATH_BUF_LEN2];
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", cache_wdir);
+        for (char *p = mkdir_cmd + 1; *p; p++) {
+            if (*p == '/') { *p = '\0'; mkdir(mkdir_cmd, 0755); *p = '/'; }
+        }
+        if (cpr_cache_write(cache_write, fields, 3, "grid rho_e p_e drho_e_dT dp_e_dT",
+                             columns, 5, npts, NULL) != 0) {
+            cpr_log(cfg, "plasma",
+                    "could not write cache to %s: results are unaffected, but "
+                    "the next run will recompute. Set the cache_dir parameter "
+                    "to redirect the cache to a writable directory.", cache_write);
+        }
     }
 
     free(grid); free(rho_e_arr); free(p_e_arr); free(drho_e_dT_arr); free(dp_e_dT_arr);

@@ -51,7 +51,8 @@ from scipy.integrate import quad
 from scipy.interpolate import interp1d, CubicSpline
 
 from .cache_utils import (fingerprint_hash, read_cache_fingerprint_hash,
-                           write_cache_with_fingerprint)
+                           write_cache_with_fingerprint,
+                           resolve_cache_file, cache_write_dir)
 
 # Bump on any change to the electron-thermo cache's numerical content or
 # layout (see Plasma._build_electron_tables).
@@ -371,15 +372,17 @@ class Plasma:
                 "Consider recompute_qed_corrections=True with a wider table, or "
                 "treat Neff/YP results above this temperature with caution.")
 
-        plasma_dir    = os.path.join(cfg._resolved_data_dir, "plasma")
-        e2_file       = os.path.join(plasma_dir, "QED_pressure_correction_e2.txt")
-        e3_file       = os.path.join(plasma_dir, "QED_pressure_correction_e3.txt")
+        # Overlay reads: each QED table is resolved individually through the
+        # cache_dir->shipped overlay (resolve_cache_file), and any recompute is
+        # WRITTEN to the writable base's plasma/ subdir (cache_write_dir).
+        e2_file       = resolve_cache_file(cfg, "plasma", "QED_pressure_correction_e2.txt")
+        e3_file       = resolve_cache_file(cfg, "plasma", "QED_pressure_correction_e3.txt")
         # Older single-file format, kept for backward compat with old cached copies.
-        old_file      = os.path.join(plasma_dir, "QED_tables.txt")
+        old_file      = resolve_cache_file(cfg, "plasma", "QED_tables.txt")
         # Even older legacy 3-file names, same reason.
-        p_file_leg    = os.path.join(plasma_dir, "QED_P_int.txt")
-        dp_file_leg   = os.path.join(plasma_dir, "QED_dP_intdT.txt")
-        d2p_file_leg  = os.path.join(plasma_dir, "QED_d2P_intdT2.txt")
+        p_file_leg    = resolve_cache_file(cfg, "plasma", "QED_P_int.txt")
+        dp_file_leg   = resolve_cache_file(cfg, "plasma", "QED_dP_intdT.txt")
+        d2p_file_leg  = resolve_cache_file(cfg, "plasma", "QED_d2P_intdT2.txt")
 
         split_present  = os.path.exists(e2_file) and os.path.exists(e3_file)
         old_present    = os.path.exists(old_file)
@@ -397,7 +400,20 @@ class Plasma:
             tables = compute_qed_pressure_tables(
                 T_min=1e-3, T_max=1e2, n_pts=500, verbose=False)
             if recompute:
-                save_qed_tables(tables, plasma_dir, verbose=cfg.verbose)
+                # Write to the writable cache base (cache_dir if set, else the
+                # package's cache_plasma_weak/plasma/). A read-only install must
+                # degrade to a warning that names the cache_dir remedy, never a
+                # crash -- the freshly computed in-memory tables below are valid.
+                qed_dir = cache_write_dir(cfg, "plasma")
+                try:
+                    save_qed_tables(tables, qed_dir, verbose=cfg.verbose)
+                except OSError as exc:
+                    import warnings
+                    warnings.warn(
+                        f"could not write QED-pressure cache to {qed_dir}: {exc}; "
+                        "results are unaffected, but the next recompute run will "
+                        "recompute. Set the cache_dir parameter to redirect the "
+                        "cache to a writable directory.")
             # Build interpolants directly from the computed arrays via CubicSpline,
             # which is smoother and more accurate than the linear interp1d used
             # when loading from files.
@@ -577,8 +593,11 @@ class Plasma:
         Sets ``self._rho_e_tab``, ``self._p_e_tab``, ``self._drho_e_dT_tab``,
         ``self._dp_e_dT_tab``.
         """
-        cache_path = os.path.join(cfg._resolved_data_dir, "plasma",
-                                  "electron_thermo_cache.txt")
+        # Overlay read (cache_dir first, else shipped copy); write to the
+        # writable base's plasma/ subdir (cache_dir if set, else package tree).
+        cache_read  = resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt")
+        cache_write = os.path.join(cache_write_dir(cfg, "plasma"),
+                                   "electron_thermo_cache.txt")
 
         # --- Extrapolation domain --------------------------------------
         # Unlike the QED pressure-correction table (_setup_qed_pressure),
@@ -607,9 +626,9 @@ class Plasma:
 
         # Try loading from disk cache first (skips ~0.7 s of quad calls).
         if (not cfg.recompute_electron_thermo
-                and read_cache_fingerprint_hash(cache_path) == fp_hash):
+                and read_cache_fingerprint_hash(cache_read) == fp_hash):
             try:
-                d = np.loadtxt(cache_path)
+                d = np.loadtxt(cache_read)
                 self._rho_e_tab     = interp1d(d[:, 0], d[:, 1], kind='cubic',
                                           bounds_error=False, fill_value="extrapolate")
                 self._p_e_tab       = interp1d(d[:, 0], d[:, 2], kind='cubic',
@@ -643,14 +662,23 @@ class Plasma:
 
         # Save to disk so future runs with the same fingerprint can load
         # instead of recomputing.
+        # write_cache_with_fingerprint creates the dir and, on a read-only
+        # install, degrades to a warning (naming cache_dir) and returns False
+        # instead of raising -- the in-memory tables above are already valid.
+        # The outer guard remains only for non-OSError failures (it enriches
+        # the message with the same cache_dir remedy for parity).
         try:
             write_cache_with_fingerprint(
-                cache_path, fp,
+                cache_write, fp,
                 [grid, rho_e_arr, p_e_arr, drho_e_dT_arr, dp_e_dT_arr],
                 col_header='grid rho_e p_e drho_e_dT dp_e_dT')
         except Exception as exc:
             import warnings
-            warnings.warn(f"[plasma] Could not write electron-thermo cache: {exc}")
+            warnings.warn(
+                f"[plasma] could not write electron-thermo cache to "
+                f"{cache_write}: {exc}; results are unaffected, but the next "
+                "run will recompute. Set the cache_dir parameter to redirect "
+                "the cache to a writable directory.")
 
         if cfg.verbose:
             print(f"[init]  Electron-thermo tables built ({cfg.n_electron_table} points).")

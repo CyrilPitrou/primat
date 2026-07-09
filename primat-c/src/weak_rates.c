@@ -1191,21 +1191,23 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     double T_end = cpr_config_T_end(cfg);
     double T_start = cpr_T_start(); /* fixed 10 MeV era boundary, NOT T_start_cosmo */
 
-    char nd[4200];
-    snprintf(nd, sizeof(nd), "%s/weak/", cfg->data_dir);
-
     CPRFPField fp_fields[24];
     size_t n_fp = cpr_weak_rate_fingerprint(cfg, fp_fields);
     char *fp_hash = cpr_fingerprint_hash(fp_fields, n_fp);
-    char path[4300];
-    snprintf(path, sizeof(path), "%snTOp_%s.txt", nd, fp_hash);
+    char fname[512];
+    snprintf(fname, sizeof(fname), "nTOp_%s.txt", fp_hash);
+    /* Overlay read path (cache_dir first, else shipped copy); the write path
+     * below always targets the writable base (cache_dir if set, else the
+     * package's cache_plasma_weak/weak/). Mirrors weak_rates/api.py (B-1). */
+    char path[CPR_PATH_BUF_LEN2];
+    cpr_config_resolve_cache_file(cfg, "weak", fname, path, sizeof(path));
 
     /* Forced recompute (mirrors RecomputeWeakRates's "forced_recompute =
      * cfg.spectral_distortions and cfg.analytic_distortions"): analytic
      * distortions are continuous knobs (y_SZ, y_gray) typically scanned
      * point-by-point, so the non-thermal cache is bypassed entirely --
      * never loaded, never written -- to avoid writing one file per
-     * parameter point into rates/weak/. */
+     * parameter point into cache_plasma_weak/weak/. */
     int forced_recompute = cfg->spectral_distortions && cfg->analytic_distortions;
 
     int have_cache = (cfg->weak_rate_cache != 0) && !forced_recompute;
@@ -1254,13 +1256,19 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
 
         if (cfg->save_nTOp && !forced_recompute) {
             double *cols[3] = { wr->T, wr->frwrd, wr->bkwrd };
-            /* Best-effort: mkdir -p rates/weak/ then write; a failure to
-             * persist the cache is not fatal (matches Python's os.makedirs
-             * exist_ok=True followed by an unconditional write -- here we
-             * simply don't treat a write error as fatal either). */
-            char mkdir_cmd[4300];
-            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s", nd);
+            /* Write to the writable base (cache_dir if set, else the package's
+             * cache_plasma_weak/weak/). Best-effort: mkdir -p then write; a
+             * failure to persist the cache is not fatal -- the in-memory rates
+             * are valid, only the disk cache is skipped, and we warn the user
+             * to point them at the cache_dir remedy (mirrors Python's
+             * write_cache_with_fingerprint degradation, B-1). */
+            char wdir[CPR_PATH_BUF_LEN2];
+            cpr_config_cache_write_dir(cfg, "weak", wdir, sizeof(wdir));
+            char wpath[CPR_PATH_BUF_LEN2];
+            snprintf(wpath, sizeof(wpath), "%s/%s", wdir, fname);
             /* create directory tree without relying on a shell call */
+            char mkdir_cmd[CPR_PATH_BUF_LEN2];
+            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", wdir);
             for (char *p = mkdir_cmd + 1; *p; p++) {
                 if (*p == '/') {
                     *p = '\0';
@@ -1268,10 +1276,15 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
                     *p = '/';
                 }
             }
-            mkdir(mkdir_cmd, 0755);
-            cpr_cache_write(path, fp_fields, n_fp,
-                             "T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]",
-                             cols, 3, wr->n, NULL);
+            if (cpr_cache_write(wpath, fp_fields, n_fp,
+                                 "T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]",
+                                 cols, 3, wr->n, NULL) != 0) {
+                cpr_log(cfg, "weak",
+                        "could not write cache to %s: results are unaffected, "
+                        "but the next run will recompute. Set the cache_dir "
+                        "parameter to redirect the cache to a writable directory.",
+                        wpath);
+            }
         }
     }
     free(fp_hash);
@@ -1294,9 +1307,12 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
         CPRFPField th_fields[8];
         size_t n_th_fp = cpr_thermal_fingerprint(cfg, th_fields);
         char *th_hash = cpr_fingerprint_hash(th_fields, n_th_fp);
-        char th_path[4300];
-        snprintf(th_path, sizeof(th_path), "%snTOp_thermal_%s.txt", nd, th_hash);
+        char th_fname[512];
+        snprintf(th_fname, sizeof(th_fname), "nTOp_thermal_%s.txt", th_hash);
         free(th_hash);
+        /* Overlay read; write to the writable base (cache_dir if set). */
+        char th_path[CPR_PATH_BUF_LEN2];
+        cpr_config_resolve_cache_file(cfg, "weak", th_fname, th_path, sizeof(th_path));
 
         FILE *f = fopen(th_path, "r");
         if (f) {
@@ -1344,17 +1360,28 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
 
             if (cfg->save_nTOp_thermal) {
                 double *th_cols[3] = { wr->T_th, wr->Lnth, wr->Lpth };
-                for (char *p = nd + 1; *p; p++) {
-                    if (*p == '/') { *p = '\0'; mkdir(nd, 0755); *p = '/'; }
+                char th_wdir[CPR_PATH_BUF_LEN2];
+                cpr_config_cache_write_dir(cfg, "weak", th_wdir, sizeof(th_wdir));
+                char th_wpath[CPR_PATH_BUF_LEN2];
+                snprintf(th_wpath, sizeof(th_wpath), "%s/%s", th_wdir, th_fname);
+                char mkdir_cmd[CPR_PATH_BUF_LEN2];
+                snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", th_wdir);
+                for (char *p = mkdir_cmd + 1; *p; p++) {
+                    if (*p == '/') { *p = '\0'; mkdir(mkdir_cmd, 0755); *p = '/'; }
                 }
-                mkdir(nd, 0755);
                 char provenance[128];
                 snprintf(provenance, sizeof(provenance),
                          "backend=c algorithm=vegas vegas_n_eval=%d vegas_n_itn=%d",
                          cfg->vegas_n_eval, cfg->vegas_n_itn);
-                cpr_cache_write(th_path, th_fields, n_th_fp,
-                                 "T[K] L_nTOpCCRTh L_pTOnCCRTh", th_cols, 3, wr->n_th,
-                                 provenance);
+                if (cpr_cache_write(th_wpath, th_fields, n_th_fp,
+                                     "T[K] L_nTOpCCRTh L_pTOnCCRTh", th_cols, 3, wr->n_th,
+                                     provenance) != 0) {
+                    cpr_log(cfg, "weak",
+                            "could not write cache to %s: results are unaffected, "
+                            "but the next run will recompute. Set the cache_dir "
+                            "parameter to redirect the cache to a writable directory.",
+                            th_wpath);
+                }
             }
             cpr_log(cfg, "weak", "n <--> p thermal corrections computed");
         }

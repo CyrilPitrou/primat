@@ -245,9 +245,10 @@ information for various platforms.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `weak_rate_cache` | True | If False, never load n↔p rates from `data/weak/` (always recompute) |
-| `save_nTOp` | True | Save recomputed n↔p rates to `data/weak/` with a fingerprint header |
-| `save_nTOp_thermal` | True | Save recomputed thermal corrections to `data/weak/` with a fingerprint header |
+| `cache_dir` | None | Writable directory for **all** regenerable caches (n↔p weak-rate + plasma tables). None = `<data_dir>/cache_plasma_weak/`; set it on a read-only install (see below) |
+| `weak_rate_cache` | True | If False, never load n↔p rates from the cache (always recompute) |
+| `save_nTOp` | True | Save recomputed n↔p rates to `cache_plasma_weak/weak/` (or the `cache_dir` redirect) with a fingerprint header |
+| `save_nTOp_thermal` | True | Save recomputed thermal corrections to `cache_plasma_weak/weak/` (or the `cache_dir` redirect) with a fingerprint header |
 
 ### Output parameters
 
@@ -261,9 +262,13 @@ information for various platforms.
 ### n↔p weak rate workflow
 
 The n↔p weak rates are the most expensive part of initialisation (~1.8 s). The
-non-thermal rate (Born+FM+CCR+SD) is cached in `data/weak/nTOp_<hash>.txt`
-(forward and backward columns together); the finite-temperature radiative
-correction (CCRTh) is cached separately in `data/weak/nTOp_thermal_<hash>.txt`.
+non-thermal rate (Born+FM+CCR+SD) is cached in
+`data/cache_plasma_weak/weak/nTOp_<hash>.txt` (forward and backward columns
+together); the finite-temperature radiative correction (CCRTh) is cached
+separately in `data/cache_plasma_weak/weak/nTOp_thermal_<hash>.txt`. This
+`cache_plasma_weak/` folder also holds the plasma electron-thermo/QED caches
+under `plasma/`; both trees live together to make clear they are regenerable
+caches, not primary shipped data.
 Each file is tagged with a *fingerprint* header: a hash of every config field
 that affects its numeric content (background thermodynamics,
 `sampling_nTOp_per_decade`/`sampling_nTOp_thermal_per_decade`,
@@ -276,16 +281,27 @@ that affects its numeric content (background thermodynamics,
 - Otherwise (fingerprint mismatch, missing file, or `weak_rate_cache=False`), the
   rates are recomputed from scratch by numerical integration (~1.8 s).
 - `save_nTOp` and `save_nTOp_thermal` (both default **`True`**) write the
-  (re)computed rates back to `data/weak/` with a fresh fingerprint header, so
-  future runs with the same configuration load the cache. The hash is part of
-  the filename, so different configurations coexist without overwriting each
-  other — set either flag to `False` only to avoid littering `data/weak/`
-  during throwaway experiments.
+  (re)computed rates back to `cache_plasma_weak/weak/` with a fresh fingerprint
+  header, so future runs with the same configuration load the cache. The hash
+  is part of the filename, so different configurations coexist without
+  overwriting each other — set either flag to `False` only to avoid littering
+  the cache during throwaway experiments.
 
 Recomputing the thermal correction (`thermal_corrections=True`) requires a
 `vegas` Monte Carlo integration that can take a few minutes; the
 fingerprint mechanism above is what makes this avoidable across runs that
 share the same configuration.
+
+**Read-only installs (`cache_dir`).** On a system-wide install the package
+tree under `site-packages/primat/data/` may not be writable, so a run whose
+fingerprint misses the shipped caches cannot persist the freshly computed
+rates. Set `cache_dir=<a writable directory>` to redirect **all** regenerable
+caches there: cache files are then *written* to `<cache_dir>/{weak,plasma}/`
+(created on demand) and *read* from there first, falling back to the shipped
+caches in the package (an overlay — the shipped caches are never shadowed, so
+there is no recompute penalty for the configurations that ship pre-cached). A
+cache-write failure is never fatal in any case: the run completes with the
+correct in-memory values and prints a warning pointing at `cache_dir`.
 
 **Typical workflow for a high-precision study:**
 ```python
@@ -533,9 +549,10 @@ primat/data/
     tables/          Per-reaction rate tables (one folder per reaction)
     networks/        Network list files (small.txt, large.txt, custom.txt, etc.)
   csv/               Reaction catalog (nuclides.csv, detailed_balance.csv, reactions_large.csv)
-  plasma/            Pre-computed QED pressure tables
-  weak/              Cached n<->p forward/backward rates
   NEVO/              Neutrino-decoupling history tables
+  cache_plasma_weak/ Regenerable caches (redirect via cache_dir on read-only installs)
+    plasma/          Pre-computed QED pressure + electron-thermo tables
+    weak/            Cached n<->p forward/backward rates
 
 primat-c/                Standalone C99 port (independent build via `make`)
                          Also compiled as extension for the Python backend.

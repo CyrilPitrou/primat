@@ -12,7 +12,8 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Directories where a non-default PRIMATConfig's fingerprinted cache
 # machinery (primat.weak_rates.cache / primat.cache_utils) writes a new file
-# by design -- weak_rate_cache=True writes primat/data/weak/nTOp_<hash>.txt
+# by design -- weak_rate_cache=True writes
+# primat/data/cache_plasma_weak/weak/nTOp_<hash>.txt
 # whenever a test's flags don't match an already-cached fingerprint, and
 # nevo_file_prefix tests (tests/test_weak_rates.py) drop renamed NEVO table
 # copies into primat/data/NEVO/. This is a deliberate performance feature,
@@ -20,7 +21,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # working tree with untracked files (only a fixed handful of nTOp_*.txt are
 # actually committed, see generate_weak_rate_caches.py's top comment).
 _WATCHED_DATA_DIRS = [
-    os.path.join(_REPO_ROOT, "primat", "data", "weak"),
+    os.path.join(_REPO_ROOT, "primat", "data", "cache_plasma_weak", "weak"),
     os.path.join(_REPO_ROOT, "primat", "data", "NEVO"),
 ]
 

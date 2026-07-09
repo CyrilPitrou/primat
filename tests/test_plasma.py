@@ -76,16 +76,19 @@ def test_electron_thermo_cache_refreshed_on_fingerprint_mismatch():
     cheap, ~0.7 s, so the cache is always kept consistent with the last run --
     unlike the more expensive weak-rate cache, see weak_rates.RecomputeWeakRates).
 
-    The shipped data/plasma/electron_thermo_cache.txt is restored afterwards
-    so this test does not leave the working tree dirty.
+    The shipped cache_plasma_weak/plasma/electron_thermo_cache.txt is restored
+    afterwards so this test does not leave the working tree dirty.
     """
     import os
-    from primat.cache_utils import fingerprint_hash, read_cache_fingerprint_hash
+    from primat.cache_utils import (fingerprint_hash, read_cache_fingerprint_hash,
+                                    resolve_cache_file)
     from primat.plasma import Plasma, ELECTRON_THERMO_FORMAT_VERSION
 
     cfg = PRIMATConfig()
-    cache_path = os.path.join(cfg._resolved_data_dir, "plasma",
-                              "electron_thermo_cache.txt")
+    # Resolve through the cache overlay (B-1): the shipped electron-thermo cache
+    # now lives under cache_plasma_weak/plasma/. With cache_dir unset, read and
+    # write both resolve to this same shipped copy.
+    cache_path = resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt")
     before = open(cache_path, "rb").read()
 
     try:
@@ -128,11 +131,13 @@ def test_c_backend_plasma_without_cache(tmp_path):
     """
     import os
     import shutil
-    
+    from primat.cache_utils import resolve_cache_file
+
     # Save the original cache file and remove it
     cfg = PRIMATConfig()
-    cache_path = os.path.join(cfg._resolved_data_dir, "plasma",
-                              "electron_thermo_cache.txt")
+    # Resolve through the cache overlay (B-1): shipped copy under
+    # cache_plasma_weak/plasma/ when cache_dir is unset.
+    cache_path = resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt")
     
     # Remove the cache file to force C backend to compute from scratch
     cache_backup = tmp_path / "electron_thermo_cache_backup.txt"

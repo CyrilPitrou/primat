@@ -54,7 +54,7 @@ int main(void)
     cpr_table_free(&t);
 
     /* QED_pressure_correction_e2.txt: 4 columns (T, dP_a, derivatives…), 4 comment lines. */
-    if (cpr_table_read("../primat/data/plasma/QED_pressure_correction_e2.txt", 4, &t, &err)) {
+    if (cpr_table_read("../primat/data/cache_plasma_weak/plasma/QED_pressure_correction_e2.txt", 4, &t, &err)) {
         printf("FAIL QED_pressure_correction_e2 read: %s\n", err);
         return 1;
     }
@@ -63,7 +63,7 @@ int main(void)
     cpr_table_free(&t);
 
     /* QED_pressure_correction_e3.txt: 4 columns (T, dP_e3, derivatives…), 4 comment lines. */
-    if (cpr_table_read("../primat/data/plasma/QED_pressure_correction_e3.txt", 4, &t, &err)) {
+    if (cpr_table_read("../primat/data/cache_plasma_weak/plasma/QED_pressure_correction_e3.txt", 4, &t, &err)) {
         printf("FAIL QED_pressure_correction_e3 read: %s\n", err);
         return 1;
     }

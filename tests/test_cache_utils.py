@@ -87,3 +87,85 @@ def test_write_overwrites_existing_file_atomically(tmp_path):
     write_cache_with_fingerprint(path, {"a": 2}, [np.array([99.])])
     assert read_cache_fingerprint_hash(path) == fingerprint_hash({"a": 2})
     assert np.loadtxt(path).item() == pytest.approx(99.)
+
+
+# ---------------------------------------------------------------------------
+# cache_dir redirect + cache_plasma_weak/ overlay (B-1). The two writable
+# cache trees (weak/ + plasma/) live under primat/data/cache_plasma_weak/,
+# and the cache_dir parameter redirects WRITES elsewhere while still READING
+# the shipped caches through an overlay (never shadowing them). A failed
+# cache write degrades to a UserWarning (naming cache_dir), never a crash.
+# ---------------------------------------------------------------------------
+
+def test_cache_dir_param_redirects_writes(tmp_path):
+    """cache_dir=<dir> makes the WRITE dirs live under it (<dir>/weak,
+    <dir>/plasma); unset falls back to <data_dir>/cache_plasma_weak/*."""
+    from primat.config import PRIMATConfig
+    from primat.cache_utils import cache_write_dir
+    cfg = PRIMATConfig({"cache_dir": str(tmp_path)})
+    assert cache_write_dir(cfg, "weak")   == os.path.join(str(tmp_path), "weak")
+    assert cache_write_dir(cfg, "plasma") == os.path.join(str(tmp_path), "plasma")
+    cfg_default = PRIMATConfig({})
+    assert cache_write_dir(cfg_default, "weak").endswith(
+        os.path.join("data", "cache_plasma_weak", "weak"))
+
+
+def test_cache_dir_overlay_still_reads_shipped_caches(tmp_path):
+    """OVERLAY semantics: with cache_dir set but a file absent there, the
+    resolver falls back to the shipped <data_dir>/cache_plasma_weak/<sub>/
+    copy (so shipped caches are never shadowed); a file present in cache_dir
+    wins over the shipped one."""
+    from primat.config import PRIMATConfig
+    from primat.cache_utils import resolve_cache_file
+    cfg = PRIMATConfig({"cache_dir": str(tmp_path)})
+    # Absent in cache_dir -> resolves to a shipped nTOp_*.txt (there is at
+    # least one shipped weak cache): the returned path must NOT be under
+    # tmp_path and must exist.
+    import glob, primat
+    shipped = os.path.join(os.path.dirname(primat.__file__),
+                           "data", "cache_plasma_weak", "weak")
+    name = os.path.basename(sorted(glob.glob(os.path.join(shipped, "nTOp_*.txt")))[0])
+    got = resolve_cache_file(cfg, "weak", name)
+    assert got == os.path.join(shipped, name) and os.path.exists(got)
+    # Present in cache_dir -> that copy wins.
+    (tmp_path / "weak").mkdir()
+    (tmp_path / "weak" / name).write_text("# local\n")
+    assert resolve_cache_file(cfg, "weak", name) == os.path.join(
+        str(tmp_path), "weak", name)
+
+
+def test_cache_write_failure_warns_instead_of_raising(tmp_path):
+    """An unwritable target directory must degrade to a UserWarning, not a
+    PermissionError crash -- the freshly computed in-memory values are valid.
+    The warning must both explain AND point at the cache_dir remedy (author
+    decision 2026-07-09: read-only installs are what cache_dir exists for)."""
+    import warnings
+    ro = tmp_path / "ro"; ro.mkdir(); ro.chmod(0o500)
+    try:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            ok = write_cache_with_fingerprint(
+                str(ro / "nTOp_test.txt"), {"field": 1.0},
+                [np.ones(3), np.zeros(3)], col_header="a b")
+        assert ok is False
+        assert any("could not write" in str(x.message)
+                   and "cache_dir" in str(x.message) for x in w)
+    finally:
+        ro.chmod(0o700)
+
+
+def test_cache_dir_not_in_weak_rate_fingerprint():
+    """Cache LOCATION must not invalidate caches (it cannot affect numbers)."""
+    from primat.weak_rates.cache import _WEAK_RATE_BG_FIELDS
+    assert "cache_dir" not in _WEAK_RATE_BG_FIELDS
+
+
+def test_shipped_data_uses_cache_plasma_weak_layout():
+    """The relocated cache tree exists and the old top-level dirs are gone
+    (hard cutover -- no legacy fallback is supported)."""
+    import primat
+    data = os.path.join(os.path.dirname(primat.__file__), "data")
+    assert os.path.isdir(os.path.join(data, "cache_plasma_weak", "weak"))
+    assert os.path.isdir(os.path.join(data, "cache_plasma_weak", "plasma"))
+    assert not os.path.exists(os.path.join(data, "weak"))
+    assert not os.path.exists(os.path.join(data, "plasma"))

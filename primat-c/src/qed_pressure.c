@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>  /* mkdir (create a fresh cache_dir subtree on demand) */
 
 /* Mirrors qed_pressure.py's module-level constants exactly (see that
  * file's comments for the rationale of each). */
@@ -198,6 +199,14 @@ int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **er
     char path_e2[1024], path_e3[1024];
     snprintf(path_e2, sizeof(path_e2), "%s/QED_pressure_correction_e2.txt", plasma_dir);
     snprintf(path_e3, sizeof(path_e3), "%s/QED_pressure_correction_e3.txt", plasma_dir);
+
+    /* Create the target dir tree on demand: when redirected to a fresh
+     * cache_dir (B-1) the plasma/ subdir may not exist yet. */
+    char mkdir_cmd[1024];
+    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", plasma_dir);
+    for (char *p = mkdir_cmd + 1; *p; p++) {
+        if (*p == '/') { *p = '\0'; mkdir(mkdir_cmd, 0755); *p = '/'; }
+    }
 
     if (write_one_qed_file(path_e2,
             "CPRIMAT qed_pressure.c -- QED plasma-pressure correction delta_P_a(T)",

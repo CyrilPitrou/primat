@@ -44,7 +44,7 @@ from . import PRIMAT, __version__
 from .credits import cli_credits_text
 from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
                       dump_mc_samples, run_bbn, run_mc)
-from .cache_utils import clear_weak_cache, list_weak_cache_files
+from .cache_utils import clear_weak_cache, list_weak_cache_files, weak_cache_dir
 from .config import DEFAULT_PARAMS, PRIMATConfig, _default_params_comments, _rates_overlay_notice
 
 
@@ -320,7 +320,8 @@ def _build_parser():
     parser.add_argument(
         "--cache-info", action="store_true",
         help="Print the number of cached n<->p weak-rate files "
-             "(primat/data/weak/nTOp_*.txt) and exit, without running a solve.",
+             "(cache_plasma_weak/weak/nTOp_*.txt, or the cache_dir redirect) "
+             "and exit, without running a solve.",
     )
     parser.add_argument(
         "--cache-clear", action="store_true",
@@ -383,10 +384,10 @@ def main(argv=None):
         cfg = PRIMATConfig({})
         if args.cache_clear:
             n = clear_weak_cache(cfg)
-            print(f"Removed {n} cached weak-rate file(s) from {cfg._resolved_data_dir}/weak/.")
+            print(f"Removed {n} cached weak-rate file(s) from {weak_cache_dir(cfg)}/.")
         else:
             n = len(list_weak_cache_files(cfg))
-            print(f"{n} cached weak-rate file(s) in {cfg._resolved_data_dir}/weak/.")
+            print(f"{n} cached weak-rate file(s) in {weak_cache_dir(cfg)}/.")
         return 0
 
     # Only forward options the user actually set, so unset flags fall back

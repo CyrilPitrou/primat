@@ -13,7 +13,7 @@ import os
 
 import numpy as np
 
-from ..cache_utils import fingerprint_hash
+from ..cache_utils import fingerprint_hash, resolve_cache_file
 
 __all__ = ['WEAK_RATE_FORMAT_VERSION', '_WEAK_RATE_BG_FIELDS', '_THERMAL_BG_FIELDS',
            'n_points_per_decade', '_thermal_fingerprint', '_weak_rate_fingerprint',
@@ -159,8 +159,12 @@ def thermal_cache_exists(cfg):
     Returns:
         bool.
     """
-    path = os.path.join(cfg._resolved_data_dir, "weak",
-                         "nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
+    # Overlay read: resolve_cache_file returns an existing cache_dir/shipped
+    # copy if present, else the (non-existent) write path -- so os.path.exists
+    # correctly reports a hit only when the thermal cache is actually reachable.
+    path = resolve_cache_file(
+        cfg, "weak",
+        "nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
     return os.path.exists(path)
 
 

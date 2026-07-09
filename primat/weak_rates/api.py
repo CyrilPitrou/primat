@@ -24,7 +24,8 @@ from scipy.interpolate import interp1d
 from .cache import n_points_per_decade, _weak_rate_fingerprint
 from .corrections import _build_rate_context, _correction_terms, \
     _thermal_correction_interpolants, ComputeFn
-from ..cache_utils import fingerprint_hash, write_cache_with_fingerprint
+from ..cache_utils import (fingerprint_hash, write_cache_with_fingerprint,
+                           resolve_cache_file, cache_write_dir)
 
 __all__ = ['ComputeWeakRates', 'InterpolateWeakRates', 'RecomputeWeakRates']
 
@@ -243,9 +244,9 @@ def InterpolateWeakRates(cfg):
         [frwrd, bkwrd] : two scipy interp1d objects (extrapolating), each mapping
                          T in Kelvin → rate in units of 1/tau_n.
     """
-    nd      = os.path.join(cfg._resolved_data_dir, "weak", "")
     fp_hash = fingerprint_hash(_weak_rate_fingerprint(cfg))
-    path    = nd + "nTOp_" + fp_hash + ".txt"
+    # Overlay read: cache_dir (if set) first, then the shipped package copy.
+    path    = resolve_cache_file(cfg, "weak", "nTOp_" + fp_hash + ".txt")
     tab     = np.loadtxt(path)
     # log10-log10 cubic (matching the C backend and the nuclear rate tables);
     # see _weak_rate_loglog_interp for why linear-space quadratic was replaced.
@@ -310,10 +311,13 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     """
     forced_recompute = cfg.spectral_distortions and cfg.analytic_distortions
 
-    nd       = os.path.join(cfg._resolved_data_dir, "weak", "")
     fp       = _weak_rate_fingerprint(cfg)
     fp_hash  = fingerprint_hash(fp)
-    path     = nd + "nTOp_" + fp_hash + ".txt"
+    fname    = "nTOp_" + fp_hash + ".txt"
+    # Overlay read path (cache_dir first, else shipped copy); the write path
+    # below always targets the writable base (cache_dir if set, else package).
+    path     = resolve_cache_file(cfg, "weak", fname)
+    write_path = os.path.join(cache_write_dir(cfg, "weak"), fname)
 
     # ---- Non-thermal rate (Born+FM+CCR+SD): load from cache or recompute. ----
     nonthermal = None
@@ -329,9 +333,10 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
                                                 dFDneu_moments=dFDneu_moments)
 
         if not forced_recompute and cfg.save_nTOp:
-            os.makedirs(nd, exist_ok=True)
+            # write_cache_with_fingerprint creates the dir and degrades to a
+            # warning (returning False) on a read-only install -- never fatal.
             write_cache_with_fingerprint(
-                path, fp, [T_all, frwrd, bkwrd],
+                write_path, fp, [T_all, frwrd, bkwrd],
                 col_header="T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]")
 
         # Same log10-log10 cubic scheme as the cache-load path above (and the
