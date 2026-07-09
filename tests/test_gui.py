@@ -49,13 +49,18 @@ _needs_ac2024 = pytest.mark.skipif(
 def _download_button(at, label):
     """Find the ``st.download_button`` with the given ``label`` in ``at``.
 
-    ``AppTest`` exposes download buttons as ``UnknownElement`` nodes (no
-    dedicated accessor), so walk the element tree looking for one whose
-    ``label`` matches. Returns ``None`` if not found.
+    Streamlit exposes download buttons differently across versions: on
+    streamlit <= 1.58 they are generic ``UnknownElement`` nodes, while
+    streamlit >= 1.59 promoted them to a first-class ``DownloadButton``
+    element (with an ``at.download_button`` accessor). Accept either node
+    type and match on ``label`` so the helper is version-agnostic; the label
+    match filters out the unrelated ``UnknownElement`` nodes (e.g. Plotly
+    charts, which carry ``label=None``). Returns ``None`` if not found.
     """
     def walk(node):
         for child in getattr(node, "children", {}).values():
-            if type(child).__name__ == "UnknownElement" and getattr(child, "label", None) == label:
+            if (type(child).__name__ in ("UnknownElement", "DownloadButton")
+                    and getattr(child, "label", None) == label):
                 return child
             found = walk(child)
             if found is not None:
