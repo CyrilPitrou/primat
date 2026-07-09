@@ -471,18 +471,30 @@ writers are `primat.backend.dump_mc_samples` / `dump_mc_covariance` /
 | `YPCMB` | Helium-4 mass fraction (CMB convention) |
 | `DoH` | D/H |
 | `He3oH` | (He3+H3)/H |
+| `He3oHe4` | (He3+H3)/He4 |
 | `Li7oH` | (Li7+Be7)/H |
 | `Neff` | Effective number of neutrino species |
 | `Omeganurel` | Ω_ν h² × 10⁶ (relativistic) |
 | `OneOverOmeganunr` | 1 / (Ω_ν h² × 10⁻⁶) (non-relativistic) |
+| `Y_final` | dict of final mass-fraction abundances, one entry per tracked nuclide (e.g. `Y_final["He4"]`) |
+
+With `output_time_evolution=True` the dict also carries an `"evolution"` key
+(`primat.evolution.EvolutionResult`).
 
 When a Monte Carlo run is requested (`--mc N` on the CLI, or
 `run_mc()`/`mc_uncertainty()` via `to_flat_dict()`), every observable above
 also gets a matching `sigma_<key>` entry with its 1-sigma MC uncertainty,
 e.g. `sigma_DoH` alongside `DoH`, `sigma_YPBBN` alongside `YPBBN`.
 
-When `output_time_evolution=True`, the time evolution data is made available. If `output_file` is set to a path, a TSV file is written with columns:
-`a, T, t, H, Tnue, Tnumu, Tnutau, [Nheating], [abundances], n_to_p_weak_rate, p_to_n_weak_rate, [nuclear rates]`.
+When `output_time_evolution=True`, the time evolution data is made available. If `output_file` is set to a path, a TSV file is written in the unified time-evolution schema, with columns:
+`t_s` (cosmic time [s]), `a` (scale factor), `T_gamma_MeV`, `T_nue_MeV`,
+`T_numu_MeV`, `T_nutau_MeV` (photon and per-flavour neutrino temperatures
+[MeV]), then one `Y_<nuclide>` mass-fraction column per tracked nuclide of
+the chosen network (8 for small/small_parthenope, ~59 for large, fewer with
+an `amax` cutoff). Both backends write the identical schema, loadable with
+`primat.evolution.load_evolution()`. The n↔p weak rates are not duplicated
+on disk — evaluate `run.background.weak_nTOp_frwrd/bkwrd` at the
+`T_gamma_MeV` column if needed.
 
 `output_file` defaults to `results/output_tables.tsv` (relative to the current
 directory); set it to `None` to skip the disk write entirely -- the time
@@ -491,10 +503,7 @@ dictionary returned by `run_bbn()` either way. The `primat.evolution` and
 `primat.plotting` modules provide tools for working with and plotting this
 time evolution data (see the example notebooks for usage).
 
-`Nheating` is included only for `incomplete_decoupling=True` (a real NEVO
-heating table). `[abundances]` is one `Y<species>` column per nuclide of the
-chosen network (8 for small/small_parthenope, ~59 for large, fewer with an
-`amax` cutoff). `[nuclear rates]` (`output_rates_time_evolution=True`) is
+`[nuclear rates]` (`output_rates_time_evolution=True`) is
 available for small/small_parthenope only; it is omitted (with a printed
 note) for `network="large"`.
 
@@ -515,7 +524,7 @@ primat/                    Core Python package
   neutrino_history.py    NEVO non-instantaneous decoupling table I/O
   evolution.py           Unified time-evolution TSV schema
   cli.py                 `primat` command-line entry point
-  gui/                   `primat-gui` Streamlit app (optional, source-only)
+  gui/                   `primat-gui` Streamlit app (optional `gui` extra)
   data/                  Shipped default data tree
   _primat_c/             Compiled C extension bridge (wraps primat-c)
 

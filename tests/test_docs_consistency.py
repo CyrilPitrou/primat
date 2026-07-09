@@ -311,3 +311,29 @@ def test_validation_reference_table_matches_reference_constants():
     # First table is the small network, second is large+amax=8.
     assert [float(v) for v in yp[:2]] == [REF_SMALL_YPBBN, REF_LARGE8_YPBBN]
     assert [float(v) for v in dh[:2]] == [REF_SMALL_DOH, REF_LARGE8_DOH]
+
+
+def test_readme_documents_the_unified_evolution_schema():
+    """README's Output section must describe the real unified TSV header
+    (t_s/a/T_gamma_MeV/...), not the pre-unification legacy column list."""
+    readme = open(os.path.join(REPO_ROOT, "README.md")).read()
+    for col in ("`t_s`", "T_gamma_MeV", "T_nutau_MeV"):
+        assert col in readme, f"README lost the unified-schema column {col}"
+    assert "n_to_p_weak_rate" not in readme  # the legacy column list
+
+
+def test_readme_result_dict_table_is_complete():
+    """Every key of a real run_bbn() result dict appears in README."""
+    readme = open(os.path.join(REPO_ROOT, "README.md")).read()
+    # Keep in sync with cpr_assemble_results/_python_solve; cheap static list
+    # (a live solve here would drag this file into the slow tier).
+    for key in ("YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4", "Li7oH",
+                "Neff", "Omeganurel", "OneOverOmeganunr", "Y_final"):
+        assert f"`{key}`" in readme, f"README result-dict table is missing {key}"
+
+
+def test_readme_gui_is_not_called_source_only():
+    """primat.gui ships in the wheel ([tool.setuptools] packages); only
+    runfiles/ is source-only."""
+    readme = open(os.path.join(REPO_ROOT, "README.md")).read()
+    assert "Streamlit app (optional, source-only)" not in readme
