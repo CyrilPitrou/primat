@@ -153,3 +153,11 @@ check_untyped_defs = false
 # (network_data.py, nuclear_network.py, cache_utils.py, ...) -- only the
 # five modules below are meant to be mypy-clean.
 follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+# numpy >= 2.4 stubs use PEP 695 `type` statements, which mypy refuses to
+# parse under python_version = "3.10" (numpy/__init__.pyi "Type statement
+# is only supported in Python 3.12"). primat's own five annotated modules
+# must stay 3.10-clean; numpy's internals need not be re-checked here.
+module = "numpy.*"
+follow_imports = "skip"
