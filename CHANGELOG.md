@@ -24,8 +24,8 @@ in this repository is the authoritative source.
 - `primat.__citation__` (ready-made BibTeX string) and top-level
   `run_bbn`/`run_mc`/`HAS_C_BACKEND` aliases, so common entry points no
   longer require reaching into `primat.backend` (S-9).
-- `CITATION.cff`, a `paper/` JOSS submission stub, and Zenodo archival
-  instructions in `PyPiGuide.md` (S-12).
+- `CITATION.cff` and Zenodo archival instructions in `PyPiGuide.md`
+  (S-12; a JOSS `paper/` stub remains future work).
 - This changelog (S-13).
 - Config validation with clearer error messages, shared between both
   backends (FABLEADVICE O-1).
