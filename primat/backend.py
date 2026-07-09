@@ -332,11 +332,18 @@ def _assemble_c_result(result: dict[str, Any]) -> dict[str, Any]:
         return result
     import numpy as np
     from .evolution import EvolutionResult
+    # Optional per-reaction rate columns: the C wrapper (evolution_to_dict)
+    # only emits a "rates" key when it populated them (small-family +
+    # output_rates_time_evolution); its absence maps to EvolutionResult.rates
+    # = None, matching the Python backend.
+    rates = evo.get("rates")
     result["evolution"] = EvolutionResult(
         t=np.asarray(evo["t"]), a=np.asarray(evo["a"]), T_gamma=np.asarray(evo["T_gamma"]),
         T_nu={"e": np.asarray(evo["T_nue"]), "mu": np.asarray(evo["T_numu"]),
               "tau": np.asarray(evo["T_nutau"])},
         Y={name: np.asarray(arr) for name, arr in evo["Y"].items()},
+        rates=({name: np.asarray(arr) for name, arr in rates.items()}
+               if rates else None),
     )
     return result
 

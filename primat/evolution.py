@@ -27,10 +27,18 @@ The ``Y_<nuclide>`` block is network-dependent (small/large have different
 nuclide lists), so the header line is the source of truth -- :func:`load_evolution`
 reads it dynamically rather than assuming a fixed column count.
 
-Per-reaction flux columns (today small/small_parthenope-only in the legacy
-Python writer) and the ``a``/``T_nu`` columns when the active background has
-no scale-factor/neutrino-sector tracking (e.g. a minimal custom background)
-are deferred/omitted from this unified schema.
+Per-reaction forward-rate columns (``<reaction>_frwrd``) are an **optional**
+trailing block, appended after the ``Y_<nuclide>`` block only when
+``cfg.output_rates_time_evolution=True`` and the active network is
+``small``/``small_parthenope`` (the ~12-reaction set -- omitted for the
+~429-reaction ``large`` network). They carry the forward reaction-rate
+interpolant [same table units as the shipped nuclear rates] evaluated at each
+row's photon temperature, and live in :attr:`EvolutionResult.rates` (``None``
+when the flag is off). Both backends emit the identical column names in the
+identical (lexicographically sorted) order -- see the CLAUDE.md schema-parity
+mandate. The ``a``/``T_nu`` columns are ``np.nan`` when the active background
+has no scale-factor/neutrino-sector tracking (e.g. a minimal custom
+background).
 """
 from __future__ import annotations
 
@@ -46,6 +54,11 @@ from numpy.typing import NDArray
 # Y_<nuclide> block (network-dependent) follows these six.
 _CORE_COLUMNS = ("t_s", "a", "T_gamma_MeV", "T_nue_MeV", "T_numu_MeV", "T_nutau_MeV")
 _Y_PREFIX = "Y_"
+# Suffixes marking the optional trailing per-reaction rate columns (B-2). The
+# legacy/current writers emit only forward-rate columns (``_frwrd``); ``_bkwrd``
+# is reserved so a future backward-rate column would round-trip through
+# ``load_evolution`` into ``rates`` without a schema change.
+_RATE_SUFFIXES = ("_frwrd", "_bkwrd")
 
 
 @dataclass
@@ -68,12 +81,23 @@ class EvolutionResult:
     Y : dict of str -> np.ndarray
         Per-nuclide mass-fraction abundance, keyed by nuclide name, in
         network order (``n``/``p`` first).
+    rates : dict of str -> np.ndarray, optional
+        Optional per-reaction forward-rate columns (populated only when
+        ``cfg.output_rates_time_evolution=True`` and the active network is
+        ``small``/``small_parthenope``; ``None`` otherwise). Keyed by column
+        name ``<reaction>_frwrd`` (canonical rate syntax, e.g.
+        ``n_p__d_g_frwrd``), each value an array aligned with :attr:`t`,
+        holding the forward reaction-rate interpolant at that step's photon
+        temperature. Serialised as the trailing column block after ``Y_`` (see
+        the module docstring); both backends emit the identical names in the
+        identical sorted order.
     """
     t: NDArray[np.float64]
     a: NDArray[np.float64]
     T_gamma: NDArray[np.float64]
     T_nu: dict[str, NDArray[np.float64]]
     Y: dict[str, NDArray[np.float64]] = field(default_factory=dict)
+    rates: dict[str, NDArray[np.float64]] | None = None
 
 
 def dump_evolution(result: EvolutionResult, path: str | None = None) -> str:
@@ -100,6 +124,12 @@ def dump_evolution(result: EvolutionResult, path: str | None = None) -> str:
     names = list(_CORE_COLUMNS) + [_Y_PREFIX + s for s in result.Y]
     columns = [result.t, result.a, result.T_gamma,
                result.T_nu["e"], result.T_nu["mu"], result.T_nu["tau"]] + list(result.Y.values())
+    # Optional per-reaction rate block (B-2), appended AFTER the Y_ columns so
+    # the default (rates=None) schema stays byte-identical. Insertion order of
+    # the dict is the on-disk column order (the writer already sorts it).
+    if result.rates:
+        names += list(result.rates.keys())
+        columns += list(result.rates.values())
     data = np.column_stack(columns)
 
     buf = io.StringIO()
@@ -200,7 +230,10 @@ def load_evolution(path: str) -> EvolutionResult:
     ``run.evolution`` -- for the case of reloading a previously-saved run
     without re-solving.
 
-    Any column beyond the core block + ``Y_<nuclide>`` block (e.g. a
+    Trailing per-reaction rate columns (``*_frwrd``/``*_bkwrd``, written when
+    ``output_rates_time_evolution=True``) are collected into
+    :attr:`EvolutionResult.rates` (``None`` if the file has none). Any other
+    column beyond the core + ``Y_<nuclide>`` + rate blocks (e.g. a
     backend-specific bonus column) is simply ignored, so a file containing
     extra columns is still loadable.
 
@@ -221,9 +254,15 @@ def load_evolution(path: str) -> EvolutionResult:
     col = {name: data[:, i] for i, name in enumerate(header)}
     Y = {name[len(_Y_PREFIX):]: arr for name, arr in col.items()
          if name.startswith(_Y_PREFIX)}
+    # Trailing forward/backward per-reaction rate columns -> rates (in the
+    # file's column order); None when the flag was off so callers can test it
+    # as a plain truthiness/None flag.
+    rates = {name: arr for name, arr in col.items()
+             if name.endswith(_RATE_SUFFIXES)}
 
     return EvolutionResult(
         t=col["t_s"], a=col["a"], T_gamma=col["T_gamma_MeV"],
         T_nu={"e": col["T_nue_MeV"], "mu": col["T_numu_MeV"], "tau": col["T_nutau_MeV"]},
         Y=Y,
+        rates=rates or None,
     )

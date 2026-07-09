@@ -519,9 +519,17 @@ dictionary returned by `run_bbn()` either way. The `primat.evolution` and
 `primat.plotting` modules provide tools for working with and plotting this
 time evolution data (see the example notebooks for usage).
 
-`[nuclear rates]` (`output_rates_time_evolution=True`) is
-available for small/small_parthenope only; it is omitted (with a printed
-note) for `network="large"`.
+With `output_rates_time_evolution=True`, an optional block of per-reaction
+forward-rate columns is appended after the `Y_<nuclide>` block: one
+`<reaction>_frwrd` column (canonical rate syntax, e.g. `n_p__d_g_frwrd`) per
+reaction of the active network, holding the forward reaction-rate interpolant
+at each row's photon temperature. These columns are emitted only for
+`network="small"`/`"small_parthenope"` (the ~12-reaction set); they are
+omitted (with a printed note) for the ~429-reaction `network="large"` and
+other networks. Both backends emit the identical columns, in memory as
+`run["evolution"].rates` (a dict keyed by column name, `None` when the flag is
+off) and on disk in the same order, so `primat.evolution.load_evolution()`
+round-trips them.
 
 ## Architecture
 

@@ -183,6 +183,21 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
                                                     results->evol_a, results->evol_Tnue,
                                                     results->evol_Tnumu, results->evol_Tnutau,
                                                     results->evol_Y);
+
+        /* Optional per-reaction forward-rate columns (mirrors Python's
+         * EvolutionResult.rates): populated only when
+         * cfg->output_rates_time_evolution and the network is small-family;
+         * cpr_nuclear_network_rate_columns returns 0 otherwise, leaving the
+         * fields NULL/0 (handed back as no "rates" key by _wrapper.c). */
+        size_t nr = cpr_nuclear_network_rate_columns(nn, NULL);
+        if (nr) {
+            results->n_evol_rates = nr;
+            results->evol_rate_names = malloc(nr * sizeof(*results->evol_rate_names));
+            results->evol_rates = malloc(n * nr * sizeof(double));
+            cpr_nuclear_network_rate_columns(nn, results->evol_rate_names);
+            cpr_nuclear_network_sample_rates(nn, results->evol_T_gamma,
+                                              cfg->output_n_points, results->evol_rates);
+        }
     }
 }
 
@@ -344,6 +359,12 @@ void cprimat_results_free(CPRResults *results)
     results->evol_Tnue = results->evol_Tnumu = results->evol_Tnutau = results->evol_Y = NULL;
     results->has_evolution = 0;
     results->n_evolution = 0;
+
+    free(results->evol_rate_names);
+    free(results->evol_rates);
+    results->evol_rate_names = NULL;
+    results->evol_rates = NULL;
+    results->n_evol_rates = 0;
 }
 
 double cpr_results_get_quantity(const CPRResults *r, const char *name, int *found)

@@ -12,6 +12,10 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Added
+- `output_rates_time_evolution` now writes per-reaction forward-rate columns
+  (`<reaction>_frwrd`, small/small_parthenope networks), on both backends —
+  previously a no-op. Populated in `EvolutionResult.rates` and round-tripped
+  by `primat.evolution.load_evolution` (B-2).
 - `primat.sensitivity.sensitivity_table` — a one-call API returning the
   logarithmic-sensitivity matrix ∂ln(observable)/∂ln(parameter) as a
   `SensitivityTable` dataclass (`.to_markdown()`/`.to_dataframe()` views),

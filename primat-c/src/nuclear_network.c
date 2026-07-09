@@ -10,6 +10,7 @@
 #include "ode_bdf.h"
 #include "linalg.h"
 #include "log.h"
+#include "spline.h"   /* cpr_find_segment, for the per-reaction rate columns */
 
 #include <math.h>
 #include <stdio.h>
@@ -507,6 +508,97 @@ void cpr_nuclear_network_sample_time_evolution(const CPRNuclearNetwork *nn, int 
     }
 }
 
+/* Whether this run emits per-reaction forward-rate columns: the flag is on AND
+ * the network is small/small_parthenope (the ~12-reaction set). Mirrors
+ * Python's `cfg.output_rates_time_evolution and cfg.network in
+ * ("small","small_parthenope")` gate in NuclearNetwork._write_time_evolution. */
+static int rate_columns_enabled(const CPRConfig *cfg)
+{
+    return cfg->output_rates_time_evolution &&
+           (cpr_config_is_small(cfg) ||
+            strcmp(cfg->network, "small_parthenope") == 0);
+}
+
+/* Build the sorted per-reaction rate-column list for the active LT network.
+ * names[k] = "<reaction>_frwrd", rows[k] = the reaction's thermonuclear row
+ * index into lt->fwd (= LT names index - 1, since names[0] is the prepended
+ * weak n__p with no fwd row). Returns the column count (n LT reactions - 1).
+ * Sorted by column name so the order matches Python's sorted() exactly.
+ * Callers pass buffers of at least (lt->n_reac - 1) entries. */
+static size_t build_rate_columns(const CPRNuclearNetwork *nn,
+                                   char (*names)[64], size_t *rows)
+{
+    const CPRNetworkDef *lt = &nn->nucl->lt_net;
+    size_t count = 0;
+    for (size_t i = 1; i < lt->n_reac; i++) {   /* skip n__p at index 0 */
+        snprintf(names[count], 64, "%s_frwrd", lt->names[i]);
+        rows[count] = i - 1;                     /* fwd row for names[i] */
+        count++;
+    }
+    /* Insertion sort by column name (small n ~ 12), keeping rows aligned --
+     * strcmp order == Python's str sort over these ASCII names. */
+    for (size_t a = 1; a < count; a++) {
+        char kn[64];
+        snprintf(kn, sizeof(kn), "%s", names[a]);
+        size_t kr = rows[a];
+        size_t b = a;
+        while (b > 0 && strcmp(names[b - 1], kn) > 0) {
+            snprintf(names[b], 64, "%s", names[b - 1]);
+            rows[b] = rows[b - 1];
+            b--;
+        }
+        snprintf(names[b], 64, "%s", kn);
+        rows[b] = kr;
+    }
+    return count;
+}
+
+/* Active forward reaction rate of LT thermonuclear row `row` at photon
+ * temperature `T_MeV`, linearly interpolated on the master T9 grid -- the exact
+ * interpolation cpr_network_fill_buffer and Python's <rxn>_frwrd use
+ * (T9 = T[K]/1e9, searchsorted-1 clamped, linear weight). */
+static double frwrd_at(const CPRNetworkDef *lt, size_t row, double T_MeV)
+{
+    double T9 = T_MeV * cpr_MeV_to_Kelvin() * 1.0e-9;
+    const double *g = lt->grid;
+    size_t ii = cpr_find_segment(g, lt->n_grid, T9);
+    double w = (T9 - g[ii]) / (g[ii + 1] - g[ii]);
+    return lt->fwd[row * lt->n_grid + ii] * (1.0 - w)
+         + lt->fwd[row * lt->n_grid + ii + 1] * w;
+}
+
+size_t cpr_nuclear_network_rate_columns(const CPRNuclearNetwork *nn,
+                                          char (*out_names)[64])
+{
+    if (!rate_columns_enabled(nn->cfg))
+        return 0;
+    size_t n = nn->nucl->lt_net.n_reac - 1;   /* one column per thermonuclear reaction */
+    if (out_names) {
+        size_t *rows = malloc(n * sizeof(size_t));
+        build_rate_columns(nn, out_names, rows);
+        free(rows);
+    }
+    return n;
+}
+
+void cpr_nuclear_network_sample_rates(const CPRNuclearNetwork *nn,
+                                        const double *T_MeV, int n_points,
+                                        double *rates_out)
+{
+    if (!rate_columns_enabled(nn->cfg))
+        return;
+    const CPRNetworkDef *lt = &nn->nucl->lt_net;
+    size_t n_cols = lt->n_reac - 1;
+    char (*names)[64] = malloc(n_cols * sizeof(*names));
+    size_t *rows = malloc(n_cols * sizeof(size_t));
+    build_rate_columns(nn, names, rows);
+    for (size_t i = 0; i < (size_t)n_points; i++)
+        for (size_t k = 0; k < n_cols; k++)
+            rates_out[i * n_cols + k] = frwrd_at(lt, rows[k], T_MeV[i]);
+    free(names);
+    free(rows);
+}
+
 int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_points,
                                                 char **errmsg)
 {
@@ -529,6 +621,19 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     cpr_nuclear_network_sample_time_evolution(nn, n_points, t_out, T_out, a_out,
                                                 Tnue_out, Tnumu_out, Tnutau_out, Y_out);
 
+    /* Optional per-reaction forward-rate columns (small-family + flag), sampled
+     * at the same T_gamma grid -- appended after the Y_ block, matching the
+     * Python backend's dump_evolution order. */
+    size_t n_rate = cpr_nuclear_network_rate_columns(nn, NULL);
+    char (*rate_names)[64] = NULL;
+    double *rate_out = NULL;
+    if (n_rate) {
+        rate_names = malloc(n_rate * sizeof(*rate_names));
+        rate_out = malloc(n * n_rate * sizeof(double));
+        cpr_nuclear_network_rate_columns(nn, rate_names);
+        cpr_nuclear_network_sample_rates(nn, T_out, n_points, rate_out);
+    }
+
     const char *rel = nn->cfg->output_file;
     char path[4300];
     snprintf(path, sizeof(path), "%s", rel);
@@ -541,6 +646,7 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     if (!f) {
         free(t_out); free(T_out); free(a_out);
         free(Tnue_out); free(Tnumu_out); free(Tnutau_out); free(Y_out);
+        free(rate_names); free(rate_out);
         char buf[4400];
         snprintf(buf, sizeof(buf), "cpr_nuclear_network_write_time_evolution: cannot open %s", path);
         *errmsg = strdup(buf);
@@ -550,11 +656,12 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     /* Unified schema, header-compatible with
      * primat.evolution.dump_evolution/load_evolution: no leading "#",
      * tab-separated, t_s/a/T_*_MeV core block then one Y_<nuclide> column
-     * per tracked species. Per-reaction flux columns (cfg->output_rates_time_evolution,
-     * network="small" only) are not ported -- see this module's header
-     * top comment. */
+     * per tracked species, then the optional per-reaction <reaction>_frwrd
+     * columns (cfg->output_rates_time_evolution, small-family networks) in the
+     * SAME sorted order the Python backend writes. */
     fprintf(f, "t_s\ta\tT_gamma_MeV\tT_nue_MeV\tT_numu_MeV\tT_nutau_MeV");
     for (size_t s = 0; s < nn->n_species; s++) fprintf(f, "\tY_%s", nn->abundance_names[s]);
+    for (size_t k = 0; k < n_rate; k++) fprintf(f, "\t%s", rate_names[k]);
     fprintf(f, "\n");
 
     for (size_t i = 0; i < n; i++) {
@@ -562,11 +669,14 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
                 t_out[i], a_out[i], T_out[i], Tnue_out[i], Tnumu_out[i], Tnutau_out[i]);
         for (size_t s = 0; s < nn->n_species; s++)
             fprintf(f, "\t%.8e", Y_out[i * nn->n_species + s]);
+        for (size_t k = 0; k < n_rate; k++)
+            fprintf(f, "\t%.8e", rate_out[i * n_rate + k]);
         fprintf(f, "\n");
     }
     fclose(f);
     free(t_out); free(T_out); free(a_out);
     free(Tnue_out); free(Tnumu_out); free(Tnutau_out); free(Y_out);
+    free(rate_names); free(rate_out);
     printf("[output] Time-evolution data (%zu rows) written to %s\n", n, path);
     fflush(stdout);
     return 0;

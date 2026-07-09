@@ -75,6 +75,18 @@ typedef struct {
     size_t n_evolution;
     double *evol_t, *evol_a, *evol_T_gamma, *evol_Tnue, *evol_Tnumu, *evol_Tnutau;
     double *evol_Y;
+
+    /* ---- Optional per-reaction forward-rate columns (mirrors Python's
+     * EvolutionResult.rates), populated iff cfg->output_time_evolution &&
+     * cfg->output_rates_time_evolution && the network is small/small_parthenope.
+     * evol_rates is n_evolution * n_evol_rates, row-major, in evol_rate_names
+     * column order (each "<reaction>_frwrd", lexicographically sorted -- the
+     * IDENTICAL names and order the Python backend emits, CLAUDE.md schema
+     * parity). Owned; freed by cprimat_results_free. n_evol_rates==0 means no
+     * rate columns (flag off or non-small-family network). ---- */
+    size_t n_evol_rates;
+    char (*evol_rate_names)[64];
+    double *evol_rates;
 } CPRResults;
 
 /* Runs one full PyPR(params).solve()-equivalent BBN computation: builds

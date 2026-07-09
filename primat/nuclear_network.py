@@ -623,13 +623,20 @@ class NuclearNetwork:
         pre-MT curve can compute the Saha value themselves from the ``t_s``/
         ``T_gamma_MeV`` columns.
 
-        Per-reaction flux columns (``<reaction>_frwrd``,
-        ``cfg.output_rates_time_evolution=True``) and the n<->p weak rates
-        are deferred from this unified schema (the
-        former is explicitly a v0.3.0-deferred "bonus column block" pending a
-        C-side port; the latter is recoverable directly from
-        ``run.background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd``, evaluated at
-        the ``T_gamma_MeV`` column, with no need to duplicate it on disk).
+        Per-reaction forward-rate columns (``<reaction>_frwrd``) are appended
+        after the ``Y_<species>`` block when
+        ``cfg.output_rates_time_evolution=True`` and the network is
+        ``small``/``small_parthenope`` (the ~12-reaction set); each column is
+        the active forward reaction-rate interpolant (same units as the
+        shipped rate tables) at the row's temperature, populated into
+        ``EvolutionResult.rates`` and serialised by ``dump_evolution``. They
+        are omitted (with a printed note) for the ~429-reaction ``large``
+        network and any other non-small-family network -- there the caller
+        can evaluate ``nucl.<reaction>_frwrd(T_K)`` directly. The n<->p weak
+        rates are not duplicated on disk either: recover them from
+        ``run.background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd`` evaluated at the
+        ``T_gamma_MeV`` column. The C backend emits the identical rate columns
+        (CLAUDE.md schema-parity mandate).
         The richer background-only TSV (``H``, ``Nheating``, energy
         densities, ...) is still written separately by
         ``background.write_time_evolution``/``time_evolution_text`` when
@@ -665,13 +672,32 @@ class NuclearNetwork:
         Y_out[mask_nuc] = Y_of_t(t_out[mask_nuc])
         Y = {s: Y_out[:, j] for j, s in enumerate(names)}
 
+        # Optional per-reaction forward-rate columns (B-2). Small-family
+        # networks only: their ~12-reaction LT set is a small, meaningful
+        # column block; the ~429-reaction large network is omitted (the
+        # column block would be dominated by rates the network doesn't carry).
+        # Values are the active forward-rate interpolant at each output
+        # temperature (plain rate, not a flux), sorted by column name so the C
+        # backend can emit the identical order (CLAUDE.md schema parity).
+        rates = None
         if cfg.output_rates_time_evolution:
-            print("[output] output_rates_time_evolution ignored: per-reaction "
-                  "flux columns are deferred from the unified time-evolution "
-                  "schema. Use nucl.<reaction>_frwrd(T_K) "
-                  "directly if reaction-level fluxes are needed.")
+            if cfg.network in ("small", "small_parthenope"):
+                T_K_out = T_out * cfg.MeV_to_Kelvin
+                # Reactions actually in the active LT network, minus the
+                # prepended weak n__p entry (index 0); the <rxn>_frwrd method
+                # is the same one the docs point users at.
+                rxns = sorted(r for r in nucl._lt_net.names if r != "n__p")
+                rates = {f"{r}_frwrd": np.asarray(
+                             getattr(nucl, f"{r}_frwrd")(T_K_out), dtype=float)
+                         for r in rxns}
+            else:
+                print("[output] output_rates_time_evolution: per-reaction rate "
+                      "columns are emitted only for network='small'/"
+                      "'small_parthenope' (the ~12-reaction set); omitted for "
+                      f"network={cfg.network!r}.")
 
-        self.evolution = EvolutionResult(t=t_out, a=a_out, T_gamma=T_out, T_nu=Tnu, Y=Y)
+        self.evolution = EvolutionResult(t=t_out, a=a_out, T_gamma=T_out,
+                                         T_nu=Tnu, Y=Y, rates=rates)
 
         # cfg.output_file=None is the in-memory-only escape hatch (e.g.
         # primat-gui's _solve): self.evolution above is what

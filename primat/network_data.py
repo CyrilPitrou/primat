@@ -2103,18 +2103,41 @@ class UpdateNuclearRates:
 
 
 def _make_frwrd(rxn):
-    """Create a temporary forward-rate extractor for output logging."""
+    """Create a forward-rate extractor method ``UpdateNuclearRates.<rxn>_frwrd``
+    for the per-reaction rate columns of the time-evolution output
+    (``output_rates_time_evolution=True``, see
+    ``NuclearNetwork._write_time_evolution`` and
+    :mod:`primat.evolution`).
+
+    Returns the *active* forward reaction rate of ``rxn`` (post rate-variation,
+    same units as the shipped nuclear rate tables) at temperature ``T`` [Kelvin],
+    linearly interpolated on the master T9 grid -- the exact same interpolation
+    the LT-network ODE right-hand side uses (``_LinearRate.fill_buffer``), and
+    the one the C backend mirrors in ``cpr_network_fill_buffer`` /
+    ``cpr_nuclear_network_sample_rates`` (CLAUDE.md schema-parity mandate).
+    Returns 0 for any reaction not present in the active LT network (so the
+    method exists for every large-network reaction but reads 0 under a smaller
+    network).
+
+    ``T`` may be a scalar or a NumPy array; the return matches its shape (the
+    writer passes the whole output-grid temperature array at once). Example::
+
+        rate = nucl.n_p__d_g_frwrd(1.0e9)          # at T = 1 GK
+        rates = nucl.n_p__d_g_frwrd(T_K_output)    # whole output grid
+    """
     def frwrd(self, T):
-        # We need a way to extract the active rate for logging in time_evolution.
-        # Since we unified everything, we can use the LT network's table.
-        # This is only used for output_rates_time_evolution=True.
-        T9 = T * 1e-9
+        # T9 = T[K] / 1e9; the master grid `net.grid` is in T9 (GK).
+        T9 = np.asarray(T, dtype=float) * 1e-9
         net = self._lt_net
-        if rxn not in net.names: return 0.0
-        j = net.names.index(rxn) - 1 # skip n__p
+        if rxn not in net.names:
+            # Not in this (smaller) network -> honest 0, shape-matching T.
+            return np.zeros_like(T9)
+        j = net.names.index(rxn) - 1  # skip the prepended weak n__p at index 0
         g = net.grid
-        i = int(np.searchsorted(g, T9) - 1)
-        i = min(max(i, 0), g.size - 2)
+        # searchsorted(g, T9) - 1 clamped to [0, len(g)-2]: the interval index
+        # i with g[i] <= T9 <= g[i+1] (edge-clamped), matching fill_buffer's
+        # own grid lookup exactly (vectorised over T9 here).
+        i = np.clip(np.searchsorted(g, T9) - 1, 0, g.size - 2)
         w = (T9 - g[i]) / (g[i + 1] - g[i])
         return net._fwd[j, i] * (1.0 - w) + net._fwd[j, i + 1] * w
     frwrd.__name__ = f"{rxn}_frwrd"

@@ -121,13 +121,40 @@ void cpr_nuclear_network_sample_time_evolution(const CPRNuclearNetwork *nn, int 
  * with primat.evolution.dump_evolution's output) to
  * cfg->output_file, via cpr_nuclear_network_sample_time_evolution.
  * `n_points` is the number of log-spaced output rows (mirrors
- * cfg->output_n_points). Per-reaction flux columns are not ported, see
- * this header's top comment. A NULL/empty cfg->output_file is the
- * in-memory-only escape hatch (mirrors Python's output_file=None): no-op,
- * returns 0. Returns 0 on success, nonzero with *errmsg set (caller frees)
- * on a file-write failure. */
+ * cfg->output_n_points). When cfg->output_rates_time_evolution and the
+ * network is small/small_parthenope, the optional per-reaction forward-rate
+ * columns (see cpr_nuclear_network_rate_columns) are appended after the
+ * Y_<nuclide> block, matching the Python backend. A NULL/empty
+ * cfg->output_file is the in-memory-only escape hatch (mirrors Python's
+ * output_file=None): no-op, returns 0. Returns 0 on success, nonzero with
+ * *errmsg set (caller frees) on a file-write failure. */
 int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_points,
                                                 char **errmsg);
+
+/* Per-reaction forward-rate columns for output_rates_time_evolution (mirrors
+ * Python's EvolutionResult.rates / NuclearNetwork._write_time_evolution).
+ * Returns the number of columns: 0 unless cfg->output_rates_time_evolution AND
+ * the active network is small/small_parthenope (the ~12-reaction set; the
+ * ~429-reaction large network is omitted, matching Python). When the return is
+ * >0 and `out_names`!=NULL, fills out_names[0..count) with "<reaction>_frwrd"
+ * lexicographically sorted -- the IDENTICAL names and order the Python backend
+ * produces via sorted() (CLAUDE.md schema parity). `out_names` must hold at
+ * least (n LT reactions - 1) entries; pass NULL to query only the count. */
+size_t cpr_nuclear_network_rate_columns(const CPRNuclearNetwork *nn,
+                                          char (*out_names)[64]);
+
+/* Samples the per-reaction forward rates (columns from
+ * cpr_nuclear_network_rate_columns, same sorted order) at the `n_points`
+ * photon temperatures `T_MeV` [MeV] -- typically the T_gamma_MeV column of a
+ * prior cpr_nuclear_network_sample_time_evolution call. `rates_out` is
+ * caller-allocated, length n_points * n_cols, row-major (one row per time
+ * step, one column per reaction). Each value is the active forward reaction
+ * rate linearly interpolated on the master T9 grid, exactly as
+ * cpr_network_fill_buffer / Python's <rxn>_frwrd do. No-op if there are no
+ * rate columns. */
+void cpr_nuclear_network_sample_rates(const CPRNuclearNetwork *nn,
+                                        const double *T_MeV, int n_points,
+                                        double *rates_out);
 
 /* Decay-Time (DT) era: propagate the end-of-LT abundances past T_end under
  * the constant radioactive-decay matrix D (Y(t) = exp(D*(t-t_end)) Y0), via

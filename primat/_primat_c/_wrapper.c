@@ -165,6 +165,32 @@ static PyObject *evolution_to_dict(const CPRResults *r)
     if (PyDict_SetItemString(eo, "Y", Y) < 0) { Py_DECREF(Y); Py_DECREF(eo); return NULL; }
     Py_DECREF(Y);
 
+    /* Optional per-reaction forward-rate columns (mirrors
+     * primat.evolution.EvolutionResult.rates): a sub-dict keyed by column name
+     * ("<reaction>_frwrd"), column-sliced out of r->evol_rates' row-major
+     * (n_evolution x n_evol_rates) layout, exactly like "Y" above. Only added
+     * when the C side populated them (small-family + output_rates_time_evolution);
+     * backend.py maps a present "rates" key to EvolutionResult.rates and its
+     * absence to rates=None. */
+    if (r->n_evol_rates) {
+        PyObject *R = PyDict_New();
+        if (!R) { Py_DECREF(eo); return NULL; }
+        double *rcol = malloc(r->n_evolution * sizeof(double));
+        if (!rcol) { Py_DECREF(R); Py_DECREF(eo); PyErr_NoMemory(); return NULL; }
+        for (size_t k = 0; k < r->n_evol_rates; k++) {
+            for (size_t i = 0; i < r->n_evolution; i++)
+                rcol[i] = r->evol_rates[i * r->n_evol_rates + k];
+            PyObject *o = doubles_to_list(rcol, r->n_evolution);
+            if (!o || PyDict_SetItemString(R, r->evol_rate_names[k], o) < 0) {
+                Py_XDECREF(o); free(rcol); Py_DECREF(R); Py_DECREF(eo); return NULL;
+            }
+            Py_DECREF(o);
+        }
+        free(rcol);
+        if (PyDict_SetItemString(eo, "rates", R) < 0) { Py_DECREF(R); Py_DECREF(eo); return NULL; }
+        Py_DECREF(R);
+    }
+
     return eo;
 }
 

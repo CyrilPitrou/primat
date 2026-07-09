@@ -717,3 +717,35 @@ def test_decay_era_tsv_parity(tmp_path):
     if "YHe4" in col:
         he4 = dc[:, col["YHe4"]]
         assert np.max(np.abs(he4 - he4[0])) / he4[0] < 1e-6
+
+
+@requires_c_backend
+def test_rates_columns_backend_parity():
+    """B-2: both backends emit identical per-reaction rate-column names in the
+    identical (sorted) order, and values that agree to the cross-backend
+    tolerance. The rate columns are pure functions of the photon temperature,
+    so we compare each backend's column interpolated onto a common T grid
+    (mirroring test_evolution_cross_backend_agreement's approach) -- the two
+    backends sample their own slightly different t/T output grids, so an
+    element-wise index comparison would spuriously diverge where the rates are
+    steep, not because the rates themselves disagree."""
+    from scipy.interpolate import interp1d
+    p = {"network": "small", "output_time_evolution": True,
+         "output_rates_time_evolution": True, "output_file": None}
+    evo_c = run_bbn(p, force_backend="c")["evolution"]
+    evo_py = run_bbn(p, force_backend="python")["evolution"]
+
+    # Identical column names in identical order (the schema-parity contract).
+    assert list(evo_c.rates) == list(evo_py.rates)
+
+    # Compare on the overlap of the two T_gamma ranges, interpolating the
+    # Python column onto the C temperatures (both are monotonic in T_gamma).
+    Tc, Tpy = evo_c.T_gamma, evo_py.T_gamma
+    lo, hi = max(Tc.min(), Tpy.min()), min(Tc.max(), Tpy.max())
+    mask = (Tc >= lo) & (Tc <= hi)
+    order_py = np.argsort(Tpy)
+    for name in evo_c.rates:
+        interp_py = interp1d(Tpy[order_py], evo_py.rates[name][order_py],
+                             fill_value="extrapolate")(Tc)
+        np.testing.assert_allclose(evo_c.rates[name][mask], interp_py[mask],
+                                   rtol=5e-5, atol=1e-30, err_msg=name)

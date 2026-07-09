@@ -339,6 +339,15 @@ def test_readme_gui_is_not_called_source_only():
     assert "Streamlit app (optional, source-only)" not in readme
 
 
+def test_readme_rate_columns_match_implementation():
+    """README's output_rates_time_evolution claims must describe the
+    implemented per-reaction forward-rate column block (B-2), not the
+    historical no-op."""
+    readme = open(os.path.join(REPO_ROOT, "README.md")).read()
+    assert "_frwrd" in readme
+    assert "no-op" not in readme
+
+
 def test_tests_readme_lists_every_test_file():
     """tests/README.md's structure table must mention every tests/test_*.py
     (CLAUDE.md: the suite's README documents the goal of every test group).
