@@ -70,7 +70,11 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install primat + mypy
-        run: python -m pip install -e "." mypy
+        # Pin numpy<2.5 for the type-check job only: numpy>=2.5's __init__.pyi
+        # uses PEP-695 `type` statements that mypy cannot parse under
+        # python_version="3.10" (see pyproject.toml [tool.mypy]). numpy 2.4.x
+        # stubs parse cleanly and keep primat's own modules checked at 3.10.
+        run: python -m pip install -e "." mypy "numpy<2.5"
       - name: Type-check annotated modules
         run: mypy primat/backend.py primat/evolution.py primat/config.py primat/main.py primat/plotting.py
 
