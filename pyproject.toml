@@ -86,6 +86,10 @@ notebooks = [
     "matplotlib",
     "pandas",
     "papermill",
+    # papermill executes notebooks through a jupyter kernel; without ipykernel
+    # there is no `python3` kernelspec on a fresh install and execution fails
+    # with jupyter_client.kernelspec.NoSuchKernel.
+    "ipykernel",
 ]
 # Documentation site (Sphinx). Builds the HTML docs under ``docs/`` -- see
 # ``docs/conf.py`` for the stack rationale. ``sphinx-build -W`` is run in CI

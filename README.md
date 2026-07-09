@@ -61,7 +61,7 @@ Pick an extra by use case:
 | `mc` | `joblib` | parallel Monte-Carlo only |
 | `plots` | `plotly` | interactive plotting (used by the GUI figures) |
 | `gui` | `streamlit`, `pandas`, `plotly` | the `primat-gui` web app |
-| `notebooks` | `matplotlib`, `pandas`, `papermill` | the example notebooks |
+| `notebooks` | `matplotlib`, `pandas`, `papermill`, `ipykernel` | the example notebooks |
 | `all` | all of the above | everything in one shot |
 
 For the graphical interface (`primat-gui`), install the `gui` extra:

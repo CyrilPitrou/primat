@@ -58,8 +58,20 @@ def test_wheel_install_smoke_solve():
 
         # ------------------------------------------------------------
         # 1. Build the wheel (no build isolation: reuse the setuptools
-        #    already installed here, avoiding any network access).
+        #    already installed here, avoiding any network access for the
+        #    build itself).
+        #
+        #    ``--no-build-isolation`` requires setuptools to be importable in
+        #    THIS interpreter, but PEP 668 / Python >= 3.12 venvs no longer
+        #    ship setuptools by default (only the dev env has it incidentally),
+        #    so the nightly CI leg failed with pip exit code 2. Guarantee the
+        #    build requirement first -- a no-op (no network) when setuptools is
+        #    already present, a one-time fetch on a bare 3.12 environment.
         # ------------------------------------------------------------
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "setuptools>=61"],
+            check=True,
+        )
         subprocess.run(
             [sys.executable, "-m", "pip", "wheel", str(REPO_ROOT),
              "-w", str(wheel_dir), "--no-deps", "--no-build-isolation", "-q"],
