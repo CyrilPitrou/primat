@@ -234,3 +234,63 @@ class _no_warning_context:
         self._cw.__exit__(*exc)
         unknown = [r for r in self._records if "unknown parameter" in str(r.message)]
         assert not unknown, f"PRIMATConfig reported unknown keys: {unknown}"
+
+
+# ---------------------------------------------------------------------------
+# DEFAULT_PARAMS three-file sync (CLAUDE.md's "Keeping DEFAULT_PARAMS,
+# primat_run_explanatory.py, and run_basic.ini in sync"). Until now this was
+# a purely manual rule; these tests make drift a test failure.
+# ---------------------------------------------------------------------------
+
+_TEMPLATE_PY = os.path.join(REPO_ROOT, "runfiles", "primat_run_explanatory.py")
+_TEMPLATE_INI = os.path.join(REPO_ROOT, "primat-c", "examples", "run_basic.ini")
+
+
+def _template_py_keys():
+    """Keys listed in the Python template's commented-out cfg dict."""
+    text = open(_TEMPLATE_PY).read()
+    # Entries look like "    # numerical_precision=1e-7,  # comment" -- key
+    # immediately followed by '=' (prose comment lines never match this).
+    return set(re.findall(r"^\s*#\s*([A-Za-z_][A-Za-z0-9_]*)=", text, re.M))
+
+
+def _template_ini_keys():
+    """Keys listed in the INI template (commented or active settings)."""
+    text = open(_TEMPLATE_INI).read()
+    # Entries look like "# verbose = false" or "numerical_precision = 1e-7".
+    # The INI template ALSO carries prose lines that explain a boolean's
+    # meaning in the same "# word = text" shape, e.g.
+    # "# false = instantaneous decoupling" / "# true = Born approximation";
+    # those capture the literal value word, never a parameter, so drop the
+    # boolean/None literals (no DEFAULT_PARAMS key is ever named that).
+    keys = set(re.findall(r"^#?\s*([A-Za-z_][A-Za-z0-9_]*)\s*=", text, re.M))
+    return keys - {"true", "false", "none"}
+
+
+def test_explanatory_template_lists_every_default_param():
+    from primat.config import DEFAULT_PARAMS
+    found, expected = _template_py_keys(), set(DEFAULT_PARAMS)
+    assert expected - found == set(), \
+        f"primat_run_explanatory.py is missing keys: {sorted(expected - found)}"
+    assert found - expected == set(), \
+        f"primat_run_explanatory.py lists stale/unknown keys: {sorted(found - expected)}"
+
+
+def test_ini_template_lists_every_default_param():
+    from primat.config import DEFAULT_PARAMS
+    found, expected = _template_ini_keys(), set(DEFAULT_PARAMS)
+    assert expected - found == set(), \
+        f"run_basic.ini is missing keys: {sorted(expected - found)}"
+    assert found - expected == set(), \
+        f"run_basic.ini lists stale/unknown keys: {sorted(found - expected)}"
+
+
+def test_param_count_comments_match_default_params():
+    """The two templates' count comments must quote len(DEFAULT_PARAMS)
+    exactly. (CLAUDE.md's '(currently NN keys)' count is NOT asserted --
+    CLAUDE.md is an untracked local file since Task 0; keep it updated by
+    hand.)"""
+    from primat.config import DEFAULT_PARAMS
+    n = len(DEFAULT_PARAMS)
+    assert f"All {n} DEFAULT_PARAMS keys are listed" in open(_TEMPLATE_PY).read()
+    assert f"all {n} keys round-trip" in open(_TEMPLATE_INI).read()
