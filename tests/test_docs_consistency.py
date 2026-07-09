@@ -294,3 +294,20 @@ def test_param_count_comments_match_default_params():
     n = len(DEFAULT_PARAMS)
     assert f"All {n} DEFAULT_PARAMS keys are listed" in open(_TEMPLATE_PY).read()
     assert f"all {n} keys round-trip" in open(_TEMPLATE_INI).read()
+
+
+def test_validation_reference_table_matches_reference_constants():
+    """tests/README.md's 'Validation reference' tables (moved there from
+    CLAUDE.md by Task 0) and tests/reference_values.py must quote the same
+    numbers, so neither can be updated without the other (the regression
+    tier asserts the constants against actual solves)."""
+    from reference_values import (REF_SMALL_YPBBN, REF_SMALL_DOH,
+                                  REF_LARGE8_YPBBN, REF_LARGE8_DOH)
+    readme = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "README.md")).read()
+    section = readme[readme.index("## Validation reference"):]
+    yp = re.findall(r"\|\s*YP \(BBN\)\s*\|\s*([0-9.eE+-]+)\s*\|", section)
+    dh = re.findall(r"\|\s*D/H\s*\|\s*([0-9.eE+-]+)\s*\|", section)
+    # First table is the small network, second is large+amax=8.
+    assert [float(v) for v in yp[:2]] == [REF_SMALL_YPBBN, REF_LARGE8_YPBBN]
+    assert [float(v) for v in dh[:2]] == [REF_SMALL_DOH, REF_LARGE8_DOH]

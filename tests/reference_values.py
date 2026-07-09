@@ -34,3 +34,15 @@ DOH_ABS_TOL   = 3e-9
 P_REFERENCE   = 7.529428e-01
 HE4_REFERENCE = 6.174925e-02
 NUCLIDE_ABS_TOL = 1e-4  # mirrors the table's own documented precision
+
+# High-precision reference values (tests/README.md "Validation reference"),
+# produced by runfiles/primat_reference_run.py (numerical_precision=1e-10,
+# sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125,
+# T_start_cosmo_MeV=100, rate_grid_npts=4000). Single source for
+# tests/test_regression.py's reference tier AND the table parser in
+# tests/test_docs_consistency.py -- update all three places together (the
+# parser test fails if the README table and these constants drift).
+REF_SMALL_YPBBN  = 0.24699814
+REF_SMALL_DOH    = 2.43589e-5
+REF_LARGE8_YPBBN = 0.24700149
+REF_LARGE8_DOH   = 2.43660e-5

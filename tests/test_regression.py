@@ -14,6 +14,12 @@ Two layers:
 """
 import pytest
 
+# Single source for the high-precision reference observables (also parsed by
+# tests/test_docs_consistency.py and quoted in tests/README.md's "Validation
+# reference" tables) -- keep all three in sync via tests/reference_values.py.
+from tests.reference_values import (REF_SMALL_YPBBN, REF_SMALL_DOH,
+                                    REF_LARGE8_YPBBN, REF_LARGE8_DOH)
+
 pytestmark = pytest.mark.slow
 
 
@@ -96,22 +102,22 @@ def ref_large():
 
 @pytest.mark.reference
 def test_reference_small_YPBBN(ref_small):
-    assert ref_small["YPBBN"] == pytest.approx(0.24699814, abs=1e-5)
+    assert ref_small["YPBBN"] == pytest.approx(REF_SMALL_YPBBN, abs=1e-5)
 
 
 @pytest.mark.reference
 def test_reference_small_DoH(ref_small):
-    assert ref_small["DoH"] == pytest.approx(2.43589e-5, abs=3e-9)
+    assert ref_small["DoH"] == pytest.approx(REF_SMALL_DOH, abs=3e-9)
 
 
 @pytest.mark.reference
 def test_reference_large_YPBBN(ref_large):
-    assert ref_large["YPBBN"] == pytest.approx(0.24700149, abs=1e-5)
+    assert ref_large["YPBBN"] == pytest.approx(REF_LARGE8_YPBBN, abs=1e-5)
 
 
 @pytest.mark.reference
 def test_reference_large_DoH(ref_large):
-    assert ref_large["DoH"] == pytest.approx(2.43660e-5, abs=3e-9)
+    assert ref_large["DoH"] == pytest.approx(REF_LARGE8_DOH, abs=3e-9)
 
 
 # ---------------------------------------------------------------------------
