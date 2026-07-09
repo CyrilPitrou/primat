@@ -108,7 +108,17 @@ static void run_and_check(const char *name, const char *network, int amax,
     char msg[160];
     snprintf(msg, sizeof(msg), "%s: cpr_nuclear_network_solve succeeds", name);
     CHECK(rc == 0, msg);
-    if (rc) { printf("  error: %s\n", err); return; }
+    if (rc) {
+        printf("  error: %s\n", err);
+        /* Free everything owned so far so LeakSanitizer stays clean even on
+         * a solve failure (cfg owns all the init_defaults strdup'd string
+         * fields + nuclides.items + the network override strdup'd above). */
+        cpr_nuclear_rates_free(&nr);
+        cpr_background_free(&bg);
+        cpr_plasma_free(&pl);
+        cpr_config_free(&cfg);
+        return;
+    }
 
     /* Baryon number conservation: sum_s A_s Y_s = 1 (Phys. Rep., used
      * throughout CLAUDE.md as the network-correctness invariant). */
@@ -146,6 +156,10 @@ static void run_and_check(const char *name, const char *network, int amax,
     cpr_nuclear_rates_free(&nr);
     cpr_background_free(&bg);
     cpr_plasma_free(&pl);
+    /* cfg owns all the strdup'd default string fields (cpr_config_init_defaults)
+     * plus nuclides.items and the network-name override strdup'd above; without
+     * this LeakSanitizer (Linux/gcc ASan) reports them all as leaked. */
+    cpr_config_free(&cfg);
 }
 
 int main(void)
