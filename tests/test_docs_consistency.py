@@ -337,3 +337,16 @@ def test_readme_gui_is_not_called_source_only():
     runfiles/ is source-only."""
     readme = open(os.path.join(REPO_ROOT, "README.md")).read()
     assert "Streamlit app (optional, source-only)" not in readme
+
+
+def test_tests_readme_lists_every_test_file():
+    """tests/README.md's structure table must mention every tests/test_*.py
+    (CLAUDE.md: the suite's README documents the goal of every test group).
+    Mirrors test_notebooks_readme_lists_every_notebook."""
+    tests_dir = os.path.dirname(os.path.abspath(__file__))
+    readme_text = open(os.path.join(tests_dir, "README.md")).read()
+    files = sorted(f for f in os.listdir(tests_dir)
+                   if f.startswith("test_") and f.endswith(".py"))
+    assert files, "no test files found"
+    missing = [f for f in files if f not in readme_text]
+    assert not missing, f"tests/README.md is missing rows for: {missing}"

@@ -89,6 +89,25 @@ yet done, so the `solve` tier still runs full three-era solves.
 | `test_docs_consistency.py` | Guards README claims that aren't checked anywhere else: `PRIMATConfig`'s `save_nTOp`/`save_nTOp_thermal` defaults match what README states, and the parameter names/values documented for `runfiles/primat_reference_run.py` (`sampling_temperature_per_decade`, `numerical_precision`, `sampling_nTOp_per_decade`, `T_start_cosmo_MeV`) still exist verbatim in that script and are recognised by `PRIMATConfig` (no "unknown parameter" warning). |
 | `test_gui.py` | The optional Streamlit GUI (`primat.gui`): `import primat` does not pull in `primat.gui`/streamlit; the parameter-form metadata covers `amax` (the one `None`-default key) and the network choices; an end-to-end `AppTest` run of `primat/gui/app.py` reproduces `test_cli.py`'s pinned default-run values (Neff/YPBBN/D-H and the per-nuclide table) -- i.e. the GUI drives `PRIMAT` identically to the CLI; the abundance-evolution panel renders with its default "light elements" nuclide selection; the `amax` widget appears only for `network='large'`; and an invalid flag combination (`spectral_distortions=True` with `incomplete_decoupling=False`) is shown as a clean `st.error` rather than a traceback. Skipped entirely if the `gui` extra is not installed. |
 
+| `test_backend_parity.py` | Backend parity: `primat._primat_c` (C) vs `primat.main.PRIMAT` (Python) — the result-dict shape and numerical agreement across the two backends. |
+| `test_background.py` | Direct unit tests for `primat.background.StandardBackground`. |
+| `test_custom_background.py` | The `custom_background` mode: a user-supplied (T, t, a) table drives the cosmological background while the nuclear network is solved with instantaneous-decoupling n↔p weak rates. |
+| `test_decay_rates.py` | Radioactive-decay treatment in the `large` network. |
+| `test_detailed_balance.py` | `compute_detailed_balance_coefficients` reproduces the values in `detailed_balance.csv`. |
+| `test_deuterium_network.py` | The `network="large", amax=2` configuration reproduces the old standalone `deuterium` network (single-reaction `n_p__d_g`), the clean-slate starting point for custom networks. |
+| `test_evolution.py` | Unit tests for `primat.evolution` (the unified time-evolution schema), independent of any BBN solve: round-trips a synthetic `EvolutionResult` through `dump_evolution`/`load_evolution`, both to a string and to a file on disk. |
+| `test_gui_custom_network.py` | The GUI's "Manage networks" dialog and the "Create custom network" dialog it gates (`primat.gui.params_form`). |
+| `test_gui_run_view.py` | Direct parity test for `primat.gui.run_view.GuiRun`. |
+| `test_neutrino_history.py` | The pluggable neutrino-sector background. |
+| `test_notebooks.py` | Notebook smoke test: papermill-executes the example notebooks. |
+| `test_nuclear.py` | The auto-derivation fallback in `reaction_stoichiometry` and the duplicate-entry check in `load_network`. |
+| `test_rate_variations.py` | Nuclear rate variation and MC uncertainty propagation. |
+| `test_runfiles.py` | Smoke test for the example scripts in `runfiles/`. |
+| `test_sensitivity.py` | `primat.sensitivity` — the logarithmic-sensitivity API. |
+| `test_spectral_distortions.py` | Two full solves with `spectral_distortions` on/off: a small but non-zero effect on D/H, and zero distortion energy density in NEVO by construction (`solve` tier). |
+| `reference_values.py` | (helper, not a test) Centralised default-run reference observables shared by test_cli/test_gui/test_regression, and the validation-reference constants (single source, see test_docs_consistency). |
+| `_oracles.py` | (helper, not a test) Test-only reference RHS/Jacobian oracle implementations the nuclear-network tests compare against. |
+
 ## Validation reference (authoritative copy)
 
 After any modification, run `python runfiles/primat_run.py` from the repo
