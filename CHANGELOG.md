@@ -11,6 +11,8 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-11
+
 ### Added
 - `output_rates_time_evolution` now writes per-reaction forward-rate columns
   (`<reaction>_frwrd`, small/small_parthenope networks), on both backends —
@@ -38,6 +40,19 @@ in this repository is the authoritative source.
 - Sphinx documentation site (`docs/`, published to Read the Docs), migrating
   and superseding the old `README.md`/`EXTENDING.md` prose content
   (FABLEADVICE O-3).
+- `primat-gui`'s Final abundances tab gained a single reproduction-bundle
+  download (`.py`/`.ini` + README, `primat/gui/export_params.py`): prints the
+  full standard-ratio `run_bbn` centrals plus a `run_mc(seed=0)` std-only
+  block, pins `force_backend` to whichever backend actually ran, and for a
+  custom network embeds the exact `custom_network` dict (Python) or a
+  `nuclear/` overlay directory (`.ini`, via `user_nuclear_dir`) — including
+  any uploaded/edited rate tables — so a downloaded bundle reproduces the
+  GUI run bit-exactly.
+- `notebooks/ReactionRates.ipynb` (⟨σv⟩(T9) of any reaction vs. the Hubble
+  rate, with the master-grid reinterpolation overlaid) and
+  `notebooks/AnimatedAbundances.ipynb` (animated GIFs of the small-network
+  abundance evolution vs. ΔNeff/Ω_b h²), both wired into the docs tutorial
+  gallery with a guard test against future gallery drift.
 
 ### Changed
 - The C backend now supports `extra_rho` and `decay_era`, closing two of the
@@ -52,12 +67,22 @@ in this repository is the authoritative source.
 - `plotly` and `joblib` moved from hard dependencies to the `mc`/`plots`/
   `gui` extras — a plain `pip install primat` install is now lighter
   (FABLEADVICE O-2).
+- Nuclear rate tables (`large` network) regenerated at 1000 points instead
+  of being reinterpolated onto the master T9 grid from a coarser source
+  grid, for both backends.
+- Cache trees consolidated under `cache_plasma_weak/{weak,plasma}/` with an
+  additive `cache_dir` overlay redirect for read-only installs, and
+  non-fatal (warn, not crash) cache-write failures on both backends (B-1,
+  80 → 81 `DEFAULT_PARAMS` keys).
+- Per-flavour neutrino degeneracies `munuOverTnu_e/mu/tau` (O-9).
 
 ### Fixed
 - Assorted release-blocker fixes ahead of the first PyPI publish: packaging
   metadata, wheel build matrix, and related polish (S-1 through S-6).
-
-## [0.3.2] - 2026-07-02
+- The Python backend's `run_bbn` now also exposes a `Y_final` sub-dict,
+  matching the C backend and restoring result-dict parity (CLAUDE.md).
+- Windows editable-install C-extension shadowing, and assorted
+  Windows-portability failures in the CI Tests matrix (O-6).
 
 ### Documented
 - Electron-thermo / QED-pressure table extrapolation behaviour beyond the
