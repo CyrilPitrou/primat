@@ -49,7 +49,7 @@ feature was requested, or the extension failed to build) during development.
 added reactions plus rate-table overrides) *is* supported on both backends:
 ``primat-c``'s ``cprimat_run``/``cpr_mc_uncertainty`` take an optional
 ``CPRCustomNetwork*`` (``primat-c/include/network_data.h``), and
-``primat/_primat_c/_wrapper.c`` parses the same dict shape
+``primat/_primat_c_src/_wrapper.c`` parses the same dict shape
 (``UpdateNuclearRates``/``kept_to_custom_network``, see
 ``primat/network_data.py``/``primat/gui/custom_rates.py``) into one. It is no
 longer part of ``python_only_feature`` below.
@@ -57,7 +57,7 @@ longer part of ``python_only_feature`` below.
 ``output_time_evolution=True`` *is* supported on both backends: the C
 extension's ``cprimat_run`` populates ``CPRResults``'s
 ``evol_*`` in-memory arrays (``primat-c/include/api.h``) and
-``primat/_primat_c/_wrapper.c`` hands them back as an ``"evolution"`` dict
+``primat/_primat_c_src/_wrapper.c`` hands them back as an ``"evolution"`` dict
 key (plain Python lists, no numpy C-API dependency in the extension); this
 module assembles the same :class:`primat.evolution.EvolutionResult` shape
 the Python backend produces, with no disk I/O on either backend's part.
@@ -137,19 +137,46 @@ _C_DATA_DIR = os.path.join(_PACKAGE_DIR, "data")
 
 _c_ext: Any = None
 try:
-    from . import _primat_c as _c_ext
+    # `_primat_c` is the compiled C extension (built by setup.py from
+    # primat/_primat_c_src/_wrapper.c); it is invisible to static analysis, so
+    # mypy sees neither the `primat._primat_c` attribute nor that this rebinds
+    # the `_c_ext: Any` declared just above -- both are intentional at runtime.
+    from . import _primat_c as _c_ext  # type: ignore[attr-defined,no-redef]
     HAS_C_BACKEND = True
 except ImportError:
     HAS_C_BACKEND = False
+
+# Known limitation (accepted, not a bug to chase): on Windows an *editable*
+# install (`pip install -e .`) does not build/expose the compiled `.pyd`, so
+# HAS_C_BACKEND is False there and every run transparently uses the pure-Python
+# backend. A normal *wheel* install on Windows DOES ship a working extension
+# (see the green windows-latest leg of .github/workflows/wheels.yml), so end
+# users are unaffected -- only Windows contributors developing from a source
+# checkout. macOS/Linux build the extension in-place in editable installs as
+# usual. Not worth pursuing (research use is macOS/Linux); see FABLEADVICE O-6.
 
 
 def _python_solve(params: dict[str, Any] | None, extra_rho: list | None,
                    custom_network: dict[str, Any] | None, background,
                    progress: bool = True) -> dict[str, Any]:
-    """Run the pure-Python backend and return PRIMAT.solve()'s result dict."""
+    """Run the pure-Python backend and return PRIMAT.solve()'s result dict.
+
+    Backend-parity note: the C backend's ``run_bbn`` attaches a ``"Y_final"``
+    sub-dict of every tracked nuclide's final mass fraction
+    (``primat/_primat_c_src/_wrapper.c``). ``PRIMAT.solve()`` itself does not
+    include it -- an in-process Python caller would query
+    ``inst.get_quantity(...)`` / ``inst.nuclear.Y_final`` instead -- but
+    :func:`run_bbn` returns only the result dict, with no instance to query,
+    so we must mirror the C backend and attach ``"Y_final"`` here or callers
+    (and ``tests/test_backend_parity.py``) see divergent result-dict keys
+    across backends.
+    """
     from .main import PRIMAT
-    return PRIMAT(params=params, extra_rho=extra_rho,
-                  custom_network=custom_network, background=background).solve(progress=progress)
+    inst = PRIMAT(params=params, extra_rho=extra_rho,
+                  custom_network=custom_network, background=background)
+    result = inst.solve(progress=progress)
+    result["Y_final"] = dict(inst.nuclear.Y_final)
+    return result
 
 
 # Number of log-spaced Tg nodes used to tabulate extra_rho for the C backend
@@ -163,7 +190,7 @@ def _tabulate_extra_rho(extra_rho: list, cfg) -> tuple[list[float], list[float]]
     """Evaluate the *sum* of the ``extra_rho`` callables on a dense log-spaced
     Tg grid, for handoff to the C backend (O-8's tabulated interface -- see
     ``primat-c/include/config.h``'s ``extra_rho_*`` fields and
-    ``primat/_primat_c/_wrapper.c``).
+    ``primat/_primat_c_src/_wrapper.c``).
 
     Python's ``extra_rho`` is a list of ``rho(Tg) -> MeV^4`` callables summed
     inside ``StandardBackground.Hubble``; a live callable cannot cross the C
@@ -322,7 +349,7 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
 
 def _assemble_c_result(result: dict[str, Any]) -> dict[str, Any]:
     """Replaces the C extension's plain-list ``"evolution"`` dict (see
-    ``primat/_primat_c/_wrapper.c``'s ``evolution_to_dict``) with the same
+    ``primat/_primat_c_src/_wrapper.c``'s ``evolution_to_dict``) with the same
     :class:`primat.evolution.EvolutionResult` the Python backend attaches
     under ``result["evolution"]`` -- so callers can switch backends
     transparently. No-op if ``output_time_evolution``

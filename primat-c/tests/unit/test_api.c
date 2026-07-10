@@ -1,5 +1,5 @@
 /* test_api.c -- direct checks of api.c's cprimat_run/cpr_results_get_quantity,
- * independent of primat/_primat_c/_wrapper.c and Python's
+ * independent of primat/_primat_c_src/_wrapper.c and Python's
  * tests/test_backend_parity.py (which only exercise cprimat_run indirectly,
  * through the compiled Python extension). Covers three things the parity
  * tests don't reach directly at the C level:
@@ -8,7 +8,7 @@
  *     version of the same check);
  *   - cfg->output_time_evolution populates CPRResults's evol_* in-memory
  *     arrays with a sane shape, matching what
- *     primat/_primat_c/_wrapper.c relies on to avoid any disk I/O;
+ *     primat/_primat_c_src/_wrapper.c relies on to avoid any disk I/O;
  *   - a custom_network override (GUI "Customise Reactions", CPRCustomNetwork)
  *     actually changes cprimat_run's result relative to the unmodified
  *     network, and cpr_results_get_quantity resolves both fixed observable

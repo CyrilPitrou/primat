@@ -102,7 +102,7 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
  * cpr_mc_uncertainty to return CPR_MC_CANCELLED once all workers have
  * unwound. Intended for callers that run cpr_mc_uncertainty on a background
  * thread while polling for an external interrupt (e.g. Python's
- * primat/_primat_c/_wrapper.c, so Ctrl-C can abort a long MC run without
+ * primat/_primat_c_src/_wrapper.c, so Ctrl-C can abort a long MC run without
  * waiting for it to finish -- see PyErr_CheckSignals there). Not
  * reentrant across overlapping cpr_mc_uncertainty calls in the same
  * process (the flag is reset at the start of each call). */

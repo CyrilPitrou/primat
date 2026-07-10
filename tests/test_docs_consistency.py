@@ -20,6 +20,19 @@ from primat.config import PRIMATConfig
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 
+def _read_text(path):
+    """Read a text file as UTF-8, explicitly.
+
+    README.md, CLAUDE.md, config.py and the run templates all contain
+    non-ASCII physics characters (ν, ↔, →, σ, …). ``open()`` with no
+    ``encoding`` uses the platform's locale default, which on Windows is
+    cp1252 ("charmap") and raises ``UnicodeDecodeError`` on those bytes --
+    so every doc-consistency read must pin UTF-8 to stay portable.
+    """
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
 def test_cprimat_version_matches_pyproject():
     """primat-c/include/config.h's CPRIMAT_VERSION must track pyproject.toml's version.
 
@@ -29,13 +42,13 @@ def test_cprimat_version_matches_pyproject():
     the two source files staying in the same commit.
     """
     pyproject_path = os.path.join(REPO_ROOT, "pyproject.toml")
-    pyproject_text = open(pyproject_path).read()
+    pyproject_text = _read_text(pyproject_path)
     pyproject_match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject_text)
     assert pyproject_match, "version field not found in pyproject.toml"
     pyproject_version = pyproject_match.group(1)
 
     config_h_path = os.path.join(REPO_ROOT, "primat-c", "include", "config.h")
-    config_h_text = open(config_h_path).read()
+    config_h_text = _read_text(config_h_path)
     config_h_match = re.search(r'#define\s+CPRIMAT_VERSION\s+"([^"]+)"', config_h_text)
     assert config_h_match, "CPRIMAT_VERSION macro not found in primat-c/include/config.h"
     config_h_version = config_h_match.group(1)
@@ -62,7 +75,7 @@ def _reference_run_options():
     the module.
     """
     path = os.path.join(REPO_ROOT, "runfiles", "primat_reference_run.py")
-    tree = ast.parse(open(path).read(), filename=path)
+    tree = ast.parse(_read_text(path), filename=path)
     # MyOptions references module-level names (e.g. "Omegabh2": omegabh2), so
     # literal_eval alone can't resolve it; evaluate against a namespace built
     # from this module's own simple top-level literal assignments instead of
@@ -120,7 +133,7 @@ def test_readme_mc_key_names_are_real_params(key):
     from primat.config import DEFAULT_PARAMS
     assert key in DEFAULT_PARAMS, f"{key!r} no longer a DEFAULT_PARAMS key"
     readme_path = os.path.join(REPO_ROOT, "README.md")
-    readme_text = open(readme_path).read()
+    readme_text = _read_text(readme_path)
     assert key in readme_text, f"{key!r} no longer documented in README.md"
 
 
@@ -131,7 +144,7 @@ def test_readme_does_not_reference_old_mc_file_key():
     from primat.config import DEFAULT_PARAMS
     assert "output_mc_file" not in DEFAULT_PARAMS
     readme_path = os.path.join(REPO_ROOT, "README.md")
-    readme_text = open(readme_path).read()
+    readme_text = _read_text(readme_path)
     # Match the old key as a whole word so "output_mc_file_prefix" (the
     # correct, current name) does not trip this assertion.
     assert not re.search(r'\boutput_mc_file\b(?!_prefix)', readme_text)
@@ -144,11 +157,11 @@ def test_streamlit_wheel_matches_pyproject_version():
     version as pyproject.toml, or the public demo silently keeps serving an
     old build after a version bump."""
     pyproject_path = os.path.join(REPO_ROOT, "pyproject.toml")
-    pyproject_text = open(pyproject_path).read()
+    pyproject_text = _read_text(pyproject_path)
     pyproject_version = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject_text).group(1)
 
     requirements_path = os.path.join(REPO_ROOT, "requirements.txt")
-    lines = [l.strip() for l in open(requirements_path).read().splitlines() if l.strip()]
+    lines = [l.strip() for l in _read_text(requirements_path).splitlines() if l.strip()]
     wheel_line = lines[-1]
     assert wheel_line.startswith("./wheels/") and wheel_line.endswith(".whl"), (
         f"requirements.txt's last line is expected to be the Streamlit-Cloud "
@@ -171,7 +184,7 @@ def test_readme_set_syntax_is_key_equals_value():
     requires the '=' form (argparse splits on it), not the 'KEY VALUE' form
     README used to show (FABLEADVICE.md S-3) -- which primat --set rejects."""
     readme_path = os.path.join(REPO_ROOT, "README.md")
-    readme_text = open(readme_path).read()
+    readme_text = _read_text(readme_path)
     assert "--set KEY=VALUE" in readme_text
     assert "--set tau_n=880.1" in readme_text
     # The old (wrong) space-separated form must not reappear.
@@ -186,14 +199,14 @@ def test_readme_python_only_features_list_matches_backend():
     are all supported on the C backend (only MC prev is additionally
     Python-only, on the run_mc side)."""
     backend_path = os.path.join(REPO_ROOT, "primat", "backend.py")
-    backend_text = open(backend_path).read()
+    backend_text = _read_text(backend_path)
     # The feature actually gated in run_bbn()'s fallback logic -- if this
     # string disappears from backend.py, the module was refactored and
     # README's list needs re-verifying against the new code.
     assert "python_only_feature = background is not None" in backend_text
 
     readme_path = os.path.join(REPO_ROOT, "README.md")
-    readme_text = open(readme_path).read()
+    readme_text = _read_text(readme_path)
     assert "background=" in readme_text
     assert "MC `prev`" in readme_text
     # extra_rho/decay_era/custom_network/output_time_evolution must NOT be
@@ -213,7 +226,7 @@ def test_notebooks_readme_lists_every_notebook():
     (FABLEADVICE.md S-8) -- a new notebook silently missing from the README
     is undiscoverable from the folder's own index."""
     notebooks_dir = os.path.join(REPO_ROOT, "notebooks")
-    readme_text = open(os.path.join(notebooks_dir, "README.md")).read()
+    readme_text = _read_text(os.path.join(notebooks_dir, "README.md"))
     ipynb_files = sorted(f for f in os.listdir(notebooks_dir) if f.endswith(".ipynb"))
     assert ipynb_files, "no notebooks found in notebooks/"
     missing = [f for f in ipynb_files if f not in readme_text]
@@ -248,7 +261,7 @@ _TEMPLATE_INI = os.path.join(REPO_ROOT, "primat-c", "examples", "run_basic.ini")
 
 def _template_py_keys():
     """Keys listed in the Python template's commented-out cfg dict."""
-    text = open(_TEMPLATE_PY).read()
+    text = _read_text(_TEMPLATE_PY)
     # Entries look like "    # numerical_precision=1e-7,  # comment" -- key
     # immediately followed by '=' (prose comment lines never match this).
     return set(re.findall(r"^\s*#\s*([A-Za-z_][A-Za-z0-9_]*)=", text, re.M))
@@ -256,7 +269,7 @@ def _template_py_keys():
 
 def _template_ini_keys():
     """Keys listed in the INI template (commented or active settings)."""
-    text = open(_TEMPLATE_INI).read()
+    text = _read_text(_TEMPLATE_INI)
     # Entries look like "# verbose = false" or "numerical_precision = 1e-7".
     # The INI template ALSO carries prose lines that explain a boolean's
     # meaning in the same "# word = text" shape, e.g.
@@ -292,8 +305,8 @@ def test_param_count_comments_match_default_params():
     hand.)"""
     from primat.config import DEFAULT_PARAMS
     n = len(DEFAULT_PARAMS)
-    assert f"All {n} DEFAULT_PARAMS keys are listed" in open(_TEMPLATE_PY).read()
-    assert f"all {n} keys round-trip" in open(_TEMPLATE_INI).read()
+    assert f"All {n} DEFAULT_PARAMS keys are listed" in _read_text(_TEMPLATE_PY)
+    assert f"all {n} keys round-trip" in _read_text(_TEMPLATE_INI)
 
 
 def test_validation_reference_table_matches_reference_constants():
@@ -303,8 +316,8 @@ def test_validation_reference_table_matches_reference_constants():
     tier asserts the constants against actual solves)."""
     from reference_values import (REF_SMALL_YPBBN, REF_SMALL_DOH,
                                   REF_LARGE8_YPBBN, REF_LARGE8_DOH)
-    readme = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "README.md")).read()
+    readme = _read_text(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "README.md"))
     section = readme[readme.index("## Validation reference"):]
     yp = re.findall(r"\|\s*YP \(BBN\)\s*\|\s*([0-9.eE+-]+)\s*\|", section)
     dh = re.findall(r"\|\s*D/H\s*\|\s*([0-9.eE+-]+)\s*\|", section)
@@ -316,7 +329,7 @@ def test_validation_reference_table_matches_reference_constants():
 def test_readme_documents_the_unified_evolution_schema():
     """README's Output section must describe the real unified TSV header
     (t_s/a/T_gamma_MeV/...), not the pre-unification legacy column list."""
-    readme = open(os.path.join(REPO_ROOT, "README.md")).read()
+    readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
     for col in ("`t_s`", "T_gamma_MeV", "T_nutau_MeV"):
         assert col in readme, f"README lost the unified-schema column {col}"
     assert "n_to_p_weak_rate" not in readme  # the legacy column list
@@ -324,7 +337,7 @@ def test_readme_documents_the_unified_evolution_schema():
 
 def test_readme_result_dict_table_is_complete():
     """Every key of a real run_bbn() result dict appears in README."""
-    readme = open(os.path.join(REPO_ROOT, "README.md")).read()
+    readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
     # Keep in sync with cpr_assemble_results/_python_solve; cheap static list
     # (a live solve here would drag this file into the slow tier).
     for key in ("YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4", "Li7oH",
@@ -335,7 +348,7 @@ def test_readme_result_dict_table_is_complete():
 def test_readme_gui_is_not_called_source_only():
     """primat.gui ships in the wheel ([tool.setuptools] packages); only
     runfiles/ is source-only."""
-    readme = open(os.path.join(REPO_ROOT, "README.md")).read()
+    readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
     assert "Streamlit app (optional, source-only)" not in readme
 
 
@@ -343,7 +356,7 @@ def test_readme_rate_columns_match_implementation():
     """README's output_rates_time_evolution claims must describe the
     implemented per-reaction forward-rate column block (B-2), not the
     historical no-op."""
-    readme = open(os.path.join(REPO_ROOT, "README.md")).read()
+    readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
     assert "_frwrd" in readme
     assert "no-op" not in readme
 
@@ -353,7 +366,7 @@ def test_tests_readme_lists_every_test_file():
     (CLAUDE.md: the suite's README documents the goal of every test group).
     Mirrors test_notebooks_readme_lists_every_notebook."""
     tests_dir = os.path.dirname(os.path.abspath(__file__))
-    readme_text = open(os.path.join(tests_dir, "README.md")).read()
+    readme_text = _read_text(os.path.join(tests_dir, "README.md"))
     files = sorted(f for f in os.listdir(tests_dir)
                    if f.startswith("test_") and f.endswith(".py"))
     assert files, "no test files found"

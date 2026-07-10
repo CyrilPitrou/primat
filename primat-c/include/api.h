@@ -17,7 +17,7 @@
  * `cfg.output_time_evolution`/`output_final_file` *are* honoured (delegated
  * to nuclear_network.h's existing writers for the disk side; `cfg.output_time_evolution`
  * also populates `CPRResults`'s `evol_*` in-memory arrays directly --
- * so `primat/_primat_c/_wrapper.c` can hand the same
+ * so `primat/_primat_c_src/_wrapper.c` can hand the same
  * `EvolutionResult` shape back to Python with no disk I/O).
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095).
@@ -65,7 +65,7 @@ typedef struct {
 
     /* ---- Unified time-evolution arrays, populated
      * iff cfg->output_time_evolution. Mirrors Python's in-memory
-     * EvolutionResult so primat/_primat_c/_wrapper.c can hand the same
+     * EvolutionResult so primat/_primat_c_src/_wrapper.c can hand the same
      * shape back to primat/backend.py with no disk I/O. evol_Y is
      * n_evolution * n_nuclides, row-major, in nuclide_names column order
      * (reuses the field above -- same species list as Y_final). Owned;

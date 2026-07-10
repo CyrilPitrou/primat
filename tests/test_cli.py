@@ -8,6 +8,7 @@ script does at startup.  Each invocation runs one full small-network solve
 single-solve tests in the "solve" tier.
 """
 import json
+import os
 import re
 
 import pytest
@@ -102,8 +103,13 @@ def test_cli_network_error_lists_overlay_candidates(tmp_path):
     overlay.mkdir()
     expected = overlay / "networks" / "custom.txt"
 
-    with pytest.raises(ValueError, match=re.escape(str(expected))):
+    with pytest.raises(ValueError) as excinfo:
         main(["--set", f"user_nuclear_dir={overlay}", "--network", "custom"])
+    # The error quotes each searched path with repr(), which doubles
+    # backslashes on Windows ('C:\\a' -> "'C:\\\\a'"); collapse them so the
+    # substring check is separator-portable (no-op on POSIX forward slashes).
+    message = str(excinfo.value).replace("\\\\", "\\")
+    assert str(expected) in message
 
 
 def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
@@ -114,11 +120,20 @@ def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
     relying on shell expansion.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
+    # os.path.expanduser("~") consults HOME on POSIX but USERPROFILE (then
+    # HOMEDRIVE+HOMEPATH) on Windows, so pin all of them at tmp_path to make
+    # the expansion deterministic cross-platform.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOMEDRIVE", os.path.splitdrive(str(tmp_path))[0])
+    monkeypatch.setenv("HOMEPATH", os.path.splitdrive(str(tmp_path))[1])
     (tmp_path / "custom").mkdir()
 
     rc = main(["--set", "user_nuclear_dir=~/custom", "--json"])
     assert rc == 0
-    err = capsys.readouterr().err
+    # The [init] overlay note quotes the resolved path with repr(), which
+    # doubles backslashes on Windows; collapse them so the substring check
+    # matches str(...) (single backslashes). No-op on POSIX forward slashes.
+    err = capsys.readouterr().err.replace("\\\\", "\\")
     assert "nuclear networks and rate tables" in err
     assert str((tmp_path / "custom").resolve()) in err
 
