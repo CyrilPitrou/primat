@@ -199,3 +199,123 @@ def ini_export_text(params, *, custom_network_name=None, mc_samples=0):
     else:
         text += "# (every parameter left at its DEFAULT_PARAMS default)\n"
     return text
+
+
+def _readme_text(*, active, backend_used, mc_samples, network_name):
+    """Return the bundle's README.txt: how to run each artifact + caveats.
+
+    Explains that the .py reproduces the tab bit-for-bit (pinned backend),
+    that a custom network is reproduced via the bundled nuclear/ overlay, and
+    -- when MC was on -- how to get the +/- 1 sigma band from each artifact,
+    including the RNG caveat that the C CLI's band is bit-identical only when
+    the GUI itself ran on the C backend.
+    """
+    lines = [
+        "primat reproduction bundle",
+        "==========================",
+        "",
+        "Run everything from THIS directory (a relative user_nuclear_dir/overlay",
+        "resolves against the current directory).",
+        "",
+        "1) Python (reproduces the Final-abundances tab exactly):",
+        "     python primat_gui_run.py",
+        "",
+        "2) primat-c CLI (central values):",
+        "     ./build/primat-c --ini run_basic_from_gui.ini",
+    ]
+    if active:
+        lines += [
+            "",
+            f"This run used a CUSTOM network ({network_name!r}). It is bundled",
+            "under nuclear/ (networks/ + tables/) and loaded via",
+            "user_nuclear_dir=nuclear -- no internet or extra files needed.",
+        ]
+    if mc_samples:
+        lines += [
+            "",
+            f"+/- 1 sigma (Monte-Carlo, {mc_samples} samples, seed 0):",
+            "  - primat_gui_run.py already prints it (via run_mc).",
+            f"  - primat-c: add  --mc {mc_samples} --mc-seed 0  to the CLI call.",
+            "",
+            "Bit-exactness caveat: C and Python have independent RNG streams, so",
+            "the band is bit-identical to the tab only on the backend it ran on",
+            f"({backend_used!r}). On the other backend it is statistically",
+            "equivalent but not bit-identical.",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def build_reproduction_zip(params, *, backend_used="auto", mc=None, cfg=None,
+                           custom_network=None, kept_names=None,
+                           network_name=None):
+    """Pack a self-contained reproduction bundle (.zip) for the tab's results.
+
+    Always writes ``primat_gui_run.py`` (:func:`python_export_text`),
+    ``run_basic_from_gui.ini`` (:func:`ini_export_text`) and ``README.txt``.
+    When ``custom_network`` is given, the fully-resolved network + its rate
+    tables (including uploads) are bundled under ``nuclear/`` by reusing
+    :func:`primat.gui.custom_rates.export_zip`, and the emitted .py/.ini
+    reproduce it via ``network=<network_name>`` + ``user_nuclear_dir=nuclear``.
+
+    Args:
+        params: dict. The "changed from default" params (a ``"custom_network"``
+            entry, if present, is ignored -- pass the decoded dict as
+            ``custom_network`` instead).
+        backend_used: ``"c"``/``"python"``/``"auto"`` -- the pinned backend.
+        mc: primat.main.MCResult or None. When given, its standard-ratio
+            quantities and sample count drive the .py's run_mc std block.
+        cfg: primat.config.PRIMATConfig. Required only when ``custom_network``
+            is set (forwarded to ``export_zip`` for the overlay).
+        custom_network: dict or None. ``{"removed", "replaced", "added"}``.
+        kept_names: sequence[str] or None. Ordered kept reaction names for the
+            overlay network file (required when ``custom_network`` is set).
+        network_name: str or None. Basename for the overlay network file and
+            the reproduced ``network=`` value (required when custom).
+
+    Returns:
+        bytes. The zip contents.
+
+    Example:
+        >>> build_reproduction_zip({"network": "small"}, backend_used="c")
+    """
+    import io
+    import zipfile
+
+    from primat.gui.custom_rates import export_zip
+
+    active = custom_network is not None
+    cn_name = network_name if active else None
+
+    # MC quantities/sample count come straight from the cached MCResult, so the
+    # reproduction's run_mc call matches app._quick_mc's quantities exactly.
+    mc_quantities = None
+    mc_samples = 0
+    if mc is not None:
+        mc_names = set(mc.quantity_names())
+        mc_quantities = [k for k, _ in _STANDARD_RATIOS if k in mc_names]
+        mc_samples = len(next(iter(mc._data.values())).values)
+
+    py_text = python_export_text(
+        params, backend_used=backend_used, mc_quantities=mc_quantities,
+        mc_samples=mc_samples, custom_network_name=cn_name)
+    ini_text = ini_export_text(
+        params, custom_network_name=cn_name, mc_samples=mc_samples)
+    readme = _readme_text(active=active, backend_used=backend_used,
+                          mc_samples=mc_samples, network_name=cn_name)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("primat_gui_run.py", py_text)
+        zf.writestr("run_basic_from_gui.ini", ini_text)
+        zf.writestr("README.txt", readme)
+        if active:
+            # Reuse the Reactions-tab exporter, which already writes a
+            # self-contained networks/ + tables/ overlay (inlining uploaded and
+            # edited tables). Re-nest it under nuclear/ so user_nuclear_dir
+            # points at a single overlay root.
+            inner = export_zip(cfg, custom_network, kept_names,
+                               network_filename=network_name)
+            with zipfile.ZipFile(io.BytesIO(inner)) as innerzf:
+                for item in innerzf.namelist():
+                    zf.writestr(f"nuclear/{item}", innerzf.read(item))
+    return buf.getvalue()

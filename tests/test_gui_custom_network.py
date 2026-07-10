@@ -941,3 +941,42 @@ def test_reopening_a_round_tripped_network_keeps_shipped_filenames():
             f"{name}: expected a shipped '_primat.txt' table, got "
             f"{table_choice.get(name)!r}"
         )
+
+
+def test_reproduction_zip_standard_run_has_three_files_no_overlay():
+    """A non-custom bundle is exactly py + ini + README, no nuclear/ tree."""
+    import io
+    import zipfile
+
+    from primat.gui.export_params import build_reproduction_zip
+
+    data = build_reproduction_zip({"network": "small"}, backend_used="python")
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        names = set(zf.namelist())
+    assert names == {"primat_gui_run.py", "run_basic_from_gui.ini", "README.txt"}
+
+
+def test_reproduction_zip_custom_run_bundles_nuclear_overlay():
+    """A custom bundle adds nuclear/networks + nuclear/tables from export_zip."""
+    import io
+    import zipfile
+
+    from primat.config import PRIMATConfig
+    from primat.gui.export_params import build_reproduction_zip
+    from primat.network_data import UpdateNuclearRates
+
+    cfg = PRIMATConfig({"network": "small"})
+    nucl = UpdateNuclearRates(cfg)
+    rows = [r for r in nucl.describe_reactions() if r[0] != "n__p"]
+    kept_names = [r[0] for r in rows]
+    custom_network = {"removed": [], "replaced": {}, "added": {}}
+
+    data = build_reproduction_zip(
+        {"network": "small"}, backend_used="python", cfg=cfg,
+        custom_network=custom_network, kept_names=kept_names,
+        network_name="mynet")
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        names = zf.namelist()
+    assert "primat_gui_run.py" in names
+    assert "nuclear/networks/mynet.txt" in names
+    assert any(n.startswith("nuclear/tables/") for n in names)
