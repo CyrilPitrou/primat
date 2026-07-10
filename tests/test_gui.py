@@ -434,18 +434,17 @@ def test_credits_dialog_shows_citation_bibtex():
     assert code_block == CITATION_BIBTEX
 
 
-def test_downloads_panel_offers_gui_export():
-    """S-15: "Export the full run" -- the Output tab offers a "Download
-    params as .py / .ini" pair reproducing the actual solved configuration
-    (``export_params.python_export_text``/``ini_export_text`` via
-    ``panels.render_downloads_panel``'s ``run_params``).
+def test_results_panel_offers_reproduction_bundle():
+    """The reproduction bundle download lives in the Final abundances tab,
+    and is gone from the Output tables tab.
 
     AppTest's ``download_button`` proto only carries a mock media-storage
     URL, not the bytes themselves (see ``test_gui_custom_network.py``'s
     "Download zip is self-contained" test docstring for why), so this only
-    checks the buttons render; :func:`test_gui_exported_python_script_reproduces_run`
-    below exercises ``export_params`` directly with the session's own params
-    for the actual content check.
+    checks the button renders; the bundle's *content* is exercised directly
+    against ``export_params`` (see
+    :func:`test_gui_exported_python_script_reproduces_run` and the
+    ``build_reproduction_zip`` tests in ``test_gui_custom_network.py``).
     """
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
@@ -455,8 +454,13 @@ def test_downloads_panel_offers_gui_export():
     _run_bbn(at)
     assert not at.exception
 
-    assert _download_button(at, "primat_gui_run.py") is not None
-    assert _download_button(at, "run_basic_from_gui.ini") is not None
+    # NOTE: _download_button matches on the button LABEL (returns None if
+    # absent), so assert against the label text, not the file_name.
+    assert _download_button(at, "Download reproduction bundle (.zip)") is not None
+    # The old per-format reproduction buttons (whose labels WERE the filenames)
+    # are gone.
+    assert _download_button(at, "primat_gui_run.py") is None
+    assert _download_button(at, "run_basic_from_gui.ini") is None
 
 
 def test_gui_exported_python_script_reproduces_run():

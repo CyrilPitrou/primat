@@ -540,7 +540,8 @@ def main():
             mc_backend_used = "C" if mc.backend == "c" else "Python"
             perf_parts.append(f"Quick MC with {mc_backend_used} backend in {mc_elapsed:.2f}s")
         st.caption(f"({' ; '.join(perf_parts)})")
-        panels.render_results_panel(run, mc=mc)
+        panels.render_results_panel(run, mc=mc, run_params=stored_params,
+                                    backend_used=backend_used)
     with tab_evolution:
         panels.render_evolution_panel(run)
     with tab_downloads:
@@ -549,8 +550,7 @@ def main():
         except (ValueError, RuntimeError) as exc:
             st.error(f"Could not build the background for these downloads: {exc}")
             background = None
-        panels.render_downloads_panel(run, mc=mc, background=background,
-                                       run_params=stored_params)
+        panels.render_downloads_panel(run, mc=mc, background=background)
 
 
 @st.dialog("Credits", width="large")

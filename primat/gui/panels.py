@@ -67,7 +67,7 @@ _RATIO_LABELS = {
 }
 
 
-def render_results_panel(run, mc=None):
+def render_results_panel(run, mc=None, run_params=None, backend_used=None):
     """Render the final-abundances + standard-ratios panel.
 
     Parameters
@@ -141,6 +141,47 @@ def render_results_panel(run, mc=None):
         for name in run.abundance_names
     ]
     st.markdown("\n".join(lines))
+
+    # Reproduction bundle: the files that reproduce EXACTLY this tab's numbers.
+    # Only shown once we know both the params that ran and which backend ran
+    # (needed to pin force_backend for bit-for-bit reproduction).
+    if run_params is not None and backend_used is not None:
+        import json
+
+        from primat.gui.export_params import build_reproduction_zip
+
+        cn_json = run_params.get("custom_network")
+        custom_network = json.loads(cn_json) if cn_json else None
+        network_name = None
+        kept_names = None
+        if custom_network is not None:
+            # Same title/kept-name derivation as _render_reaction_downloads,
+            # so the overlay network file matches the Reactions-tab export.
+            active = st.session_state.get(SessionKeys.active_custom_network)
+            network_name = (active["title"] if active else
+                            (run.cfg.network if run.cfg.network != "large" else "large"))
+            kept_names = [name for name, equation, source, file
+                          in run.nucl.describe_reactions() if name != "n__p"]
+        params_only = {k: v for k, v in run_params.items() if k != "custom_network"}
+        # _describe_backend_used returns display strings ("C"/"Python"/...);
+        # force_backend wants "c"/"python".
+        backend_pin = "c" if backend_used == "C" else "python"
+        try:
+            zip_bytes = build_reproduction_zip(
+                params_only, backend_used=backend_pin, mc=mc, cfg=run.cfg,
+                custom_network=custom_network, kept_names=kept_names,
+                network_name=network_name)
+        except Exception as exc:  # never let an export failure break the tab
+            st.warning(f"Could not build the reproduction bundle: {exc}")
+        else:
+            st.markdown("**Reproduce these results**")
+            st.download_button(
+                "Download reproduction bundle (.zip)", data=zip_bytes,
+                file_name="reproduction_bundle.zip", mime="application/zip",
+                key="dl_reproduction",
+                help="A self-contained script + primat-c .ini (+ the custom "
+                     "network, if any) that reproduce exactly the values above.",
+            )
 
 
 def final_abundances_text(run, mc=None):
@@ -355,7 +396,7 @@ def weak_rates_text(cfg, background):
     return "\n".join(lines)
 
 
-def render_downloads_panel(run, mc=None, background=None, run_params=None):
+def render_downloads_panel(run, mc=None, background=None):
     """Render the Output tab: the standard, network-independent output files.
 
     Collects every file a user might want to export from a completed run in one
@@ -408,13 +449,11 @@ def render_downloads_panel(run, mc=None, background=None, run_params=None):
         used only for the ``output_background.tsv``/``nTOp_total.tsv``
         downloads. ``None`` (e.g. if building it failed) skips those two
         downloads with an explanatory note.
-    run_params : dict or None, optional
-        The "changed from default" params dict that actually produced
-        ``run`` (``st.session_state[SessionKeys.params]`` in ``primat.gui.app``),
-        used only by the "GUI configuration as script" downloads
-        (:func:`primat.gui.export_params.python_export_text`/``ini_export_text``).
-        ``None`` skips those two downloads (e.g. when called from a context
-        that never stored a run's params).
+
+    The "reproduce this run" downloads (a self-contained ``.zip`` of
+    ``primat_gui_run.py``/``run_basic_from_gui.ini`` + any custom network) live
+    in the Final abundances tab instead (:func:`render_results_panel`), next to
+    the numbers they reproduce.
     """
     # Each file gets its own subsection title directly above its download
     # button (rather than a blanket "Output"/"Output files" header), stacked
@@ -496,30 +535,6 @@ def render_downloads_panel(run, mc=None, background=None, run_params=None):
             )
         except OSError:
             st.warning("`decays.txt` is unavailable.")
-
-    if run_params is not None:
-        from primat.gui.export_params import ini_export_text, python_export_text
-
-        custom_network_active = "custom_network" in run_params
-        params_only = {k: v for k, v in run_params.items() if k != "custom_network"}
-        quick_mc = mc is not None
-        mc_quantities = list(mc._data.keys()) if quick_mc else None
-        mc_samples = len(next(iter(mc._data.values())).values) if quick_mc else 0
-        _file_download(
-            "GUI configuration as Python script", "primat_gui_run.py",
-            data=python_export_text(
-                params_only, custom_network_active=custom_network_active,
-                quick_mc=quick_mc, mc_samples=mc_samples, mc_quantities=mc_quantities,
-            ),
-            file_name="primat_gui_run.py", mime="text/x-python", key="dl_export_py",
-            help="A standalone script reproducing this run without the GUI.",
-        )
-        _file_download(
-            "GUI configuration as .ini file", "run_basic_from_gui.ini",
-            data=ini_export_text(params_only, custom_network_active=custom_network_active),
-            file_name="run_basic_from_gui.ini", mime="text/plain", key="dl_export_ini",
-            help="For the primat-c standalone CLI's --ini flag.",
-        )
 
 
 # ---------------------------------------------------------------------------
