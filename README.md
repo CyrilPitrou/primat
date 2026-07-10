@@ -257,7 +257,7 @@ information for various platforms.
 | `output_time_evolution` | False | Generate time-evolution data (accessible via result["evolution"]) |
 | `output_file` | `results/output_tables.tsv` | Output file path for time evolution (relative to current directory) |
 | `output_n_points` | 500 | Number of interpolated rows in output file |
-| `output_rates_time_evolution` | False | Include per-reaction rate columns in time-evolution output (small/small_parthenope only) |
+| `output_rates_time_evolution` | False | Append per-reaction `<reaction>_frwrd` rate columns to the time-evolution output (one per reaction in the active LT network) |
 
 ### n↔p weak rate workflow
 
@@ -522,14 +522,13 @@ time evolution data (see the example notebooks for usage).
 With `output_rates_time_evolution=True`, an optional block of per-reaction
 forward-rate columns is appended after the `Y_<nuclide>` block: one
 `<reaction>_frwrd` column (canonical rate syntax, e.g. `n_p__d_g_frwrd`) per
-reaction of the active network, holding the forward reaction-rate interpolant
-at each row's photon temperature. These columns are emitted only for
-`network="small"`/`"small_parthenope"` (the ~12-reaction set); they are
-omitted (with a printed note) for the ~429-reaction `network="large"` and
-other networks. Both backends emit the identical columns, in memory as
-`run["evolution"].rates` (a dict keyed by column name, `None` when the flag is
-off) and on disk in the same order, so `primat.evolution.load_evolution()`
-round-trips them.
+reaction in the active LT network, holding the forward reaction-rate
+interpolant at each row's photon temperature. The number of columns follows
+the chosen network/`amax` (~12 for `small`/`small_parthenope`, 68 for
+`large`+`amax=8`, ~429 for full `large`). Both backends emit the identical
+columns, in memory as `run["evolution"].rates` (a dict keyed by column name,
+`None` when the flag is off) and on disk in the same order, so
+`primat.evolution.load_evolution()` round-trips them.
 
 ## Architecture
 

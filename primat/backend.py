@@ -333,9 +333,9 @@ def _assemble_c_result(result: dict[str, Any]) -> dict[str, Any]:
     import numpy as np
     from .evolution import EvolutionResult
     # Optional per-reaction rate columns: the C wrapper (evolution_to_dict)
-    # only emits a "rates" key when it populated them (small-family +
-    # output_rates_time_evolution); its absence maps to EvolutionResult.rates
-    # = None, matching the Python backend.
+    # only emits a "rates" key when it populated them
+    # (output_rates_time_evolution on); its absence maps to
+    # EvolutionResult.rates = None, matching the Python backend.
     rates = evo.get("rates")
     result["evolution"] = EvolutionResult(
         t=np.asarray(evo["t"]), a=np.asarray(evo["a"]), T_gamma=np.asarray(evo["T_gamma"]),

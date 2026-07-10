@@ -28,17 +28,17 @@ nuclide lists), so the header line is the source of truth -- :func:`load_evoluti
 reads it dynamically rather than assuming a fixed column count.
 
 Per-reaction forward-rate columns (``<reaction>_frwrd``) are an **optional**
-trailing block, appended after the ``Y_<nuclide>`` block only when
-``cfg.output_rates_time_evolution=True`` and the active network is
-``small``/``small_parthenope`` (the ~12-reaction set -- omitted for the
-~429-reaction ``large`` network). They carry the forward reaction-rate
-interpolant [same table units as the shipped nuclear rates] evaluated at each
-row's photon temperature, and live in :attr:`EvolutionResult.rates` (``None``
-when the flag is off). Both backends emit the identical column names in the
-identical (lexicographically sorted) order -- see the CLAUDE.md schema-parity
-mandate. The ``a``/``T_nu`` columns are ``np.nan`` when the active background
-has no scale-factor/neutrino-sector tracking (e.g. a minimal custom
-background).
+trailing block, appended after the ``Y_<nuclide>`` block when
+``cfg.output_rates_time_evolution=True`` -- one column per reaction in the
+active LT network (~12 for ``small``/``small_parthenope``, 68 for
+``large``+``amax=8``, ~429 for full ``large``). They carry the forward
+reaction-rate interpolant [same table units as the shipped nuclear rates]
+evaluated at each row's photon temperature, and live in
+:attr:`EvolutionResult.rates` (``None`` when the flag is off). Both backends
+emit the identical column names in the identical (lexicographically sorted)
+order -- see the CLAUDE.md schema-parity mandate. The ``a``/``T_nu`` columns
+are ``np.nan`` when the active background has no scale-factor/neutrino-sector
+tracking (e.g. a minimal custom background).
 """
 from __future__ import annotations
 
@@ -82,9 +82,9 @@ class EvolutionResult:
         Per-nuclide mass-fraction abundance, keyed by nuclide name, in
         network order (``n``/``p`` first).
     rates : dict of str -> np.ndarray, optional
-        Optional per-reaction forward-rate columns (populated only when
-        ``cfg.output_rates_time_evolution=True`` and the active network is
-        ``small``/``small_parthenope``; ``None`` otherwise). Keyed by column
+        Optional per-reaction forward-rate columns (populated when
+        ``cfg.output_rates_time_evolution=True`` -- one per reaction in the
+        active LT network; ``None`` otherwise). Keyed by column
         name ``<reaction>_frwrd`` (canonical rate syntax, e.g.
         ``n_p__d_g_frwrd``), each value an array aligned with :attr:`t`,
         holding the forward reaction-rate interpolant at that step's photon

@@ -169,7 +169,7 @@ static PyObject *evolution_to_dict(const CPRResults *r)
      * primat.evolution.EvolutionResult.rates): a sub-dict keyed by column name
      * ("<reaction>_frwrd"), column-sliced out of r->evol_rates' row-major
      * (n_evolution x n_evol_rates) layout, exactly like "Y" above. Only added
-     * when the C side populated them (small-family + output_rates_time_evolution);
+     * when the C side populated them (output_rates_time_evolution on);
      * backend.py maps a present "rates" key to EvolutionResult.rates and its
      * absence to rates=None. */
     if (r->n_evol_rates) {

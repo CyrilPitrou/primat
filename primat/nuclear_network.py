@@ -625,15 +625,13 @@ class NuclearNetwork:
 
         Per-reaction forward-rate columns (``<reaction>_frwrd``) are appended
         after the ``Y_<species>`` block when
-        ``cfg.output_rates_time_evolution=True`` and the network is
-        ``small``/``small_parthenope`` (the ~12-reaction set); each column is
-        the active forward reaction-rate interpolant (same units as the
-        shipped rate tables) at the row's temperature, populated into
-        ``EvolutionResult.rates`` and serialised by ``dump_evolution``. They
-        are omitted (with a printed note) for the ~429-reaction ``large``
-        network and any other non-small-family network -- there the caller
-        can evaluate ``nucl.<reaction>_frwrd(T_K)`` directly. The n<->p weak
-        rates are not duplicated on disk either: recover them from
+        ``cfg.output_rates_time_evolution=True`` -- one column per reaction in
+        the active LT network (~12 for ``small``/``small_parthenope``, 68 for
+        ``large``+``amax=8``, ~429 for full ``large``). Each column is the
+        active forward reaction-rate interpolant (same units as the shipped
+        rate tables) at the row's temperature, populated into
+        ``EvolutionResult.rates`` and serialised by ``dump_evolution``. The
+        n<->p weak rates are not duplicated on disk: recover them from
         ``run.background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd`` evaluated at the
         ``T_gamma_MeV`` column. The C backend emits the identical rate columns
         (CLAUDE.md schema-parity mandate).
@@ -672,29 +670,34 @@ class NuclearNetwork:
         Y_out[mask_nuc] = Y_of_t(t_out[mask_nuc])
         Y = {s: Y_out[:, j] for j, s in enumerate(names)}
 
-        # Optional per-reaction forward-rate columns (B-2). Small-family
-        # networks only: their ~12-reaction LT set is a small, meaningful
-        # column block; the ~429-reaction large network is omitted (the
-        # column block would be dominated by rates the network doesn't carry).
-        # Values are the active forward-rate interpolant at each output
-        # temperature (plain rate, not a flux), sorted by column name so the C
-        # backend can emit the identical order (CLAUDE.md schema parity).
+        # Optional per-reaction forward-rate columns (B-2). One
+        # <reaction>_frwrd column per reaction actually in the active LT
+        # network (whatever the network / amax cutoff selects: ~12 for
+        # small/small_parthenope, 68 for large+amax=8, ~429 for full large),
+        # value = the active forward-rate interpolant at each output
+        # temperature (plain rate, not a flux). Sorted by column name so the C
+        # backend can emit the identical names in the identical order
+        # (CLAUDE.md schema parity). Computed directly from the LT rate table
+        # (the same linear interpolation on the master T9 grid that the ODE
+        # right-hand side and the C backend's cpr_network_fill_buffer use), so
+        # it works for any reaction the active network carries.
         rates = None
         if cfg.output_rates_time_evolution:
-            if cfg.network in ("small", "small_parthenope"):
-                T_K_out = T_out * cfg.MeV_to_Kelvin
-                # Reactions actually in the active LT network, minus the
-                # prepended weak n__p entry (index 0); the <rxn>_frwrd method
-                # is the same one the docs point users at.
-                rxns = sorted(r for r in nucl._lt_net.names if r != "n__p")
-                rates = {f"{r}_frwrd": np.asarray(
-                             getattr(nucl, f"{r}_frwrd")(T_K_out), dtype=float)
-                         for r in rxns}
-            else:
-                print("[output] output_rates_time_evolution: per-reaction rate "
-                      "columns are emitted only for network='small'/"
-                      "'small_parthenope' (the ~12-reaction set); omitted for "
-                      f"network={cfg.network!r}.")
+            lt = nucl._lt_net
+            g = lt.grid
+            # T9 = T[K] / 1e9; searchsorted(g, T9) - 1 clamped to [0, len-2]
+            # (edge-clamped interval index), vectorised over the output grid.
+            T9 = T_out * cfg.MeV_to_Kelvin * 1e-9
+            idx = np.clip(np.searchsorted(g, T9) - 1, 0, g.size - 2)
+            w = (T9 - g[idx]) / (g[idx + 1] - g[idx])
+            rates = {}
+            # lt.names[0] is the prepended weak n__p (no fwd row); reaction i
+            # (i >= 1) maps to forward-rate row i-1 of lt._fwd.
+            for i in range(1, len(lt.names)):
+                fwd_row = lt._fwd[i - 1]
+                rates[f"{lt.names[i]}_frwrd"] = (
+                    fwd_row[idx] * (1.0 - w) + fwd_row[idx + 1] * w)
+            rates = {k: rates[k] for k in sorted(rates)}
 
         self.evolution = EvolutionResult(t=t_out, a=a_out, T_gamma=T_out,
                                          T_nu=Tnu, Y=Y, rates=rates)

@@ -720,23 +720,41 @@ def test_decay_era_tsv_parity(tmp_path):
 
 
 @requires_c_backend
-def test_rates_columns_backend_parity():
+@pytest.mark.parametrize("params,rtol", [
+    ({"network": "small"}, 5e-5),
+    ({"network": "large", "amax": 8}, 5e-3),
+], ids=["small", "large_amax8"])
+def test_rates_columns_backend_parity(params, rtol):
     """B-2: both backends emit identical per-reaction rate-column names in the
     identical (sorted) order, and values that agree to the cross-backend
-    tolerance. The rate columns are pure functions of the photon temperature,
-    so we compare each backend's column interpolated onto a common T grid
-    (mirroring test_evolution_cross_backend_agreement's approach) -- the two
-    backends sample their own slightly different t/T output grids, so an
-    element-wise index comparison would spuriously diverge where the rates are
-    steep, not because the rates themselves disagree."""
+    tolerance. Covers a small network (~12 columns) and a large+amax network
+    (67 columns) -- the rate columns follow whatever the active LT network
+    carries.
+
+    The rate columns are pure functions of the photon temperature, so we
+    compare each backend's column interpolated onto a common T grid (mirroring
+    test_evolution_cross_backend_agreement) -- the two backends sample their
+    own slightly different t/T output grids, so an element-wise index
+    comparison would spuriously diverge where the rates are steep, not because
+    the rates disagree.
+
+    Tolerance is per-network. The small-network tables agree to ~1e-5 between
+    the two stacks. The large network's AC2024 tables are resampled onto the
+    master T9 grid slightly differently by the two backends' nuclear-rate
+    interpolators (the same cross-backend nuclear-rate-interpolation difference
+    CLAUDE.md documents and budgets at rel=5e-5 for the *observables* these
+    rates feed); a handful of individual large-network reactions (notably
+    3-body ones like a_n_p__Li6_g) differ by up to ~2.5e-3 here, within the
+    5e-3 budget -- far below the order-of-magnitude gap a real wrong-table/
+    units/row-mapping bug would produce."""
     from scipy.interpolate import interp1d
-    p = {"network": "small", "output_time_evolution": True,
-         "output_rates_time_evolution": True, "output_file": None}
+    p = dict(params, output_time_evolution=True,
+             output_rates_time_evolution=True, output_file=None)
     evo_c = run_bbn(p, force_backend="c")["evolution"]
     evo_py = run_bbn(p, force_backend="python")["evolution"]
 
     # Identical column names in identical order (the schema-parity contract).
-    assert list(evo_c.rates) == list(evo_py.rates)
+    assert evo_c.rates and list(evo_c.rates) == list(evo_py.rates)
 
     # Compare on the overlap of the two T_gamma ranges, interpolating the
     # Python column onto the C temperatures (both are monotonic in T_gamma).
@@ -748,4 +766,4 @@ def test_rates_columns_backend_parity():
         interp_py = interp1d(Tpy[order_py], evo_py.rates[name][order_py],
                              fill_value="extrapolate")(Tc)
         np.testing.assert_allclose(evo_c.rates[name][mask], interp_py[mask],
-                                   rtol=5e-5, atol=1e-30, err_msg=name)
+                                   rtol=rtol, atol=1e-30, err_msg=name)

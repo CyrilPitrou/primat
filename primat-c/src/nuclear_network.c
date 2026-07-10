@@ -508,15 +508,13 @@ void cpr_nuclear_network_sample_time_evolution(const CPRNuclearNetwork *nn, int 
     }
 }
 
-/* Whether this run emits per-reaction forward-rate columns: the flag is on AND
- * the network is small/small_parthenope (the ~12-reaction set). Mirrors
- * Python's `cfg.output_rates_time_evolution and cfg.network in
- * ("small","small_parthenope")` gate in NuclearNetwork._write_time_evolution. */
+/* Whether this run emits per-reaction forward-rate columns: simply the flag
+ * (one column per reaction in the active LT network, whatever the network/amax
+ * selects). Mirrors Python's `if cfg.output_rates_time_evolution:` gate in
+ * NuclearNetwork._write_time_evolution. */
 static int rate_columns_enabled(const CPRConfig *cfg)
 {
-    return cfg->output_rates_time_evolution &&
-           (cpr_config_is_small(cfg) ||
-            strcmp(cfg->network, "small_parthenope") == 0);
+    return cfg->output_rates_time_evolution;
 }
 
 /* Build the sorted per-reaction rate-column list for the active LT network.
@@ -621,7 +619,8 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     cpr_nuclear_network_sample_time_evolution(nn, n_points, t_out, T_out, a_out,
                                                 Tnue_out, Tnumu_out, Tnutau_out, Y_out);
 
-    /* Optional per-reaction forward-rate columns (small-family + flag), sampled
+    /* Optional per-reaction forward-rate columns (flag on; one per active LT
+     * reaction), sampled
      * at the same T_gamma grid -- appended after the Y_ block, matching the
      * Python backend's dump_evolution order. */
     size_t n_rate = cpr_nuclear_network_rate_columns(nn, NULL);
@@ -657,8 +656,8 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
      * primat.evolution.dump_evolution/load_evolution: no leading "#",
      * tab-separated, t_s/a/T_*_MeV core block then one Y_<nuclide> column
      * per tracked species, then the optional per-reaction <reaction>_frwrd
-     * columns (cfg->output_rates_time_evolution, small-family networks) in the
-     * SAME sorted order the Python backend writes. */
+     * columns (cfg->output_rates_time_evolution; one per active LT reaction)
+     * in the SAME sorted order the Python backend writes. */
     fprintf(f, "t_s\ta\tT_gamma_MeV\tT_nue_MeV\tT_numu_MeV\tT_nutau_MeV");
     for (size_t s = 0; s < nn->n_species; s++) fprintf(f, "\tY_%s", nn->abundance_names[s]);
     for (size_t k = 0; k < n_rate; k++) fprintf(f, "\t%s", rate_names[k]);

@@ -133,13 +133,14 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
 
 /* Per-reaction forward-rate columns for output_rates_time_evolution (mirrors
  * Python's EvolutionResult.rates / NuclearNetwork._write_time_evolution).
- * Returns the number of columns: 0 unless cfg->output_rates_time_evolution AND
- * the active network is small/small_parthenope (the ~12-reaction set; the
- * ~429-reaction large network is omitted, matching Python). When the return is
- * >0 and `out_names`!=NULL, fills out_names[0..count) with "<reaction>_frwrd"
- * lexicographically sorted -- the IDENTICAL names and order the Python backend
- * produces via sorted() (CLAUDE.md schema parity). `out_names` must hold at
- * least (n LT reactions - 1) entries; pass NULL to query only the count. */
+ * Returns the number of columns: 0 unless cfg->output_rates_time_evolution,
+ * else one per reaction in the active LT network (~12 for small/
+ * small_parthenope, 68 for large+amax=8, ~429 for full large). When the
+ * return is >0 and `out_names`!=NULL, fills out_names[0..count) with
+ * "<reaction>_frwrd" lexicographically sorted -- the IDENTICAL names and order
+ * the Python backend produces via sorted() (CLAUDE.md schema parity).
+ * `out_names` must hold at least (n LT reactions - 1) entries; pass NULL to
+ * query only the count. */
 size_t cpr_nuclear_network_rate_columns(const CPRNuclearNetwork *nn,
                                           char (*out_names)[64]);
 

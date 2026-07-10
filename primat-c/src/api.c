@@ -186,7 +186,7 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
 
         /* Optional per-reaction forward-rate columns (mirrors Python's
          * EvolutionResult.rates): populated only when
-         * cfg->output_rates_time_evolution and the network is small-family;
+         * cfg->output_rates_time_evolution (one per active LT reaction);
          * cpr_nuclear_network_rate_columns returns 0 otherwise, leaving the
          * fields NULL/0 (handed back as no "rates" key by _wrapper.c). */
         size_t nr = cpr_nuclear_network_rate_columns(nn, NULL);

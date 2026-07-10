@@ -203,6 +203,20 @@ def _build_parser():
         help="Relative tolerance passed to solve_ivp (PRIMATConfig default: 1e-7).",
     )
     parser.add_argument(
+        "--data_dir", default=None, metavar="PATH",
+        help="Replace the entire data tree (NEVO/, nuclear/, csv/, "
+             "cache_plasma_weak/) with PATH. Must contain those "
+             "subdirectories. Default (None): use the package's own "
+             "primat/data/ tree.",
+    )
+    parser.add_argument(
+        "--user_nuclear_dir", default=None, metavar="PATH",
+        help="Additive overlay for nuclear networks and rate tables only "
+             "(the primat/data/nuclear/ equivalent, containing networks/ and "
+             "tables/). Checked before the default tree; shipped networks "
+             "remain accessible even when this is set. Default: None.",
+    )
+    parser.add_argument(
         "--munuOverTnu", type=float, default=None, metavar="XI",
         help="Reduced neutrino chemical potential mu/T, the common default for "
              "all flavours (PRIMATConfig default: 0).",
@@ -402,7 +416,7 @@ def main(argv=None):
         "output_background_evolution", "output_mc_samples",
         "output_mc_covariance", "output_mc_correlation", "show_progress",
         "output_file", "output_final_file", "output_background_file",
-        "output_mc_file_prefix",
+        "output_mc_file_prefix", "data_dir", "user_nuclear_dir",
     ):
         value = getattr(args, key)
         if value is not None:

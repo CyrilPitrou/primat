@@ -90,7 +90,7 @@ cfg = dict(
     # ---- output options -------------------------------------------------------
     # output_time_evolution=False,    # write the unified time-evolution TSV (PRIMAT.md S7.2);
     #                                  # forces the python backend unless using run_mc/run_bbn's C support (see force_backend below)
-    # output_rates_time_evolution=False,  # append per-reaction forward-rate columns (<reaction>_frwrd) to the time-evolution TSV; small/small_parthenope only (omitted for large)
+    # output_rates_time_evolution=False,  # append per-reaction forward-rate columns (<reaction>_frwrd) to the time-evolution TSV; one per reaction in the active LT network (~12 small, ~429 full large)
     # output_n_points=500,            # number of points in the time-evolution TSV
     # output_file="results/output_tables.tsv",     # path for output_time_evolution
     # output_final_result=False,      # write a two-column (nuclide, Y) final-abundances file
