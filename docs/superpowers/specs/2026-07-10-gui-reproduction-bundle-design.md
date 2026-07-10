@@ -97,10 +97,18 @@ prefix inside the combined zip).
 
 - Same changed params as KEY=VALUE. Consumed by
   `./build/primat-c --ini run_basic_from_gui.ini` (from the extracted dir).
-- Reproduces the **central** values via the C CLI's normal output. The MC `±
-  1σ` column is a `.py`-only feature (the `.ini`/CLI path reproduces the
-  deterministic run; the README points at the MC command for those who want
-  the band).
+- Reproduces the **central** values via the C CLI's normal output.
+- The `± 1σ` band is reproducible natively in C via the CLI's own MC flags
+  (`cli.c`: `--mc N --mc-seed SEED`, writing
+  `<output_mc_file_prefix>_covariance.tsv`/`_samples.tsv`). When quick-MC was
+  active the `README.txt` shows the concrete command:
+  `./build/primat-c --ini run_basic_from_gui.ini --mc <num_mc> --mc-seed 0`.
+- **Bit-exactness caveat (RNG streams differ per backend):** the C-CLI MC band
+  is bit-identical to the tab **only when the GUI session itself ran on the C
+  backend** (`backend_used == "c"`). If the session ran on Python, the C-CLI
+  gives a statistically-equivalent (not bit-identical) band; the bit-exact
+  reproduction in that case is the `.py` (which pins `force_backend="python"`).
+  The `README.txt` states this explicitly, keyed on the pinned backend.
 
 ### Custom-network adjustments (both `.py` and `.ini`)
 
