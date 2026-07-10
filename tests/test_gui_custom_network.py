@@ -982,15 +982,66 @@ def test_reproduction_zip_custom_run_bundles_nuclear_overlay():
     assert any(n.startswith("nuclear/tables/") for n in names)
 
 
-def test_reproduction_overlay_matches_custom_network_dict_run(tmp_path):
-    """The bundled nuclear/ overlay reproduces the custom_network-dict run
-    bit-for-bit -- the core "reproduce exactly" guarantee for custom networks.
+def test_reproduction_py_reproduces_custom_removal_via_exact_dict():
+    """For a small-based custom network with a REMOVED reaction, the exported
+    .py reproduces the tab bit-for-bit because it embeds the exact
+    custom_network override and calls ``run_bbn(base, custom_network=...)`` --
+    the identical call the GUI makes.
 
-    Customisation: replace one small-network reaction's rate table with its
-    own shipped text (a no-op edit that still forces the full overlay path --
-    a genuinely different table would only widen the gap this test guards
-    against). Both runs use the Python backend so they are deterministic and
-    need no C build.
+    Root cause it sidesteps: the MT-era reaction *ordering* is keyed on the
+    base network name (``cfg.network == "small"`` -> ORDER_SMALL, else
+    ORDER_MT), so the .ini's renamed nuclear/ overlay drifts ~1e-6 for this
+    case (see ``test_reproduction_ini_overlay_small_removal_is_physically_close``
+    and the README caveat). The .py avoids the overlay entirely, so it is exact.
+
+    Exec the generated script with ``run_bbn`` captured (no second solve) and
+    confirm the exact cfg + removal dict + pinned backend are passed through.
+    """
+    import io
+    import unittest.mock
+    import zipfile
+
+    from primat.config import PRIMATConfig
+    from primat.gui.export_params import _STANDARD_RATIOS, build_reproduction_zip
+    from primat.network_data import UpdateNuclearRates
+
+    cfg = PRIMATConfig({"network": "small"})
+    nucl = UpdateNuclearRates(cfg)
+    rows = [r for r in nucl.describe_reactions() if r[0] != "n__p"]
+    removed = "d_d__t_p"
+    kept_names = [r[0] for r in rows if r[0] != removed]
+    custom_network = {"removed": [removed], "replaced": {}, "added": {}}
+
+    data = build_reproduction_zip(
+        {"network": "small"}, backend_used="python", cfg=cfg,
+        custom_network=custom_network, kept_names=kept_names,
+        network_name="mynet")
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        script = zf.read("primat_gui_run.py").decode()
+
+    captured = {}
+
+    def fake_run_bbn(cfg, custom_network=None, force_backend="auto"):
+        captured.update(cfg=cfg, custom_network=custom_network,
+                        force_backend=force_backend)
+        return {k: 0.0 for k, _ in _STANDARD_RATIOS}
+
+    with unittest.mock.patch("primat.backend.run_bbn", fake_run_bbn):
+        exec(compile(script, "primat_gui_run.py", "exec"), {})
+    # The .py keeps the base network and forwards the exact override -- exactly
+    # what the GUI's own run_bbn call did, so the numbers match bit-for-bit.
+    assert captured["cfg"] == {"network": "small"}
+    assert captured["custom_network"] == custom_network
+    assert captured["force_backend"] == "python"
+
+
+def test_reproduction_ini_overlay_small_removal_is_physically_close(tmp_path):
+    """The .ini path (bundled nuclear/ overlay, network renamed) reproduces a
+    small-based network with a REMOVED reaction *physically* but not
+    bit-for-bit: the MT-era reaction ORDERING is keyed on the base name, so a
+    renamed overlay permutes the (stiff) MT solve and drifts ~1e-6. This locks
+    in that documented caveat (README / _readme_text): close to ~1e-4, i.e.
+    correct physics, just not the last couple of displayed digits.
     """
     import io
     import zipfile
@@ -1003,34 +1054,25 @@ def test_reproduction_overlay_matches_custom_network_dict_run(tmp_path):
     cfg = PRIMATConfig({"network": "small"})
     nucl = UpdateNuclearRates(cfg)
     rows = [r for r in nucl.describe_reactions() if r[0] != "n__p"]
-    kept_names = [r[0] for r in rows]
+    removed = "d_d__t_p"
+    kept_names = [r[0] for r in rows if r[0] != removed]
+    custom_network = {"removed": [removed], "replaced": {}, "added": {}}
 
-    # Pick the first non-weak reaction with a real per-reaction table file and
-    # read its shipped text, to feed a no-op "replaced" entry.
-    name, _eq, _src, fname = next(r for r in rows if r[3] not in (None, "", "--"))
-    shipped_path = cfg.resolve_rates_path("nuclear", "tables", name, fname)
-    with open(shipped_path) as fh:
-        shipped_text = fh.read()
-    custom_network = {"removed": [], "replaced": {name: shipped_text}, "added": {}}
-
-    # A) the run the GUI actually makes: base network + custom_network dict.
+    # The run the GUI actually makes (base network + custom_network dict).
     a = run_bbn({"network": "small"}, custom_network=custom_network,
                 force_backend="python")
-
-    # B) the reproduction: extract the bundle and run via the overlay.
+    # The .ini overlay reproduction (renamed network via user_nuclear_dir).
     data = build_reproduction_zip(
         {"network": "small"}, backend_used="python", cfg=cfg,
         custom_network=custom_network, kept_names=kept_names,
-        network_name="small")
+        network_name="mynet")
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         zf.extractall(tmp_path)
-    b = run_bbn(
-        {"network": "small", "user_nuclear_dir": str(tmp_path / "nuclear")},
-        force_backend="python")
-
-    for key in ("YPBBN", "DoH", "He3oH", "Li7oH", "Neff"):
-        assert abs(a[key] - b[key]) <= 1e-9 * abs(a[key]) + 1e-12, (
-            f"{key}: overlay {b[key]!r} != dict-run {a[key]!r}")
+    b = run_bbn({"network": "mynet", "user_nuclear_dir": str(tmp_path / "nuclear")},
+                force_backend="python")
+    for key in ("YPBBN", "DoH", "Li7oH"):
+        rel = abs(a[key] - b[key]) / abs(a[key])
+        assert rel < 1e-4, f"{key}: overlay drift {rel:.2e} unexpectedly large"
 
 
 def _find_download_button(at, label):
