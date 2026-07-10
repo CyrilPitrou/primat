@@ -40,7 +40,15 @@ _cprimat_sources = sorted(
 ext_modules = [
     Extension(
         "primat._primat_c",
-        sources=["primat/_primat_c/_wrapper.c"] + _cprimat_sources,
+        # The wrapper source lives in primat/_primat_c_src/ -- deliberately NOT
+        # primat/_primat_c/, because that directory name would collide with the
+        # compiled extension module "primat._primat_c". In an editable install
+        # (pip install -e) the source tree is on sys.path, so a directory named
+        # _primat_c/ (an implicit namespace package, no __init__.py) can shadow
+        # the compiled _primat_c extension and make `import primat._primat_c`
+        # succeed with no run_bbn attribute -- the Windows tests.yml failure
+        # (macOS/Linux happened to resolve the .so first; Windows did not).
+        sources=["primat/_primat_c_src/_wrapper.c"] + _cprimat_sources,
         include_dirs=[CPRIMAT_INCLUDE],
         # _GNU_SOURCE: exposes M_PI on Linux (glibc) with -std=c11.
         # _USE_MATH_DEFINES: exposes M_PI on Windows (MSVC).

@@ -1,7 +1,7 @@
 # Include C source and header files needed to compile the _primat_c extension
 recursive-include primat-c/src *.c
 recursive-include primat-c/include *.h
-include primat/_primat_c/_wrapper.c
+include primat/_primat_c_src/_wrapper.c
 
 # Include the standalone primat-c build/usage material -- useful to sdist
 # consumers (e.g. debian/conda packagers) who want to build primat-c

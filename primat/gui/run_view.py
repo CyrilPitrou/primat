@@ -61,7 +61,7 @@ class GuiRun:
         key (``'YPBBN'``, ``'DoH'``, ...) or a nuclide name for its final Y.
 
         ``results["Y_final"]`` is a bonus the C backend's wrapper adds (see
-        ``primat/_primat_c/_wrapper.c``); the Python backend's own
+        ``primat/_primat_c_src/_wrapper.c``); the Python backend's own
         ``PRIMAT.solve()`` result dict never has it (confirmed by
         ``tests/test_backend_parity.py::test_backend_result_dict_shape_matches``),
         since Python keeps per-nuclide finals on the live ``nuclear.Y_final``

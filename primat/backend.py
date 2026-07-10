@@ -49,7 +49,7 @@ feature was requested, or the extension failed to build) during development.
 added reactions plus rate-table overrides) *is* supported on both backends:
 ``primat-c``'s ``cprimat_run``/``cpr_mc_uncertainty`` take an optional
 ``CPRCustomNetwork*`` (``primat-c/include/network_data.h``), and
-``primat/_primat_c/_wrapper.c`` parses the same dict shape
+``primat/_primat_c_src/_wrapper.c`` parses the same dict shape
 (``UpdateNuclearRates``/``kept_to_custom_network``, see
 ``primat/network_data.py``/``primat/gui/custom_rates.py``) into one. It is no
 longer part of ``python_only_feature`` below.
@@ -57,7 +57,7 @@ longer part of ``python_only_feature`` below.
 ``output_time_evolution=True`` *is* supported on both backends: the C
 extension's ``cprimat_run`` populates ``CPRResults``'s
 ``evol_*`` in-memory arrays (``primat-c/include/api.h``) and
-``primat/_primat_c/_wrapper.c`` hands them back as an ``"evolution"`` dict
+``primat/_primat_c_src/_wrapper.c`` hands them back as an ``"evolution"`` dict
 key (plain Python lists, no numpy C-API dependency in the extension); this
 module assembles the same :class:`primat.evolution.EvolutionResult` shape
 the Python backend produces, with no disk I/O on either backend's part.
@@ -163,7 +163,7 @@ def _tabulate_extra_rho(extra_rho: list, cfg) -> tuple[list[float], list[float]]
     """Evaluate the *sum* of the ``extra_rho`` callables on a dense log-spaced
     Tg grid, for handoff to the C backend (O-8's tabulated interface -- see
     ``primat-c/include/config.h``'s ``extra_rho_*`` fields and
-    ``primat/_primat_c/_wrapper.c``).
+    ``primat/_primat_c_src/_wrapper.c``).
 
     Python's ``extra_rho`` is a list of ``rho(Tg) -> MeV^4`` callables summed
     inside ``StandardBackground.Hubble``; a live callable cannot cross the C
@@ -322,7 +322,7 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
 
 def _assemble_c_result(result: dict[str, Any]) -> dict[str, Any]:
     """Replaces the C extension's plain-list ``"evolution"`` dict (see
-    ``primat/_primat_c/_wrapper.c``'s ``evolution_to_dict``) with the same
+    ``primat/_primat_c_src/_wrapper.c``'s ``evolution_to_dict``) with the same
     :class:`primat.evolution.EvolutionResult` the Python backend attaches
     under ``result["evolution"]`` -- so callers can switch backends
     transparently. No-op if ``output_time_evolution``
