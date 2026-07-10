@@ -133,9 +133,12 @@ unaffected.) Author decision: fix in the GUI only, no physics/ordering change
   `custom_network=<dict>`.
 - **`.ini`** (C CLI, which cannot carry a `custom_network` dict) uses the
   bundled `nuclear/` overlay: `network="<custom_name>"` +
-  `user_nuclear_dir="nuclear"`. Exact for large-based / table-only-small;
-  ~1e-6 for a small-based network with removed/added reactions (documented in
-  `README.txt` and the ini header).
+  `user_nuclear_dir="nuclear"`. Exact when the base network is **not**
+  `small`; ~1e-6 for **any** small-based customisation (removed/added
+  reactions *or* rate-table edits), because the overlay is loaded under a
+  different name than `small` and the MT-era ordering is keyed on the base
+  name (documented in `README.txt` and the ini header). The `.py` is always
+  exact.
 - The `nuclear/` overlay is still bundled (for the `.ini` and for re-import),
   so no rate tables are inlined except inside the `.py`'s embedded dict.
 

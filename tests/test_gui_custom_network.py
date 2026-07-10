@@ -1118,3 +1118,60 @@ def test_gui_custom_network_offers_reproduction_bundle():
     assert not at.exception
 
     assert _find_download_button(at, "Download reproduction bundle (.zip)") is not None
+
+
+def test_reproduction_bundle_carries_uploaded_rate_table(tmp_path):
+    """A custom network with an UPLOADED (edited) rate table round-trips through
+    both bundle artifacts: the edited table text is embedded in the .py's
+    custom_network dict (so run_bbn(base, custom_network=...) is bit-exact) and
+    written into the nuclear/ overlay (so the .ini can read it). Both the GUI
+    dict-run and the overlay run reflect the edit (a 1.5x-scaled n_p__d_g rate
+    visibly shifts D/H)."""
+    import io
+    import zipfile
+
+    import numpy as np
+
+    from primat.backend import run_bbn
+    from primat.config import PRIMATConfig
+    from primat.gui.export_params import build_reproduction_zip
+    from primat.network_data import UpdateNuclearRates
+
+    cfg = PRIMATConfig({"network": "small"})
+    nucl = UpdateNuclearRates(cfg)
+    rows = [r for r in nucl.describe_reactions() if r[0] != "n__p"]
+    name, _eq, _src, fname = next(r for r in rows if r[3] not in (None, "", "--"))
+    kept_names = [r[0] for r in rows]
+
+    # Build an "uploaded" table: the shipped table with its rate column x1.5.
+    data = np.loadtxt(cfg.resolve_rates_path("nuclear", "tables", name, fname))
+    T9, rate = data[:, 0], data[:, 1]
+    err = data[:, 2] if data.shape[1] > 2 else np.zeros_like(rate)
+    uploaded = "# ref=USER_UPLOAD_MARKER\n" + "\n".join(
+        f"{t:.6e} {r:.6e} {e:.6e}" for t, r, e in zip(T9, rate * 1.5, err)) + "\n"
+    custom_network = {"removed": [], "replaced": {name: uploaded}, "added": {}}
+
+    data_zip = build_reproduction_zip(
+        {"network": "small"}, backend_used="python", cfg=cfg,
+        custom_network=custom_network, kept_names=kept_names,
+        network_name="mynet")
+    with zipfile.ZipFile(io.BytesIO(data_zip)) as zf:
+        namelist = zf.namelist()
+        script = zf.read("primat_gui_run.py").decode()
+        zf.extractall(tmp_path)
+
+    # 1) The .py embeds the uploaded table text verbatim (bit-exact repro path).
+    assert "USER_UPLOAD_MARKER" in script
+    # 2) The overlay holds an edited table file for the reaction (for the .ini).
+    assert any(n.startswith(f"nuclear/tables/{name}/") for n in namelist)
+
+    # 3) The edit takes effect in the GUI dict-run, and the overlay reproduces
+    #    it physically (~1e-4). The scaled n_p__d_g rate must move D/H well away
+    #    from the unedited small value (~2.44e-5).
+    a = run_bbn({"network": "small"}, custom_network=custom_network,
+                force_backend="python")
+    b = run_bbn({"network": "mynet", "user_nuclear_dir": str(tmp_path / "nuclear")},
+                force_backend="python")
+    unedited = run_bbn({"network": "small"}, force_backend="python")
+    assert abs(a["DoH"] - unedited["DoH"]) / unedited["DoH"] > 1e-2  # edit took effect
+    assert abs(a["DoH"] - b["DoH"]) / abs(a["DoH"]) < 1e-4           # overlay physical
