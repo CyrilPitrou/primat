@@ -110,31 +110,47 @@ prefix inside the combined zip).
   reproduction in that case is the `.py` (which pins `force_backend="python"`).
   The `README.txt` states this explicitly, keyed on the pinned backend.
 
-### Custom-network adjustments (both `.py` and `.ini`)
+### Custom-network reproduction (AMENDED during implementation)
 
-When a custom network is active, the emitted config:
+**Original plan** reproduced a custom network on *both* `.py` and `.ini` via a
+renamed `user_nuclear_dir="nuclear"` overlay (`network="<custom_name>"`).
+End-to-end verification proved this cannot be bit-exact for a **small-based**
+custom network: the MT-era reaction *ordering* is keyed on the literal base
+name (`_select_era_reactions`: `cfg.network == "small"` → `ORDER_SMALL`, else
+`ORDER_MT`), and `load_reaction_names` hardcodes `small`'s 12 reactions. So a
+renamed overlay flips the MT branch, permuting the stiff BDF solve and drifting
+observables ~1e-6. (Large-based and table-only-small customisations are
+unaffected.) Author decision: fix in the GUI only, no physics/ordering change
+(which would also shift `small_parthenope`'s pinned references).
 
-- **drops** the `custom_network` entry (not a `PRIMATConfig` field) and the
-  base `network` value;
-- **sets** `network="<custom_name>"` (the sanitized custom-network title used
-  as the `networks/<name>.txt` basename);
-- **sets** `user_nuclear_dir="nuclear"` (relative to the script/ini location).
+**Resolved design:**
 
-Both backends resolve the fully-self-contained overlay network + its inlined
-tables through this additive overlay (falling back to shipped data for the
-untouched MT-era reactions), so no rate tables are inlined in the `.py`.
+- **`.py`** embeds the *exact* `custom_network` dict the GUI passed to
+  `run_bbn` and keeps the **base** network — i.e. `run_bbn(cfg,
+  custom_network=<dict>, force_backend=<pinned>)`, the identical call the GUI
+  made — so it reproduces the tab bit-for-bit for every custom network,
+  including small-based-with-removal. `run_mc` likewise gets
+  `custom_network=<dict>`.
+- **`.ini`** (C CLI, which cannot carry a `custom_network` dict) uses the
+  bundled `nuclear/` overlay: `network="<custom_name>"` +
+  `user_nuclear_dir="nuclear"`. Exact for large-based / table-only-small;
+  ~1e-6 for a small-based network with removed/added reactions (documented in
+  `README.txt` and the ini header).
+- The `nuclear/` overlay is still bundled (for the `.ini` and for re-import),
+  so no rate tables are inlined except inside the `.py`'s embedded dict.
 
 ## Code changes
 
 - **`primat/gui/export_params.py`**
   - `python_export_text(...)`: new signature accepting the pinned backend, the
-    central `results` dict (for the full-ratio print), the MC quantity list +
-    sample count, and an optional `(custom_network_name, user_nuclear_dir)`
-    pair. Replaces the `mc.mean ± std` block with the `run_bbn`-central +
+    MC quantity list + sample count, and an optional `custom_network` **dict**
+    (embedded verbatim, passed to `run_bbn`/`run_mc`, base network kept).
+    Replaces the `mc.mean ± std` block with the `run_bbn`-central +
     `run_mc`-std pattern and the full ratio print. Drops the
-    `_CUSTOM_NETWORK_NOTE_PY` path in favour of the overlay config.
-  - `ini_export_text(...)`: same param drops/overrides for custom networks;
-    replaces `_CUSTOM_NETWORK_NOTE_INI`.
+    `_CUSTOM_NETWORK_NOTE_PY` path.
+  - `ini_export_text(...)`: `custom_network_name` overlay override
+    (`network=<name>` + `user_nuclear_dir="nuclear"`); replaces
+    `_CUSTOM_NETWORK_NOTE_INI`.
   - New `build_reproduction_zip(params, *, results, backend_used, mc=None,
     cfg=None, custom_network=None, kept_names=None, network_name=None)`:
     orchestrates the combined zip — always writes `primat_gui_run.py`,
