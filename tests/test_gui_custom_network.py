@@ -980,3 +980,99 @@ def test_reproduction_zip_custom_run_bundles_nuclear_overlay():
     assert "primat_gui_run.py" in names
     assert "nuclear/networks/mynet.txt" in names
     assert any(n.startswith("nuclear/tables/") for n in names)
+
+
+def test_reproduction_overlay_matches_custom_network_dict_run(tmp_path):
+    """The bundled nuclear/ overlay reproduces the custom_network-dict run
+    bit-for-bit -- the core "reproduce exactly" guarantee for custom networks.
+
+    Customisation: replace one small-network reaction's rate table with its
+    own shipped text (a no-op edit that still forces the full overlay path --
+    a genuinely different table would only widen the gap this test guards
+    against). Both runs use the Python backend so they are deterministic and
+    need no C build.
+    """
+    import io
+    import zipfile
+
+    from primat.backend import run_bbn
+    from primat.config import PRIMATConfig
+    from primat.gui.export_params import build_reproduction_zip
+    from primat.network_data import UpdateNuclearRates
+
+    cfg = PRIMATConfig({"network": "small"})
+    nucl = UpdateNuclearRates(cfg)
+    rows = [r for r in nucl.describe_reactions() if r[0] != "n__p"]
+    kept_names = [r[0] for r in rows]
+
+    # Pick the first non-weak reaction with a real per-reaction table file and
+    # read its shipped text, to feed a no-op "replaced" entry.
+    name, _eq, _src, fname = next(r for r in rows if r[3] not in (None, "", "--"))
+    shipped_path = cfg.resolve_rates_path("nuclear", "tables", name, fname)
+    with open(shipped_path) as fh:
+        shipped_text = fh.read()
+    custom_network = {"removed": [], "replaced": {name: shipped_text}, "added": {}}
+
+    # A) the run the GUI actually makes: base network + custom_network dict.
+    a = run_bbn({"network": "small"}, custom_network=custom_network,
+                force_backend="python")
+
+    # B) the reproduction: extract the bundle and run via the overlay.
+    data = build_reproduction_zip(
+        {"network": "small"}, backend_used="python", cfg=cfg,
+        custom_network=custom_network, kept_names=kept_names,
+        network_name="small")
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        zf.extractall(tmp_path)
+    b = run_bbn(
+        {"network": "small", "user_nuclear_dir": str(tmp_path / "nuclear")},
+        force_backend="python")
+
+    for key in ("YPBBN", "DoH", "He3oH", "Li7oH", "Neff"):
+        assert abs(a[key] - b[key]) <= 1e-9 * abs(a[key]) + 1e-12, (
+            f"{key}: overlay {b[key]!r} != dict-run {a[key]!r}")
+
+
+def _find_download_button(at, label):
+    """Version-agnostic lookup of a download button by label (see the twin
+    helper in test_gui.py); returns None if absent."""
+    def walk(node):
+        for child in getattr(node, "children", {}).values():
+            if (type(child).__name__ in ("UnknownElement", "DownloadButton")
+                    and getattr(child, "label", None) == label):
+                return child
+            found = walk(child)
+            if found is not None:
+                return found
+        return None
+
+    return walk(at.main)
+
+
+def test_gui_custom_network_offers_reproduction_bundle():
+    """A GUI session with an active custom network offers the reproduction
+    bundle in the Final abundances tab (end-to-end wiring companion to the
+    direct build_reproduction_zip tests). Mirrors the seed-and-run flow of
+    test_pending_network_selection_runs_bbn_with_the_custom_network."""
+    from primat.gui import custom_rates, params_form
+
+    small_kept = ["n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g",
+                  "t_d__a_n", "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p",
+                  "He3_a__Be7_g", "Be7_n__Li7_p", "Li7_p__a_a"]
+    kept_names = [n for n in small_kept if n != "d_d__t_p"]
+    custom_network = custom_rates.kept_to_custom_network(
+        params_form._cfg(), kept_names, {})
+
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    _seed_known_network(at, "mynet", kept_names, custom_network)
+    at.session_state["_pending_network_label"] = "mynet"
+    at.run(timeout=60)
+    assert not at.exception
+
+    [run_btn] = [b for b in at.button if b.label == "Run BBN"]
+    run_btn.click()
+    at.run(timeout=120)
+    assert not at.exception
+
+    assert _find_download_button(at, "Download reproduction bundle (.zip)") is not None
