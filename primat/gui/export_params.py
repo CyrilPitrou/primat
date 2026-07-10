@@ -52,140 +52,150 @@ def _ini_literal(value):
     return str(value)
 
 
-_PY_HEADER = '''# -*- coding: utf-8 -*-
-"""
-Standalone PRIMAT run, exported from the primat-gui sidebar.
+# The "Standard ratios" table of the Final abundances tab, as (key, format)
+# pairs. Order and precision mirror primat.gui.panels._RATIO_FORMAT (the
+# source of truth); duplicated here so this module has no import cycle with
+# panels (panels imports this module). Precision follows CLAUDE.md.
+_STANDARD_RATIOS = [
+    ("Neff", ".8f"), ("YPBBN", ".8f"), ("YPCMB", ".8f"),
+    ("DoH", ".7e"), ("He3oH", ".7e"), ("He3oHe4", ".6e"),
+    ("Li7oH", ".6e"), ("Li6oLi7", ".6e"), ("YCNO", ".6e"),
+]
 
-Reproduces the configuration explored in the browser from a plain Python
-script -- every parameter not listed below keeps its primat.config.
-DEFAULT_PARAMS default (see that module, or
-runfiles/primat_run_explanatory.py, for the full list of overridable keys
-and their defaults).
-
-Run with:
-
-    python primat_gui_run.py
-"""
-from primat.backend import run_bbn  # , run_mc, dump_mc_samples (see bottom of file)
-
-cfg = dict(
-{body}
-)
-# force_backend: None/"auto" (default: C extension if built, else pure Python),
-# "c", or "python" -- see primat/backend.py's module docstring for exactly
-# which features always fall back to "python" regardless of this setting.
-result = run_bbn(cfg, force_backend="auto")
-print("Neff  =", result.get("Neff"))
-print("YPBBN =", result["YPBBN"])
-print("D/H   =", result["DoH"])
-'''
-
-_PY_MC_BLOCK = '''
-# Monte-Carlo nuclear-rate/tau_n uncertainty propagation, mirroring the
-# "Quick MC uncertainty" toggle active in the exported GUI session
-# ({n_mc} samples):
-from primat.backend import run_mc, dump_mc_samples, dump_mc_covariance, dump_mc_correlation
-
-mc = run_mc({n_mc}, {quantities!r}, params=cfg, force_backend="auto")
-for q in {quantities!r}:
-    print(q, "=", mc[q].mean, "+/-", mc[q].std)
-'''
-
-_INI_HEADER = """# run_basic_from_gui.ini -- exported from the primat-gui sidebar.
+_INI_HEADER = """# run_basic_from_gui.ini -- exported from the primat-gui "Final abundances" tab.
 #
-# Reproduces the configuration explored in the browser as a primat-c
-# KEY=VALUE ini file (see primat-c/examples/run_basic.ini for the full,
-# heavily-commented list of overridable keys and their defaults). Every key
-# not listed below keeps its DEFAULT_PARAMS default.
+# Reproduces the tab's central run as a primat-c KEY=VALUE ini file. Every key
+# not listed below keeps its DEFAULT_PARAMS default. Run from THIS file's own
+# directory so a relative user_nuclear_dir resolves:
+#   ./build/primat-c --ini run_basic_from_gui.ini
 #
-# Run with:
-#   cd primat-c && make && ./build/primat-c --rates-dir <repo> --ini run_basic_from_gui.ini
+# For the +/- 1 sigma band, add:  --mc <N> --mc-seed 0
 
 """
 
-_CUSTOM_NETWORK_NOTE_PY = (
-    "\n# NOTE: this GUI session used a customised reaction network (removed/"
-    "\n# replaced/added reactions or rate-table overrides). That customisation"
-    "\n# is not representable in this params dict -- export it separately from"
-    "\n# the \"Reactions summary\" tab's \"Custom network\" download instead, and"
-    "\n# pass it as run_bbn(cfg, custom_network=<the exported dict>).\n"
-)
 
-_CUSTOM_NETWORK_NOTE_INI = (
-    "\n# NOTE: this GUI session used a customised reaction network (removed/"
-    "\n# replaced/added reactions or rate-table overrides), which the .ini"
-    "\n# format has no way to express -- export it separately from the"
-    "\n# \"Reactions summary\" tab's \"Custom network\" download instead.\n"
-)
+def python_export_text(params, *, backend_used="auto", mc_quantities=None,
+                       mc_samples=0, custom_network_name=None):
+    """Return a standalone Python script reproducing the Final-abundances tab.
 
+    Emits ``cfg = dict(...)`` from the GUI's "changed from default" params,
+    calls ``run_bbn`` with the *pinned* backend that actually produced the
+    displayed numbers, and prints every standard ratio the run produced from
+    the deterministic ``run_bbn`` result (never an MC mean). When the session
+    had "Quick MC uncertainty" on, a ``run_mc(seed=0, ...)`` block is appended
+    that prints ONLY ``.std`` per quantity, matching ``app._quick_mc`` exactly
+    so the +/- 1 sigma column reproduces bit-for-bit.
 
-def python_export_text(params, custom_network_active=False,
-                        quick_mc=False, mc_samples=0, mc_quantities=None):
-    """Return a standalone Python script reproducing ``params``.
+    Args:
+        params: dict. The "changed from default" params (without a
+            ``"custom_network"`` entry -- the caller strips it).
+        backend_used: ``"c"``, ``"python"``, or ``"auto"``. Forwarded verbatim
+            to ``run_bbn``/``run_mc`` as ``force_backend`` so the reproduction
+            pins whichever backend the GUI used.
+        mc_quantities: list[str] or None. Quantities for the appended
+            ``run_mc`` std block; ``None``/empty appends no MC block.
+        mc_samples: int. Sample count for the ``run_mc`` block.
+        custom_network_name: str or None. When set, the script reproduces a
+            customised network via the bundled ``nuclear/`` overlay: the base
+            ``network`` is dropped and replaced by this name, and
+            ``user_nuclear_dir="nuclear"`` is added.
 
-    Parameters
-    ----------
-    params : dict
-        The GUI's "changed from default" params dict (as returned by
-        ``params_form.render_sidebar_form``, minus any ``"custom_network"``
-        entry -- see ``custom_network_active``).
-    custom_network_active : bool, optional
-        Whether a customised network is active for this run; if so, a note
-        is added pointing at the Reactions tab's own export instead of
-        silently dropping the customisation.
-    quick_mc : bool, optional
-        Whether to append a ``run_mc`` block for the quantities the GUI's
-        "Quick MC uncertainty" toggle covers.
-    mc_samples : int, optional
-        Sample count for the appended ``run_mc`` block.
-    mc_quantities : list of str or None, optional
-        Quantities passed to ``run_mc`` (only used when ``quick_mc``).
+    Returns:
+        str. A runnable ``primat_gui_run.py``.
 
-    Returns
-    -------
-    str
+    Example:
+        >>> python_export_text({"network": "small"}, backend_used="c")
     """
-    keys = [k for k in params if k != "custom_network"]
-    if keys:
-        body = "\n".join(
-            f"    {k}={_py_literal(params[k])},"
-            for k in sorted(keys)
-        )
-    else:
-        body = "    # (every parameter left at its DEFAULT_PARAMS default)"
-    text = _PY_HEADER.format(body=body)
-    if custom_network_active:
-        text += _CUSTOM_NETWORK_NOTE_PY
-    if quick_mc and mc_quantities:
-        text += _PY_MC_BLOCK.format(n_mc=mc_samples, quantities=list(mc_quantities))
-    return text
+    cfg = {k: v for k, v in params.items() if k != "custom_network"}
+    if custom_network_name is not None:
+        # Reproduce the customised network from the self-contained overlay
+        # packaged next to this script (nuclear/networks + nuclear/tables),
+        # not the base network plus an inline custom_network dict.
+        cfg.pop("network", None)
+        cfg["network"] = custom_network_name
+        cfg["user_nuclear_dir"] = "nuclear"
+
+    body = ("\n".join(f"    {k}={_py_literal(cfg[k])}," for k in sorted(cfg))
+            if cfg else
+            "    # (every parameter left at its DEFAULT_PARAMS default)")
+    ratios_src = "\n".join(f"    ({k!r}, {fmt!r})," for k, fmt in _STANDARD_RATIOS)
+
+    lines = [
+        "# -*- coding: utf-8 -*-",
+        '"""',
+        'Standalone PRIMAT run, exported from the primat-gui "Final abundances" tab.',
+        "",
+        "Reproduces that tab's standard ratios: central values come from run_bbn",
+        "(not an MC mean); the +/- 1 sigma column, when present, comes only from",
+        f"run_mc's .std. The backend is pinned to {backend_used!r} so the numbers",
+        "reproduce bit-for-bit (C and Python differ at ~1e-5..1e-6).",
+        "",
+        "Run from THIS file's own directory:  python primat_gui_run.py",
+        '"""',
+        "from primat.backend import run_bbn",
+        "",
+        "cfg = dict(",
+        body,
+        ")",
+        f"result = run_bbn(cfg, force_backend={backend_used!r})",
+        "",
+        "# Standard ratios, in the tab's order and precision.",
+        "_RATIOS = [",
+        ratios_src,
+        "]",
+        'print("Standard ratios (central values from run_bbn):")',
+        "for _key, _fmt in _RATIOS:",
+        "    if _key in result:",
+        '        print(f"  {_key:8s} = {format(result[_key], _fmt)}")',
+    ]
+    if mc_quantities:
+        q = list(mc_quantities)
+        lines += [
+            "",
+            "# +/- 1 sigma from Monte-Carlo. Only .std is used; the central value",
+            "# stays run_bbn's above. seed=0 + same backend => matches the tab.",
+            "from primat.backend import run_mc",
+            f"_mc = run_mc({mc_samples}, {q!r}, params=cfg, seed=0, "
+            f"force_backend={backend_used!r})",
+            f'print("\\n+/- 1 sigma (quick MC, {mc_samples} samples):")',
+            "for _key, _fmt in _RATIOS:",
+            f"    if _key in {q!r}:",
+            '        print(f"  {_key:8s} +/- {format(_mc[_key].std, _fmt)}")',
+        ]
+    return "\n".join(lines) + "\n"
 
 
-def ini_export_text(params, custom_network_active=False):
-    """Return a standalone ``primat-c`` ``.ini`` file reproducing ``params``.
+def ini_export_text(params, *, custom_network_name=None, mc_samples=0):
+    """Return a standalone primat-c ``.ini`` reproducing the tab's central run.
 
-    Parameters
-    ----------
-    params : dict
-        Same "changed from default" dict as :func:`python_export_text`
-        (``"custom_network"``, if present, is not representable in ``.ini``
-        and is skipped -- see ``custom_network_active``).
-    custom_network_active : bool, optional
-        Whether a customised network is active for this run.
+    Same "changed from default" params as :func:`python_export_text`, emitted
+    as ``KEY = VALUE`` for ``./build/primat-c --ini``. A customised network is
+    reproduced via the bundled overlay: the base ``network`` is dropped and
+    replaced by ``custom_network_name`` with ``user_nuclear_dir = "nuclear"``.
+    The C CLI reproduces the central values; its own ``--mc N --mc-seed 0``
+    flags reproduce the +/- 1 sigma band (see the bundle's README.txt).
 
-    Returns
-    -------
-    str
+    Args:
+        params: dict. Changed-from-default params (no ``"custom_network"``).
+        custom_network_name: str or None. See :func:`python_export_text`.
+        mc_samples: int. Only used by the README's ``--mc`` hint, not emitted
+            into the ini itself.
+
+    Returns:
+        str. A ``run_basic_from_gui.ini``.
+
+    Example:
+        >>> ini_export_text({"network": "large"})
     """
-    keys = [k for k in params if k != "custom_network"]
+    cfg = {k: v for k, v in params.items() if k != "custom_network"}
+    if custom_network_name is not None:
+        cfg.pop("network", None)
+        cfg["network"] = custom_network_name
+        cfg["user_nuclear_dir"] = "nuclear"
     text = _INI_HEADER
-    if keys:
-        text += "\n".join(
-            f"{k} = {_ini_literal(params[k])}" for k in sorted(keys)
-        )
+    if cfg:
+        text += "\n".join(f"{k} = {_ini_literal(cfg[k])}" for k in sorted(cfg))
         text += "\n"
     else:
         text += "# (every parameter left at its DEFAULT_PARAMS default)\n"
-    if custom_network_active:
-        text += _CUSTOM_NETWORK_NOTE_INI
     return text

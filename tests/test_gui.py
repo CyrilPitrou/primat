@@ -460,17 +460,8 @@ def test_downloads_panel_offers_gui_export():
 
 
 def test_gui_exported_python_script_reproduces_run():
-    """The exported Python script is not just well-formed text -- ``exec``ing
-    it (with ``run_bbn`` monkeypatched out to avoid a second solve) actually
-    builds the same ``cfg`` dict the GUI just ran, closing the loop on
-    S-15's "exported .py file runs standalone and reproduces the GUI
-    result" acceptance criterion without paying for a second full BBN
-    solve in the test suite. Uses ``export_params.python_export_text``
-    directly on the session's own stored params -- the same dict
-    ``panels.render_downloads_panel`` passes it as ``run_params`` -- since
-    the rendered download button's bytes are not retrievable through
-    AppTest (see :func:`test_downloads_panel_offers_gui_export`).
-    """
+    """The exported .py execs standalone and rebuilds the same cfg, pins the
+    backend, and prints run_bbn central values (not an MC mean)."""
     import unittest.mock
 
     from primat.gui.export_params import python_export_text
@@ -486,14 +477,19 @@ def test_gui_exported_python_script_reproduces_run():
 
     stored_params = at.session_state[SessionKeys.params]
     script = python_export_text(
-        {k: v for k, v in stored_params.items() if k != "custom_network"})
+        {k: v for k, v in stored_params.items() if k != "custom_network"},
+        backend_used="python")
     assert "Omegabh2=0.0225" in script
+    assert "force_backend='python'" in script
+    assert "run_bbn" in script and ".mean" not in script
 
     captured = {}
 
     def fake_run_bbn(cfg, force_backend="auto"):
         captured["cfg"] = cfg
-        return {"Neff": 0.0, "YPBBN": 0.0, "DoH": 0.0}
+        # Include every standard-ratio key so the print loop exercises them.
+        from primat.gui.export_params import _STANDARD_RATIOS
+        return {k: 0.0 for k, _ in _STANDARD_RATIOS}
 
     with unittest.mock.patch("primat.backend.run_bbn", fake_run_bbn):
         exec(compile(script, "primat_gui_run.py", "exec"), {})
@@ -512,3 +508,41 @@ def test_export_params_ini_text_round_trips_values():
     assert 'network = "large"' in text
     assert "Omegabh2 = 0.0225" in text
     assert "every parameter left at its DEFAULT_PARAMS default" in ini_export_text({})
+
+
+def test_export_py_prints_full_standard_ratio_set():
+    """The exported .py prints every standard ratio, in CLAUDE.md precision."""
+    from primat.gui.export_params import _STANDARD_RATIOS, python_export_text
+
+    script = python_export_text({"network": "small"}, backend_used="c")
+    for key, _fmt in _STANDARD_RATIOS:
+        assert repr(key) in script
+    assert "force_backend='c'" in script
+
+
+def test_export_py_mc_block_uses_std_only_and_seed_zero():
+    """When MC quantities are given, the .py adds a run_mc(seed=0) std-only block."""
+    from primat.gui.export_params import python_export_text
+
+    script = python_export_text(
+        {"network": "small"}, backend_used="python",
+        mc_quantities=["YPBBN", "DoH"], mc_samples=30)
+    assert "run_mc(30, ['YPBBN', 'DoH']" in script
+    assert "seed=0" in script
+    assert "force_backend='python'" in script
+    assert ".std" in script
+    assert ".mean" not in script
+
+
+def test_export_custom_network_sets_user_nuclear_dir():
+    """A custom-network export drops the base network and points at the overlay."""
+    from primat.gui.export_params import ini_export_text, python_export_text
+
+    py = python_export_text({"network": "small"}, backend_used="c",
+                            custom_network_name="mynet")
+    assert "network='mynet'" in py
+    assert "user_nuclear_dir='nuclear'" in py
+
+    ini = ini_export_text({"network": "small"}, custom_network_name="mynet")
+    assert 'network = "mynet"' in ini
+    assert 'user_nuclear_dir = "nuclear"' in ini
