@@ -76,6 +76,14 @@ def _run_notebook(name, tmp_path, monkeypatch, parameters=None):
     work_dir = tmp_path / "notebooks"
     shutil.copytree(NOTEBOOKS_DIR, work_dir)
 
+    # The notebooks save figures with plt.savefig('plots/<name>') -- a path
+    # relative to cwd (== work_dir). notebooks/plots/ is .gitignore'd (its PDFs
+    # are regenerable output, not tracked), so a fresh CI checkout has no
+    # plots/ subdir for copytree to copy, and savefig() raises
+    # FileNotFoundError. Create it here so the test does not depend on the
+    # author's local, untracked plots/ directory being present.
+    (work_dir / "plots").mkdir(exist_ok=True)
+
     papermill.execute_notebook(
         str(work_dir / name), str(work_dir / f"out_{name}"),
         cwd=str(work_dir),
