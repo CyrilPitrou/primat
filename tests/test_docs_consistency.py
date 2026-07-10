@@ -372,3 +372,21 @@ def test_tests_readme_lists_every_test_file():
     assert files, "no test files found"
     missing = [f for f in files if f not in readme_text]
     assert not missing, f"tests/README.md is missing rows for: {missing}"
+
+
+def test_docs_tutorials_gallery_complete():
+    """Every notebook in notebooks/ is rendered in the docs tutorial
+    gallery: symlinked into docs/tutorials/ and listed in its toctree.
+
+    Guards against the drift found 2026-07-10 where ReactionRates.ipynb and
+    AnimatedAbundances.ipynb were added to notebooks/ but never surfaced on
+    the docs site."""
+    notebooks_dir = os.path.join(REPO_ROOT, "notebooks")
+    tutorials_dir = os.path.join(REPO_ROOT, "docs", "tutorials")
+    notebooks = {os.path.splitext(f)[0] for f in os.listdir(notebooks_dir)
+                 if f.endswith(".ipynb")}
+    index = _read_text(os.path.join(tutorials_dir, "index.md"))
+    opt_out = set()  # notebooks intentionally kept off the docs site
+    for stem in sorted(notebooks - opt_out):
+        assert os.path.exists(os.path.join(tutorials_dir, f"{stem}.ipynb")), stem
+        assert stem in index, f"{stem} missing from docs/tutorials/index.md"

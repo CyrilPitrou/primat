@@ -28,6 +28,15 @@ jupyter lab notebooks/
   (~429-reaction) networks.
 - **{doc}`CompareSmallNetworks`** — `small` vs. `small_parthenope` head to
   head.
+- **{doc}`AnimatedAbundances`** — animated GIFs of the small-network
+  abundance evolution `A_i Y_i(t)`, sweeping ΔNeff and Ω_b h² in turn.
+
+## Nuclear rates
+
+- **{doc}`ReactionRates`** — plots the tabulated rate ⟨σv⟩(T9) of any
+  reaction in the network, with the master-grid reinterpolation overlaid,
+  alongside the n↔p weak rates, all compared against the Hubble rate H(T)
+  to show freeze-out.
 
 ## Parameter scans
 
@@ -65,6 +74,8 @@ default to 50 for speed).
 StandardPlots
 AbundanceEvolution
 CompareSmallNetworks
+AnimatedAbundances
+ReactionRates
 PosteriorBaryons
 AbundancesNrelat
 AbundancesXi
