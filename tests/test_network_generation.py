@@ -64,6 +64,54 @@ def test_resolve_token_canonicalises_spellings():
     assert (c12.Z, c12.A, c12.name) == (6, 12, "C12")
 
 
+def test_shipped_rate_tables_are_on_the_master_grid():
+    """Every shipped per-reaction rate table must already sit on primat's
+    master T9 grid (``rate_grid_{npts,T9_min,T9_max}``).
+
+    Both generators -- ``convert_ac2024_rates.py`` (the ``_primat`` tables) and
+    ``parthenope3.0_extract/postprocess.py`` (the ``parthenope3.0`` tables) --
+    write on this grid, so ``load_network``'s load-time resampler takes its
+    identity fast path (``_resample_rate_table``) and spends no time
+    interpolating stored rates.  If a table drifts off the grid (e.g. a stale
+    500-point table left un-regenerated after ``rate_grid_npts`` changed) the
+    solver silently pays a full cubic resample on every run and the C and
+    Python backends can disagree on the resampled values -- exactly the drift
+    this guard exists to catch.  ``decays.txt`` is exempt: it is a shared
+    one-row-per-decay table, not a per-reaction T9 grid.
+    """
+    import glob
+    import numpy as np
+    from primat.config import DEFAULT_PARAMS
+
+    master = np.logspace(
+        np.log10(DEFAULT_PARAMS["rate_grid_T9_min"]),
+        np.log10(DEFAULT_PARAMS["rate_grid_T9_max"]),
+        DEFAULT_PARAMS["rate_grid_npts"],
+    )
+    tables_dir = os.path.join(_ROOT, "primat", "data", "nuclear", "tables")
+    files = sorted(glob.glob(os.path.join(tables_dir, "*", "*.txt")))
+    assert files, f"no rate tables found under {tables_dir}"
+
+    off_grid = []
+    for path in files:
+        if os.path.basename(path) == "decays.txt":
+            continue  # shared decay table, not a per-reaction T9 grid
+        t9 = np.loadtxt(path)[:, 0]
+        # Match the load-time fast-path criterion in _resample_rate_table:
+        # same length and agreeing with the master grid to the on-disk
+        # 7-significant-figure rounding of the T9 column.
+        on_grid = (t9.shape == master.shape
+                   and np.all(np.abs(t9 / master - 1.0) < 1.0e-6))
+        if not on_grid:
+            off_grid.append((os.path.relpath(path, _ROOT), len(t9)))
+
+    assert not off_grid, (
+        "rate tables not on the master grid (regenerate them -- see "
+        "convert_ac2024_rates.py / parthenope3.0_extract/postprocess.py):\n"
+        + "\n".join(f"  {p}  ({n} rows, expected {len(master)})"
+                    for p, n in off_grid))
+
+
 def test_leptons_and_photons_carry_charge_but_no_baryon():
     assert resolve_token("g").kind == "photon"
     bm, bp = resolve_token("Bm"), resolve_token("Bp")

@@ -13,13 +13,39 @@ points (continuing the steep Gamow fall-off as T9 -> 0), and the multiplicative
 error is held constant at its value on the validity floor.  This region is
 dynamically irrelevant (the reactions are frozen out there) but the values must
 stay positive and monotone so primat's log-log resampler can ingest them.
+
+Grid: after repair, each table is resampled onto primat's master T9 grid
+(``rate_grid_{npts,T9_min,T9_max}`` in ``primat.config.DEFAULT_PARAMS``,
+currently 1000 log-spaced points from 1e-3 to 10 GK) using the *exact*
+runtime resampler ``primat.network_data._resample_rate_table`` (log-log cubic).
+Writing the tables already on the master grid makes ``load_network``'s
+load-time resample a no-op, so the shipped file and what the solver sees are
+identical -- and keeps this stream in lock-step with the AC2024 ``_primat``
+tables, which ``convert_ac2024_rates.py`` also writes on the master grid.
+``tests/test_rate_tables_on_grid.py`` enforces that every shipped table stays
+on this grid.
 """
 import os
+import sys
 import numpy as np
 
 # Repo root is three levels up from generate_rates/parthenope3.0_extract/.
-OUT_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "primat", "data", "nuclear", "tables"
+_REPO_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+from primat.config import DEFAULT_PARAMS
+from primat.network_data import _resample_rate_table
+
+OUT_DIR = os.path.join(_REPO_ROOT, "primat", "data", "nuclear", "tables")
+
+# primat's master T9 grid -- the single source of truth is DEFAULT_PARAMS, so
+# this generator can never drift from the runtime grid the solver resamples to.
+STD_GRID = np.logspace(
+    np.log10(DEFAULT_PARAMS["rate_grid_T9_min"]),
+    np.log10(DEFAULT_PARAMS["rate_grid_T9_max"]),
+    DEFAULT_PARAMS["rate_grid_npts"],
 )
 
 # primat name -> (header arrow string, Parthenope source/branch)
@@ -74,6 +100,11 @@ def main():
         t9, f, err = raw[:, 0], raw[:, 1], raw[:, 2]
         nbad = int(np.sum(~((np.isfinite(f) & (f > 0) & np.isfinite(err) & (err >= 1.0)))))
         f, err = repair(t9, f, err)
+        # Resample onto primat's master grid with the exact runtime resampler
+        # (log-log cubic), so the shipped file needs no load-time interpolation.
+        f = _resample_rate_table(t9, f, STD_GRID)
+        err = _resample_rate_table(t9, err, STD_GRID)
+        t9 = STD_GRID
         path = os.path.join(OUT_DIR, f"{name}_parthenope3.0.txt")
         with open(path, "w") as fh:
             fh.write(f"# {arrow}   [{name}]   ref=Parthenope3.0 ({ref})\n")

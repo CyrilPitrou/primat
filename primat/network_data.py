@@ -109,6 +109,20 @@ def _resample_rate_table(T9_src, rate_src, T9_dst):
     Returns:
         1-D float array of rate values resampled onto T9_dst.
     """
+    # Fast path: the shipped tables are written *already on the master grid*
+    # (convert_ac2024_rates.py / parthenope postprocess.py both target
+    # rate_grid_{npts,T9_min,T9_max}), so at load time T9_src == T9_dst up to
+    # the on-disk 7-significant-figure rounding of the T9 column.  When that is
+    # the case there is nothing to interpolate: return the stored rates
+    # verbatim.  This both saves the (millions-of-tables-over-a-run-negligible
+    # but non-zero) spline cost and makes the load an *exact* identity -- no
+    # re-interpolation wobble from the rounded x-nodes, and byte-identical
+    # values across the C and Python backends.  A genuinely off-grid table
+    # (custom network, --keep-source-grid, different npts) fails the length or
+    # tolerance check and falls through to the real resampler below.
+    if T9_src.shape == T9_dst.shape and np.all(
+            np.abs(np.asarray(T9_src) / np.asarray(T9_dst) - 1.0) < 1.0e-6):
+        return np.array(rate_src, dtype=float)
     lx_src, lx_dst = np.log10(T9_src), np.log10(T9_dst)
     if np.all(rate_src > 0):
         f = interp1d(lx_src, np.log10(rate_src), kind="cubic",

@@ -264,6 +264,24 @@ int cpr_resample_rate_table(const double *T9_src, const double *rate_src, size_t
                               const double *T9_dst, double *rate_dst, size_t n_dst,
                               char **errmsg)
 {
+    /* Fast path (mirrors Python's _resample_rate_table): the shipped tables are
+     * written already on the master grid, so at load time T9_src == T9_dst up
+     * to the on-disk 7-significant-figure rounding of the T9 column.  When so,
+     * copy the stored rates verbatim -- no spline cost, and an exact identity
+     * that reads byte-for-byte the same values as the Python backend.  A
+     * genuinely off-grid table fails the length/tolerance check and falls
+     * through to the real resampler below. */
+    if (n_src == n_dst) {
+        int on_grid = 1;
+        for (size_t i = 0; i < n_src; i++) {
+            if (fabs(T9_src[i] / T9_dst[i] - 1.0) >= 1.0e-6) { on_grid = 0; break; }
+        }
+        if (on_grid) {
+            for (size_t i = 0; i < n_dst; i++) rate_dst[i] = rate_src[i];
+            return 0;
+        }
+    }
+
     double *lx_src = malloc(n_src * sizeof(double));
     double *lx_dst = malloc(n_dst * sizeof(double));
     for (size_t i = 0; i < n_src; i++) lx_src[i] = log10(T9_src[i]);

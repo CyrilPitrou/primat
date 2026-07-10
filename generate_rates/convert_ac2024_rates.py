@@ -2,8 +2,10 @@
 """
 convert_ac2024_rates.py
 =======================
-Build a per-reaction rate-table set on the standard 500-point log-uniform T9
-grid from two sources:
+Build a per-reaction rate-table set on primat's master log-uniform T9 grid
+(``rate_grid_{npts,T9_min,T9_max}`` in ``primat.config.DEFAULT_PARAMS``,
+currently 1000 points from 1e-3 to 10 GK -- single-sourced so the generator
+can never drift from the grid the solver resamples to) from two sources:
 
   1. the tabulated ``BBNRatesAC2024.dat`` compilation (interpolated), and
   2. the analytic rate formulas, hard-coded in the ``_ANALYTIC_REACTIONS`` table
@@ -37,13 +39,13 @@ Output:
     ``n_p__d_g_primat.txt``): a header line (``#`` comment, ignored by
     ``numpy.loadtxt``) recording the reaction, its reference and its
     detailed-balance coefficients, then three columns ``T9  rate  error`` on
-    the 500-point grid.  Alternate-source variants (a different ``--suffix``,
+    the master grid.  Alternate-source variants (a different ``--suffix``,
     e.g. a Parthenope-extracted table) land as a sibling file in the same
     per-reaction folder, e.g. ``tables/n_p__d_g/n_p__d_g_parthenope3.0.txt``.
   * ``primat/data/nuclear/tables/decays.txt`` for every radioactive-decay
     reaction (Bm/Bp on the products side): one row each with
     ``name  halflife_s  rate_s^-1  uncertainty  ref`` -- decay rates don't
-    depend on T9, so a 500-row table per reaction would be redundant (see
+    depend on T9, so a full-grid table per reaction would be redundant (see
     :func:`write_decay_file`). Always unsuffixed: ``--suffix`` never applies
     to it, since ``network_data._load_decay_table`` hardcodes this filename.
   * ``<datadir>/detailed_balance.csv``: reaction, Q, alpha, beta, gamma for all
@@ -647,7 +649,7 @@ def write_analytic_file(block, grid, outdir, suffix=""):
 def write_decay_file(decay_blocks, outdir, suffix=""):
     """Write ``decays.txt``: one row per radioactive-decay reaction.
 
-    Decay rates are constants (no T9 dependence -- a 500-row table repeating
+    Decay rates are constants (no T9 dependence -- a full-grid table repeating
     the same number, as ``write_analytic_file`` would produce, is wasteful and
     obscures the physically meaningful quantity).  Instead each reaction gets
     one row with its **half-life** ``halflife_s`` (the conventional way decay
@@ -1299,7 +1301,7 @@ def _parse_args(argv):
     p.add_argument("--keep-source-grid", action="store_true",
                    help="write each tabulated reaction on its own native T9 grid "
                         "(~60 points from the AC2024 file) instead of reinterpolating "
-                        "onto the standard 500-point grid.  Analytic reactions always "
+                        "onto the master grid.  Analytic reactions always "
                         "use the standard grid.  primat's load_network resamples all "
                         "tables to a master grid at init, so mixing grids is safe.")
     return p.parse_args(argv)

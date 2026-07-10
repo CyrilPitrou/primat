@@ -128,15 +128,15 @@ explicit so this reference stays decoupled from the routine-run default below).
 
 | Observable | Expected | Tolerance |
 |------------|----------|-----------|
-| YP (BBN) | 0.24699814 | ±1e-5 |
-| D/H | 2.43589e-5 | ±3e-9 |
+| YP (BBN) | 0.24699819 | ±1e-5 |
+| D/H | 2.43588e-5 | ±3e-9 |
 
 **`large, amax=8`** (the old "medium" network's exact 68-reaction equivalent):
 
 | Observable | Expected | Tolerance |
 |------------|----------|-----------|
-| YP (BBN) | 0.24700149 | ±1e-5 |
-| D/H | 2.43660e-5 | ±3e-9 |
+| YP (BBN) | 0.24700154 | ±1e-5 |
+| D/H | 2.43659e-5 | ±3e-9 |
 
 A result outside these bounds indicates a regression.
 
@@ -154,13 +154,13 @@ negligible and `n` tracks the `amax=8` value.
 
 | Nuclide | small | large, amax=8 | large |
 |---------|-------|----------------|-------|
-| n   | 3.997327e-16 | 3.996466e-16 | 3.996457e-16 |
-| p   | 7.529428e-01 | 7.529393e-01 | 7.529393e-01 |
-| H2  | 1.834091e-05 | 1.834593e-05 | 1.834595e-05 |
-| H3  | 5.851999e-08 | 5.839058e-08 | 5.839065e-08 |
-| He4 | 6.174927e-02 | 6.175012e-02 | 6.175013e-02 |
-| Li7 | 2.181387e-11 | 9.178094e-11 | 9.178023e-11 |
-| Be7 | 3.966396e-10 | 3.223639e-10 | 3.223612e-10 |
+| n   | 3.997435e-16 | 3.996517e-16 | 3.996503e-16 |
+| p   | 7.529426e-01 | 7.529393e-01 | 7.529393e-01 |
+| H2  | 1.834099e-05 | 1.834603e-05 | 1.834601e-05 |
+| H3  | 5.852032e-08 | 5.839099e-08 | 5.839082e-08 |
+| He4 | 6.174931e-02 | 6.175013e-02 | 6.175013e-02 |
+| Li7 | 2.181386e-11 | 9.178083e-11 | 9.178037e-11 |
+| Be7 | 3.966369e-10 | 3.223616e-10 | 3.223599e-10 |
 
 Baryon number is conserved exactly by every network (`sum_s A_s Y_s = 1` to ~1e-10).
 

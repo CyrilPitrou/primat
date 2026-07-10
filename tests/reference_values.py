@@ -17,13 +17,14 @@ n<->p weak-rate / background machinery.
 # Default small-network run (network="small", spectral_distortions=True,
 # nuclear_qed_corrections=True -- the PRIMATConfig defaults), as produced by
 # `primat.cli.main([])`, `primat-gui`'s default "Run BBN", and
-# `runfiles/primat_run.py`. Re-snapshotted 2026-07-08 after the default
-# `Omegabh2` was changed to 0.02242 (Planck 2018 + BAO); values are the
+# `runfiles/primat_run.py`. Re-snapshotted 2026-07-10 after the shipped nuclear
+# rate tables were regenerated on the 1000-point master grid (removing the old
+# 60->500->1000 double-resample; observables shifted at the ~1e-7 level); values are the
 # auto-backend (C, when available) CLI output, matching what these tests
 # actually invoke.
 NEFF_REFERENCE  = 3.0439772986
-YPBBN_REFERENCE = 0.24699701   # primat.cli.main() default (auto backend), Omegabh2=0.02242
-DOH_REFERENCE   = 2.435908e-5  # primat.cli.main() default (auto backend), Omegabh2=0.02242
+YPBBN_REFERENCE = 0.24699723   # primat.cli.main() default (auto backend), Omegabh2=0.02242
+DOH_REFERENCE   = 2.435909e-5  # primat.cli.main() default (auto backend), Omegabh2=0.02242
 
 # Tolerances (CLAUDE.md: "A result outside these bounds indicates a regression").
 NEFF_ABS_TOL  = 1e-5
@@ -31,8 +32,8 @@ YPBBN_ABS_TOL = 1e-5
 DOH_ABS_TOL   = 3e-9
 
 # Per-nuclide final mass fractions, small network (primat.cli.main() default, auto backend).
-P_REFERENCE   = 7.529428e-01
-HE4_REFERENCE = 6.174925e-02
+P_REFERENCE   = 7.529426e-01
+HE4_REFERENCE = 6.174931e-02
 NUCLIDE_ABS_TOL = 1e-4  # mirrors the table's own documented precision
 
 # High-precision reference values (tests/README.md "Validation reference"),
@@ -42,7 +43,7 @@ NUCLIDE_ABS_TOL = 1e-4  # mirrors the table's own documented precision
 # tests/test_regression.py's reference tier AND the table parser in
 # tests/test_docs_consistency.py -- update all three places together (the
 # parser test fails if the README table and these constants drift).
-REF_SMALL_YPBBN  = 0.24699814
-REF_SMALL_DOH    = 2.43589e-5
-REF_LARGE8_YPBBN = 0.24700149
-REF_LARGE8_DOH   = 2.43660e-5
+REF_SMALL_YPBBN  = 0.24699819
+REF_SMALL_DOH    = 2.43588e-5
+REF_LARGE8_YPBBN = 0.24700154
+REF_LARGE8_DOH   = 2.43659e-5
