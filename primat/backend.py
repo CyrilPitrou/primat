@@ -137,7 +137,11 @@ _C_DATA_DIR = os.path.join(_PACKAGE_DIR, "data")
 
 _c_ext: Any = None
 try:
-    from . import _primat_c as _c_ext
+    # `_primat_c` is the compiled C extension (built by setup.py from
+    # primat/_primat_c_src/_wrapper.c); it is invisible to static analysis, so
+    # mypy sees neither the `primat._primat_c` attribute nor that this rebinds
+    # the `_c_ext: Any` declared just above -- both are intentional at runtime.
+    from . import _primat_c as _c_ext  # type: ignore[attr-defined,no-redef]
     HAS_C_BACKEND = True
 except ImportError:
     HAS_C_BACKEND = False
