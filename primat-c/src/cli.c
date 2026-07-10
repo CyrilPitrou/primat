@@ -566,7 +566,11 @@ static void print_mc_matrices(const CPRMCResult *mc, int num_mc)
         if (k + 1 < m) strncat(title, ", ", sizeof(title) - strlen(title) - 1);
     }
 
-    /* Correlation: 8-wide row labels, 9-wide %9.3f value columns. */
+    /* Correlation: 8-wide row labels, 9-wide %9.3f value columns.
+     * Leading blank line separates the matrix block from the preceding
+     * per-observable summary for readability (mirrors cli.py's
+     * _print_mc_matrices, per the byte-for-byte output-parity mandate). */
+    putchar('\n');
     printf("Correlation matrix (%s):\n", title);
     printf("%8s", "");
     for (size_t k = 0; k < m; k++) printf("%9s", mc->items[idx[k]].name);
@@ -587,7 +591,9 @@ static void print_mc_matrices(const CPRMCResult *mc, int num_mc)
         }
         putchar('\n');
     }
-    /* Covariance: same 8-wide labels, 13-wide %13.3e value columns. */
+    /* Covariance: same 8-wide labels, 13-wide %13.3e value columns.
+     * Leading blank line, as for the correlation block above. */
+    putchar('\n');
     printf("Covariance matrix (%s):\n", title);
     printf("%8s", "");
     for (size_t k = 0; k < m; k++) printf("%13s", mc->items[idx[k]].name);

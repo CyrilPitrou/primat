@@ -22,6 +22,7 @@ install cell (`importlib.util.find_spec("primat") is None`) that
 | `AbundanceEvolution.ipynb` | **Time evolution** of A_i Y_i(t) for all nuclides from 1 s to 10⁵ s, for both the 12-reaction (small) and ~429-reaction (large) networks. |
 | `AnimatedAbundances.ipynb` | **Animated time evolution**: two GIFs of the small-network A_i Y_i(t) tracks, sweeping ΔNeff and Ω_b h² respectively. |
 | `CompareSmallNetworks.ipynb` | **Network comparison**: `small` vs `small_parthenope` — abundances and time evolution side by side. |
+| `ReactionRates.ipynb` | **Reaction rates vs Hubble**: weak n↔p rates and the main `small`-network nuclear reactions, all as inverse times [s⁻¹], forward solid / backward dashed, with the Hubble rate H(T) in black — visualising weak freeze-out and the deuterium bottleneck. |
 
 ### Parameter scans
 

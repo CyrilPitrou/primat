@@ -103,11 +103,17 @@ def _print_mc_matrices(mc):
     title = ", ".join(labels)
     # Correlation: 8-wide row-label column, 9-wide value columns (%9.3f); the
     # header names are right-justified to the same 9 so they sit over values.
+    # A leading blank line separates the matrix block from the preceding
+    # per-observable summary for readability (mirrored in the C backend's
+    # print_mc_matrices, per the byte-for-byte output-parity mandate).
+    print()
     print(f"Correlation matrix ({title}):")
     print(" " * 8 + "".join(f"{q:>9}" for q in labels))
     for a in labels:
         print(f"{a:>8}" + "".join(f"{mc.corr(a, b):9.3f}" for b in labels))
     # Covariance: same 8-wide labels, 13-wide value columns (%13.3e).
+    # Leading blank line, as for the correlation block above.
+    print()
     print(f"Covariance matrix ({title}):")
     print(" " * 8 + "".join(f"{q:>13}" for q in labels))
     for a in labels:

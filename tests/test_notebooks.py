@@ -7,6 +7,8 @@ they run without raising. Two tiers:
 * ``FAST_NOTEBOOKS`` -- no Monte Carlo, run as-is:
     - ``AbundanceEvolution.ipynb`` -- small/large(amax=8)/large solves, ~5 s.
     - ``CompareSmallNetworks.ipynb`` -- two small-network solves, ~4 s.
+    - ``ReactionRates.ipynb`` -- one small-network build; plots the weak and
+      nuclear reaction rates vs the Hubble rate, no solve(), ~4 s.
 * ``MC_NOTEBOOKS`` -- normally run a Monte Carlo scan at publication-quality
   sample counts (``num_mc``/``N_MC`` ~100-500, sometimes over a parameter
   grid too, e.g. ``StandardPlots.ipynb``'s 20 eta points x 100 MC samples).
@@ -48,6 +50,7 @@ NOTEBOOKS_DIR = Path(__file__).resolve().parents[1] / "notebooks"
 FAST_NOTEBOOKS = [
     "AbundanceEvolution.ipynb",
     "CompareSmallNetworks.ipynb",
+    "ReactionRates.ipynb",
 ]
 
 # Notebook name -> papermill parameter dict overriding its MC sample count
