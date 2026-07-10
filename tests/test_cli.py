@@ -130,7 +130,10 @@ def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
 
     rc = main(["--set", "user_nuclear_dir=~/custom", "--json"])
     assert rc == 0
-    err = capsys.readouterr().err
+    # The [init] overlay note quotes the resolved path with repr(), which
+    # doubles backslashes on Windows; collapse them so the substring check
+    # matches str(...) (single backslashes). No-op on POSIX forward slashes.
+    err = capsys.readouterr().err.replace("\\\\", "\\")
     assert "nuclear networks and rate tables" in err
     assert str((tmp_path / "custom").resolve()) in err
 
