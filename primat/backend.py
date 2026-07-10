@@ -150,10 +150,24 @@ except ImportError:
 def _python_solve(params: dict[str, Any] | None, extra_rho: list | None,
                    custom_network: dict[str, Any] | None, background,
                    progress: bool = True) -> dict[str, Any]:
-    """Run the pure-Python backend and return PRIMAT.solve()'s result dict."""
+    """Run the pure-Python backend and return PRIMAT.solve()'s result dict.
+
+    Backend-parity note: the C backend's ``run_bbn`` attaches a ``"Y_final"``
+    sub-dict of every tracked nuclide's final mass fraction
+    (``primat/_primat_c_src/_wrapper.c``). ``PRIMAT.solve()`` itself does not
+    include it -- an in-process Python caller would query
+    ``inst.get_quantity(...)`` / ``inst.nuclear.Y_final`` instead -- but
+    :func:`run_bbn` returns only the result dict, with no instance to query,
+    so we must mirror the C backend and attach ``"Y_final"`` here or callers
+    (and ``tests/test_backend_parity.py``) see divergent result-dict keys
+    across backends.
+    """
     from .main import PRIMAT
-    return PRIMAT(params=params, extra_rho=extra_rho,
-                  custom_network=custom_network, background=background).solve(progress=progress)
+    inst = PRIMAT(params=params, extra_rho=extra_rho,
+                  custom_network=custom_network, background=background)
+    result = inst.solve(progress=progress)
+    result["Y_final"] = dict(inst.nuclear.Y_final)
+    return result
 
 
 # Number of log-spaced Tg nodes used to tabulate extra_rho for the C backend

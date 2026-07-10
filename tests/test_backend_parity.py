@@ -76,11 +76,13 @@ def test_backend_result_dict_shape_matches():
     # sector hooks (see PRIMAT.solve()'s final_nu-guarded keys).
     assert {"Neff", "Omeganurel", "OneOverOmeganunr"} <= r_c.keys()
     assert {"Neff", "Omeganurel", "OneOverOmeganunr"} <= r_py.keys()
-    # r_c carries one extra "Y_final" sub-dict the Python solve() result does
-    # not (a bonus the C wrapper adds, see _wrapper.c's results_to_dict);
-    # every other key must match exactly.
-    assert r_c.keys() - {"Y_final"} == r_py.keys()
+    # Both backends must expose the same keys, including the "Y_final"
+    # sub-dict of final nuclide mass fractions (CLAUDE.md's parity mandate:
+    # "same result-dict keys"). The C wrapper adds it in _wrapper.c's
+    # results_to_dict; the Python run_bbn mirrors it in backend._python_solve.
+    assert r_c.keys() == r_py.keys()
     assert isinstance(r_c["Y_final"], dict)
+    assert isinstance(r_py["Y_final"], dict)
 
 
 @requires_c_backend
@@ -562,7 +564,9 @@ def test_backend_custom_network_result_dict_shape_matches():
 
     assert _ALWAYS_KEYS <= r_c.keys()
     assert _ALWAYS_KEYS <= r_py.keys()
-    assert r_c.keys() - {"Y_final"} == r_py.keys()
+    # Same keys on both backends, including "Y_final" (see the note in
+    # test_backend_result_dict_shape_matches / CLAUDE.md parity mandate).
+    assert r_c.keys() == r_py.keys()
 
 
 @requires_c_backend
