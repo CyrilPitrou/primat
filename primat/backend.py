@@ -146,6 +146,15 @@ try:
 except ImportError:
     HAS_C_BACKEND = False
 
+# Known limitation (accepted, not a bug to chase): on Windows an *editable*
+# install (`pip install -e .`) does not build/expose the compiled `.pyd`, so
+# HAS_C_BACKEND is False there and every run transparently uses the pure-Python
+# backend. A normal *wheel* install on Windows DOES ship a working extension
+# (see the green windows-latest leg of .github/workflows/wheels.yml), so end
+# users are unaffected -- only Windows contributors developing from a source
+# checkout. macOS/Linux build the extension in-place in editable installs as
+# usual. Not worth pursuing (research use is macOS/Linux); see FABLEADVICE O-6.
+
 
 def _python_solve(params: dict[str, Any] | None, extra_rho: list | None,
                    custom_network: dict[str, Any] | None, background,
