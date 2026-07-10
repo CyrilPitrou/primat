@@ -106,8 +106,17 @@ def _overlay_candidates(base: str, relpath: str) -> list[str]:
     falls back to the legacy nested layout for compatibility.
     """
     candidates = []
-    if relpath.startswith("nuclear/"):
-        candidates.append(os.path.join(base, relpath[len("nuclear/"):]))
+    # ``relpath`` is built by callers with os.path.join, so on Windows its
+    # components are separated by "\\", not "/". Normalise to forward slashes
+    # before detecting a leading "nuclear/" component, otherwise the
+    # nuclear-stripped overlay candidate is never generated on Windows and a
+    # user_nuclear_dir overlay's networks/rate tables become invisible there.
+    norm = relpath.replace(os.sep, "/")
+    if os.altsep:
+        norm = norm.replace(os.altsep, "/")
+    if norm.startswith("nuclear/"):
+        stripped_parts = norm[len("nuclear/"):].split("/")
+        candidates.append(os.path.join(base, *stripped_parts))
     candidates.append(os.path.join(base, relpath))
     return candidates
 
@@ -459,7 +468,10 @@ def _default_params_comments():
     import tokenize
 
     path = __file__
-    with open(path) as f:
+    # Explicit UTF-8: config.py contains non-ASCII physics characters in its
+    # comments (ν, ↔, →, …); the default locale encoding is cp1252 on Windows
+    # and would raise UnicodeDecodeError re-reading this very file.
+    with open(path, encoding="utf-8") as f:
         source = f.read()
     tree = ast.parse(source, filename=path)
 
@@ -477,7 +489,10 @@ def _default_params_comments():
     # Map each source line number to the comment token that starts on it, by
     # re-tokenizing the same file (comments aren't part of the AST).
     line_comments = {}
-    with open(path) as f:
+    # Explicit UTF-8: config.py contains non-ASCII physics characters in its
+    # comments (ν, ↔, →, …); the default locale encoding is cp1252 on Windows
+    # and would raise UnicodeDecodeError re-reading this very file.
+    with open(path, encoding="utf-8") as f:
         for tok in tokenize.generate_tokens(f.readline):
             if tok.type == tokenize.COMMENT:
                 line_comments[tok.start[0]] = tok.string.lstrip("#").strip()

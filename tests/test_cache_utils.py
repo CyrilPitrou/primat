@@ -140,18 +140,22 @@ def test_cache_write_failure_warns_instead_of_raising(tmp_path):
     The warning must both explain AND point at the cache_dir remedy (author
     decision 2026-07-09: read-only installs are what cache_dir exists for)."""
     import warnings
-    ro = tmp_path / "ro"; ro.mkdir(); ro.chmod(0o500)
-    try:
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            ok = write_cache_with_fingerprint(
-                str(ro / "nTOp_test.txt"), {"field": 1.0},
-                [np.ones(3), np.zeros(3)], col_header="a b")
-        assert ok is False
-        assert any("could not write" in str(x.message)
-                   and "cache_dir" in str(x.message) for x in w)
-    finally:
-        ro.chmod(0o700)
+    # Force a portable write failure by pointing the cache at a path whose
+    # parent is a regular file: os.makedirs() inside write_cache_with_fingerprint
+    # then raises NotADirectoryError (an OSError) on every platform. A read-only
+    # directory via chmod(0o500) is NOT portable -- on Windows os.chmod cannot
+    # clear a directory's write permission, so the write would spuriously succeed.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    target = blocker / "sub" / "nTOp_test.txt"
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ok = write_cache_with_fingerprint(
+            str(target), {"field": 1.0},
+            [np.ones(3), np.zeros(3)], col_header="a b")
+    assert ok is False
+    assert any("could not write" in str(x.message)
+               and "cache_dir" in str(x.message) for x in w)
 
 
 def test_cache_dir_not_in_weak_rate_fingerprint():
