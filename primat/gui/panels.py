@@ -95,7 +95,11 @@ def render_results_panel(run, mc=None, run_params=None, backend_used=None):
        omitted here as niche neutrino-energy-density quantities), formatted to
        the precision required by ``CLAUDE.md``, plus an optional MC-uncertainty
        column (see ``mc`` above).
-    2. A table of every tracked nuclide (``run.abundance_names``), with the
+    2. The "Download reproduction bundle (.zip)" button (a self-contained
+       ``.py``/``.ini`` + any custom network that reproduce these exact values;
+       see :func:`primat.gui.export_params.build_reproduction_zip`), placed
+       directly under the standard-ratios table it reproduces.
+    3. A table of every tracked nuclide (``run.abundance_names``), with the
        nuclide name in standard isotope LaTeX notation (``nuclide_latex``),
        its mass number ``A``, charge ``Z``, and final mass-fraction abundance
        ``Y`` (``run.get_quantity(name)``).
@@ -134,17 +138,11 @@ def render_results_panel(run, mc=None, run_params=None, backend_used=None):
             "publication-quality error bar."
         )
 
-    st.subheader("Final abundances")
-    lines = ["| Nuclide | A | Z | Y |", "|---|---|---|---|"]
-    lines += [
-        f"| {nuclide_latex(name)} | {run.A[name]} | {run.Z[name]} | {run.get_quantity(name):.6e} |"
-        for name in run.abundance_names
-    ]
-    st.markdown("\n".join(lines))
-
     # Reproduction bundle: the files that reproduce EXACTLY this tab's numbers.
-    # Only shown once we know both the params that ran and which backend ran
-    # (needed to pin force_backend for bit-for-bit reproduction).
+    # Placed between the standard-ratios table above and the per-nuclide table
+    # below, right under the values it reproduces. Only shown once we know both
+    # the params that ran and which backend ran (needed to pin force_backend
+    # for bit-for-bit reproduction).
     if run_params is not None and backend_used is not None:
         import json
 
@@ -182,6 +180,14 @@ def render_results_panel(run, mc=None, run_params=None, backend_used=None):
                 help="A self-contained script + primat-c .ini (+ the custom "
                      "network, if any) that reproduce exactly the values above.",
             )
+
+    st.subheader("Final abundances")
+    lines = ["| Nuclide | A | Z | Y |", "|---|---|---|---|"]
+    lines += [
+        f"| {nuclide_latex(name)} | {run.A[name]} | {run.Z[name]} | {run.get_quantity(name):.6e} |"
+        for name in run.abundance_names
+    ]
+    st.markdown("\n".join(lines))
 
 
 def final_abundances_text(run, mc=None):
