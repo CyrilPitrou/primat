@@ -155,14 +155,34 @@ _RATE_SYNTAX_ = "spaced"
 # reaction_stoichiometry, to_filename, load_network).
 _WEAK_NTOP_NAMES = ("n__p", "n__p")
 
-# Historical MT order from PRIMAT.  MT always integrates the intersection of the
-# selected network with this list, because activating the full network before
-# the deuterium bottleneck opens makes the BDF problem unnecessarily stiff.
+# MT-era reaction order.  MT always integrates the intersection of the selected
+# network with this list, because activating the full network before the
+# deuterium bottleneck opens makes the BDF problem unnecessarily stiff.
+#
+# ORDERING (important -- see below): the twelve ``small``-network thermonuclear
+# reactions come first, in exactly ``ORDER_SMALL``'s order, followed by the
+# five MT-only extras. This makes ``ORDER_SMALL`` a *prefix subsequence* of
+# ``ORDER_MT``, so that ``[r for r in ORDER_MT if r in reactions]`` yields the
+# same relative order as ``ORDER_SMALL`` for any subset of the small network.
+# Consequence: a ``small``-derived custom network reproduces the *same* MT
+# integration whether it is loaded under the name ``"small"`` (which selects
+# ``ORDER_SMALL`` directly, see ``_select_era_reactions``) or under any other
+# name / via a ``user_nuclear_dir`` overlay (which selects from ``ORDER_MT``).
+# The MT solve is a stiff BDF integration and is *not* invariant to permuting
+# its state vector (~1e-6), so this alignment is what lets the GUI reproduction
+# bundle's renamed-overlay ``.ini`` reproduce a small-based run bit-for-bit.
+# It also removes the historical ~1e-6 C-vs-Python MT-ordering mismatch for
+# ``small`` (the C backend has no ``"small"`` special-case and always selects
+# from this list -- see primat-c/src/network_data.c's CPR_ORDER_MT). Networks
+# that use the full list (small_parthenope, large, amax) integrate MT in this
+# reordered sequence; their reference abundances shifted by ~1e-6 when this
+# reordering landed (a numerical-ordering artifact, not a physics change).
 ORDER_MT = [
-    "n__p", "Be7_d__a_a_p", "Be7_n__Li7_p", "Be7_n__a_a", "He3_a__Be7_g",
-    "He3_d__a_p", "He3_n__t_p", "Li6_p__Be7_g", "Li7_p__a_a", "Li7_p__a_a_g",
-    "d_a__Li6_g", "d_d__He3_n", "d_d__t_p", "d_p__He3_g", "n_p__d_g",
-    "t_a__Li7_g", "t_d__a_n", "t_p__a_g",
+    "n__p",
+    "n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g", "t_d__a_n",
+    "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p", "He3_a__Be7_g", "Be7_n__Li7_p",
+    "Li7_p__a_a",
+    "Be7_d__a_a_p", "Be7_n__a_a", "Li6_p__Be7_g", "Li7_p__a_a_g", "d_a__Li6_g",
 ]
 
 # Stable light-nuclide orders used when embedding HT/MT/LT solutions into a

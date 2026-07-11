@@ -326,18 +326,29 @@ static const double CPR_EXP_CAP = 600.0;
  * (mirrors network_data.py's _FLOOR; just above the smallest denormal). */
 static const double CPR_REVERSE_FLOOR = 1.0001e-35;
 
-/* Historical MT-era reaction order (network_data.py's ORDER_MT, minus its
- * leading "n__p" -- that entry is always excluded from era selection by
- * construction, see cpr_select_era_reactions below, so omitting it here
- * avoids an unreachable array slot). MT always integrates this fixed
- * 17-reaction subset (intersected with whatever the selected network
- * actually has), even for network="large", because the full network is
- * too stiff to integrate before the deuterium bottleneck opens. */
+/* MT-era reaction order (network_data.py's ORDER_MT, minus its leading "n__p"
+ * -- that entry is always excluded from era selection by construction, see
+ * cpr_select_era_reactions below, so omitting it here avoids an unreachable
+ * array slot). MT always integrates this fixed 17-reaction subset (intersected
+ * with whatever the selected network actually has), even for network="large",
+ * because the full network is too stiff to integrate before the deuterium
+ * bottleneck opens.
+ *
+ * ORDERING: the twelve small-network thermonuclear reactions come first, in
+ * exactly ORDER_SMALL's order (network_data.py's ORDER_SMALL[1:]), followed by
+ * the five MT-only extras. This makes ORDER_SMALL a prefix subsequence of
+ * ORDER_MT, so the intersection below yields ORDER_SMALL's relative order for
+ * any small-network subset -- so "small" (which has no special-case on the C
+ * side and always intersects with this list) integrates MT in exactly
+ * ORDER_SMALL order, matching Python's small special-case, and a renamed
+ * overlay of a small-derived network reproduces the same MT integration
+ * bit-for-bit. The MT solve is stiff and not permutation-invariant (~1e-6),
+ * so this alignment matters. Keep in lockstep with network_data.py's ORDER_MT. */
 static const char *CPR_ORDER_MT[] = {
-    "Be7_d__a_a_p", "Be7_n__Li7_p", "Be7_n__a_a", "He3_a__Be7_g",
-    "He3_d__a_p", "He3_n__t_p", "Li6_p__Be7_g", "Li7_p__a_a", "Li7_p__a_a_g",
-    "d_a__Li6_g", "d_d__He3_n", "d_d__t_p", "d_p__He3_g", "n_p__d_g",
-    "t_a__Li7_g", "t_d__a_n", "t_p__a_g",
+    "n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g", "t_d__a_n",
+    "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p", "He3_a__Be7_g", "Be7_n__Li7_p",
+    "Li7_p__a_a",
+    "Be7_d__a_a_p", "Be7_n__a_a", "Li6_p__Be7_g", "Li7_p__a_a_g", "d_a__Li6_g",
 };
 #define CPR_N_ORDER_MT (sizeof(CPR_ORDER_MT) / sizeof(CPR_ORDER_MT[0]))
 

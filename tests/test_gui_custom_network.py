@@ -986,13 +986,9 @@ def test_reproduction_py_reproduces_custom_removal_via_exact_dict():
     """For a small-based custom network with a REMOVED reaction, the exported
     .py reproduces the tab bit-for-bit because it embeds the exact
     custom_network override and calls ``run_bbn(base, custom_network=...)`` --
-    the identical call the GUI makes.
-
-    Root cause it sidesteps: the MT-era reaction *ordering* is keyed on the
-    base network name (``cfg.network == "small"`` -> ORDER_SMALL, else
-    ORDER_MT), so the .ini's renamed nuclear/ overlay drifts ~1e-6 for this
-    case (see ``test_reproduction_ini_overlay_small_removal_is_physically_close``
-    and the README caveat). The .py avoids the overlay entirely, so it is exact.
+    the identical call the GUI makes. (The .ini reproduces the same run via the
+    bundled overlay, also bit-for-bit -- see
+    ``test_reproduction_ini_overlay_small_removal_is_bit_exact``.)
 
     Exec the generated script with ``run_bbn`` captured (no second solve) and
     confirm the exact cfg + removal dict + pinned backend are passed through.
@@ -1035,13 +1031,16 @@ def test_reproduction_py_reproduces_custom_removal_via_exact_dict():
     assert captured["force_backend"] == "python"
 
 
-def test_reproduction_ini_overlay_small_removal_is_physically_close(tmp_path):
+def test_reproduction_ini_overlay_small_removal_is_bit_exact(tmp_path):
     """The .ini path (bundled nuclear/ overlay, network renamed) reproduces a
-    small-based network with a REMOVED reaction *physically* but not
-    bit-for-bit: the MT-era reaction ORDERING is keyed on the base name, so a
-    renamed overlay permutes the (stiff) MT solve and drifts ~1e-6. This locks
-    in that documented caveat (README / _readme_text): close to ~1e-4, i.e.
-    correct physics, just not the last couple of displayed digits.
+    small-based network with a REMOVED reaction BIT-FOR-BIT.
+
+    This is guaranteed by ORDER_MT being aligned so that ORDER_SMALL is a
+    prefix subsequence of it (network_data.py): the MT-era intersection then
+    yields the *same* reaction ordering whether the network is loaded as
+    "small" (ORDER_SMALL) or under a renamed overlay (filtered from ORDER_MT),
+    so the stiff MT solve is not permuted. Guards against a regression that
+    would reintroduce the historical ~1e-6 renamed-overlay drift.
     """
     import io
     import zipfile
@@ -1070,9 +1069,9 @@ def test_reproduction_ini_overlay_small_removal_is_physically_close(tmp_path):
         zf.extractall(tmp_path)
     b = run_bbn({"network": "mynet", "user_nuclear_dir": str(tmp_path / "nuclear")},
                 force_backend="python")
-    for key in ("YPBBN", "DoH", "Li7oH"):
-        rel = abs(a[key] - b[key]) / abs(a[key])
-        assert rel < 1e-4, f"{key}: overlay drift {rel:.2e} unexpectedly large"
+    for key in ("YPBBN", "DoH", "He3oH", "Li7oH", "Neff"):
+        assert a[key] == b[key], (
+            f"{key}: renamed overlay {b[key]!r} != dict-run {a[key]!r}")
 
 
 def _find_download_button(at, label):
@@ -1165,13 +1164,15 @@ def test_reproduction_bundle_carries_uploaded_rate_table(tmp_path):
     # 2) The overlay holds an edited table file for the reaction (for the .ini).
     assert any(n.startswith(f"nuclear/tables/{name}/") for n in namelist)
 
-    # 3) The edit takes effect in the GUI dict-run, and the overlay reproduces
-    #    it physically (~1e-4). The scaled n_p__d_g rate must move D/H well away
-    #    from the unedited small value (~2.44e-5).
+    # 3) The edit takes effect in the GUI dict-run, and the renamed overlay
+    #    reproduces it bit-for-bit. The scaled n_p__d_g rate must move D/H well
+    #    away from the unedited small value (~2.44e-5).
     a = run_bbn({"network": "small"}, custom_network=custom_network,
                 force_backend="python")
     b = run_bbn({"network": "mynet", "user_nuclear_dir": str(tmp_path / "nuclear")},
                 force_backend="python")
     unedited = run_bbn({"network": "small"}, force_backend="python")
     assert abs(a["DoH"] - unedited["DoH"]) / unedited["DoH"] > 1e-2  # edit took effect
-    assert abs(a["DoH"] - b["DoH"]) / abs(a["DoH"]) < 1e-4           # overlay physical
+    # The renamed overlay reproduces the dict-run bit-for-bit (ORDER_MT is
+    # aligned with ORDER_SMALL, so the MT solve is not permuted by the rename).
+    assert a["DoH"] == b["DoH"] and a["YPBBN"] == b["YPBBN"]

@@ -100,9 +100,9 @@ def python_export_text(params, *, backend_used="auto", mc_quantities=None,
             it is embedded verbatim and passed as ``run_bbn``'s / ``run_mc``'s
             ``custom_network`` argument, with the *base* ``network`` kept as-is
             -- i.e. the identical call the GUI made, so the reproduction is
-            bit-for-bit even for a small-based network (whose MT-era reaction
-            ordering is keyed on the base name, not the overlay -- see the
-            ``run_basic_from_gui.ini``/README overlay caveat).
+            bit-for-bit. (The ``.ini`` reproduces the same run via the bundled
+            overlay and is also bit-for-bit, since ``ORDER_MT`` is aligned with
+            ``ORDER_SMALL`` -- see ``build_reproduction_zip``.)
 
     Returns:
         str. A runnable ``primat_gui_run.py``.
@@ -245,18 +245,12 @@ def _readme_text(*, active, backend_used, mc_samples, network_name):
     if active:
         lines += [
             "",
-            f"This run used a CUSTOM network ({network_name!r}).",
+            f"This run used a CUSTOM network ({network_name!r}), reproduced",
+            "bit-for-bit by both artifacts:",
             "  - primat_gui_run.py embeds the exact custom_network override the",
-            "    GUI passed to run_bbn, so it reproduces the tab bit-for-bit",
-            "    (all cases).",
+            "    GUI passed to run_bbn.",
             "  - run_basic_from_gui.ini loads the network from the bundled",
             "    nuclear/ overlay (networks/ + tables/) via user_nuclear_dir.",
-            "    This is exact when the base network is NOT 'small'. For a",
-            "    small-based custom network (removed/added reactions OR",
-            "    rate-table edits) the .ini reproduces to ~1e-6: the MT-era",
-            "    reaction ordering is keyed on the base name, and the overlay",
-            "    is loaded under a different name. Use primat_gui_run.py above",
-            "    for the bit-exact numbers in that case.",
         ]
     if mc_samples:
         lines += [
@@ -327,14 +321,12 @@ def build_reproduction_zip(params, *, backend_used="auto", mc=None, cfg=None,
         mc_samples = len(next(iter(mc._data.values())).values)
 
     # The .py reproduces a custom network via the EXACT custom_network dict the
-    # GUI passed to run_bbn (base network kept) -- bit-for-bit in all cases,
-    # including a small-based network. The .ini, which the C CLI reads and which
-    # cannot carry a custom_network dict, uses the bundled nuclear/ overlay
-    # instead (network=<name> + user_nuclear_dir): exact when the base network
-    # is not 'small', ~1e-6 for any small-based customisation (removed/added
-    # reactions OR rate-table edits) because the MT-era reaction ordering is
-    # keyed on the base name and the overlay is loaded under a different name
-    # (see _readme_text / the ini note).
+    # GUI passed to run_bbn (base network kept). The .ini, which the C CLI reads
+    # and which cannot carry a custom_network dict, uses the bundled nuclear/
+    # overlay instead (network=<name> + user_nuclear_dir). Both are bit-for-bit:
+    # ORDER_MT is aligned so ORDER_SMALL is a prefix subsequence of it (see
+    # network_data.py), so a renamed overlay of a small-based network selects
+    # the MT era in the same order as the base "small" run -- no ~1e-6 drift.
     py_text = python_export_text(
         params, backend_used=backend_used, mc_quantities=mc_quantities,
         mc_samples=mc_samples, custom_network=custom_network)

@@ -133,12 +133,20 @@ unaffected.) Author decision: fix in the GUI only, no physics/ordering change
   `custom_network=<dict>`.
 - **`.ini`** (C CLI, which cannot carry a `custom_network` dict) uses the
   bundled `nuclear/` overlay: `network="<custom_name>"` +
-  `user_nuclear_dir="nuclear"`. Exact when the base network is **not**
-  `small`; ~1e-6 for **any** small-based customisation (removed/added
-  reactions *or* rate-table edits), because the overlay is loaded under a
-  different name than `small` and the MT-era ordering is keyed on the base
-  name (documented in `README.txt` and the ini header). The `.py` is always
-  exact.
+  `user_nuclear_dir="nuclear"`.
+
+  **Follow-up fix (bit-exact `.ini`):** the initial version drifted ~1e-6 for
+  small-based customisations because the MT-era reaction *ordering* was keyed
+  on the base network name (`ORDER_SMALL` for `"small"`, `ORDER_MT` otherwise),
+  and the overlay is loaded under a renamed network. This was resolved by
+  reordering `ORDER_MT` (`primat/network_data.py` + `primat-c/src/network_data.c`'s
+  `CPR_ORDER_MT`) so that `ORDER_SMALL` is a **prefix subsequence** of it — the
+  MT-era intersection then yields the same reaction ordering under either name,
+  so a renamed overlay of a small-based network reproduces the base `"small"`
+  run bit-for-bit. `small`'s own results are unchanged; `small_parthenope` /
+  `large` / `amax` (which use `ORDER_MT`) shifted by ~1e-7–1e-8, absorbed by the
+  existing regression tolerances (no reference re-pinning needed). Both
+  artifacts are now bit-exact for every custom network.
 - The `nuclear/` overlay is still bundled (for the `.ini` and for re-import),
   so no rate tables are inlined except inside the `.py`'s embedded dict.
 
