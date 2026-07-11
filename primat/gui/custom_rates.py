@@ -299,6 +299,48 @@ def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
     return "\n".join(lines)
 
 
+def verbatim_table_text(T9, rate, err, name="custom", source_header=()):
+    """Return table text with the upload on its ORIGINAL grid, full precision.
+
+    Unlike :func:`effective_table_text` (which pre-resamples onto the master
+    grid), this writes the parsed ``(T9, rate, err)`` arrays verbatim -- same
+    grid points the user uploaded, at full float64 precision (``%.17e``). It is
+    what a reproduction bundle bundles for a replaced/added reaction, so that
+    ``load_network``'s ``_resample_rate_table`` runs *once* on exactly the data
+    the GUI's own live run resampled -- reproducing the run bit-for-bit.
+
+    Pre-resampling at export instead (``effective_table_text``) breaks that
+    bit-for-bit match two ways: the exported values are rounded (``%.6e``), and
+    resampling a coarse upload onto the wider master grid *extrapolates*, so the
+    overlay would then resample that extrapolated+rounded table a second time --
+    diverging from the GUI's single raw resample by ~1e-6.
+
+    Parameters
+    ----------
+    T9, rate, err : np.ndarray
+        Raw uploaded arrays, as returned by :func:`parse_rate_upload`.
+    name : str
+        Reaction name, for the header's ``ref=`` field.
+    source_header : sequence[str]
+        The uploader's own ``#``-prefixed header lines, preserved verbatim.
+
+    Returns
+    -------
+    str
+        Table text: ``#`` header line(s) then ``T9 rate err`` rows on the
+        upload's own grid, full precision.
+    """
+    lines = [
+        f"# {reaction_display_name(name)}   [{name}]   "
+        "(custom rate, original grid, verbatim)",
+        "#" * 70,
+    ]
+    lines.extend(source_header)
+    for t9, r, e in zip(np.asarray(T9), np.asarray(rate), np.asarray(err)):
+        lines.append(f"{t9:.17e}   {r:.17e}   {e:.17e}")
+    return "\n".join(lines)
+
+
 def decay_override_table_text(name, rate_s):
     """Synthetic constant-rate table text for a user-overridden decay rate.
 
@@ -446,8 +488,14 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                     continue
                 try:
                     T9, rate, err, header = parse_rate_upload(raw_text)
-                    table_text = effective_table_text(
-                        cfg, T9, rate, err, name=name,
+                    # Write the upload on its ORIGINAL grid at full precision --
+                    # NOT pre-resampled onto the master grid -- so load_network
+                    # resamples it exactly once, identically to the GUI's own
+                    # live run, reproducing the run bit-for-bit. Pre-resampling
+                    # here (effective_table_text) rounds + extrapolates and then
+                    # gets resampled again at load, drifting ~1e-6.
+                    table_text = verbatim_table_text(
+                        T9, rate, err, name=name,
                         source_header=_strip_own_stamp(name, header))
                 except ValueError:
                     table_text = raw_text

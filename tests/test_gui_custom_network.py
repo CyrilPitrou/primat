@@ -1183,3 +1183,105 @@ def test_reproduction_bundle_carries_uploaded_rate_table(tmp_path):
     # The renamed overlay reproduces the dict-run bit-for-bit (ORDER_MT is
     # aligned with ORDER_SMALL, so the MT solve is not permuted by the rename).
     assert a["DoH"] == b["DoH"] and a["YPBBN"] == b["YPBBN"]
+
+
+# ---------------------------------------------------------------------------
+# Reproduction-bundle bit-for-bit parity matrix
+# ---------------------------------------------------------------------------
+#
+# The single guarantee users rely on: the downloadable reproduction bundle
+# reproduces the GUI's own run EXACTLY. The GUI applies a customisation as a
+# `custom_network` delta on a base network; the bundle (both primat_gui_run.py
+# and run_basic_from_gui.ini) instead loads a materialised `nuclear/` overlay
+# under a renamed network via user_nuclear_dir. These must agree bit-for-bit on
+# BOTH backends, for a network with REMOVED reactions and for one with an
+# UPLOADED (coarse-grid) rate table, whether built from `small` or from
+# `large`+amax. This matrix is a regression guard for three separate bugs that
+# each broke it by ~1e-6:
+#   * MT-era reaction ordering keyed on the base name (ORDER_MT alignment);
+#   * the LT solver's atol keyed on `is_large` (now a universal atol);
+#   * uploaded tables pre-resampled+rounded at export instead of written
+#     verbatim on their original grid (custom_rates.verbatim_table_text).
+# `run_bbn(base, custom_network=...)` is exactly the call the GUI makes;
+# `run_bbn(network=<name>, user_nuclear_dir=...)` is exactly what the exported
+# .py runs and what the .ini's `--ini` drives on the C backend -- so asserting
+# these two are equal on each backend covers both bundle artifacts.
+
+def _coarse_upload_text(cfg, name, fname):
+    """A synthetic 'uploaded' rate table for ``name`` on a COARSE grid (55
+    points over its own range), distinct from the shipped 1000-point master
+    grid -- so the export path's resample/round vs verbatim handling matters.
+    Scaled x1.3 so the edit visibly moves abundances."""
+    import numpy as np
+    data = np.loadtxt(cfg.resolve_rates_path("nuclear", "tables", name, fname))
+    T9 = np.logspace(-2, 0.9, 55)
+    rate = 10 ** np.interp(np.log10(T9), np.log10(data[:, 0]),
+                           np.log10(data[:, 1])) * 1.3
+    return "# ref=USER_UPLOAD\n" + "\n".join(
+        f"{t:.6e} {r:.6e} 0.0" for t, r in zip(T9, rate)) + "\n"
+
+
+def _first_tabulated_reaction(cfg, nucl):
+    """First non-weak reaction whose shipped table parses as numbers (skips
+    beta decays / bare-rate reactions, which have no per-reaction table)."""
+    import numpy as np
+    for nm, _eq, _src, fn in nucl.describe_reactions():
+        if nm == "n__p" or fn in (None, "", "--"):
+            continue
+        try:
+            np.loadtxt(cfg.resolve_rates_path("nuclear", "tables", nm, fn))
+            return nm, fn
+        except Exception:
+            continue
+    raise AssertionError("no tabulated reaction found")
+
+
+@_needs_ac2024
+@pytest.mark.parametrize("base,label", [
+    ({"network": "small"}, "small"),
+    ({"network": "large", "amax": 8}, "large8"),
+])
+@pytest.mark.parametrize("mode", ["removed", "uploaded"])
+@pytest.mark.parametrize("backend", ["python", "c"])
+def test_reproduction_bundle_matches_gui_bit_for_bit(base, label, mode, backend,
+                                                     tmp_path):
+    """GUI dict-run == exported-bundle overlay run, bit-for-bit, for every
+    {backend} x {removed, uploaded} x {small, large+amax} combination."""
+    import io
+    import zipfile
+
+    from primat import backend as backend_mod
+    from primat.backend import run_bbn
+    from primat.config import PRIMATConfig
+    from primat.gui import custom_rates
+    from primat.gui.export_params import build_reproduction_zip
+    from primat.network_data import UpdateNuclearRates
+
+    if backend == "c" and not backend_mod.HAS_C_BACKEND:
+        pytest.skip("C backend not built")
+
+    cfg = PRIMATConfig(base)
+    nucl = UpdateNuclearRates(cfg)
+    kept = [r[0] for r in nucl.describe_reactions() if r[0] != "n__p"]
+    if mode == "removed":
+        kept = kept[:-2]  # drop the last two reactions
+        custom_network = custom_rates.kept_to_custom_network(cfg, kept, {})
+    else:  # uploaded coarse-grid table for one reaction
+        name, fname = _first_tabulated_reaction(cfg, nucl)
+        custom_network = {"removed": [], "added": {},
+                          "replaced": {name: _coarse_upload_text(cfg, name, fname)}}
+
+    zip_bytes = build_reproduction_zip(
+        base, backend_used=backend, cfg=cfg, custom_network=custom_network,
+        kept_names=kept, network_name="mynet")
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        zf.extractall(tmp_path)
+    overlay = {**base, "network": "mynet",
+               "user_nuclear_dir": str(tmp_path / "nuclear")}
+
+    gui = run_bbn(base, custom_network=custom_network, force_backend=backend)
+    bundle = run_bbn(overlay, force_backend=backend)
+    for key in ("YPBBN", "DoH", "He3oH", "Li7oH", "Neff"):
+        assert gui[key] == bundle[key], (
+            f"[{label}/{mode}/{backend}] {key}: bundle {bundle[key]!r} != "
+            f"GUI {gui[key]!r}")

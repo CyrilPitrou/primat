@@ -308,7 +308,14 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     MTLTCtx lt_ctx = { background, nucl };
     CPRBDFOpts bdf_opts_lt = cpr_ode_bdf_default_opts();
     bdf_opts_lt.rtol = 10.0 * cfg->numerical_precision;
-    bdf_opts_lt.atol = cpr_config_is_large(cfg) ? cfg->atol_large_LT : 1.0e-20;
+    /* Universal LT absolute tolerance (cfg->atol_large_LT) for every network,
+     * not just "large" -- was `cpr_config_is_large(cfg) ? atol_large_LT :
+     * 1e-20`, keyed on the literal network name, which broke bit-for-bit
+     * reproduction of a custom network run under a renamed user_nuclear_dir
+     * overlay (is_large=False -> looser atol). One atol everywhere removes that
+     * name dependence; it only tightens non-large networks. Keep in lockstep
+     * with primat/nuclear_network.py's `atol = cfg.atol_large_LT`. */
+    bdf_opts_lt.atol = cfg->atol_large_LT;
     if (cfg->show_progress && !cfg->verbose) {
         fprintf(stderr, "  LT."); fflush(stderr);
     }

@@ -319,7 +319,19 @@ class NuclearNetwork:
         Yi_LT = [mt_final_raw.get(s, 0.0) for s in species_L]
 
         _t_lt0 = time.time()
-        atol = cfg.atol_large_LT if cfg.is_large else 1e-20
+        # Universal LT absolute tolerance (cfg.atol_large_LT) for *every*
+        # network, not just "large". Previously this was
+        # `cfg.atol_large_LT if cfg.is_large else 1e-20`, i.e. keyed on the
+        # literal network name -- which meant a custom network reproduced under
+        # a renamed `user_nuclear_dir` overlay (is_large=False) silently used a
+        # looser atol than the same network run as "large" in the GUI, breaking
+        # bit-for-bit reproduction of the GUI's numbers (~1e-6). Using one atol
+        # everywhere removes that name dependence. It only tightens `small`
+        # (1e-20 -> 1e-26): ~8% slower, its abundances shift by ~1e-6 (a
+        # tolerance artifact, not physics), and it never loosens `large`'s
+        # heavy-nuclide tracking. Keep in lockstep with primat-c's
+        # nuclear_network.c (bdf_opts_lt.atol).
+        atol = cfg.atol_large_LT
         sol_LT = solve_ivp(Y_prime_LT, [t_nucl, t_end], Yi_LT,
                            method='BDF', jac=Jacobian_LT,
                            rtol=10.*cfg.numerical_precision, atol=atol)

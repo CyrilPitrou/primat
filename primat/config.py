@@ -364,9 +364,16 @@ DEFAULT_PARAMS: dict = {
     # Example: {"network": "large", "amax": 20} keeps only A ≤ 20 nuclides.
     "amax":                       None,
 
-    # Absolute solve_ivp tolerance for the large-network LT era.  The heavy
-    # nuclides reach very small abundances, so this is tighter than the 1e-15
-    # used for the small-network LT era (which keeps its validated tolerances).
+    # Absolute solve_ivp tolerance for the LT era of EVERY network (not just
+    # "large" -- despite the legacy name). It must be tight enough for the
+    # large network's heavy nuclides, which reach very small abundances. It is
+    # applied universally so a network's LT integration does not depend on
+    # whether it is literally named "large": otherwise a custom network
+    # reproduced under a renamed user_nuclear_dir overlay would silently use a
+    # looser atol than the GUI and fail to reproduce bit-for-bit (see
+    # nuclear_network.py's _solve_LT). Tightening it for small/medium networks
+    # costs ~8% runtime and shifts their abundances by ~1e-6 (a numerical
+    # tolerance artifact, not physics).
     "atol_large_LT":              1.e-26,
     "rescale_nuclear_rates":            False, #Use to vary some rates with a uniform factor to explore their impact.
 
