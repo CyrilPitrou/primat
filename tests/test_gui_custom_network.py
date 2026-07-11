@@ -982,16 +982,18 @@ def test_reproduction_zip_custom_run_bundles_nuclear_overlay():
     assert any(n.startswith("nuclear/tables/") for n in names)
 
 
-def test_reproduction_py_reproduces_custom_removal_via_exact_dict():
+def test_reproduction_py_uses_overlay_call():
     """For a small-based custom network with a REMOVED reaction, the exported
-    .py reproduces the tab bit-for-bit because it embeds the exact
-    custom_network override and calls ``run_bbn(base, custom_network=...)`` --
-    the identical call the GUI makes. (The .ini reproduces the same run via the
-    bundled overlay, also bit-for-bit -- see
-    ``test_reproduction_ini_overlay_small_removal_is_bit_exact``.)
+    .py reproduces it the same way the .ini does: it loads the bundled nuclear/
+    overlay via ``run_bbn(network=<name>, user_nuclear_dir="nuclear")`` -- no
+    inlined custom_network dict. This is bit-for-bit with the GUI's own
+    ``network="small"`` + ``custom_network`` delta because ORDER_MT is aligned
+    with ORDER_SMALL (proven by
+    ``test_reproduction_ini_overlay_small_removal_is_bit_exact``, which runs the
+    very same overlay call).
 
-    Exec the generated script with ``run_bbn`` captured (no second solve) and
-    confirm the exact cfg + removal dict + pinned backend are passed through.
+    Exec the generated script with ``run_bbn`` captured (no solve) and confirm
+    the overlay cfg + pinned backend are passed, and no override dict.
     """
     import io
     import unittest.mock
@@ -1017,18 +1019,18 @@ def test_reproduction_py_reproduces_custom_removal_via_exact_dict():
 
     captured = {}
 
-    def fake_run_bbn(cfg, custom_network=None, force_backend="auto"):
-        captured.update(cfg=cfg, custom_network=custom_network,
-                        force_backend=force_backend)
+    def fake_run_bbn(cfg, force_backend="auto"):
+        captured.update(cfg=cfg, force_backend=force_backend)
         return {k: 0.0 for k, _ in _STANDARD_RATIOS}
 
     with unittest.mock.patch("primat.backend.run_bbn", fake_run_bbn):
         exec(compile(script, "primat_gui_run.py", "exec"), {})
-    # The .py keeps the base network and forwards the exact override -- exactly
-    # what the GUI's own run_bbn call did, so the numbers match bit-for-bit.
-    assert captured["cfg"] == {"network": "small"}
-    assert captured["custom_network"] == custom_network
+    # The .py drops the base network for the overlay one and does NOT inline a
+    # custom_network override -- the overlay carries the materialised network.
+    assert captured["cfg"]["network"] == "mynet"
+    assert captured["cfg"]["user_nuclear_dir"] == "nuclear"
     assert captured["force_backend"] == "python"
+    assert "custom_network" not in script
 
 
 def test_reproduction_ini_overlay_small_removal_is_bit_exact(tmp_path):
@@ -1121,10 +1123,10 @@ def test_gui_custom_network_offers_reproduction_bundle():
 
 def test_reproduction_bundle_carries_uploaded_rate_table(tmp_path):
     """A custom network with an UPLOADED (edited) rate table round-trips through
-    both bundle artifacts: the edited table text is embedded in the .py's
-    custom_network dict (so run_bbn(base, custom_network=...) is bit-exact) and
-    written into the nuclear/ overlay (so the .ini can read it). Both the GUI
-    dict-run and the overlay run reflect the edit (a 1.5x-scaled n_p__d_g rate
+    the bundle: the edited table is written into the nuclear/ overlay (which
+    both the .py and the .ini load via user_nuclear_dir), not inlined into the
+    script. Both the GUI dict-run and the overlay run reflect the edit (a
+    1.5x-scaled n_p__d_g rate
     visibly shifts D/H)."""
     import io
     import zipfile
@@ -1159,10 +1161,15 @@ def test_reproduction_bundle_carries_uploaded_rate_table(tmp_path):
         script = zf.read("primat_gui_run.py").decode()
         zf.extractall(tmp_path)
 
-    # 1) The .py embeds the uploaded table text verbatim (bit-exact repro path).
-    assert "USER_UPLOAD_MARKER" in script
-    # 2) The overlay holds an edited table file for the reaction (for the .ini).
+    # 1) The uploaded table lives in the bundled overlay (both .py and .ini
+    #    read it from there); it is NOT inlined into the script.
     assert any(n.startswith(f"nuclear/tables/{name}/") for n in namelist)
+    overlay_table = next(n for n in namelist
+                         if n.startswith(f"nuclear/tables/{name}/"))
+    with zipfile.ZipFile(io.BytesIO(data_zip)) as zf:
+        assert "USER_UPLOAD_MARKER" in zf.read(overlay_table).decode()
+    assert "USER_UPLOAD_MARKER" not in script
+    assert "user_nuclear_dir='nuclear'" in script
 
     # 3) The edit takes effect in the GUI dict-run, and the renamed overlay
     #    reproduces it bit-for-bit. The scaled n_p__d_g rate must move D/H well

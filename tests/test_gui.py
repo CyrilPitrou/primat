@@ -538,22 +538,19 @@ def test_export_py_mc_block_uses_std_only_and_seed_zero():
     assert ".mean" not in script
 
 
-def test_export_custom_network_py_embeds_dict_ini_uses_overlay():
-    """Custom-network export: the .py embeds the exact custom_network dict and
-    keeps the base network (bit-for-bit), while the .ini switches to the
-    bundled nuclear/ overlay (network=<name> + user_nuclear_dir)."""
+def test_export_custom_network_py_and_ini_use_overlay():
+    """Custom-network export: the .py and the .ini reproduce a custom network
+    identically -- both drop the base network and load the bundled nuclear/
+    overlay (network=<name> + user_nuclear_dir), no inlined dict/tables."""
     from primat.gui.export_params import ini_export_text, python_export_text
 
-    cn = {"removed": ["d_d__t_p"], "replaced": {}, "added": {}}
     py = python_export_text({"network": "small"}, backend_used="c",
-                            custom_network=cn)
-    # The .py keeps the base network and passes the exact override to run_bbn.
-    assert "network='small'" in py
-    assert "user_nuclear_dir" not in py
-    assert "custom_network = {'removed': ['d_d__t_p']" in py
-    assert "run_bbn(cfg, custom_network=custom_network, force_backend='c')" in py
+                            custom_network_name="mynet")
+    assert "network='mynet'" in py
+    assert "user_nuclear_dir='nuclear'" in py
+    assert "custom_network" not in py  # no override dict inlined
+    assert "run_bbn(cfg, force_backend='c')" in py
 
-    # The .ini (C CLI) cannot carry a dict, so it uses the overlay instead.
     ini = ini_export_text({"network": "small"}, custom_network_name="mynet")
     assert 'network = "mynet"' in ini
     assert 'user_nuclear_dir = "nuclear"' in ini

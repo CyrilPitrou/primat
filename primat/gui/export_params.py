@@ -75,7 +75,7 @@ _INI_HEADER = """# run_basic_from_gui.ini -- exported from the primat-gui "Final
 
 
 def python_export_text(params, *, backend_used="auto", mc_quantities=None,
-                       mc_samples=0, custom_network=None):
+                       mc_samples=0, custom_network_name=None):
     """Return a standalone Python script reproducing the Final-abundances tab.
 
     Emits ``cfg = dict(...)`` from the GUI's "changed from default" params,
@@ -95,14 +95,17 @@ def python_export_text(params, *, backend_used="auto", mc_quantities=None,
         mc_quantities: list[str] or None. Quantities for the appended
             ``run_mc`` std block; ``None``/empty appends no MC block.
         mc_samples: int. Sample count for the ``run_mc`` block.
-        custom_network: dict or None. The exact ``{"removed", "replaced",
-            "added", ...}`` override the GUI passed to ``run_bbn``. When given,
-            it is embedded verbatim and passed as ``run_bbn``'s / ``run_mc``'s
-            ``custom_network`` argument, with the *base* ``network`` kept as-is
-            -- i.e. the identical call the GUI made, so the reproduction is
-            bit-for-bit. (The ``.ini`` reproduces the same run via the bundled
-            overlay and is also bit-for-bit, since ``ORDER_MT`` is aligned with
-            ``ORDER_SMALL`` -- see ``build_reproduction_zip``.)
+        custom_network_name: str or None. When set, the script reproduces a
+            customised network the same way the ``.ini`` does: the base
+            ``network`` is dropped and replaced by this name, and
+            ``user_nuclear_dir="nuclear"`` is added, so the run loads the
+            fully-materialised network + tables from the bundled ``nuclear/``
+            overlay next to the script. This is bit-for-bit with the GUI (which
+            applies the customisation as a ``custom_network`` delta on the base
+            network) because ``ORDER_MT`` is aligned with ``ORDER_SMALL`` -- a
+            renamed overlay selects the MT era in the same order as the base
+            run (see ``network_data.py``'s ``ORDER_MT``). No rate tables or
+            override dicts are inlined into the script.
 
     Returns:
         str. A runnable ``primat_gui_run.py``.
@@ -111,12 +114,22 @@ def python_export_text(params, *, backend_used="auto", mc_quantities=None,
         >>> python_export_text({"network": "small"}, backend_used="c")
     """
     cfg = {k: v for k, v in params.items() if k != "custom_network"}
+    if custom_network_name is not None:
+        cfg.pop("network", None)
+        cfg["network"] = custom_network_name
+        cfg["user_nuclear_dir"] = "nuclear"
 
     body = ("\n".join(f"    {k}={_py_literal(cfg[k])}," for k in sorted(cfg))
             if cfg else
             "    # (every parameter left at its DEFAULT_PARAMS default)")
     ratios_src = "\n".join(f"    ({k!r}, {fmt!r})," for k, fmt in _STANDARD_RATIOS)
 
+    doc_overlay = ([
+        "",
+        "This session used a CUSTOM network: it is loaded from the bundled",
+        "nuclear/ overlay (networks/ + tables/) via user_nuclear_dir, so you",
+        "must run this script from its own directory.",
+    ] if custom_network_name is not None else [])
     lines = [
         "# -*- coding: utf-8 -*-",
         '"""',
@@ -126,34 +139,16 @@ def python_export_text(params, *, backend_used="auto", mc_quantities=None,
         "(not an MC mean); the +/- 1 sigma column, when present, comes only from",
         f"run_mc's .std. The backend is pinned to {backend_used!r} so the numbers",
         "reproduce bit-for-bit (C and Python differ at ~1e-5..1e-6).",
+        *doc_overlay,
         "",
         "Run from THIS file's own directory:  python primat_gui_run.py",
         '"""',
         "from primat.backend import run_bbn",
         "",
-    ]
-    if custom_network is not None:
-        # Reproduce a customised network via the EXACT override the GUI passed
-        # to run_bbn (base network kept as-is), embedded verbatim -- this is
-        # bit-for-bit even for a small-based network, whose MT-era reaction
-        # ordering depends on the base name and so cannot be reproduced by the
-        # renamed nuclear/ overlay alone (that overlay is for the .ini path).
-        lines += [
-            "# This GUI session used a customised reaction network. It is",
-            "# reproduced via the exact custom_network override the GUI passed",
-            "# to run_bbn, so the numbers match the tab bit-for-bit.",
-            f"custom_network = {custom_network!r}",
-            "",
-        ]
-    run_bbn_call = ("run_bbn(cfg, custom_network=custom_network, "
-                    f"force_backend={backend_used!r})"
-                    if custom_network is not None
-                    else f"run_bbn(cfg, force_backend={backend_used!r})")
-    lines += [
         "cfg = dict(",
         body,
         ")",
-        f"result = {run_bbn_call}",
+        f"result = run_bbn(cfg, force_backend={backend_used!r})",
         "",
         "# Standard ratios, in the tab's order and precision.",
         "_RATIOS = [",
@@ -166,15 +161,13 @@ def python_export_text(params, *, backend_used="auto", mc_quantities=None,
     ]
     if mc_quantities:
         q = list(mc_quantities)
-        run_mc_extra = ("custom_network=custom_network, "
-                        if custom_network is not None else "")
         lines += [
             "",
             "# +/- 1 sigma from Monte-Carlo. Only .std is used; the central value",
             "# stays run_bbn's above. seed=0 + same backend => matches the tab.",
             "from primat.backend import run_mc",
             f"_mc = run_mc({mc_samples}, {q!r}, params=cfg, seed=0, "
-            f"{run_mc_extra}force_backend={backend_used!r})",
+            f"force_backend={backend_used!r})",
             f'print("\\n+/- 1 sigma (quick MC, {mc_samples} samples):")',
             "for _key, _fmt in _RATIOS:",
             f"    if _key in {q!r}:",
@@ -222,10 +215,9 @@ def ini_export_text(params, *, custom_network_name=None, mc_samples=0):
 def _readme_text(*, active, backend_used, mc_samples, network_name):
     """Return the bundle's README.txt: how to run each artifact + caveats.
 
-    Explains that the .py reproduces the tab bit-for-bit (pinned backend; a
-    custom network via the exact custom_network override), that the .ini uses
-    the bundled nuclear/ overlay (with the small-based-network caveat below),
-    and -- when MC was on -- how to get the +/- 1 sigma band from each
+    Explains that both artifacts reproduce the tab bit-for-bit (pinned
+    backend), that a custom network is loaded from the bundled nuclear/ overlay
+    by each, and -- when MC was on -- how to get the +/- 1 sigma band from each
     artifact, including the RNG caveat that the C CLI's band is bit-identical
     only when the GUI itself ran on the C backend.
     """
@@ -246,11 +238,9 @@ def _readme_text(*, active, backend_used, mc_samples, network_name):
         lines += [
             "",
             f"This run used a CUSTOM network ({network_name!r}), reproduced",
-            "bit-for-bit by both artifacts:",
-            "  - primat_gui_run.py embeds the exact custom_network override the",
-            "    GUI passed to run_bbn.",
-            "  - run_basic_from_gui.ini loads the network from the bundled",
-            "    nuclear/ overlay (networks/ + tables/) via user_nuclear_dir.",
+            "bit-for-bit by both artifacts above: each loads it from the bundled",
+            "nuclear/ overlay (networks/ + tables/) via user_nuclear_dir -- no",
+            "internet or extra files needed (hence: run from THIS directory).",
         ]
     if mc_samples:
         lines += [
@@ -276,11 +266,11 @@ def build_reproduction_zip(params, *, backend_used="auto", mc=None, cfg=None,
     ``run_basic_from_gui.ini`` (:func:`ini_export_text`) and ``README.txt``.
     When ``custom_network`` is given, the fully-resolved network + its rate
     tables (including uploads) are bundled under ``nuclear/`` by reusing
-    :func:`primat.gui.custom_rates.export_zip`. The ``.py`` reproduces it via
-    the exact ``custom_network`` dict the GUI passed to ``run_bbn`` (base
-    network kept -- bit-for-bit); the ``.ini`` (C CLI, no custom_network dict)
-    reproduces it via ``network=<network_name>`` + ``user_nuclear_dir=nuclear``
-    reading that bundled ``nuclear/`` overlay.
+    :func:`primat.gui.custom_rates.export_zip`. Both the ``.py`` and the
+    ``.ini`` then reproduce it identically -- ``network=<network_name>`` +
+    ``user_nuclear_dir=nuclear`` reading that bundled ``nuclear/`` overlay --
+    which is bit-for-bit with the GUI because ``ORDER_MT`` is aligned with
+    ``ORDER_SMALL`` (see :func:`python_export_text`).
 
     Args:
         params: dict. The "changed from default" params (a ``"custom_network"``
@@ -320,16 +310,18 @@ def build_reproduction_zip(params, *, backend_used="auto", mc=None, cfg=None,
         mc_quantities = [k for k, _ in _STANDARD_RATIOS if k in mc_names]
         mc_samples = len(next(iter(mc._data.values())).values)
 
-    # The .py reproduces a custom network via the EXACT custom_network dict the
-    # GUI passed to run_bbn (base network kept). The .ini, which the C CLI reads
-    # and which cannot carry a custom_network dict, uses the bundled nuclear/
-    # overlay instead (network=<name> + user_nuclear_dir). Both are bit-for-bit:
-    # ORDER_MT is aligned so ORDER_SMALL is a prefix subsequence of it (see
-    # network_data.py), so a renamed overlay of a small-based network selects
-    # the MT era in the same order as the base "small" run -- no ~1e-6 drift.
+    # Both the .py and the .ini reproduce a custom network the same way: from
+    # the bundled nuclear/ overlay (network=<name> + user_nuclear_dir), the
+    # fully-materialised network with removals/additions already baked in. This
+    # is bit-for-bit with the GUI (which applies the customisation as a
+    # custom_network delta on the base network) because ORDER_MT is aligned so
+    # ORDER_SMALL is a prefix subsequence of it (see network_data.py): a renamed
+    # overlay of a small-based network selects the MT era in the same order as
+    # the base "small" run -- no ~1e-6 drift. No override dict / rate tables are
+    # inlined into the .py.
     py_text = python_export_text(
         params, backend_used=backend_used, mc_quantities=mc_quantities,
-        mc_samples=mc_samples, custom_network=custom_network)
+        mc_samples=mc_samples, custom_network_name=cn_name)
     ini_text = ini_export_text(
         params, custom_network_name=cn_name, mc_samples=mc_samples)
     readme = _readme_text(active=active, backend_used=backend_used,
