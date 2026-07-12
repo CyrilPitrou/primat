@@ -76,8 +76,7 @@ def _rates_overlay_notice(field: str, path: str) -> str:
     field : str
         Either ``"data_dir"`` (full-takeover data root) or
         ``"user_nuclear_dir"`` (additive nuclear overlay).
-    path : str
-        Directory path already accepted by the config validator.
+    path : str        Directory path already accepted by the config validator.
 
     Returns
     -------
@@ -130,17 +129,10 @@ DEFAULT_PARAMS: dict = {
     "show_progress":         True,  # Set to False to hide the compact stderr progress indicators printed
     # when verbose=False: the "[primat]  HT.  MT.  LT.  done." phase markers from a single solve,
     # and the "[MC] Running N samples..." banner / "[MC] i/N samples (XX%)" counter from an MC run.
-    # Has no effect when verbose=True (the verbose prints already convey progress). Mirrors
-    # primat-c's CPRConfig.show_progress field (primat-c/include/config.h), already wired there.
     "numerical_precision":        1.e-7, # for finite differences (solve_ivp). 1e-6 should be enough.
-    "numba_installed":                 True,  # will be re-checked at runtime. Allows just-in-time compilation for faster execution.
-    "strict_params":              False, # How PRIMATConfig reacts to an unknown parameter key (a typo like
-    # "Omegab2h", or a key from a different code). False (default): warn and ignore it, appending
-    # difflib "did you mean ...?" suggestions so the mistake is visible without being fatal. True:
-    # raise ValueError on the first unknown key -- recommended in scripted/MCMC pipelines where a
-    # silently-ignored typo would run the wrong cosmology unnoticed. Independent of the per-key
-    # *type/range* validation (e.g. Omegabh2>0, amax a positive int), which always raises regardless
-    # of this flag. p_<rxn>/delta_<rxn> rate-variation keys are never "unknown" and are unaffected.
+    "numba_installed":            True,  # will be re-checked at runtime. Allows just-in-time compilation for faster execution.
+    "strict_params":              False, # How PRIMATConfig reacts to an unknown parameter key (a typo like "Omegab2h", or a key from a different code).
+    # False (default): warn and ignore it, appending difflib "did you mean ...?" suggestions so the mistake is visible without being fatal. True: raise ValueError on the first unknown key 
 
     # ---- physics settings ------------------------------------------------
     # ---- neutrino decoupling ----------------------
@@ -167,15 +159,7 @@ DEFAULT_PARAMS: dict = {
     "analytic_distortions":       False,
     "y_SZ":                       0., # Amplitude of the y-type (Sunyaev-Zel'dovich-like, Compton) distortion; see neutrino_history.AnalyticDistortion.
     "y_gray":                     0., # Amplitude of the gray-type (gray-body temperature-rescaling) distortion: delta_f(y) = -fd(y) + fd(y/(1+y_gray))/(1+y_gray)**3.
-    # Despite the shared "y_*" naming and despite generate_rates/PRIMAT-Main-gray.m
-    # calling its equivalent parameter "YSZ", this is NOT the Compton/SZ shape
-    # above: it rescales the neutrino spectrum as if its temperature shifted by
-    # a factor (1+y_gray), with the (1+y_gray)**-3 prefactor chosen so the
-    # rescaled piece's NUMBER density exactly matches the unperturbed
-    # Fermi-Dirac (integral{y^2 delta_f dy} = 0 exactly for any y_gray) while
-    # its ENERGY density shifts linearly, integral{y^3 delta_f dy} = y_gray *
-    # 7*pi**4/120 exactly -- a distinct, independent third distortion shape.
-    # See neutrino_history.AnalyticDistortion.
+    # ENERGY density shifts linearly, integral{y^3 delta_f dy} = y_gray * 7*pi**4/120 exactly -- a distinct, independent third distortion shape.
 
     # ---- custom NEVO tables ------------------------------------------------
     # Override the shipped rates/NEVO/ tables with custom ones (e.g. a
@@ -194,13 +178,12 @@ DEFAULT_PARAMS: dict = {
 
     # ---- data directory override and nuclear overlay -----------------------
     # See PRIMATConfig.resolve_rates_path and _resolved_data_dir. Both default
-    # to None (shipped primat/data/ tree). When data_dir is set it completely
+    # to None (shipped primat/data/ tree). When data_dir is set, it completely
     # replaces the shipped data tree (NEVO/, nuclear/, csv/, cache_plasma_weak/
     # must all be present under that directory; the regenerable weak-rate and
     # plasma caches live together under cache_plasma_weak/{weak,plasma}/, and
     # can be redirected to a writable location via cache_dir -- see below).
-    # When user_nuclear_dir is set
-    # it is an additive overlay for nuclear networks and rate tables only
+    # When user_nuclear_dir is set it is an additive overlay for nuclear networks and rate tables only
     # (checked before the shipped tree, so "small"/"large" remain available
     # even if only user_nuclear_dir is set and it doesn't contain them).
     # Overlay roots for user_nuclear_dir are treated as the equivalent of
@@ -227,7 +210,14 @@ DEFAULT_PARAMS: dict = {
     # Friedmann equation from the supplied a(t). Incompatible with external_scale_factor.
 
     # ---- fundamental constants (overridable for sensitivity studies) --------
-    "GN":                         6.674299257609439e-11,   # Newton's constant, SI units [m^3 kg^-1 s^-2]
+    # CODATA-tabulated value, kept as the exact 5-significant-figure literal.
+    # Do NOT replace with the result of converting some natural-units value
+    # through CONST.GN_MeV2_to_SI -- that round-trips to a spurious 16-digit
+    # float (6.674299257609439e-11, off from the tabulated constant at the
+    # ~1e-7 relative level) which previously crept in here this way. Mirror
+    # this literal digit-for-digit in primat-c/src/config.c's
+    # cpr_config_set_GN default (see CLAUDE.md's primat/primat-c sync rule).
+    "GN":                         6.6743e-11,   # Newton's constant, SI units [m^3 kg^-1 s^-2]
 
     # ---- background thermodynamics ----------------------------------------
     "T_start_cosmo_MeV":          40.0,
@@ -263,6 +253,7 @@ DEFAULT_PARAMS: dict = {
     "radiative_corrections":      True,  # True: Coulomb + T=0 resummed radiative corrections (CCR); False: Born approximation.
     "finite_mass_corrections":    True,  # True: add Fokker-Planck finite-nucleon-mass correction (FMCCR or FMNoCCR).
     "thermal_corrections":        True,  # True: add finite-temperature radiative corrections (CCRTh; Brown & Sawyer 2001).
+
     ##################### caching/saving options
     "cache_dir": None, # single writable directory for ALL regenerable caches (n<->p weak-rate nTOp_*.txt AND the plasma electron-thermo/QED tables); None (default) = <data_dir>/cache_plasma_weak/ inside the (possibly installed) package, with weak/ and plasma/ subdirs. Set it when the install location is read-only (e.g. system-wide site-packages): caches are then WRITTEN to <cache_dir>/{weak,plasma}/ (created on demand) and READ from there first, falling back to the shipped caches in the package (overlay -- shipped caches are never shadowed). Not part of any fingerprint -- the cache LOCATION cannot affect physics.
     "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
@@ -352,45 +343,25 @@ DEFAULT_PARAMS: dict = {
     # simply sees no reaction dropped). Reactions involving any nuclide with
     # A > amax are dropped. None = no filter (keep all reactions). Must be a
     # positive integer when set.
-    # Migration from the old named networks (removed; reproduce them via):
-    #   old network="medium"    -> network="large", amax=8   (68 reactions,
-    #                                                          identical set)
-    #   old network="deuterium" -> network="large", amax=2   (adds
-    #                                                          p_p_n__d_p
-    #                                                          alongside
-    #                                                          n_p__d_g;
-    #                                                          D/H matches to
-    #                                                          ~1e-9 relative)
-    # Example: {"network": "large", "amax": 20} keeps only A ≤ 20 nuclides.
     "amax":                       None,
 
     # Absolute solve_ivp tolerance for the LT era of EVERY network (not just
     # "large" -- despite the legacy name). It must be tight enough for the
-    # large network's heavy nuclides, which reach very small abundances. It is
-    # applied universally so a network's LT integration does not depend on
-    # whether it is literally named "large": otherwise a custom network
-    # reproduced under a renamed user_nuclear_dir overlay would silently use a
-    # looser atol than the GUI and fail to reproduce bit-for-bit (see
-    # nuclear_network.py's _solve_LT). Tightening it for small/medium networks
-    # costs ~8% runtime and shifts their abundances by ~1e-6 (a numerical
-    # tolerance artifact, not physics).
+    # large network's heavy nuclides, which reach very small abundances.
     "atol_large_LT":              1.e-26,
     "rescale_nuclear_rates":            False, #Use to vary some rates with a uniform factor to explore their impact.
 
     # Cap applied to the MC rate rescaling factor during Monte Carlo runs.
-    # When a p_* parameter is non-zero, the effective variation factor is
-    #   variation = sigma^p + delta
+    # When a p_* parameter is non-zero, the effective variation factor is  variation = sigma^p + delta
     # which can grow very large for extreme draws of p.  This parameter clamps
     # the variation to [1/cap, cap] before multiplying the median rate.
-    # A value of 30 means no more than a factor of 30 up or down. Lowered from
-    # the former 1e3 default: reactions carrying a flat "uncertainty factor
+    # A value of 30 means no more than a factor of 30 up or down. Reactions carrying a flat "uncertainty factor
     # f=10-100" placeholder (e.g. CF88 rates such as He3_t__a_d/He3_t__a_n_p)
     # can otherwise draw a >=3-sigma p and multiply their rate by up to 1000x,
     # which for non-trace species (He3/t, unlike the many trace heavy-nuclide
     # branches sharing the same placeholder error) dominates the MC variance
     # of D/H with an unphysically large single-sample outlier rather than a
-    # smooth uncertainty estimate.
-    # Set to None to disable the cap entirely.
+    # smooth uncertainty estimate. Set to None to disable the cap entirely.
     "mc_rate_rescale_cap":         30,
 
     # QED correction to select radiative-capture nuclear rates (Pitrou & Pospelov 2020).
@@ -411,15 +382,8 @@ DEFAULT_PARAMS: dict = {
     # rho(xi) = T^4 (7pi^2/120 + xi^2/4 + xi^4/(8 pi^2)) per flavour
     # (plasma.rho_nu_chempot_excess). It is part of the weak-rate cache fingerprint.
     # munuOverTnu != 0 with incomplete_decoupling=True is physically inconsistent (the NEVO table assumes it vanishes); use incomplete_decoupling=False to explore non-zero values.
-    # Per-flavour overrides (O-9): the literature (Parthenope, PRyMordial) scans
-    # xi_e SEPARATELY from xi_mu,tau because only xi_e enters the n<->p weak rates
-    # (nu_e appears in n <-> p + e + nu_e), while all three gravitate through the
-    # neutrino energy density / Neff. Each of the three below defaults to None,
-    # meaning "inherit munuOverTnu"; set a float to give that flavour its own xi.
-    # The EFFECTIVE per-flavour values are exposed as the read-only properties
-    # cfg.xi_nu_e / cfg.xi_nu_mu / cfg.xi_nu_tau (None -> munuOverTnu). Only
-    # xi_nu_e is threaded into the weak rates (and the weak-rate cache
-    # fingerprint); all three enter Plasma.rho_nu / the Friedmann sum.
+    # Per-flavour overrides : only xi_e enters the n<->p weak rates (nu_e appears in n <-> p + e + nu_e), while all three gravitate through the. Each of the three below defaults to None,
+    # meaning "inherit munuOverTnu"; set a float to give that flavour its own xi. 
     "munuOverTnu_e":              None, # Reduced chemical potential xi_e of nu_e; None = inherit munuOverTnu. Enters BOTH the n<->p weak rates and the energy density.
     "munuOverTnu_mu":             None, # Reduced chemical potential xi_mu of nu_mu; None = inherit munuOverTnu. Gravitates only (energy density / Neff), no weak-rate effect.
     "munuOverTnu_tau":            None, # Reduced chemical potential xi_tau of nu_tau; None = inherit munuOverTnu. Gravitates only (energy density / Neff), no weak-rate effect.
@@ -512,7 +476,7 @@ def _default_params_comments():
 
 
 # ===========================================================================
-# Parameter validation (O-1: config validation and error-message UX)
+# Parameter validation 
 # ---------------------------------------------------------------------------
 # A physicist's first contact with primat is often a typo in a params dict or a
 # YAML file.  Without validation a wrong *type* surfaces much later as an opaque
@@ -715,7 +679,7 @@ class PRIMATConfig:
         return self.network == "large"
 
     # ------------------------------------------------------------------
-    # Effective per-flavour neutrino chemical potentials (O-9)
+    # Effective per-flavour neutrino chemical potentials
     # ------------------------------------------------------------------
     # ``munuOverTnu_e/mu/tau`` default to None ("inherit the common
     # ``munuOverTnu``"); these three properties resolve None -> munuOverTnu so

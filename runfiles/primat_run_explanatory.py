@@ -63,7 +63,7 @@ cfg = dict(
     # custom_background=None,        # path to a user-supplied background file (T, t, a columns)
 
     # ---- fundamental constants (overridable for sensitivity studies) -------
-    # GN=6.674299257609439e-11,       # Newton's constant, SI [m^3 kg^-1 s^-2]
+    # GN=6.6743e-11,                  # Newton's constant, SI [m^3 kg^-1 s^-2] (CODATA literal)
 
     # ---- background thermodynamics ------------------------------------------
     # T_start_cosmo_MeV=40.0,         # starting temperature [MeV]

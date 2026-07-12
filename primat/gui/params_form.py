@@ -345,15 +345,27 @@ def _display_default(key):
 
     ``_widget_for`` renders floats with ``st.number_input(..., format="%.6g")``;
     Streamlit rounds the *returned* value to match that format string (not
-    just the display), so a default with more than 6 significant digits --
-    e.g. ``GN = 6.674299257609439e-11`` -- comes back from the widget as
-    ``6.6743e-11`` even when the user hasn't touched it. Comparing that
-    against the untouched ``DEFAULT_PARAMS[key]`` would then spuriously
-    register as "changed" and forward a value to the backend on every run,
-    even at default (this was the root cause of GN reaching the C backend's
-    ``cpr_config_set_by_name`` unconditionally, see the C-side unit-mismatch
-    fix in ``primat-c/src/config.c``). Round the comparison target the same
-    way to keep "untouched" widgets from being reported as changed.
+    just the display), so a default with more than 6 significant digits
+    comes back from the widget already rounded to 6 sig figs, even when the
+    user hasn't touched it. Comparing that against the untouched
+    ``DEFAULT_PARAMS[key]`` would then spuriously register as "changed" and
+    forward a value to the backend on every run, even at default (this was
+    once the root cause of GN reaching the C backend's
+    ``cpr_config_set_by_name`` unconditionally when ``DEFAULT_PARAMS["GN"]``
+    held a 16-digit float instead of the clean CODATA literal -- see the
+    C-side unit-mismatch fix in ``primat-c/src/config.c`` and the comment on
+    ``DEFAULT_PARAMS["GN"]`` in ``config.py``). Round the comparison target
+    the same way to keep "untouched" widgets from being reported as changed.
+
+    Caveat this does NOT cover: every ``DEFAULT_PARAMS`` float default
+    should itself be kept to <=6 significant digits (as GN now is). If a
+    default ever again carries more precision than the widget can display,
+    a user who *deliberately* types a value that happens to round to the
+    same 6-sig-fig display as that (imprecise) default will be
+    indistinguishable here from an untouched widget -- their override is
+    silently dropped from ``params`` and the reproduction-bundle export
+    (:mod:`primat.gui.export_params`) falls back to the (wrong) library
+    default instead of the value they asked for.
     """
     default = DEFAULT_PARAMS[key]
     if isinstance(default, float):

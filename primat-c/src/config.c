@@ -414,9 +414,11 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->custom_background = NULL;
 
     /* SI-unit default (m^3 kg^-1 s^-2), matching primat/config.py's
-     * DEFAULT_PARAMS["GN"] exactly; converted to the natural units
-     * (MeV^-2) cfg->GN is stored in by cpr_config_set_GN(). */
-    cpr_config_set_GN(cfg, 6.674299257609439e-11);
+     * DEFAULT_PARAMS["GN"] exactly (the CODATA-tabulated 5-significant-figure
+     * literal -- do not replace with a natural-units round-trip result, see
+     * that file's comment); converted to the natural units (MeV^-2)
+     * cfg->GN is stored in by cpr_config_set_GN(). */
+    cpr_config_set_GN(cfg, 6.6743e-11);
 
     cfg->T_start_cosmo_MeV = 40.0;
     cfg->T_end_MeV = 1.e-3;

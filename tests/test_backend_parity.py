@@ -49,6 +49,7 @@ import subprocess
 import sys
 
 from primat.backend import HAS_C_BACKEND, run_bbn
+from primat.config import DEFAULT_PARAMS
 from primat.evolution import dump_evolution, load_evolution
 
 pytestmark = [pytest.mark.slow, pytest.mark.solve, pytest.mark.backend]
@@ -133,7 +134,7 @@ def test_backend_GN_and_tau_n_agree_at_default():
     params = {"network": "small"}
     r_base = run_bbn(params, force_backend="c")
     r_explicit_default = run_bbn(
-        {**params, "GN": 6.674299257609439e-11, "tau_n": 878.4},
+        {**params, "GN": DEFAULT_PARAMS["GN"], "tau_n": 878.4},
         force_backend="c",
     )
     assert r_explicit_default["YPBBN"] == pytest.approx(r_base["YPBBN"], abs=1e-10)
@@ -151,8 +152,8 @@ def test_backend_GN_and_tau_n_perturbation_agrees_with_python():
     r_c_base = run_bbn(params, force_backend="c")
     r_py_base = run_bbn(params, force_backend="python")
 
-    r_c_gn = run_bbn({**params, "GN": 6.674299257609439e-11 * 1.01}, force_backend="c")
-    r_py_gn = run_bbn({**params, "GN": 6.674299257609439e-11 * 1.01}, force_backend="python")
+    r_c_gn = run_bbn({**params, "GN": DEFAULT_PARAMS["GN"] * 1.01}, force_backend="c")
+    r_py_gn = run_bbn({**params, "GN": DEFAULT_PARAMS["GN"] * 1.01}, force_backend="python")
     d_c_gn = r_c_gn["YPBBN"] - r_c_base["YPBBN"]
     d_py_gn = r_py_gn["YPBBN"] - r_py_base["YPBBN"]
     # A +1% GN increase should raise YPBBN by O(1e-3) (faster expansion ->
