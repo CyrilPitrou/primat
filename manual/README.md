@@ -7,12 +7,12 @@ rate-uncertainty propagation, and the `data_dir`/`user_nuclear_dir` overlay).
 
 | File | Purpose |
 |------|---------|
-| `primat_documentation_v0.3.1.tex` | The LaTeX source (usage, plasma thermodynamics, weak interactions, nuclear reactions, sensitivity, appendices A–G). |
+| `primat_documentation_v0.3.2.tex` | The LaTeX source (usage, plasma thermodynamics, weak interactions, nuclear reactions, sensitivity, appendices A–G). |
 | `primat_doc_figures.ipynb` | Jupyter notebook that regenerates every figure into `figures/`. Uses only the public primat API (Python backend). |
 | `generate_tab_reactions.py` | Regenerates `tab_reactions.tex` from the current `small`/`large` network + rate-table data (no run needed). |
 | `figures/` | PDF figures included by the `.tex` (one per `\includegraphics`). |
 | `tab_reactions.tex`, `tab_nuclides.tex` | Generated reaction-list and nuclide-data tables, `\input` by the document. |
-| `primat_documentation_v0.3.1.pdf` | Compiled output. |
+| `primat_documentation_v0.3.2.pdf` | Compiled output. |
 
 ## Rebuilding
 
@@ -30,7 +30,7 @@ python manual/generate_tab_reactions.py
 
 # 3. compile the document
 cd manual
-latexmk -pdf primat_documentation_v0.3.1.tex
+latexmk -pdf primat_documentation_v0.3.2.tex
 ```
 
 You can also open the notebook in Jupyter and run *Kernel → Restart & Run All*.

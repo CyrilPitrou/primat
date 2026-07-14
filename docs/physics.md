@@ -8,7 +8,7 @@ underlying Physics Reports paper.
   primary reference for the background thermodynamics, weak rates, and nuclear
   network.
 - **LaTeX manual** —
-  [`manual/primat_documentation_v0.3.1.pdf`](https://github.com/CyrilPitrou/primat/blob/master/manual/primat_documentation_v0.3.1.pdf)
+  [`manual/primat_documentation_v0.3.2.pdf`](https://github.com/CyrilPitrou/primat/blob/master/manual/primat_documentation_v0.3.2.pdf)
   in the repository.
 
 :::{note}
