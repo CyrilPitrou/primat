@@ -28,7 +28,14 @@ jobs:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
           CIBW_SKIP: "*-musllinux* pp*"          # skip PyPy + musl initially; add later if needed
           CIBW_ARCHS_MACOS: "x86_64 arm64"
-          CIBW_ARCHS_LINUX: "auto"               # native arch only; matrix provides both via separate runners
+          # auto64 (NOT auto): cibuildwheel's Linux "auto" builds both the
+          # 64-bit native arch *and* i686 (32-bit), but scipy publishes no
+          # i686 wheels on PyPI, so the CIBW_TEST_COMMAND smoke test's
+          # `pip install` of an i686 primat wheel falls back to building
+          # scipy from source, which fails (no OpenBLAS on the runner).
+          # auto64 = the 64-bit native arch only (x86_64 here, aarch64 on the
+          # ubuntu-24.04-arm runner), which is all we ship.
+          CIBW_ARCHS_LINUX: "auto64"
           # AMD64 only: cibuildwheel's Windows default also builds win32
           # (32-bit), but scipy publishes no win32 wheels on PyPI, so the
           # CIBW_TEST_COMMAND smoke test's `pip install` of a win32 primat
@@ -39,11 +46,6 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT: "CFLAGS='-O2'"
-          # TEMPORARY (diagnostic): surface the MSVC compile/link error that
-          # optional_build_ext (setup.py) swallows at verbosity 0, so we can
-          # see why the win_amd64 extension still isn't shipping. Revert once
-          # the Windows extension builds clean.
-          CIBW_BUILD_VERBOSITY_WINDOWS: "1"
           # setup.py's optional_build_ext deliberately lets the C extension
           # fail without failing a *source* build -- but a wheel that
           # silently shipped the 25x-slower pure-Python fallback would be a
