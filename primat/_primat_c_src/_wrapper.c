@@ -26,6 +26,7 @@
 #include "mc.h"
 
 #include "compat_thread.h"  /* pthreads + usleep, portable across POSIX & MSVC */
+#include "compat_posix.h"   /* strtok_r, portable across POSIX & MSVC          */
 #include <stdlib.h>
 #include <string.h>
 
