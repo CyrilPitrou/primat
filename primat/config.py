@@ -225,9 +225,6 @@ DEFAULT_PARAMS: dict = {
 
 
     # ---- nuclear network --------------------------------------------------
-    "rate_interp_order":          "linear",   # interpolation of every nuclear rate table:
-                                              # "linear" (fast np.interp) or "quadratic"/"cubic" (scipy interp1d)
-
     # Master grid onto which every nuclear reaction rate table is resampled at
     # load time.  This makes load_network grid-agnostic: tables generated with
     # different grids (e.g. via --keep-source-grid in convert_ac2024_rates.py,
@@ -537,7 +534,6 @@ _PARAM_TYPESPEC = {
 
 # String parameters constrained to a fixed set of choices.
 _PARAM_CHOICES = {
-    "rate_interp_order": ("linear", "quadratic", "cubic"),
 }
 
 # Numeric range constraints, where the physics/numerics demand them.  Each

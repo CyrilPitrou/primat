@@ -278,7 +278,6 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(output_mc_covariance, F_BOOL),
     FLD(output_mc_correlation, F_BOOL),
     FLD(output_mc_file_prefix, F_STRING),
-    FLD(rate_interp_order, F_STRING),
     FLD(rate_grid_npts, F_INT),
     FLD(rate_grid_T9_min, F_DOUBLE),
     FLD(rate_grid_T9_max, F_DOUBLE),
@@ -466,7 +465,6 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->output_mc_correlation = 0;
     cfg->output_mc_file_prefix = cpr_strdup("results/output_mc");
 
-    cfg->rate_interp_order = cpr_strdup("linear");
     cfg->rate_grid_npts = 1000;
     cfg->rate_grid_T9_min = 1.0e-3;
     cfg->rate_grid_T9_max = 10.0;
@@ -893,18 +891,6 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     CPR_REQUIRE(cfg->decay_n_points >= 1,
                 "decay_n_points=%d is out of range: must be a positive integer (>= 1)", cfg->decay_n_points);
 #undef CPR_REQUIRE
-
-    /* rate_interp_order is constrained to a fixed set of choices (mirrors
-     * _PARAM_CHOICES in config.py). */
-    if (strcmp(cfg->rate_interp_order, "linear") != 0
-            && strcmp(cfg->rate_interp_order, "quadratic") != 0
-            && strcmp(cfg->rate_interp_order, "cubic") != 0) {
-        *errmsg = malloc(160);
-        snprintf(*errmsg, 160,
-                 "rate_interp_order=%s must be one of linear, quadratic, cubic",
-                 cfg->rate_interp_order);
-        return 1;
-    }
 
     /* fEDE is the EDE fraction of the total energy density at its peak;
      * background.c has (1 - fEDE) in the denominator, so fEDE >= 1 diverges. */

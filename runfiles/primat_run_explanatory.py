@@ -23,7 +23,7 @@ cfg = dict(
     # Every key below is shown at its DEFAULT_PARAMS default (see
     # primat/config.py for the authoritative, more detailed comments this
     # file summarises); uncomment and edit whichever you need to override.
-    # All 81 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
+    # All 80 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- general behaviour and numerical settings -------------------------
     # verbose=False,                  # print primat's own progress messages
@@ -103,7 +103,6 @@ cfg = dict(
     # output_mc_file_prefix="results/output_mc",  # filename stem for the three MC output files above
 
     # ---- nuclear network --------------------------------------------------
-    # rate_interp_order="linear",     # nuclear rate table interpolation: "linear" / "quadratic" / "cubic"
     # rate_grid_npts=1000,            # points in the master T9 grid used to resample every rate table
     # rate_grid_T9_min=1e-3,          # minimum T9 [GK] of the master rate grid
     # rate_grid_T9_max=10.0,          # maximum T9 [GK] of the master rate grid

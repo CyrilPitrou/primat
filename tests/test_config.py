@@ -156,15 +156,6 @@ def test_std_tau_n_zero_allowed():
     assert cfg.std_tau_n == 0.0
 
 
-def test_rate_interp_order_choice():
-    """rate_interp_order is constrained to linear/quadratic/cubic."""
-    for good in ("linear", "quadratic", "cubic"):
-        assert PRIMATConfig({"rate_interp_order": good}).rate_interp_order == good
-    with pytest.raises(ValueError) as exc:
-        PRIMATConfig({"rate_interp_order": "spline"})
-    assert "one of" in str(exc.value)
-
-
 def test_numpy_scalars_accepted():
     """numpy scalar overrides (np.float64/np.int64, common in MCMC drivers)
     must pass the type check just like their Python counterparts."""

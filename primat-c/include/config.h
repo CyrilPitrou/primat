@@ -186,7 +186,6 @@ typedef struct {
     char *output_mc_file_prefix; /* stem for <prefix>_samples/_covariance/_correlation.tsv */
 
     /* ---- nuclear network ---- */
-    char *rate_interp_order; /* "linear" | "quadratic" | "cubic" */
     int rate_grid_npts;
     double rate_grid_T9_min;
     double rate_grid_T9_max;

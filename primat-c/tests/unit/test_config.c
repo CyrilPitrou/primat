@@ -151,15 +151,6 @@ int main(void)
     free(verr); verr = NULL;
     cfg.rate_grid_npts = 1000;
 
-    /* Bad rate_interp_order enum choice. */
-    free(cfg.rate_interp_order);
-    cfg.rate_interp_order = strdup("spline");
-    CHECK(cpr_config_validate(&cfg, &verr) != 0 && verr && strstr(verr, "rate_interp_order"),
-          "rate_interp_order='spline' is rejected");
-    free(verr); verr = NULL;
-    free(cfg.rate_interp_order);
-    cfg.rate_interp_order = strdup("linear");
-
     /* std_tau_n is allowed to be exactly 0 (non-negative, not strictly positive). */
     cfg.std_tau_n = 0.0;
     CHECK(cpr_config_validate(&cfg, &verr) == 0, "std_tau_n=0 is accepted (non-negative)");
