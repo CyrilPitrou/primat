@@ -347,8 +347,8 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
      * isn't tagged on the Python side either). */
     if (cfg->verbose) {
         printf("--------------------------------------------------\n");
-        printf("Predicted primordial abundances at the end of BBN "
-               "(%zu numerically solved nuclides)\n", n_lt);
+        printf("Primordial abundances (%zu nuclides) at T = %.4g MeV\n",
+               n_lt, cfg->T_end_MeV);
         printf("--------------------------------------------------\n");
         for (size_t i = 0; i < n_lt; i++)
             printf("  Y%-5s= %.6e\n", nn->abundance_names[i], nn->Y_final[i]);

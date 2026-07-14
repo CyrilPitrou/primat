@@ -367,8 +367,8 @@ class NuclearNetwork:
             # list grows with the chosen network (8 / 12 / ~59 nuclides for
             # small / large, optionally amax-restricted).
             print("-" * 50)
-            print(f"Predicted primordial abundances at the end of BBN "
-                  f"({len(species_L)} numerically solved nuclides)")
+            print(f"Primordial abundances ({len(species_L)} nuclides) at "
+                  f"T = {cfg.T_end_MeV:.4g} MeV")
             print("-" * 50)
             for s in species_L:
                 print(f"  Y{s:<5}= {finL[s]:.6e}")
