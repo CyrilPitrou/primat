@@ -29,6 +29,13 @@ jobs:
           CIBW_SKIP: "*-musllinux* pp*"          # skip PyPy + musl initially; add later if needed
           CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_ARCHS_LINUX: "auto"               # native arch only; matrix provides both via separate runners
+          # AMD64 only: cibuildwheel's Windows default also builds win32
+          # (32-bit), but scipy publishes no win32 wheels on PyPI, so the
+          # CIBW_TEST_COMMAND smoke test's `pip install` of a win32 primat
+          # wheel falls back to building scipy from source, which fails on
+          # the runner's meson/Cython toolchain ("Cython requires python3
+          # dependency for link testing").
+          CIBW_ARCHS_WINDOWS: "AMD64"
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT: "CFLAGS='-O2'"
