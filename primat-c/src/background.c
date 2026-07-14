@@ -780,10 +780,10 @@ int cpr_bg_init_standard(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasm
         bg->has_extra_rho = 1;
     }
 
-    cpr_log(cfg, "bg", "Solving cosmological background a(t,T) ...");
+    cpr_log(cfg, "bg", "Solving cosmological background: a(T), t(T) relations ...");
     clock_t _t_bg0 = clock();
     if (setup_background_and_cosmo(bg, errmsg)) return 1;
-    cpr_log(cfg, "bg", "Background a(t,T) ready in %.2f s",
+    cpr_log(cfg, "bg", "Background a(T), t(T) ready in %.2f s",
              (double)(clock() - _t_bg0) / CLOCKS_PER_SEC);
 
     if (setup_weak_rates_standard(bg, errmsg)) return 1;

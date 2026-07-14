@@ -352,11 +352,11 @@ class StandardBackground(Background):
         self._setup_LCDM()
         self._setup_EDE()
         if cfg.verbose:
-            print("[bg-py] Solving cosmological background a(t,T) ...")
+            print("[bg-py] Solving cosmological background: a(T), t(T) relations ...")
             _t_bg0 = time.time()
         self._setup_background_and_cosmo()
         if cfg.verbose:
-            print(f"[bg-py] Background a(t,T) ready in {time.time()-_t_bg0:.2f} s")
+            print(f"[bg-py] Background a(T), t(T) ready in {time.time()-_t_bg0:.2f} s")
         self._replace_LCDM_with_exact()   # swap CDM approx → exact a_of_T
         self._setup_derived_cosmo()
         self._setup_weak_rates()
