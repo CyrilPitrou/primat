@@ -532,13 +532,6 @@ _PARAM_TYPESPEC = {
     "output_decay_file":     ("str", "none"),
 }
 
-# String parameters constrained to a fixed set of choices.  Currently empty
-# (the last member, rate_interp_order, was removed as a dead parameter); the
-# validation machinery in _validate_param stays wired up so a future
-# fixed-choice string parameter only needs an entry added here.
-_PARAM_CHOICES: dict[str, tuple[str, ...]] = {
-}
-
 # Numeric range constraints, where the physics/numerics demand them.  Each
 # entry is ``(predicate, human_text)``; the predicate is applied only to
 # non-None values that already passed the type check.  fEDE (0<=fEDE<1) and
@@ -618,8 +611,8 @@ def _validate_param_value(key: str, value):
     TypeError
         If ``value``'s type does not match any accepted kind for ``key``.
     ValueError
-        If ``value`` is outside the allowed choices (:data:`_PARAM_CHOICES`)
-        or numeric range (:data:`_PARAM_RANGE`).
+        If ``value`` is outside the allowed numeric range
+        (:data:`_PARAM_RANGE`).
 
     Example
     -------
@@ -638,12 +631,6 @@ def _validate_param_value(key: str, value):
         raise TypeError(
             f"PRIMATConfig: parameter {key!r} got {value!r} of type "
             f"{type(value).__name__}; expected {expected}."
-        )
-    if key in _PARAM_CHOICES and value not in _PARAM_CHOICES[key]:
-        allowed = ", ".join(repr(c) for c in _PARAM_CHOICES[key])
-        raise ValueError(
-            f"PRIMATConfig: parameter {key!r} got {value!r}; "
-            f"must be one of {allowed}."
         )
     if value is not None and key in _PARAM_RANGE:
         predicate, text = _PARAM_RANGE[key]
