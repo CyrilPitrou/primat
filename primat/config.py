@@ -532,8 +532,11 @@ _PARAM_TYPESPEC = {
     "output_decay_file":     ("str", "none"),
 }
 
-# String parameters constrained to a fixed set of choices.
-_PARAM_CHOICES = {
+# String parameters constrained to a fixed set of choices.  Currently empty
+# (the last member, rate_interp_order, was removed as a dead parameter); the
+# validation machinery in _validate_param stays wired up so a future
+# fixed-choice string parameter only needs an entry added here.
+_PARAM_CHOICES: dict[str, tuple[str, ...]] = {
 }
 
 # Numeric range constraints, where the physics/numerics demand them.  Each
