@@ -312,8 +312,8 @@ def test_quick_mc_uncertainty_adds_sigma_column():
 
 def test_quick_mc_offers_covariance_and_correlation_downloads():
     """After a quick MC run, the Output tab offers not just the samples TSV but
-    also the covariance and correlation matrix downloads (FABLEADVICE F-1;
-    fed by ``primat.backend.dump_mc_covariance``/``dump_mc_correlation`` in
+    also the covariance and correlation matrix downloads (fed by
+    ``primat.backend.dump_mc_covariance``/``dump_mc_correlation`` in
     ``panels.render_downloads_panel``)."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
@@ -410,7 +410,7 @@ def test_spectral_distortions_forces_incomplete_decoupling_on():
 
 
 def test_sidebar_shows_backend_status():
-    """S-15: the sidebar footer names which backend (C or Python) is active,
+    """The sidebar footer names which backend (C or Python) is active,
     visible even before "Run BBN" is ever clicked (``app._render_footer``)."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
@@ -419,7 +419,7 @@ def test_sidebar_shows_backend_status():
 
 
 def test_credits_dialog_shows_citation_bibtex():
-    """S-15: the Credits popup includes a "Copy citation" affordance -- an
+    """The Credits popup includes a "Copy citation" affordance -- an
     ``st.code`` block (which Streamlit renders with a click-to-copy icon)
     holding the same BibTeX entry as ``primat.__citation__``."""
     from primat.credits import CITATION_BIBTEX

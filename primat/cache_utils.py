@@ -120,7 +120,7 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
         parameter as the remedy (redirect the whole cache tree to a writable
         directory — see :func:`cache_write_dir`). This graceful degradation is
         why the two writable cache trees can live inside the installed package
-        without crashing read-only installs (B-1).
+        without crashing read-only installs.
 
     Example:
         >>> write_cache_with_fingerprint(
@@ -162,7 +162,7 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
 
 
 # ---------------------------------------------------------------------------
-# Plasma+weak cache tree location (B-1). Both regenerable cache trees -- the
+# Plasma+weak cache tree location. Both regenerable cache trees -- the
 # n<->p weak rates (nTOp_<hash>.txt / nTOp_thermal_<hash>.txt) AND the plasma
 # electron-thermo / QED-pressure tables -- live together under
 # ``<data_dir>/cache_plasma_weak/{weak,plasma}/``. The ``cache_dir`` parameter

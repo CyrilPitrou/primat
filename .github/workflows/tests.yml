@@ -58,8 +58,8 @@ jobs:
 
   typecheck:
     # Lenient mypy pass (see pyproject.toml's [tool.mypy]) scoped to the
-    # handful of public-API modules that carry real type annotations
-    # (S-10, FABLEADVICE.md) -- not a project-wide strictness gate.
+    # handful of public-API modules that carry real type annotations --
+    # not a project-wide strictness gate.
     if: github.event_name != 'schedule'
     name: mypy (annotated modules)
     runs-on: ubuntu-latest

@@ -72,7 +72,7 @@ def _parse_set_value(raw: str):
 
 
 # The four main BBN products whose joint MC uncertainty the CLI prints as
-# aligned correlation/covariance matrices (author spec, FABLEADVICE F-1).
+# aligned correlation/covariance matrices.
 _MC_MAIN_PRODUCTS = ("YPBBN", "DoH", "He3oHe4", "Li7oH")
 
 
@@ -123,7 +123,7 @@ def _print_mc_matrices(mc):
 def _print_list_params():
     """Print every ``PRIMATConfig`` parameter (``DEFAULT_PARAMS`` key), its
     default value, and a one-line description, for ``primat --list-params``
-    (S-11, CLI discoverability). The ``--set KEY=VALUE`` escape hatch is
+    (CLI discoverability). The ``--set KEY=VALUE`` escape hatch is
     deliberately left undocumented in ``--help`` to keep the printed help
     short (see the module docstring), so this is the intended way power
     users discover every parameter it accepts -- descriptions are parsed

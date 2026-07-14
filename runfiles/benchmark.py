@@ -2,16 +2,16 @@
 """
 benchmark.py
 ============
-Regenerates the timing table published in ``docs/performance.md``
-(FABLEADVICE.md S-16). Measures wall-clock time for:
+Regenerates the timing table published in ``docs/performance.md``.
+Measures wall-clock time for:
 
 - a single BBN solve, small network, both backends
 - a single BBN solve, large network restricted to A <= 8 (68 reactions,
   the old "medium" network's exact equivalent), both backends
 - an MC uncertainty-propagation run (C backend, small network)
 
-All timings are *warm-cache* (the shipped ``primat/data/weak/*.txt``
-n<->p weak-rate cache and ``primat/data/plasma/QED_*.txt`` tables already
+All timings are *warm-cache* (the shipped ``primat/data/cache_plasma_weak/weak/*.txt``
+n<->p weak-rate cache and ``primat/data/cache_plasma_weak/plasma/QED_*.txt`` tables already
 match the default configuration's fingerprint) -- this is the timing a user
 sees on every run after the first. The cold-cache cost (first run ever, or
 first run after changing a field in ``primat.weak_rates.cache``'s

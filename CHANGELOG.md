@@ -17,29 +17,27 @@ in this repository is the authoritative source.
 - `output_rates_time_evolution` now writes per-reaction forward-rate columns
   (`<reaction>_frwrd`, small/small_parthenope networks), on both backends —
   previously a no-op. Populated in `EvolutionResult.rates` and round-tripped
-  by `primat.evolution.load_evolution` (B-2).
+  by `primat.evolution.load_evolution`.
 - `primat.sensitivity.sensitivity_table` — a one-call API returning the
   logarithmic-sensitivity matrix ∂ln(observable)/∂ln(parameter) as a
   `SensitivityTable` dataclass (`.to_markdown()`/`.to_dataframe()` views),
   with `notebooks/Sensitivity.ipynb` reduced to a thin demo and a new
-  *How-to → Sensitivity tables* docs page (O-10).
+  *How-to → Sensitivity tables* docs page.
 - `primat --list-params` and `--version` (with backend build status) for CLI
-  discoverability (S-11).
+  discoverability.
 - Type hints across the public API, `py.typed` marker, and a lenient mypy CI
-  job (S-10).
+  job.
 - `primat.__citation__` (ready-made BibTeX string) and top-level
   `run_bbn`/`run_mc`/`HAS_C_BACKEND` aliases, so common entry points no
-  longer require reaching into `primat.backend` (S-9).
-- `CITATION.cff` and Zenodo archival instructions in `PyPiGuide.md`
-  (S-12; a JOSS `paper/` stub remains future work).
-- This changelog (S-13).
+  longer require reaching into `primat.backend`.
+- `CITATION.cff` and Zenodo archival instructions in `PyPiGuide.md`.
+- This changelog.
 - Config validation with clearer error messages, shared between both
-  backends (FABLEADVICE O-1).
+  backends.
 - MC covariance/correlation output (`MCResult.cov()`/`.corr()`) and a
-  `runfiles/primat_mc.py` demo script (F-1, F-2).
+  `runfiles/primat_mc.py` demo script.
 - Sphinx documentation site (`docs/`, published to Read the Docs), migrating
-  and superseding the old `README.md`/`EXTENDING.md` prose content
-  (FABLEADVICE O-3).
+  and superseding the old `README.md`/`EXTENDING.md` prose content.
 - `primat-gui`'s Final abundances tab gained a single reproduction-bundle
   download (`.py`/`.ini` + README, `primat/gui/export_params.py`): prints the
   full standard-ratio `run_bbn` centrals plus a `run_mc(seed=0)` std-only
@@ -56,33 +54,38 @@ in this repository is the authoritative source.
 
 ### Changed
 - The C backend now supports `extra_rho` and `decay_era`, closing two of the
-  three former Python-only feature gaps (O-8). `extra_rho` callables are
+  three former Python-only feature gaps. `extra_rho` callables are
   sampled onto a dense temperature grid and splined into the C Friedmann
   equation; `decay_era`'s long-lived-isotope Decay-Time propagation is ported
   via a scaling-and-squaring Padé matrix exponential, writing an identical
   `output_decay_evolution` TSV. Only `background=` (a custom `Background`
   object) remains Python-only.
 - Default `Omegabh2` changed to the Planck 2018 + BAO value (`0.02242`),
-  from the previous default (S-8).
+  from the previous default.
 - `plotly` and `joblib` moved from hard dependencies to the `mc`/`plots`/
-  `gui` extras — a plain `pip install primat` install is now lighter
-  (FABLEADVICE O-2).
+  `gui` extras — a plain `pip install primat` install is now lighter.
 - Nuclear rate tables (`large` network) regenerated at 1000 points instead
   of being reinterpolated onto the master T9 grid from a coarser source
   grid, for both backends.
 - Cache trees consolidated under `cache_plasma_weak/{weak,plasma}/` with an
   additive `cache_dir` overlay redirect for read-only installs, and
-  non-fatal (warn, not crash) cache-write failures on both backends (B-1,
-  80 → 81 `DEFAULT_PARAMS` keys).
-- Per-flavour neutrino degeneracies `munuOverTnu_e/mu/tau` (O-9).
+  non-fatal (warn, not crash) cache-write failures on both backends
+  (80 → 81 `DEFAULT_PARAMS` keys).
+- Per-flavour neutrino degeneracies `munuOverTnu_e/mu/tau`.
 
 ### Fixed
 - Assorted release-blocker fixes ahead of the first PyPI publish: packaging
-  metadata, wheel build matrix, and related polish (S-1 through S-6).
+  metadata, wheel build matrix, and related polish.
 - The Python backend's `run_bbn` now also exposes a `Y_final` sub-dict,
   matching the C backend and restoring result-dict parity (CLAUDE.md).
 - Windows editable-install C-extension shadowing, and assorted
-  Windows-portability failures in the CI Tests matrix (O-6).
+  Windows-portability failures in the CI Tests matrix.
+- MSVC POSIX-header/pthreads build failures on the Windows leg of
+  `wheels.yml`, so Windows users now get binary wheels (with the fast C
+  backend) from PyPI instead of falling back to a source build (64-bit only).
+- `GN` (Newton's constant) default corrected to the exact CODATA literal
+  `6.6743e-11`; the previous default (`6.674299257609439e-11`) was off at
+  the ~1.1e-7 relative level.
 
 ### Documented
 - Electron-thermo / QED-pressure table extrapolation behaviour beyond the

@@ -3,7 +3,7 @@
 Tests for :mod:`primat.sensitivity` — the logarithmic-sensitivity API.
 
 Goal of this test group: pin down the public contract that the
-``notebooks/Sensitivity.ipynb`` how-to (FABLEADVICE O-10) now relies on:
+``notebooks/Sensitivity.ipynb`` how-to relies on:
 
 * :func:`sensitivity_table` returns a :class:`SensitivityTable` of the right
   shape with a shared central (fiducial) solve;

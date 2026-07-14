@@ -682,7 +682,7 @@ class NuclearNetwork:
         Y_out[mask_nuc] = Y_of_t(t_out[mask_nuc])
         Y = {s: Y_out[:, j] for j, s in enumerate(names)}
 
-        # Optional per-reaction forward-rate columns (B-2). One
+        # Optional per-reaction forward-rate columns. One
         # <reaction>_frwrd column per reaction actually in the active LT
         # network (whatever the network / amax cutoff selects: ~12 for
         # small/small_parthenope, 68 for large+amax=8, ~429 for full large),

@@ -40,7 +40,7 @@ cfg = dict(
     # QED_corrections=True,           # QED corrections to the EM plasma equation of state
     # n_electron_table=2000,          # grid points for the electron-thermo tables
     # recompute_electron_thermo=False,  # force recomputation of the electron-thermo cache
-    # recompute_qed_corrections=False,  # force recomputation (and overwrite) of data/plasma/QED_*.txt
+    # recompute_qed_corrections=False,  # force recomputation (and overwrite) of data/cache_plasma_weak/plasma/QED_*.txt
 
     # ---- spectral distortions ----------------------------------------------
     # spectral_distortions=True,      # n<->p rate corrections from non-Fermi-Dirac neutrino spectra
@@ -55,7 +55,7 @@ cfg = dict(
     # nevo_file_prefix="NEVOPRIMAT",  # base filename for the default NEVO thermo/spectral tables
 
     # ---- data directory override and nuclear overlay ----------------------
-    # data_dir=None,          # replace the entire primat/data/ tree (NEVO/, weak/, plasma/, nuclear/, csv/)
+    # data_dir=None,          # replace the entire primat/data/ tree (NEVO/, cache_plasma_weak/, nuclear/, csv/)
     # user_nuclear_dir=None,  # additive overlay for nuclear networks & rate tables only (primat/data/nuclear/ equivalent)
 
     # ---- background mode ----------------------------------------------------

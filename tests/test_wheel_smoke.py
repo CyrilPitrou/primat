@@ -116,8 +116,8 @@ def test_wheel_install_smoke_solve():
 # Script run in a subprocess for test_core_runs_without_plotly_or_joblib
 # (below).  It installs a meta-path finder that makes ``import plotly`` and
 # ``import joblib`` fail, *then* imports primat and exercises the two paths a
-# lean core install must support without those two now-optional dependencies
-# (O-2 dependency diet): a single ``run_bbn`` solve, and a serial
+# lean core install must support without those two now-optional dependencies:
+# a single ``run_bbn`` solve, and a serial
 # (``n_jobs=1``) Monte-Carlo run.  A subprocess is used so the import blocker
 # and any already-imported plotly/joblib in the test session cannot interfere.
 _NO_OPTIONAL_DEPS_SCRIPT = r"""
@@ -165,7 +165,7 @@ def test_core_runs_without_plotly_or_joblib():
     """A lean core install (no plotly, no joblib) can still ``run_bbn`` and run
     serial Monte-Carlo.
 
-    O-2 moved plotly (GUI figures) and joblib (parallel MC) out of the hard
+    plotly (GUI figures) and joblib (parallel MC) were moved out of the hard
     dependencies into extras.  This pins that promise: with both packages made
     un-importable, ``primat.backend.run_bbn`` and a serial ``run_mc(n_jobs=1)``
     on the pure-Python backend must both succeed -- proving neither the

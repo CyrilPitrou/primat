@@ -285,7 +285,7 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"sampling_nTOp_per_decade", pi(cfg->sampling_nTOp_per_decade)};
     out[n++] = (CPRFPField){"radiative_corrections", pb(cfg->radiative_corrections)};
     out[n++] = (CPRFPField){"finite_mass_corrections", pb(cfg->finite_mass_corrections)};
-    /* Effective ξ_e under the historical "munuOverTnu" key (O-9): only nu_e
+    /* Effective ξ_e under the historical "munuOverTnu" key: only nu_e
      * shifts the n<->p rates, and using the effective xi_e (= munuOverTnu when
      * munuOverTnu_e is unset) keeps the default-run hash unchanged so shipped
      * data/weak/ caches stay valid. Mirrors Python _weak_rate_fingerprint. */

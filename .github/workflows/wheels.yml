@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_testpypi:
-        description: "Publish the built artifacts to TestPyPI (PyPiGuide.md Step 3 dry run)"
+        description: "Publish the built artifacts to TestPyPI (PyPiGuide.md dry-run step)"
         type: boolean
         default: false
 
@@ -49,10 +49,10 @@ jobs:
           # setup.py's optional_build_ext deliberately lets the C extension
           # fail without failing a *source* build -- but a wheel that
           # silently shipped the 25x-slower pure-Python fallback would be a
-          # regression nobody notices (see FABLEADVICE.md S-2). Assert the
-          # compiled extension is present and reproduces the documented
-          # small-network YPBBN (coarse tolerance: this is a smoke test, not
-          # the tight pytest regression).
+          # regression nobody notices. Assert the compiled extension is
+          # present and reproduces the documented small-network YPBBN
+          # (coarse tolerance: this is a smoke test, not the tight pytest
+          # regression).
           CIBW_TEST_COMMAND: >-
             python -c "import primat.backend as b; assert b.HAS_C_BACKEND, 'wheel shipped without C extension'; r=b.run_bbn({'network':'small'}); assert abs(r['YPBBN']-0.247) < 2e-3, r['YPBBN']"
       - uses: actions/upload-artifact@v4
@@ -73,14 +73,15 @@ jobs:
 
   # Two separate publish jobs so the testpypi/pypi switch is a matter of
   # *how the workflow is triggered*, not a commit that flips a
-  # repository-url/environment line (FABLEADVICE.md S-6 -- the old single
-  # `publish` job hard-pointed at TestPyPI with the real index commented
-  # out, which was easy to forget to flip and required editing the
-  # workflow at the most delicate moment, PyPiGuide.md Step 6).
+  # repository-url/environment line -- the old single `publish` job
+  # hard-pointed at TestPyPI with the real index commented out, which was
+  # easy to forget to flip and required editing the workflow at the most
+  # delicate moment (see PyPiGuide.md).
 
   publish-testpypi:
-    # Only runs on an explicit manual dry run (PyPiGuide.md Step 3) with the
-    # opt-in input checked -- never on a real GitHub release.
+    # Only runs on an explicit manual dry run (PyPiGuide.md's TestPyPI dry
+    # run step) with the opt-in input checked -- never on a real GitHub
+    # release.
     if: github.event_name == 'workflow_dispatch' && inputs.publish_testpypi
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest

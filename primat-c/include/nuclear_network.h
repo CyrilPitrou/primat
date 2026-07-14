@@ -161,7 +161,7 @@ void cpr_nuclear_network_sample_rates(const CPRNuclearNetwork *nn,
  * the constant radioactive-decay matrix D (Y(t) = exp(D*(t-t_end)) Y0), via
  * scaling-and-squaring Pade-13 matrix exponentiation -- port of
  * nuclear_network.py's _build_decay_matrix/_integrate_decay_era/
- * _write_decay_evolution (O-8). No-op (returns 0) unless
+ * _write_decay_evolution. No-op (returns 0) unless
  * cfg->decay_era && the `large` network && cfg->output_decay_evolution: the
  * era changes no BBN observable (Y_final is the end-of-LT state on both
  * backends), so its only effect is the output_decay_evolution TSV (columns

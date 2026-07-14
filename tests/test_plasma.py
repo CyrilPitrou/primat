@@ -85,7 +85,7 @@ def test_electron_thermo_cache_refreshed_on_fingerprint_mismatch():
     from primat.plasma import Plasma, ELECTRON_THERMO_FORMAT_VERSION
 
     cfg = PRIMATConfig()
-    # Resolve through the cache overlay (B-1): the shipped electron-thermo cache
+    # Resolve through the cache overlay: the shipped electron-thermo cache
     # now lives under cache_plasma_weak/plasma/. With cache_dir unset, read and
     # write both resolve to this same shipped copy.
     cache_path = resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt")
@@ -135,7 +135,7 @@ def test_c_backend_plasma_without_cache(tmp_path):
 
     # Save the original cache file and remove it
     cfg = PRIMATConfig()
-    # Resolve through the cache overlay (B-1): shipped copy under
+    # Resolve through the cache overlay: shipped copy under
     # cache_plasma_weak/plasma/ when cache_dir is unset.
     cache_path = resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt")
     

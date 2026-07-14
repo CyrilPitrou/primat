@@ -2,9 +2,9 @@
 
 The n↔p weak rates are the most expensive part of initialisation (~1.8 s).
 The non-thermal rate (Born+FM+CCR+SD) is cached in
-`data/weak/nTOp_<hash>.txt` (forward and backward columns together); the
-finite-temperature radiative correction (CCRTh) is cached separately in
-`data/weak/nTOp_thermal_<hash>.txt`.
+`data/cache_plasma_weak/weak/nTOp_<hash>.txt` (forward and backward columns
+together); the finite-temperature radiative correction (CCRTh) is cached
+separately in `data/cache_plasma_weak/weak/nTOp_thermal_<hash>.txt`.
 
 Each file is tagged with a *fingerprint* header: a hash of every config field
 that affects its numeric content (background thermodynamics,
@@ -18,11 +18,11 @@ etc. — see `primat.weak_rates`). At every run:
 - Otherwise (fingerprint mismatch, missing file, or `weak_rate_cache=False`),
   the rates are recomputed from scratch by numerical integration (~1.8 s).
 - `save_nTOp` and `save_nTOp_thermal` (both default **`True`**) write the
-  (re)computed rates back to `data/weak/` with a fresh fingerprint header, so
-  future runs with the same configuration load the cache. The hash is part
-  of the filename, so different configurations coexist without overwriting
-  each other — set either flag to `False` only to avoid littering
-  `data/weak/` during throwaway experiments.
+  (re)computed rates back to `data/cache_plasma_weak/weak/` with a fresh
+  fingerprint header, so future runs with the same configuration load the
+  cache. The hash is part of the filename, so different configurations
+  coexist without overwriting each other — set either flag to `False` only
+  to avoid littering `cache_plasma_weak/weak/` during throwaway experiments.
 
 Recomputing the thermal correction (`thermal_corrections=True`) requires a
 `vegas` Monte-Carlo integration that can take a few minutes; the fingerprint

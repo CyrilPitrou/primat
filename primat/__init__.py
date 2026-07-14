@@ -16,7 +16,7 @@ from .nuclear_network import NuclearNetwork
 from .network_data import nuclide_latex
 from .credits import CITATION_BIBTEX as __citation__
 
-# Discoverability aliases (FABLEADVICE S-9): `primat.backend` remains the
+# Discoverability aliases: `primat.backend` remains the
 # canonical import used throughout docs/notebooks/examples, but IDE users
 # exploring the top-level `primat` package get these for free too. Safe to
 # import eagerly here since `backend.py` only imports `.main` lazily inside

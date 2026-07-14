@@ -462,7 +462,7 @@ Photon and neutrino thermodynamics are pure functions of temperature
 (\code{rho\_e}, \code{p\_e}) require the Fermi--Dirac integrals of
 Eq.~\eqref{eq:thermo} and are tabulated in an electron-thermo cache. The
 non-instantaneous $\Tnu(\Tg)$ history is read by \code{neutrino\_history.py};
-the QED corrections are loaded from \code{data/plasma/QED\_*.txt} or computed
+the QED corrections are loaded from \code{data/cache\_plasma\_weak/plasma/QED\_*.txt} or computed
 analytically by \code{qed\_pressure.py}; the Friedmann rate is assembled in
 \code{PRIMAT.\_Hubble}. Figure~\ref{fig:decoupling} shows the per-flavour
 temperature ratios, Fig.~\ref{fig:gstar} the effective relativistic degrees of
@@ -506,7 +506,7 @@ pressure correction.
 incomplete\_decoupling & True  & Use the NEVO non-instantaneous $\Tnu(\Tg)$ table (else instantaneous). \\
 QED\_corrections       & True  & Include the QED plasma corrections (App.~\ref{app:qed}). \\
 n\_electron\_table     & 2000  & Grid points for the $e^\pm$ thermodynamic tables. \\
-recompute\_qed\_corrections & False & Recompute and overwrite \code{data/plasma/QED\_*.txt}. \\
+recompute\_qed\_corrections & False & Recompute and overwrite \code{data/cache\_plasma\_weak/plasma/QED\_*.txt}. \\
 external\_scale\_factor & False & Read $a(\Tg)$ directly from the NEVO table instead of solving the ODE. \\
 DeltaNeff              & 0     & Extra decoupled radiation added to $\rho_{\rm tot}$. \\
 munuOverTnu            & 0     & Neutrino degeneracy $\xi_\nu=\mu_\nu/\Tnu$. \\
@@ -628,7 +628,7 @@ Figure~\ref{fig:xn} shows the resulting neutron history.
 
 \subsection{In the code}
 \code{weak\_rates/} evaluates Eq.~\eqref{eq:born} and all corrections on the
-background grid. Results are cached in \code{data/weak/} behind a configuration
+background grid. Results are cached in \code{data/cache\_plasma\_weak/weak/} behind a configuration
 \emph{fingerprint}, so a rerun with the same physics reloads them while a changed
 configuration recomputes. The normalisation $1/(\tau_n\lambda_0 m_e^5)$ is stored
 as \code{\_NormWeakRates} and the temperature interpolants are
@@ -647,7 +647,7 @@ finite\_mass\_corrections & True & Fokker--Planck finite-nucleon-mass correction
 thermal\_corrections    & True  & Finite-temperature radiative correction (CCRTh; Brown \& Sawyer 2001). \\
 spectral\_distortions   & True  & Use the actual NEVO neutrino spectrum in the rates. \\
 sampling\_nTOp\_per\_decade & 80 & Points per decade of $T$ in the $n\leftrightarrow p$ rate grid. \\
-weak\_rate\_cache       & True  & Reuse the fingerprinted \code{data/weak/} cache when valid. \\
+weak\_rate\_cache       & True  & Reuse the fingerprinted \code{data/cache\_plasma\_weak/weak/} cache when valid. \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -973,7 +973,7 @@ with $\bar p=p/T$, $x=\bar m_e=m_e/T$, $\mathcal{E}_{\bar q}=\sqrt{\bar q^2+x^2}
 The induced pressure shift is a sum of three terms in increasing order of the
 electromagnetic coupling $e$ (with $\afs=e^2/4\pi$). primat
 (\code{qed\_pressure.py}) tabulates and \emph{sums the first two}, stored as the
-two columns of \code{data/plasma/QED\_*.txt}:
+two columns of \code{data/cache\_plasma\_weak/plasma/QED\_*.txt}:
 \begin{align}
   \frac{\delta P_a}{T^4} &= \frac{\afs}{\pi}\!\left[
      -\frac{2}{3}I^{(0,1)}_+(x) - \frac{2}{\pi^2}\left(I^{(0,1)}_+(x)\right)^2\right]

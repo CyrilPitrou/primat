@@ -418,7 +418,7 @@ def _overlay_candidates(base: str, relpath: str) -> list[str]:
 
 def _default_params_comments():
     """Parse this file's own source to extract each ``DEFAULT_PARAMS`` key's
-    one-line trailing comment (S-11, CLI discoverability: ``primat
+    one-line trailing comment (CLI discoverability: ``primat
     --list-params`` uses this to show users what every parameter means
     without duplicating the explanation in a second place that could drift
     out of sync).
@@ -688,7 +688,7 @@ class PRIMATConfig:
     # is the flavour that appears in n <-> p + e + nu_e); all three enter the
     # neutrino energy density / Neff. When all three are left at their default
     # None with a single ``munuOverTnu``, xi_nu_e == xi_nu_mu == xi_nu_tau ==
-    # munuOverTnu, reproducing the pre-O-9 single-xi behaviour bit-for-bit.
+    # munuOverTnu, reproducing the previous single-xi behaviour bit-for-bit.
     @property
     def xi_nu_e(self) -> float:
         """Effective reduced chemical potential xi_e = mu_{nu_e}/T of nu_e.

@@ -201,7 +201,7 @@ int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **er
     snprintf(path_e3, sizeof(path_e3), "%s/QED_pressure_correction_e3.txt", plasma_dir);
 
     /* Create the target dir tree on demand: when redirected to a fresh
-     * cache_dir (B-1) the plasma/ subdir may not exist yet. */
+     * cache_dir the plasma/ subdir may not exist yet. */
     char mkdir_cmd[1024];
     snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", plasma_dir);
     for (char *p = mkdir_cmd + 1; *p; p++) {

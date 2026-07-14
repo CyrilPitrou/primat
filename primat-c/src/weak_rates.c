@@ -1198,7 +1198,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     snprintf(fname, sizeof(fname), "nTOp_%s.txt", fp_hash);
     /* Overlay read path (cache_dir first, else shipped copy); the write path
      * below always targets the writable base (cache_dir if set, else the
-     * package's cache_plasma_weak/weak/). Mirrors weak_rates/api.py (B-1). */
+     * package's cache_plasma_weak/weak/). Mirrors weak_rates/api.py. */
     char path[CPR_PATH_BUF_LEN2];
     cpr_config_resolve_cache_file(cfg, "weak", fname, path, sizeof(path));
 
@@ -1261,7 +1261,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
              * failure to persist the cache is not fatal -- the in-memory rates
              * are valid, only the disk cache is skipped, and we warn the user
              * to point them at the cache_dir remedy (mirrors Python's
-             * write_cache_with_fingerprint degradation, B-1). */
+             * write_cache_with_fingerprint degradation). */
             char wdir[CPR_PATH_BUF_LEN2];
             cpr_config_cache_write_dir(cfg, "weak", wdir, sizeof(wdir));
             char wpath[CPR_PATH_BUF_LEN2];

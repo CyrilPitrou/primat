@@ -3,8 +3,8 @@
 primat.gui.export_params
 =========================
 
-"Download params as .py / .ini" support for the Streamlit GUI (FABLEADVICE
-S-15): serialise the params dict a GUI session has actually run into a
+"Download params as .py / .ini" support for the Streamlit GUI: serialise
+the params dict a GUI session has actually run into a
 standalone Python script (mirroring ``runfiles/primat_run_explanatory.py``'s
 layout) and into a ``primat-c`` ``.ini`` file (mirroring
 ``primat-c/examples/run_basic.ini``), so a configuration explored in the

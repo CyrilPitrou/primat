@@ -462,7 +462,7 @@ def save_qed_tables(tables, plasma_dir, verbose=True):
               "T [MeV]       dP_e3 [MeV^4]     d(dP_e3)/dT [MeV^3]  d2(dP_e3)/dT2 [MeV^2]")
 
     # Create the target on demand: when redirected to a fresh cache_dir
-    # (B-1) the plasma/ subdir may not exist yet.
+    # the plasma/ subdir may not exist yet.
     os.makedirs(plasma_dir, exist_ok=True)
     np.savetxt(os.path.join(plasma_dir, "QED_pressure_correction_e2.txt"),
                np.column_stack([T, e2, de2, d2e2]),

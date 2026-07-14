@@ -236,7 +236,7 @@ int cpr_neutrino_history_init(CPRNeutrinoHistory *nh, const CPRConfig *cfg,
     nh->has_analytic_distortion = cfg->analytic_distortions ? 1 : 0;
     if (nh->has_analytic_distortion) {
         /* The y/gray distortion sits on the nu_e Fermi-Dirac in the n<->p
-         * weak rates, so use the effective ξ_e (O-9); mirrors Python
+         * weak rates, so use the effective ξ_e; mirrors Python
          * AnalyticDistortion._xi_nu = cfg.xi_nu_e. */
         nh->xi_nu = cpr_config_xi_nu_e(cfg);
         nh->y_sz  = cfg->y_SZ;

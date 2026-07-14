@@ -109,7 +109,7 @@ def test_physical_constants_positive():
 
 
 def test_bad_type_raises_typeerror():
-    """O-1: a value of the wrong *type* raises an immediate, self-explanatory
+    """A value of the wrong *type* raises an immediate, self-explanatory
     TypeError naming the key, value, and expected type -- instead of dying much
     later inside the thermodynamics (Omegabh2="0.022" once produced a cryptic
     "can't multiply sequence by non-int" from deep in the solver)."""
@@ -134,7 +134,7 @@ def test_bool_not_accepted_as_number():
 
 
 def test_out_of_range_raises_valueerror():
-    """O-1: physical/numerical range violations raise ValueError, always
+    """Physical/numerical range violations raise ValueError, always
     (independent of strict_params)."""
     cases = [
         {"Omegabh2": -0.1},
@@ -185,7 +185,7 @@ def test_nullable_params_accept_none():
 
 
 def test_unknown_key_suggests_close_match():
-    """O-1: an unknown key that is a near-miss of a real one gets a
+    """An unknown key that is a near-miss of a real one gets a
     difflib 'did you mean ...?' suggestion in the warning."""
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -196,7 +196,7 @@ def test_unknown_key_suggests_close_match():
 
 
 def test_strict_params_raises_on_unknown_key():
-    """O-1: strict_params=True upgrades the unknown-key warning to a
+    """strict_params=True upgrades the unknown-key warning to a
     ValueError (recommended in scripted/MCMC pipelines)."""
     with pytest.raises(ValueError) as exc:
         PRIMATConfig({"Omegab2h": 0.022, "strict_params": True})

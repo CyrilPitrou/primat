@@ -536,7 +536,7 @@ double cpr_config_T_end(const CPRConfig *cfg)
     return cfg->T_end_MeV * cpr_MeV_to_Kelvin();
 }
 
-/* Effective per-flavour ξ (O-9): NAN in the override field means "inherit the
+/* Effective per-flavour ξ: NAN in the override field means "inherit the
  * common munuOverTnu"; any finite value is that flavour's own ξ. Mirrors
  * PRIMATConfig.xi_nu_e / xi_nu_mu / xi_nu_tau (None -> munuOverTnu). */
 double cpr_config_xi_nu_e(const CPRConfig *cfg)
@@ -589,7 +589,7 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
     snprintf(out, outsize, "%s/%s", cfg->data_dir, relpath);
 }
 
-/* Cache-tree overlay (B-1) -- mirror of primat/cache_utils.py's
+/* Cache-tree overlay -- mirror of primat/cache_utils.py's
  * {cache_write_dir, resolve_cache_file}. Cache LOCATION only, never part of
  * any fingerprint. `sub` is "weak" or "plasma". */
 void cpr_config_cache_write_dir(const CPRConfig *cfg, const char *sub,
@@ -827,7 +827,8 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     }
 
     /* Physical/numerical range checks, mirroring primat/config.py's
-     * _PARAM_RANGE table (O-1: config validation UX). Each guards a value that
+     * _PARAM_RANGE table, for clearer config-validation error messages. Each
+     * guards a value that
      * must stay strictly positive (a physical scale, tolerance, count, or
      * time) or non-negative. Emitted here rather than in cpr_config_set_by_name
      * so a value set via any path (INI, --set, wrapper) is caught uniformly. */

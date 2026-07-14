@@ -90,7 +90,7 @@ def test_write_overwrites_existing_file_atomically(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# cache_dir redirect + cache_plasma_weak/ overlay (B-1). The two writable
+# cache_dir redirect + cache_plasma_weak/ overlay. The two writable
 # cache trees (weak/ + plasma/) live under primat/data/cache_plasma_weak/,
 # and the cache_dir parameter redirects WRITES elsewhere while still READING
 # the shipped caches through an overlay (never shadowing them). A failed

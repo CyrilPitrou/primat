@@ -142,8 +142,8 @@ packages = ["primat", "primat.gui", "primat.weak_rates"]
 [tool.setuptools.package-data]
 "primat" = ["data/**/*", "gui/.streamlit/*", "py.typed"]
 
-# S-10 (FABLEADVICE): lenient type checking scoped to the public-API modules
-# that carry real annotations. Internal numerics (network_data.py,
+# Lenient type checking scoped to the public-API modules that carry real
+# annotations. Internal numerics (network_data.py,
 # nuclear_network.py, weak_rates/, ...) stay untyped on purpose -- this is
 # not a project-wide strictness push, just IDE/Pylance support for the
 # surface callers actually import (backend.run_bbn/run_mc, PRIMAT, MCResult,

@@ -1028,8 +1028,8 @@ class Plasma:
             The reduced chemical potential of *this* flavour. Left as ``None``
             (the default) it falls back to the common ``cfg.munuOverTnu`` — this
             is the historical single-ξ behaviour, kept so existing callers that
-            don't distinguish flavours are unchanged. Per-flavour callers (O-9;
-            e.g. :meth:`StandardBackground.Hubble`) pass ``cfg.xi_nu_e`` /
+            don't distinguish flavours are unchanged. Per-flavour callers
+            (e.g. :meth:`StandardBackground.Hubble`) pass ``cfg.xi_nu_e`` /
             ``cfg.xi_nu_mu`` / ``cfg.xi_nu_tau`` explicitly so each of ν_e, ν_μ,
             ν_τ contributes its own degeneracy to the gravitating energy.
         """

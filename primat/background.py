@@ -569,7 +569,7 @@ class StandardBackground(Background):
         cfg     = self.cfg
         thermo  = self.plasma
         rho_pl  = thermo.rho_g(Tg) + thermo.rho_e(Tg) - thermo.PQEDofT(Tg) + Tg * thermo.dPQEDdT(Tg)
-        # Per-flavour neutrino energy density (O-9): each of ν_e, ν_μ, ν_τ
+        # Per-flavour neutrino energy density: each of ν_e, ν_μ, ν_τ
         # carries its own reduced chemical potential ξ (cfg.xi_nu_e/mu/tau,
         # each defaulting to cfg.munuOverTnu). All three gravitate; only ξ_e
         # also shifts the weak rates (handled in weak_rates, not here).
@@ -930,7 +930,7 @@ class StandardBackground(Background):
         Tnutau_f = self.Tnutau_vec[-1]
 
         cfg = self.cfg
-        # Per-flavour ξ (O-9), matching Hubble(): each flavour contributes its
+        # Per-flavour ξ, matching Hubble(): each flavour contributes its
         # own chemical-potential excess to the final-time neutrino energy.
         rho_nu_tot_f = (thermo.rho_nu(Tnue_f,   cfg.xi_nu_e)
                         + thermo.rho_nu(Tnumu_f,  cfg.xi_nu_mu)

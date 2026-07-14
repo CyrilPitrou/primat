@@ -14,8 +14,8 @@ network/backend cost curve should transfer.
 ## Typical timings (warm cache)
 
 All timings below are *warm-cache*: the shipped
-`primat/data/weak/nTOp_*.txt` (n<->p weak rates) and
-`primat/data/plasma/QED_*.txt` (QED pressure corrections) tables already
+`primat/data/cache_plasma_weak/weak/nTOp_*.txt` (n<->p weak rates) and
+`primat/data/cache_plasma_weak/plasma/QED_*.txt` (QED pressure corrections) tables already
 match the run's configuration fingerprint, so initialisation skips
 recomputing them. This is the timing every run after the first sees; see
 [Cold-cache cost](#cold-cache-cost) below for the one-time cost when they
@@ -53,7 +53,7 @@ don't match.
 
 ## Cold-cache cost
 
-The n<->p weak-rate cache (`primat/data/weak/nTOp_<hash>.txt` and
+The n<->p weak-rate cache (`primat/data/cache_plasma_weak/weak/nTOp_<hash>.txt` and
 `nTOp_thermal_<hash>.txt`) is the most expensive part of initialisation when
 it must be (re)computed rather than loaded — see
 {doc}`howto/weak-rate-cache` for the fingerprinting mechanism that makes

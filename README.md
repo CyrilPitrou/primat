@@ -339,7 +339,7 @@ and/or `tables/<name>/` layout as the shipped `data/nuclear/` folder; any
 network file or per-reaction table found there is used instead of the
 shipped one, while everything not overridden still falls back to the
 shipped default (an additive overlay, not a takeover). `data_dir` instead
-fully replaces the entire `primat/data/` tree (NEVO/, weak/, plasma/,
+fully replaces the entire `primat/data/` tree (NEVO/, cache_plasma_weak/,
 nuclear/, csv/), so all data files are read from the supplied directory.
 Both default to `None` and are validated as existing directories at
 construction time.

@@ -359,8 +359,8 @@ def sensitivity_table(
         merged = {**base, **overrides, "verbose": False}
         return run_bbn(merged, force_backend=force_backend, progress=progress)
 
-    # Single shared central solve at the fiducial point (O-10: "sharing the
-    # central solve"). Used for the reported fiducial values.
+    # Single shared central solve at the fiducial point, reused by every
+    # perturbed sensitivity solve. Used for the reported fiducial values.
     r0 = _solve({})
     missing = [o for o in observables if o not in r0]
     if missing:

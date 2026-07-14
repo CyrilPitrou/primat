@@ -326,7 +326,7 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
             return 1;
         }
     }
-    /* Decay-Time (DT) era: long-lived-isotope decay past T_end (O-8). No-op
+    /* Decay-Time (DT) era: long-lived-isotope decay past T_end. No-op
      * unless cfg->decay_era && large network && output_decay_evolution -- it
      * changes no result-dict observable, only the decay-evolution TSV
      * (mirrors solve()'s post-LT DT block). */

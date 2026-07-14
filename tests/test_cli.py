@@ -157,7 +157,7 @@ def test_cli_help_shows_named_output_path_flags(capsys):
 
 
 def test_cli_list_params_covers_every_default_params_key(capsys):
-    """--list-params (S-11) must print every DEFAULT_PARAMS key with its
+    """--list-params must print every DEFAULT_PARAMS key with its
     default value, without running a solve."""
     from primat.config import DEFAULT_PARAMS
 

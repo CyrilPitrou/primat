@@ -54,7 +54,7 @@ def main(argv=None):
     """
     # streamlit *and* plotly are the two GUI-only dependencies (the ``gui``
     # extra).  Check both up front so a partial environment (e.g. streamlit
-    # present but plotly missing after the plotly dependency-diet in O-2)
+    # present but plotly missing since plotly moved to an optional extra)
     # yields one actionable message here instead of an ImportError traceback
     # from deep inside ``primat/gui/panels.py`` once Streamlit re-execs it.
     try:

@@ -81,7 +81,7 @@ _EXP_CUT = 3e2
 # Number of neutrino flavours sharing the distortion. The y/gray spectral
 # distortions are applied identically to nu_e, nu_mu, nu_tau, so the extra
 # energy density they carry (rho_nu_SD) is summed over all three via _N_NU.
-# NOTE (O-9): a genuine chemical potential is NOT necessarily flavour-common
+# NOTE: a genuine chemical potential is NOT necessarily flavour-common
 # any more -- munuOverTnu_e/mu/tau can differ (cfg.xi_nu_e/mu/tau). Its energy
 # excess is therefore summed per-flavour in the background (Plasma.rho_nu with
 # each flavour's own xi), not folded into this shared _N_NU factor.
@@ -498,7 +498,7 @@ class AnalyticDistortion(NeutrinoHistory):
         cfg = self.cfg
         # Cache the three continuous knobs as instance state so every helper
         # below can read them without re-deriving from cfg.
-        # Effective electron-neutrino ξ_e (O-9): the y/gray distortion sits on
+        # Effective electron-neutrino ξ_e: the y/gray distortion sits on
         # the ν_e Fermi-Dirac in the n<->p weak rates, so the relevant chemical
         # potential is ξ_e (cfg.xi_nu_e = munuOverTnu_e, or munuOverTnu if None),
         # not the ν_μ/ν_τ ones.

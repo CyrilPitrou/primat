@@ -148,7 +148,7 @@ int main(void)
 
     /* ---- cpr_mc_sample_cov: fixed-sample cross-check against hand-computed
      * (== numpy np.cov(ddof=1)) references. This is the numeric kernel behind
-     * the CLI's covariance/correlation files (FABLEADVICE F-1). ---- */
+     * the CLI's covariance/correlation files. ---- */
     {
         double xa[4] = {1.0, 2.0, 3.0, 4.0};
         double xb[4] = {2.0, 4.0, 6.0, 8.0};   /* = 2*xa -> corr(a,b) == 1 */

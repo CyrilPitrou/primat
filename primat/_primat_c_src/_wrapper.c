@@ -465,7 +465,7 @@ static PyObject *primat_c_run_bbn(PyObject *self, PyObject *args, PyObject *kwar
     }
     cfg.show_progress = show_progress;
 
-    /* Tabulated extra_rho (config.h / O-8): backend.py passes the summed
+    /* Tabulated extra_rho: backend.py passes the summed
      * user extra_rho(Tg) already evaluated on a dense log-Tg grid as two
      * equal-length float sequences. Set directly on cfg (array-valued, not a
      * cpr_config_set_by_name scalar); cpr_config_free owns/frees the arrays.

@@ -3,8 +3,8 @@
 primat_mc.py
 ============
 Heavily-commented demo of primat's Monte-Carlo nuclear-rate/tau_n
-uncertainty propagation (FABLEADVICE.md Phase 0, F-2), in the house style of
-``primat_run_explanatory.py``: run ``run_mc()``, print each observable's
+uncertainty propagation, in the house style of ``primat_run_explanatory.py``:
+run ``run_mc()``, print each observable's
 ``value +/- sigma`` at CLAUDE.md precision, show the joint (covariance and
 correlation) uncertainty between abundances -- both the full matrix and the
 scalar two-name form -- and write the three ``<prefix>_*.tsv`` files
@@ -75,7 +75,7 @@ print(f"Scalar access: mc.cov('YPBBN', 'DoH')  = {mc.cov('YPBBN', 'DoH'):.6e}")
 print(f"Scalar access: mc.corr('YPBBN', 'DoH') = {mc.corr('YPBBN', 'DoH'):.6f}")
 print()
 
-# --- Write the three MC output files (author spec, FABLEADVICE F-1) -------
+# --- Write the three MC output files --------------------------------------
 os.makedirs("results", exist_ok=True)
 prefix = "results/output_mc"
 with open(f"{prefix}_samples.tsv", "w") as f:

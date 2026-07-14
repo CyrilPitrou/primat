@@ -268,7 +268,7 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
      * -xi). Mirrors primat Plasma.rho_nu. It also shifts the n<->p weak rates
      * (handled in weak_rates.c via the FD_nu3 integrand). NOT a spectral
      * distortion (that's rho_nu_SD just below). */
-    /* Per-flavour ξ (O-9): each flavour carries its own effective chemical
+    /* Per-flavour ξ: each flavour carries its own effective chemical
      * potential (cpr_config_xi_nu_e/mu/tau; each = munuOverTnu unless that
      * flavour was overridden). The excess is 0 when ξ=0, so summing
      * unconditionally is safe and matches Python background.Hubble. */
@@ -1100,7 +1100,7 @@ int cpr_bg_rho_nu_total_final(const CPRBackground *bg, double *Tg_final, double 
          * included here too so Neff reflects it. The CustomBackground branch
          * below derives rho_nu from rho_tot - rho_plasma, so it already picks
          * this up through cpr_bg_hubble. */
-        /* Per-flavour ξ (O-9), matching cpr_bg_Hubble. */
+        /* Per-flavour ξ, matching cpr_bg_Hubble. */
         *rho_nu_tot_final += cpr_rho_nu_chempot_excess(bg->Tnue_vec[i],   cpr_config_xi_nu_e(bg->cfg))
                            + cpr_rho_nu_chempot_excess(bg->Tnumu_vec[i],  cpr_config_xi_nu_mu(bg->cfg))
                            + cpr_rho_nu_chempot_excess(bg->Tnutau_vec[i], cpr_config_xi_nu_tau(bg->cfg));
@@ -1287,7 +1287,7 @@ int cpr_bg_write_time_evolution(const CPRBackground *bg, const char *path, int n
                     double Tnu_avg = pow((pow(Tnue, 4.0) + pow(Tnumu, 4.0) + pow(Tnutau, 4.0)) / 3.0, 0.25);
                     rho_nu_tot += cpr_nu_rho_nu_SD(&bg->nh, Tnu_avg);
                 }
-                /* Per-flavour chemical-potential contribution (O-9), matching
+                /* Per-flavour chemical-potential contribution, matching
                  * cpr_bg_Hubble / Python _background_columns. */
                 rho_nu_tot += cpr_rho_nu_chempot_excess(Tnue,   cpr_config_xi_nu_e(cfg));
                 rho_nu_tot += cpr_rho_nu_chempot_excess(Tnumu,  cpr_config_xi_nu_mu(cfg));

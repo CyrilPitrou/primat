@@ -49,7 +49,7 @@ static void print_credits(void)
 static int list_or_clear_weak_cache(const CPRConfig *cfg, int clear)
 {
     /* Overlay-aware: the writable weak cache dir is cache_dir/weak if set,
-     * else <data_dir>/cache_plasma_weak/weak (B-1). */
+     * else <data_dir>/cache_plasma_weak/weak. */
     char dir_path[CPR_PATH_BUF_LEN2];
     cpr_config_cache_write_dir(cfg, "weak", dir_path, sizeof(dir_path));
 
@@ -908,7 +908,7 @@ int cpr_cli_main(int argc, char **argv)
          * (`quantities_plus_observables + nuclides`), so the samples/covariance/
          * correlation files this CLI writes have the same columns, in the same
          * order, as the Python CLI's -- covering all MC quantities, not just
-         * the observables (FABLEADVICE F-1). cpr_mc_uncertainty resolves each
+         * the observables. cpr_mc_uncertainty resolves each
          * nuclide name via cpr_results_get_quantity's Y_final fallback. */
         const char *all_quantities[] = {
             "Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4", "Li7oH",

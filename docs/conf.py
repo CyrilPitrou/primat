@@ -2,9 +2,8 @@
 """
 Sphinx configuration for the primat documentation site.
 
-This is the *scaffolding* half of FABLEADVICE O-3 (Opus): it fixes the stack
-and information architecture so the bulk content migration (Sonnet's half) has
-a clean, ``sphinx-build -W``-passing skeleton to fill in.
+This sets up the Sphinx stack and information architecture, providing a
+clean, ``sphinx-build -W``-passing skeleton for the docs content to fill in.
 
 Stack (all pinned in the ``docs`` extra of ``pyproject.toml``):
 

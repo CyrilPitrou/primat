@@ -21,7 +21,7 @@ extension):
   always forces the Python backend under ``force_backend in (None, "auto")``,
   and raises ``ValueError`` under ``force_backend="c"``.
 
-The former ``extra_rho`` and ``decay_era`` gaps are now *closed* (O-8):
+The former ``extra_rho`` and ``decay_era`` gaps are now *closed*:
 
 * ``extra_rho`` (extra Friedmann energy-density callables) is supported on
   the C backend via a tabulated handoff -- :func:`_tabulate_extra_rho`
@@ -153,7 +153,7 @@ except ImportError:
 # (see the green windows-latest leg of .github/workflows/wheels.yml), so end
 # users are unaffected -- only Windows contributors developing from a source
 # checkout. macOS/Linux build the extension in-place in editable installs as
-# usual. Not worth pursuing (research use is macOS/Linux); see FABLEADVICE O-6.
+# usual. Not worth pursuing, since research use of this project is macOS/Linux.
 
 
 def _python_solve(params: dict[str, Any] | None, extra_rho: list | None,
@@ -188,7 +188,7 @@ _EXTRA_RHO_GRID_NPTS = 4000
 
 def _tabulate_extra_rho(extra_rho: list, cfg) -> tuple[list[float], list[float]]:
     """Evaluate the *sum* of the ``extra_rho`` callables on a dense log-spaced
-    Tg grid, for handoff to the C backend (O-8's tabulated interface -- see
+    Tg grid, for handoff to the C backend's tabulated interface -- see
     ``primat-c/include/config.h``'s ``extra_rho_*`` fields and
     ``primat/_primat_c_src/_wrapper.c``).
 
@@ -293,7 +293,7 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
         progress = cfg.show_progress
 
     # background= (a custom Background object) is an inherently-Python
-    # extension point with no C-side equivalent (O-8 priority 3): it forces
+    # extension point with no C-side equivalent: it forces
     # the Python backend. extra_rho and decay_era are now BOTH supported on
     # the C backend -- extra_rho via the tabulated (Tg[], rho[]) handoff below
     # (_tabulate_extra_rho + the C spline), decay_era via cprimat_run's own

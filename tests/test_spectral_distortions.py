@@ -226,7 +226,7 @@ _XI_COMMON = {
 
 
 def test_per_flavour_xi_defaults_reproduce_common_xi():
-    """O-9 back-compat: leaving ``munuOverTnu_e/mu/tau`` at their default None
+    """Back-compat: leaving ``munuOverTnu_e/mu/tau`` at their default None
     means "inherit ``munuOverTnu``", so a single ``munuOverTnu`` and the three
     per-flavour knobs all set to the same value must give BIT-IDENTICAL results
     (same weak rates, same energy density). This guards the "all-flavours-equal
@@ -264,7 +264,7 @@ def test_xi_mu_only_gravitates_but_does_not_shift_rates():
     density / Neff but does NOT appear in the n<->p weak rates, so its effect on
     YP is tiny (only the indirect Hubble-rate change) -- orders of magnitude
     smaller than the same ξ applied to ν_e. This is the physical distinction
-    that motivates per-flavour degeneracies (O-9)."""
+    that motivates per-flavour degeneracies."""
     xi = 0.05
     res_base = PRIMAT(dict(_XI_COMMON)).solve()
     res_mu = PRIMAT(dict(_XI_COMMON, munuOverTnu_mu=xi)).solve()

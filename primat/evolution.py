@@ -54,7 +54,7 @@ from numpy.typing import NDArray
 # Y_<nuclide> block (network-dependent) follows these six.
 _CORE_COLUMNS = ("t_s", "a", "T_gamma_MeV", "T_nue_MeV", "T_numu_MeV", "T_nutau_MeV")
 _Y_PREFIX = "Y_"
-# Suffixes marking the optional trailing per-reaction rate columns (B-2). The
+# Suffixes marking the optional trailing per-reaction rate columns. The
 # legacy/current writers emit only forward-rate columns (``_frwrd``); ``_bkwrd``
 # is reserved so a future backward-rate column would round-trip through
 # ``load_evolution`` into ``rates`` without a schema change.
@@ -124,7 +124,7 @@ def dump_evolution(result: EvolutionResult, path: str | None = None) -> str:
     names = list(_CORE_COLUMNS) + [_Y_PREFIX + s for s in result.Y]
     columns = [result.t, result.a, result.T_gamma,
                result.T_nu["e"], result.T_nu["mu"], result.T_nu["tau"]] + list(result.Y.values())
-    # Optional per-reaction rate block (B-2), appended AFTER the Y_ columns so
+    # Optional per-reaction rate block, appended AFTER the Y_ columns so
     # the default (rates=None) schema stays byte-identical. Insertion order of
     # the dict is the on-disk column order (the writer already sorts it).
     if result.rates:

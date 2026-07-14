@@ -1,12 +1,12 @@
-# PyPiGuide.md — Publishing `primat` to PyPI
+# PyPiGuide.md — Publishing a new `primat` release to PyPI
 
-This is the step-by-step checklist for actually doing it, with every
+This is the recurring checklist for shipping a new version, with every
 irreversible action flagged and a way to test up to (but not past) each one.
 
-Current repo state: `.github/workflows/wheels.yml` exists and builds cleanly
-locally (`make` in `primat-c/`, `pip install -e .` for the Python extension).
-Nothing has been uploaded anywhere yet — steps 1–6 below are all still ahead
-of you.
+Current repo state: the name is claimed and Trusted Publishing is already
+wired up on both indexes. **PyPI already has `0.3.0` and `0.3.1`; TestPyPI
+already has `0.3.2`.** There is no first-upload/name-claiming step left to
+do — every release from now on follows the same recurring path below.
 
 ## Legend
 
@@ -20,7 +20,20 @@ of you.
 
 ---
 
-## Step 1 — 🟢 Build and check locally, no network upload
+## Step 1 — 🟢 Bump the version everywhere
+
+1. Bump `version` in `pyproject.toml`.
+2. Bump `CPRIMAT_VERSION` in `primat-c/include/config.h` to match (see
+   `CLAUDE.md` — this sync is checked by
+   `tests/test_docs_consistency.py::test_cprimat_version_matches_pyproject`
+   but the update itself is manual).
+3. Update `CHANGELOG.md`: turn the `[Unreleased]`/in-progress section into
+   the new `## [X.Y.Z] - <date>` section (actual date, not a placeholder),
+   double-check every user-visible change since the last release is listed.
+
+All of this is a normal commit — reversible.
+
+## Step 2 — 🟢 Build and check locally, no network upload
 
 Before touching any external service, verify the artifacts you'd
 eventually publish actually work:
@@ -57,162 +70,75 @@ cibuildwheel --platform macos   # builds the matrix for the OS you're on
 
 This is the closest you can get to rehearsing `wheels.yml`'s
 `build_wheels` job with zero network publish step and zero GitHub
-involvement. It won't catch the MSVC-specific risk (you're not on
-Windows) or the `aarch64` QEMU cross-build, but it does validate the
-`setup.py`/`pyproject.toml` packaging metadata and the `primat-c`
+involvement. It won't catch a Windows-specific MSVC regression (you're
+not on Windows) or the `aarch64` QEMU cross-build, but it does validate
+the `setup.py`/`pyproject.toml` packaging metadata and the `primat-c`
 extension build flags.
 
 ---
 
-## Step 2 — 🟢 Trigger the GitHub Actions workflow manually, targeting **nothing real**
+## Step 3 — 🟢 Rebuild and commit the Streamlit demo wheel
 
-Push `.github/workflows/wheels.yml` to GitHub (a normal commit/push —
-reversible, this repo already has commits going to `origin`). Once it's
-on GitHub, `workflow_dispatch` lets you run the `build_wheels` +
-`build_sdist` jobs on every OS in the matrix (including real Windows
-and real aarch64 emulation) **without** running the `publish` job at
-all, by triggering it from the Actions tab and just inspecting the
-uploaded build artifacts (the `actions/upload-artifact` step) rather
-than wiring up trusted publishing yet.
+The public demo at **primat.streamlit.app** installs `primat` from the
+committed wheel under `wheels/` (see `CLAUDE.md`'s "Streamlit Cloud
+deployment chain"). Every version bump needs this wheel refreshed:
 
-This is how you get the empirical Windows/MSVC check flagged as a real
-risk elsewhere in this repo (see `primat-c/src/weak_rates.c`'s note on
-MSVC risk): trigger the workflow, look at whether the
-`windows-latest` job's `primat._primat_c` extension actually compiles,
-or silently fails over to the pure-Python fallback (check the build log
-for the `optional_build_ext` warning). The complex-arithmetic rewrite
-already done in `primat-c/src/weak_rates.c` (replacing `<complex.h>`
-with a hand-rolled `(re, im)` struct) was specifically to remove one
-known MSVC incompatibility ahead of this check; this step is where you
-confirm there's nothing else lurking.
+1. Trigger `.github/workflows/build_linux.yml` (`workflow_dispatch`) to
+   produce the new `primat-X.Y.Z-cp312-*-linux_x86_64.whl`.
+2. Commit it under `wheels/`, deleting the previous version's wheel.
+3. Update the filename in `requirements.txt`'s last line to point at it.
 
-Nothing here uploads anything anywhere. You can re-run it indefinitely.
+Skipping this step doesn't block the PyPI release below, but it leaves the
+Streamlit demo silently serving the old version.
 
 ---
 
-## Step 3 — 🟡 Push the workflow + register on TestPyPI
+## Step 4 — 🟢 Dry-run on TestPyPI
 
-Register a separate account at **test.pypi.org** (distinct from
-pypi.org — different login, different API). TestPyPI is an explicit
-sandbox: project names there are not reserved on real PyPI, uploads can
-be (and routinely are) overwritten/deleted, and nobody treats it as a
-real index. Treat everything in this step as repeatable.
+1. Trigger `wheels.yml` via `workflow_dispatch` with `publish_testpypi:
+   true` → wheels + sdist get built and uploaded to **test**.pypi.org
+   (`publish-testpypi` job, `environment: testpypi`, Trusted Publishing
+   already configured — no credentials to enter).
+2. Verify end-to-end: `pip install -i https://test.pypi.org/simple/ primat`
+   into a clean venv, run the validation script
+   (`runfiles/primat_run.py`), and confirm the result matches the
+   documented tolerances in `CLAUDE.md`.
 
-1. Create the TestPyPI account.
-2. On TestPyPI, under your future `primat` project (it doesn't need to
-   exist yet — first upload creates it) → set up **Trusted Publishing**
-   pointing at this GitHub repo + `wheels.yml` + a `testpypi` GitHub
-   environment (separate from the `pypi` environment used for the real
-   index, so a misconfiguration can't accidentally hit the real index).
-3. `wheels.yml` already has this split as two separate jobs
-   (FABLEADVICE.md S-6): `publish-testpypi` (only runs on
-   `workflow_dispatch` with the `publish_testpypi` input checked,
-   `environment: testpypi`) and `publish-pypi` (only runs on a real
-   `release: published` event, `environment: pypi`) — no workflow edit
-   needed for this dry run, and no risk of a stray commit leaving the
-   real-PyPI job pointed at the sandbox.
-4. Trigger via `workflow_dispatch` with `publish_testpypi: true` → wheels +
-   sdist get built and uploaded to **test**.pypi.org.
-5. Verify end-to-end: `pip install -i https://test.pypi.org/simple/ primat`
-   into a clean venv, run the validation script (`runfiles/primat_run.py`
-   equivalent), and confirm the result matches the documented tolerances
-   in `CLAUDE.md`.
-
-Why 🟡 and not 🟢: pushing the workflow file change is a normal commit
-(undo with another commit), but a TestPyPI upload, while low-stakes, is
-itself a public action on a shared service — re-uploading the exact
-same version+filename is still rejected by TestPyPI's index just like
-real PyPI (each `(name, version)` is append-only there too). You just
-don't care, because nobody depends on it and you can bump to `0.3.0rc1`,
-`rc2`, etc. for as many dry runs as you need.
+Why 🟢 this time (unlike the first-ever upload): the `(name, version)` pair
+being uploaded is the new version you're about to release, so there is no
+prior TestPyPI upload to collide with — a failed or mistaken attempt just
+means bumping to `X.Y.Zrc1`, `rc2`, etc. and retrying.
 
 ---
 
-## Step 4 — 🔴 Claim the name on real PyPI
-
-A manual `twine upload` of an sdist-only `0.3.0rc0` build, run from your
-laptop, claims the `primat` name on PyPI. **This is the first genuinely
-irreversible action in the whole process.**
-
-Why it's irreversible:
-- PyPI project names are first-come-first-served, global, and permanent
-  in practice. You can delete a project, but you cannot guarantee you
-  (or anyone) can re-register the exact same name afterward — and an
-  abandoned/deleted name sits in a "do not re-register easily" limbo
-  PyPI maintains specifically to prevent supply-chain hijacking of
-  formerly-used names.
-- Once any `(name, version)` pair is uploaded, that exact version's
-  files can never be re-uploaded — even after deletion. So once
-  `primat-0.3.0rc0.tar.gz` exists on PyPI, that filename is burned
-  forever; a botched upload means bumping to `0.3.0rc1` rather than
-  trying again with `rc0`.
-
-What to verify *before* this step (everything above, plus):
-- The package name `primat` is not already taken by checking
-  `https://pypi.org/project/primat/` yourself in a browser first — if
-  it's taken, this whole plan needs a rename, which you want to know
-  *before* burning a name on a placeholder.
-- `twine check dist/*` (Step 1) passes clean.
-- The TestPyPI dry run (Step 3) reproduced a working `pip install` end
-  to end.
-- You're certain `0.3.0rc0` is the version string you want to spend on
-  this claim (small naming/version mistakes here are permanent).
-
-This step needs your real PyPI account credentials — I can't perform it
-for you, and you should run the `twine upload` command yourself rather
-than have an agent run it from this machine, since it's a one-shot,
-unrecoverable action tied to your personal PyPI identity.
-
----
-
-## Step 5 — 🟡 Wire up Trusted Publishing on real PyPI
-
-On pypi.org, under the now-claimed `primat` project → "Publishing" →
-"Add a new publisher" → register this GitHub repo, the `wheels.yml`
-workflow filename, and the `pypi` GitHub environment name. This grants
-the `id-token: write` OIDC permission in the workflow the ability to
-publish — no long-lived API token to manage or leak.
-
-This is 🟡, not 🔴: misconfiguring or revoking a trusted publisher is
-fully reversible from the PyPI UI (remove it, add a corrected one) as
-long as you haven't yet triggered a publish through it. It only becomes
-irreversible the moment a `release: published` event actually fires the
-`publish` job successfully (→ Step 6).
-
----
-
-## Step 6 — 🔴 Tag `v0.3.0`, publish the GitHub release, let `wheels.yml` upload to real PyPI
+## Step 5 — 🔴 Tag `vX.Y.Z`, publish the GitHub release, let `wheels.yml` upload to real PyPI
 
 The GitHub release's `published` event triggers `wheels.yml`'s full
-pipeline against the real `pypi` index — via the dedicated `publish-pypi`
-job (FABLEADVICE.md S-6), which only ever fires on `release: published` and
-is unreachable from `workflow_dispatch`. No workflow-file edit is needed at
-this step any more (the old single-job version required flipping
-`repository-url`/`environment` in a commit right before publishing; that
-manual step is now obsolete).
+pipeline against the real `pypi` index, via the dedicated `publish-pypi`
+job (`environment: pypi`, Trusted Publishing already registered), which
+only ever fires on `release: published` and is unreachable from
+`workflow_dispatch`.
 
 Irreversible because:
-- Once `primat-0.3.0` (wheels + sdist) lands on real PyPI, that exact
+- Once `primat-X.Y.Z` (wheels + sdist) lands on real PyPI, that exact
   version's files can never be replaced — only deleted (hiding it from
   new installs, but not erasing it from anyone who already resolved it,
   and not freeing the version number for reuse with different content).
-- Anyone in the world can `pip install primat==0.3.0` from the moment
+- Anyone in the world can `pip install primat==X.Y.Z` from the moment
   the first wheel finishes uploading. There is no "private" undo.
 
 Pre-flight checklist (everything above must already be true):
-- [ ] Step 1: local build + `twine check` clean.
-- [ ] Step 2: `workflow_dispatch` build-only run green on every OS in
-      the matrix, including a real look at the Windows job's build log.
-- [ ] Step 3: full TestPyPI install-and-run dry run matches `CLAUDE.md`
+- [ ] Step 1: version bumped in `pyproject.toml` + `CPRIMAT_VERSION`,
+      `CHANGELOG.md` dated and complete.
+- [ ] Step 2: local build + `twine check` clean.
+- [ ] Step 3: Streamlit demo wheel rebuilt and committed (or explicitly
+      deferred — see Step 3's note, not a release blocker).
+- [ ] Step 4: full TestPyPI install-and-run dry run matches `CLAUDE.md`
       tolerances.
-- [ ] Step 4: name claimed, `0.3.0rc0` placeholder visible on
-      pypi.org/project/primat/.
-- [ ] Step 5: Trusted Publisher registered and pointing at the `pypi`
-      environment + `wheels.yml`.
-- [ ] The version string in `pyproject.toml` (`version = "0.3.0"`) is
-      exactly what you intend to ship — this is your last chance to
-      change it before it's permanent.
-- [ ] You (not an agent) create the `v0.3.0` git tag and the GitHub
+- [ ] The version string in `pyproject.toml` is exactly what you intend
+      to ship — this is your last chance to change it before it's
+      permanent.
+- [ ] You (not an agent) create the `vX.Y.Z` git tag and the GitHub
       release, since this is the action that actually fires the
       irreversible publish — treat the "Publish release" button on
       GitHub as the point of no return.
@@ -223,32 +149,21 @@ real index serves what you expect.
 
 ---
 
-## Step 7 — 🟡 Zenodo–GitHub integration (archival DOI)
+## Step 6 — 🟡 Zenodo archival DOI (per-release housekeeping)
 
-`CITATION.cff` (repo root) already gives the repo a "Cite this repository"
-button on GitHub and structured metadata for GitHub/Zenodo/other citation
-tooling — nothing to do there beyond keeping its `version`/`date-released`
-fields in sync with `pyproject.toml` at each release (mirroring the existing
-`CPRIMAT_VERSION` sync habit). What is still a manual, human step:
+`CITATION.cff` (repo root) gives the repo a "Cite this repository" button
+on GitHub and structured metadata for GitHub/Zenodo/other citation
+tooling. The GitHub↔Zenodo integration is a one-time toggle already done;
+what's recurring per release:
 
-1. Go to [zenodo.org](https://zenodo.org), sign in with the GitHub account
-   that owns/administers `CyrilPitrou/primat`, and open
-   **Settings → GitHub** in the Zenodo dashboard.
-2. Flip the toggle next to the `primat` repository to "on". This does not
-   archive anything by itself — it only arms Zenodo to watch for GitHub
-   **releases**.
-3. From then on, every GitHub release (the same `Publish release` action
-   from Step 6) triggers Zenodo to snapshot that tagged version, mint a
-   version-specific DOI plus a version-independent "concept DOI" that always
-   resolves to the latest release, and populate the record from
-   `CITATION.cff`.
-4. Add the resulting DOI badge to `README.md` (a placeholder Markdown badge
-   is already there, right under the other badges — swap in the real
-   `https://zenodo.org/badge/DOI/<concept-doi>.svg` URL Zenodo gives you
-   after the first release archives).
+1. Keep `CITATION.cff`'s `version`/`date-released` fields in sync with
+   `pyproject.toml` at each release (mirroring the `CPRIMAT_VERSION` sync
+   habit).
+2. The GitHub release from Step 5 automatically triggers Zenodo to
+   snapshot that tagged version, mint a version-specific DOI (the
+   version-independent "concept DOI" in `README.md`'s badge always
+   resolves to it — no README edit needed per release).
 
-🟡 because a Zenodo record, once minted for a published release, is meant to
-be permanent (that is the point of an archival DOI) — but toggling the
-GitHub integration itself is reversible, and it only starts affecting new
-releases from the moment it's turned on (nothing retroactive, nothing to
-undo on the PyPI side).
+🟡 because a Zenodo record, once minted for a published release, is meant
+to be permanent (that is the point of an archival DOI), even though the
+CITATION.cff edit itself is a normal reversible commit.

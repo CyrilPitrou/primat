@@ -11,8 +11,8 @@ This file is that check: it pins down (1) the result-dict *shape* exactly,
 and (2) the numerical agreement *level* the two backends currently achieve,
 so a future change that silently widens the gap is caught.
 
-Residual gap (root-caused, FABLEPLAN 2.1)
------------------------------------------
+Residual gap (root-caused)
+--------------------------
 The dominant C-vs-Python parity gap used to be a weak-rate *interpolation
 scheme* mismatch: Python interpolated the cached n<->p rate table with a
 linear-space quadratic spline (scipy ``interp1d(kind='quadratic')``), while
@@ -359,7 +359,7 @@ def test_run_bbn_validates_params_regardless_of_backend():
 def test_run_bbn_python_only_features_force_python_backend(monkeypatch):
     """background= (a custom Background object) always forces the Python
     backend, even when the C backend is requested implicitly via 'auto' --
-    it is the last inherently-Python extension point (O-8 priority 3).
+    it is the last inherently-Python extension point.
     extra_rho and decay_era are *no longer* python_only_features (both are
     now supported on the C backend -- see the parity tests below and
     primat/backend.py's module docstring); custom_network never was."""
@@ -397,7 +397,7 @@ def test_run_bbn_c_backend_rejects_background_object():
 @requires_c_backend
 def test_run_bbn_extra_rho_parity_constant():
     """A constant extra energy density (extra_rho=[lambda Tg: const]) shifts
-    the Friedmann expansion identically on both backends (O-8 priority 1: the
+    the Friedmann expansion identically on both backends (via the
     tabulated (Tg[], rho[]) handoff + C-side spline). The C spline is exact
     for a constant, so the two backends agree to the cross-backend tolerance,
     and the constant genuinely perturbs YP away from the unperturbed run."""
@@ -416,8 +416,8 @@ def test_run_bbn_extra_rho_parity_constant():
 def test_run_bbn_extra_rho_equals_deltaneff():
     """An extra_rho callable reproducing DeltaNeff worth of decoupled
     relativistic energy density gives the same YP as a genuine DeltaNeff run,
-    on both backends (the O-8 acceptance check: "extra_rho=[...] must equal
-    DeltaNeff-equivalent runs on both backends"). extra_rho only feeds the
+    on both backends: extra_rho=[...] must equal
+    DeltaNeff-equivalent runs on both backends. extra_rho only feeds the
     Friedmann equation (not the reported Neff, which counts only the neutrino
     sector), so it is YP/DoH that must coincide, not Neff."""
     import numpy as np
@@ -592,7 +592,7 @@ def test_backend_custom_network_numerical_agreement():
 
 @requires_c_backend
 def test_backend_mc_cov_corr_parity():
-    """The MC covariance/correlation feature (FABLEADVICE F-1) must be
+    """The MC covariance/correlation feature must be
     backend-transparent: both backends track the *same* MC quantity set, the
     ``dump_mc_*`` writers emit byte-identical header lines (line 1: N/seed/
     estimator; line 2: the quantity names), each backend's ``cov()``/``corr()``
@@ -638,7 +638,7 @@ def test_backend_mc_cov_corr_parity():
 
 
 # ---------------------------------------------------------------------------
-# Decay-Time (DT) era parity (O-8 priority 2)
+# Decay-Time (DT) era parity
 # ---------------------------------------------------------------------------
 
 @requires_c_backend
@@ -663,7 +663,7 @@ def test_run_bbn_decay_era_not_python_only(monkeypatch):
 @requires_c_backend
 def test_run_bbn_c_backend_accepts_decay_era():
     """force_backend='c' with decay_era=True no longer raises (it did before
-    O-8, when decay_era was a python_only_feature)."""
+    decay_era was ported to the C backend, when it was a python_only_feature)."""
     r = run_bbn({"network": "large", "amax": 8, "decay_era": True},
                 force_backend="c", progress=False)
     assert "YPBBN" in r  # the ordinary result dict is unaffected by the DT era
@@ -672,7 +672,7 @@ def test_run_bbn_c_backend_accepts_decay_era():
 @requires_c_backend
 def test_decay_era_tsv_parity(tmp_path):
     """The decay-evolution TSV is byte-schema- and value-compatible across
-    backends (O-8 priority 2). Both backends run the DT-era matrix-exponential
+    backends. Both backends run the DT-era matrix-exponential
     propagation (Python: scipy.linalg.expm; C: scaling-and-squaring Pade-13)
     on the same end-of-LT abundances and write the same 't  Y<species>...'
     layout; the per-value agreement is at the cross-backend solver tolerance,
@@ -730,7 +730,7 @@ def test_decay_era_tsv_parity(tmp_path):
     ({"network": "large", "amax": 8}, 5e-3),
 ], ids=["small", "large_amax8"])
 def test_rates_columns_backend_parity(params, rtol):
-    """B-2: both backends emit identical per-reaction rate-column names in the
+    """Both backends emit identical per-reaction rate-column names in the
     identical (sorted) order, and values that agree to the cross-backend
     tolerance. Covers a small network (~12 columns) and a large+amax network
     (67 columns) -- the rate columns follow whatever the active LT network

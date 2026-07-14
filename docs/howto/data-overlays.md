@@ -7,9 +7,10 @@ read from — one full-replacement, one additive:
 ## `data_dir` — full replacement
 
 When set, `data_dir` completely replaces the entire `primat/data/` tree. The
-supplied directory must contain `NEVO/`, `weak/`, `plasma/`, `nuclear/`, and
-`csv/` subdirectories — every data file is then read from there instead of
-the package's shipped copy.
+supplied directory must contain `NEVO/`, `nuclear/`, `csv/`, and
+`cache_plasma_weak/` subdirectories (the n↔p weak-rate and plasma caches
+live together under `cache_plasma_weak/{weak,plasma}/`) — every data file is
+then read from there instead of the package's shipped copy.
 
 ```python
 from primat.backend import run_bbn
@@ -40,10 +41,12 @@ file — resolved per-file, so one overlaid table doesn't shadow the rest of
 the shipped `tables/` tree.
 
 Not yet routed through either override: NEVO tables (which have their own
-mechanism — see {doc}`nevo-tables`), the n↔p weak-rate cache directory
-(`weak/`), the QED/electron-thermo plasma caches, or the reaction catalog
+mechanism — see {doc}`nevo-tables`), or the reaction catalog
 (`nuclides.csv`/`reactions_large.csv`/`detailed_balance.csv`/`decays.txt`,
-always read from the data root on both backends).
+always read from the data root on both backends). The n↔p weak-rate cache
+and the QED/electron-thermo plasma caches (`cache_plasma_weak/{weak,plasma}/`)
+have their own separate additive overlay, `cache_dir` — see
+{doc}`weak-rate-cache`.
 
 ## Common ground
 

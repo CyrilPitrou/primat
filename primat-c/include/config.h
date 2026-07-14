@@ -214,7 +214,7 @@ typedef struct {
      * reflects any user override before any field is set. */
     char *user_nuclear_dir;  /* additive nuclear overlay, checked before the shipped default */
 
-    /* ---- writable cache redirect (mirrors PRIMATConfig.cache_dir; B-1).
+    /* ---- writable cache redirect (mirrors PRIMATConfig.cache_dir).
      * NULL = unset: both regenerable cache trees (the n<->p weak rates and the
      * plasma electron-thermo/QED tables) live under
      * <data_dir>/cache_plasma_weak/{weak,plasma}/. When set, cache files are
@@ -234,7 +234,7 @@ typedef struct {
     double h;
     double DeltaNeff;
     double munuOverTnu;
-    /* Per-flavour neutrino chemical potentials (O-9). Each defaults to NAN,
+    /* Per-flavour neutrino chemical potentials. Each defaults to NAN,
      * the "inherit munuOverTnu" sentinel (mirrors Python's None). Read the
      * EFFECTIVE per-flavour value through cpr_config_xi_nu_e/mu/tau(), which
      * resolve NAN -> munuOverTnu. Only xi_e enters the n<->p weak rates (nu_e
@@ -275,7 +275,7 @@ typedef struct {
 
     /* ---- Tabulated extra energy density (mirrors PRIMAT.__init__'s
      * `extra_rho` list of rho(Tg) callables; see CLAUDE.md's backend feature
-     * gaps and O-8). Python cannot ship a live callable across the C ABI, so
+     * gaps). Python cannot ship a live callable across the C ABI, so
      * backend.py evaluates the *sum* of the user's extra_rho callables on a
      * dense log-spaced Tg grid once and hands the (Tg[], rho[]) arrays here;
      * cpr_bg_init_standard fits a cubic spline over them (in log10(Tg)) and
@@ -303,7 +303,7 @@ double cpr_config_rhocOverh2(const CPRConfig *cfg);
 double cpr_config_T_start_cosmo(const CPRConfig *cfg); /* [K] */
 double cpr_config_T_end(const CPRConfig *cfg);         /* [K] */
 
-/* Effective per-flavour neutrino chemical potentials (O-9): resolve the NAN
+/* Effective per-flavour neutrino chemical potentials: resolve the NAN
  * "inherit" sentinel of munuOverTnu_e/mu/tau back to the common munuOverTnu.
  * Mirror PRIMATConfig.xi_nu_e / xi_nu_mu / xi_nu_tau. Only xi_nu_e feeds the
  * n<->p weak rates; all three feed the neutrino energy density / Neff. */
@@ -337,7 +337,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
 void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
                                     char *out, size_t outsize);
 
-/* Cache-tree overlay (B-1; mirror of primat/cache_utils.py's
+/* Cache-tree overlay (mirror of primat/cache_utils.py's
  * {cache_write_dir, resolve_cache_file}). `sub` is "weak" or "plasma".
  *
  * cpr_config_cache_write_dir: writes the WRITE directory

@@ -56,7 +56,7 @@ def test_dump_evolution_without_path_writes_nothing(tmp_path):
 
 
 def test_dump_evolution_rates_columns_appended_after_Y(tmp_path):
-    """EvolutionResult.rates (per-reaction forward-rate columns, B-2) are
+    """EvolutionResult.rates (per-reaction forward-rate columns) are
     serialised AFTER the Y_ block and survive a synthetic dump/load round-trip
     (no solve needed -- exercises just the evolution.py schema plumbing)."""
     result = _make_result()

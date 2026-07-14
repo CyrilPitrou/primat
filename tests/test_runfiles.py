@@ -52,7 +52,7 @@ FAST_RUNFILES = [
 # since it takes an extra CLI argument the others don't.
 MC_RUNFILE = "primat_mc.py"
 
-# benchmark.py (FABLEADVICE.md S-16) also needs "--quick" (5 MC samples
+# benchmark.py also needs "--quick" (5 MC samples
 # instead of 100; still 3 repeats per network/backend solve) to stay within
 # this smoke test's time budget -- its numbers under --quick are not
 # meaningful as a benchmark, only as a "did it run" check (see its module

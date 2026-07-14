@@ -12,7 +12,7 @@ underlying Physics Reports paper.
   in the repository.
 
 :::{note}
-*(stub — FABLEADVICE O-3)* For now this page links the PDF manual. Porting the
-LaTeX chapters into Sphinx is explicitly **out of scope** for the initial docs
-site and left as a possible long-term effort.
+*(stub)* For now this page links the PDF manual. Porting the LaTeX chapters
+into Sphinx is explicitly **out of scope** for the initial docs site and left
+as a possible long-term effort.
 :::

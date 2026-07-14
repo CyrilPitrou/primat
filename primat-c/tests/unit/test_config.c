@@ -109,7 +109,7 @@ int main(void)
     CHECK(cpr_config_get_Omegabh2(&cfg) == 0.02, "Omegabh2 getter reflects the override");
     CHECK(cfg.eta0b != eta0b_before, "eta0b was recomputed after the Omegabh2 override");
 
-    /* ---- Physical/numerical range checks in cpr_config_validate (O-1),
+    /* ---- Physical/numerical range checks in cpr_config_validate,
      * mirroring test_config.py's range-check tests. Each bad value must make
      * cpr_config_validate return non-zero with a message naming the field.
      * strict_params default (0) and the strict_params field round-trip are
@@ -165,7 +165,7 @@ int main(void)
     CHECK(cpr_config_validate(&cfg, &verr) == 0, "std_tau_n=0 is accepted (non-negative)");
     free(verr); verr = NULL;
 
-    /* ---- Per-flavour neutrino chemical potentials (O-9). Defaults are the NAN
+    /* ---- Per-flavour neutrino chemical potentials. Defaults are the NAN
      * "inherit munuOverTnu" sentinel, resolved by cpr_config_xi_nu_e/mu/tau;
      * None round-trips back to NAN, a number pins that one flavour. Mirrors
      * PRIMATConfig.xi_nu_e / munuOverTnu_e=None. ---- */
@@ -189,7 +189,7 @@ int main(void)
     CHECK(cpr_config_xi_nu_e(&cfg) == 0.07,
           "after reset ξ_e inherits munuOverTnu again");
 
-    /* ---- cache_dir redirect + cache_plasma_weak/ overlay (B-1). Mirrors
+    /* ---- cache_dir redirect + cache_plasma_weak/ overlay. Mirrors
      * tests/test_cache_utils.py's cache_dir tests: unset -> the write dir is
      * <data_dir>/cache_plasma_weak/<sub>; set -> <cache_dir>/<sub>; and the
      * READ resolver still finds a shipped file (present only in the package

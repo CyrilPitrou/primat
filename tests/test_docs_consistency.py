@@ -126,7 +126,7 @@ def test_reference_run_params_are_known_to_config():
     "output_mc_correlation",
 ])
 def test_readme_mc_key_names_are_real_params(key):
-    """README's MC section (FABLEADVICE F-1/F-2) quotes these DEFAULT_PARAMS
+    """README's MC section quotes these DEFAULT_PARAMS
     key names verbatim; a rename that isn't mirrored in README would leave
     users following a documented option that raises an 'unknown parameter'
     warning instead of doing anything."""
@@ -152,7 +152,7 @@ def test_readme_does_not_reference_old_mc_file_key():
 
 def test_streamlit_wheel_matches_pyproject_version():
     """requirements.txt's last line (the Streamlit Cloud deployment chain,
-    see CLAUDE.md/wheels/README.md -- FABLEADVICE.md S-5) must point at a
+    see CLAUDE.md/wheels/README.md) must point at a
     wheel file that (a) actually exists under wheels/ and (b) has the same
     version as pyproject.toml, or the public demo silently keeps serving an
     old build after a version bump."""
@@ -182,7 +182,7 @@ def test_streamlit_wheel_matches_pyproject_version():
 def test_readme_set_syntax_is_key_equals_value():
     """README's CLI section documents `--set KEY=VALUE`; primat/cli.py actually
     requires the '=' form (argparse splits on it), not the 'KEY VALUE' form
-    README used to show (FABLEADVICE.md S-3) -- which primat --set rejects."""
+    README used to show -- which primat --set rejects."""
     readme_path = os.path.join(REPO_ROOT, "README.md")
     readme_text = _read_text(readme_path)
     assert "--set KEY=VALUE" in readme_text
@@ -192,8 +192,8 @@ def test_readme_set_syntax_is_key_equals_value():
 
 
 def test_readme_python_only_features_list_matches_backend():
-    """README's 'Python-only features' list (FABLEADVICE.md S-3) must match
-    primat/backend.py's actual auto-fallback gate. After O-8 the only
+    """README's 'Python-only features' list must match
+    primat/backend.py's actual auto-fallback gate. The only
     inherently-Python run_bbn feature is background= (a custom Background
     object); extra_rho, decay_era, custom_network and output_time_evolution
     are all supported on the C backend (only MC prev is additionally
@@ -210,7 +210,7 @@ def test_readme_python_only_features_list_matches_backend():
     assert "background=" in readme_text
     assert "MC `prev`" in readme_text
     # extra_rho/decay_era/custom_network/output_time_evolution must NOT be
-    # listed as Python-only any more -- all supported on the C backend (O-8).
+    # listed as Python-only any more -- all supported on the C backend.
     python_only_section = readme_text[readme_text.index("Python-only features"):]
     python_only_section = python_only_section[:python_only_section.index("### Using primat-c directly")]
     assert "custom_network` (GUI" not in python_only_section
@@ -222,8 +222,8 @@ def test_readme_python_only_features_list_matches_backend():
 
 
 def test_notebooks_readme_lists_every_notebook():
-    """notebooks/README.md's table must mention every notebooks/*.ipynb file
-    (FABLEADVICE.md S-8) -- a new notebook silently missing from the README
+    """notebooks/README.md's table must mention every notebooks/*.ipynb file --
+    a new notebook silently missing from the README
     is undiscoverable from the folder's own index."""
     notebooks_dir = os.path.join(REPO_ROOT, "notebooks")
     readme_text = _read_text(os.path.join(notebooks_dir, "README.md"))
@@ -354,7 +354,7 @@ def test_readme_gui_is_not_called_source_only():
 
 def test_readme_rate_columns_match_implementation():
     """README's output_rates_time_evolution claims must describe the
-    implemented per-reaction forward-rate column block (B-2), not the
+    implemented per-reaction forward-rate column block, not the
     historical no-op."""
     readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
     assert "_frwrd" in readme

@@ -1,7 +1,7 @@
 # PRIMAT — documentation
 
 This folder holds the extensive PRIMAT user + physics documentation, updated
-for **primat version 0.3.1** (package renamed from `PyPRIMAT`/`pyprimat`;
+for **primat version 0.3.2** (package renamed from `PyPRIMAT`/`pyprimat`;
 covers the C backend, the GUI's custom-network builder, Monte-Carlo
 rate-uncertainty propagation, and the `data_dir`/`user_nuclear_dir` overlay).
 

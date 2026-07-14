@@ -100,7 +100,7 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     char p_file_leg[CPR_PATH_BUF_LEN2], dp_file_leg[CPR_PATH_BUF_LEN2], d2p_file_leg[CPR_PATH_BUF_LEN2];
     /* Overlay reads: each QED table is resolved individually through the
      * cache_dir->shipped overlay; any recompute is WRITTEN to the writable
-     * base's plasma/ subdir (plasma_wdir). Mirrors plasma.py (B-1). */
+     * base's plasma/ subdir (plasma_wdir). Mirrors plasma.py. */
     char plasma_wdir[CPR_PATH_BUF_LEN];
     cpr_config_cache_write_dir(cfg, "plasma", plasma_wdir, sizeof(plasma_wdir));
     cpr_config_resolve_cache_file(cfg, "plasma", "QED_pressure_correction_e2.txt", e2_file, sizeof(e2_file));
@@ -128,7 +128,7 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
         if (cpr_qed_compute_tables(1e-3, 1e2, 500, g_const.alphaem, g_const.me, &t, errmsg))
             return 1;
         if (recompute) {
-            /* Non-fatal on a read-only install (B-1): the freshly computed
+            /* Non-fatal on a read-only install: the freshly computed
              * tables below are valid, only the disk cache is skipped -- warn
              * and point the user at the cache_dir remedy, do NOT abort. */
             if (cpr_qed_save_tables(&t, plasma_wdir, errmsg)) {
@@ -325,7 +325,7 @@ static double dp_e_dT_exact(double Tg)
 static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
 {
     /* Overlay read (cache_dir first, else shipped copy); write to the writable
-     * base's plasma/ subdir (cache_dir if set, else the package tree). B-1. */
+     * base's plasma/ subdir (cache_dir if set, else the package tree). */
     char cache_read[CPR_PATH_BUF_LEN2];
     cpr_config_resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt",
                                   cache_read, sizeof(cache_read));
