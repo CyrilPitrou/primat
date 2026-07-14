@@ -25,10 +25,9 @@
 #include "config.h"
 #include "mc.h"
 
-#include <pthread.h>
+#include "compat_thread.h"  /* pthreads + usleep, portable across POSIX & MSVC */
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 /* Converts one Python value into a CPRParam. CPR_STRING points at a
  * strdup'd copy (returned via *owned, so the caller can free it after the

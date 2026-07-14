@@ -3,11 +3,13 @@
 
 #include <ctype.h>
 #include <math.h>
-#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "compat_posix.h"  /* unistd.h + sys/stat.h + strtok_r, portable */
+#ifndef _WIN32
+#include <pwd.h>           /* getpwuid/getpwnam for "~"/"~user" expansion  */
+#endif
 
 /* ===========================================================================
  * Literal parsing (--set KEY=VALUE / ini values), mirroring the
@@ -341,13 +343,25 @@ static char *cpr_expanduser_path(const char *path)
     if (path[1] == '\0' || path[1] == '/') {
         /* "~" and "~/" both expand against the current user's home dir. */
         home = getenv("HOME");
+#ifdef _WIN32
+        /* Windows has no HOME/passwd; fall back to the standard profile
+         * environment variable (%USERPROFILE%, e.g. C:\Users\alice). */
+        if (!home || !home[0])
+            home = getenv("USERPROFILE");
+#else
         if (!home || !home[0]) {
             struct passwd *pw = getpwuid(getuid());
             if (pw && pw->pw_dir && pw->pw_dir[0])
                 home = pw->pw_dir;
         }
+#endif
         rest = path + 1;
     } else {
+#ifdef _WIN32
+        /* "~user" (another account's home) is not resolvable without the
+         * Windows user-profile lookup APIs; leave such paths unexpanded. */
+        return strdup(path);
+#else
         /* "~user/..." expands against that account's passwd entry. */
         const char *slash = strchr(path + 1, '/');
         size_t user_len = slash ? (size_t)(slash - (path + 1)) : strlen(path + 1);
@@ -363,6 +377,7 @@ static char *cpr_expanduser_path(const char *path)
         } else {
             return strdup(path);
         }
+#endif
     }
 
     if (!home || !home[0])

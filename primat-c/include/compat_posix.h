@@ -34,6 +34,15 @@
 #define strtok_r strtok_s
 #endif
 
+/* Case-insensitive string compares: POSIX str[n]casecmp -> MSVC _str[n]icmp
+ * (identical signatures). */
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#ifndef strncasecmp
+#define strncasecmp _strnicmp
+#endif
+
 /* POSIX mkdir(path, mode) -> MSVC _mkdir(path): the CRT variant takes no
  * permission-mode argument (Windows ACLs are inherited), so we drop it.    */
 #ifndef mkdir

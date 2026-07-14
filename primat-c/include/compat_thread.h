@@ -10,9 +10,11 @@
  * these, so on Windows we provide a minimal drop-in implementation backed by
  * Win32 primitives; on POSIX we forward to the real <pthread.h>/<unistd.h>.
  *
- * Only the facilities mc.c actually uses are shimmed -- this is not a general
- * pthreads emulation.  The definitions are `static` because this header is
- * included by exactly one translation unit (mc.c).
+ * Only the facilities the callers actually use are shimmed -- this is not a
+ * general pthreads emulation.  Two translation units include this header
+ * (mc.c and primat/_primat_c_src/_wrapper.c), each using a different subset,
+ * so the definitions are `static inline` -- unused ones in either unit must
+ * not trigger -Wunused-function.
  * ========================================================================= */
 
 #if defined(_WIN32)
@@ -36,20 +38,20 @@ typedef HANDLE pthread_t;
 typedef CRITICAL_SECTION pthread_mutex_t;
 
 /* --- Mutex -------------------------------------------------------------- */
-static int pthread_mutex_init(pthread_mutex_t *m, void *attr) {
+static inline int pthread_mutex_init(pthread_mutex_t *m, void *attr) {
     (void)attr; /* mc.c always passes NULL (default attributes) */
     InitializeCriticalSection(m);
     return 0;
 }
-static int pthread_mutex_destroy(pthread_mutex_t *m) {
+static inline int pthread_mutex_destroy(pthread_mutex_t *m) {
     DeleteCriticalSection(m);
     return 0;
 }
-static int pthread_mutex_lock(pthread_mutex_t *m) {
+static inline int pthread_mutex_lock(pthread_mutex_t *m) {
     EnterCriticalSection(m);
     return 0;
 }
-static int pthread_mutex_unlock(pthread_mutex_t *m) {
+static inline int pthread_mutex_unlock(pthread_mutex_t *m) {
     LeaveCriticalSection(m);
     return 0;
 }
@@ -67,14 +69,14 @@ struct cpr_pthread_start {
     void *arg;
 };
 
-static unsigned __stdcall cpr_pthread_trampoline(void *p) {
+static inline unsigned __stdcall cpr_pthread_trampoline(void *p) {
     struct cpr_pthread_start s = *(struct cpr_pthread_start *)p;
     free(p);
     s.fn(s.arg); /* return value is discarded; mc.c passes NULL to join */
     return 0;
 }
 
-static int pthread_create(pthread_t *t, void *attr,
+static inline int pthread_create(pthread_t *t, void *attr,
                           cpr_pthread_fn fn, void *arg) {
     (void)attr; /* mc.c always passes NULL (default attributes) */
     struct cpr_pthread_start *s =
@@ -93,7 +95,7 @@ static int pthread_create(pthread_t *t, void *attr,
     return 0;
 }
 
-static int pthread_join(pthread_t t, void **retval) {
+static inline int pthread_join(pthread_t t, void **retval) {
     (void)retval; /* mc.c never inspects worker return values */
     WaitForSingleObject(t, INFINITE);
     CloseHandle(t);
@@ -105,11 +107,19 @@ static int pthread_join(pthread_t t, void **retval) {
 #ifndef _SC_NPROCESSORS_ONLN
 #define _SC_NPROCESSORS_ONLN 1
 #endif
-static long sysconf(int name) {
+static inline long sysconf(int name) {
     (void)name; /* mc.c only ever asks for _SC_NPROCESSORS_ONLN */
     SYSTEM_INFO si;
     GetSystemInfo(&si);
     return (long)si.dwNumberOfProcessors;
+}
+
+/* --- usleep --------------------------------------------------------------
+ * _wrapper.c's Ctrl-C poll loop sleeps in microseconds; Win32 Sleep() takes
+ * milliseconds.  Round up so a sub-millisecond request still yields the CPU. */
+static inline int usleep(unsigned long usec) {
+    Sleep((DWORD)((usec + 999UL) / 1000UL));
+    return 0;
 }
 
 #else /* POSIX (Linux, macOS, ...) */
