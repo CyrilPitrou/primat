@@ -24,101 +24,6 @@ from .constants import CONST
 
 __all__ = ['DEFAULT_PARAMS', 'PRIMATConfig']
 
-# String-valued config keys that represent filesystem paths.
-# These are normalized with os.path.expanduser() so CLI users can pass
-# quoted "~/" prefixes through --set and still get the expected home-dir
-# expansion.
-_PATH_PARAMS = {
-    "nevo_file",
-    "nevo_spectral_file",
-    "nevo_grid_file",
-    "custom_background",
-    "data_dir",
-    "user_nuclear_dir",
-    "output_file",
-    "output_final_file",
-    "output_background_file",
-    "output_mc_file_prefix",
-    "output_decay_file",
-}
-
-
-def _expanduser_path(value):
-    """Expand a user-home prefix in a path-like config value.
-
-    Parameters
-    ----------
-    value : str | os.PathLike | None
-        Raw path value supplied by the caller. ``None`` is passed through
-        unchanged so optional path parameters keep their sentinel value.
-
-    Returns
-    -------
-    str | None
-        The same path with a leading ``~`` resolved against the current
-        user home directory, or ``None`` if that was the input.
-
-    Example
-    -------
-        >>> _expanduser_path("~/Downloads/custom")
-        '/home/user/Downloads/custom'
-    """
-    if value is None:
-        return None
-    return os.path.expanduser(os.fspath(value))
-
-
-def _rates_overlay_notice(field: str, path: str) -> str:
-    """Render the startup note for a custom data/nuclear overlay directory.
-
-    Parameters
-    ----------
-    field : str
-        Either ``"data_dir"`` (full-takeover data root) or
-        ``"user_nuclear_dir"`` (additive nuclear overlay).
-    path : str        Directory path already accepted by the config validator.
-
-    Returns
-    -------
-    str
-        Human-readable notice explaining the effect of the override.
-    """
-    if field == "data_dir":
-        label = "full-takeover data directory"
-        detail = "entire data tree (NEVO/, nuclear/, csv/, cache_plasma_weak/) replaced"
-    else:
-        label = "additive nuclear overlay"
-        detail = "nuclear networks and rate tables"
-    return (
-        f"[init]  {field} {label} override: {detail} under "
-        f"{os.path.abspath(os.path.expanduser(os.fspath(path)))!r}."
-    )
-
-
-def _overlay_candidates(base: str, relpath: str) -> list[str]:
-    """Return overlay lookup candidates for a rates-relative path.
-
-    The shipped tree is rooted at ``primat/data`` and therefore uses paths
-    such as ``nuclear/networks/small.txt``.  Overlay directories are treated
-    as the equivalent of ``primat/data/nuclear`` instead, so the primary
-    lookup drops a leading ``nuclear/`` component when present and then
-    falls back to the legacy nested layout for compatibility.
-    """
-    candidates = []
-    # ``relpath`` is built by callers with os.path.join, so on Windows its
-    # components are separated by "\\", not "/". Normalise to forward slashes
-    # before detecting a leading "nuclear/" component, otherwise the
-    # nuclear-stripped overlay candidate is never generated on Windows and a
-    # user_nuclear_dir overlay's networks/rate tables become invisible there.
-    norm = relpath.replace(os.sep, "/")
-    if os.altsep:
-        norm = norm.replace(os.altsep, "/")
-    if norm.startswith("nuclear/"):
-        stripped_parts = norm[len("nuclear/"):].split("/")
-        candidates.append(os.path.join(base, *stripped_parts))
-    candidates.append(os.path.join(base, relpath))
-    return candidates
-
 # ---------------------------------------------------------------------------
 # Default parameter values exposed as a plain dict so callers can inspect them
 # ---------------------------------------------------------------------------
@@ -415,6 +320,101 @@ DEFAULT_PARAMS: dict = {
     "wnEDE":                      1.,     # EDE equation-of-state parameter
 }
 
+
+# String-valued config keys that represent filesystem paths.
+# These are normalized with os.path.expanduser() so CLI users can pass
+# quoted "~/" prefixes through --set and still get the expected home-dir
+# expansion.
+_PATH_PARAMS = {
+    "nevo_file",
+    "nevo_spectral_file",
+    "nevo_grid_file",
+    "custom_background",
+    "data_dir",
+    "user_nuclear_dir",
+    "output_file",
+    "output_final_file",
+    "output_background_file",
+    "output_mc_file_prefix",
+    "output_decay_file",
+}
+
+
+def _expanduser_path(value):
+    """Expand a user-home prefix in a path-like config value.
+
+    Parameters
+    ----------
+    value : str | os.PathLike | None
+        Raw path value supplied by the caller. ``None`` is passed through
+        unchanged so optional path parameters keep their sentinel value.
+
+    Returns
+    -------
+    str | None
+        The same path with a leading ``~`` resolved against the current
+        user home directory, or ``None`` if that was the input.
+
+    Example
+    -------
+        >>> _expanduser_path("~/Downloads/custom")
+        '/home/user/Downloads/custom'
+    """
+    if value is None:
+        return None
+    return os.path.expanduser(os.fspath(value))
+
+
+def _rates_overlay_notice(field: str, path: str) -> str:
+    """Render the startup note for a custom data/nuclear overlay directory.
+
+    Parameters
+    ----------
+    field : str
+        Either ``"data_dir"`` (full-takeover data root) or
+        ``"user_nuclear_dir"`` (additive nuclear overlay).
+    path : str        Directory path already accepted by the config validator.
+
+    Returns
+    -------
+    str
+        Human-readable notice explaining the effect of the override.
+    """
+    if field == "data_dir":
+        label = "full-takeover data directory"
+        detail = "entire data tree (NEVO/, nuclear/, csv/, cache_plasma_weak/) replaced"
+    else:
+        label = "additive nuclear overlay"
+        detail = "nuclear networks and rate tables"
+    return (
+        f"[init]  {field} {label} override: {detail} under "
+        f"{os.path.abspath(os.path.expanduser(os.fspath(path)))!r}."
+    )
+
+
+def _overlay_candidates(base: str, relpath: str) -> list[str]:
+    """Return overlay lookup candidates for a rates-relative path.
+
+    The shipped tree is rooted at ``primat/data`` and therefore uses paths
+    such as ``nuclear/networks/small.txt``.  Overlay directories are treated
+    as the equivalent of ``primat/data/nuclear`` instead, so the primary
+    lookup drops a leading ``nuclear/`` component when present and then
+    falls back to the legacy nested layout for compatibility.
+    """
+    candidates = []
+    # ``relpath`` is built by callers with os.path.join, so on Windows its
+    # components are separated by "\\", not "/". Normalise to forward slashes
+    # before detecting a leading "nuclear/" component, otherwise the
+    # nuclear-stripped overlay candidate is never generated on Windows and a
+    # user_nuclear_dir overlay's networks/rate tables become invisible there.
+    norm = relpath.replace(os.sep, "/")
+    if os.altsep:
+        norm = norm.replace(os.altsep, "/")
+    if norm.startswith("nuclear/"):
+        stripped_parts = norm[len("nuclear/"):].split("/")
+        candidates.append(os.path.join(base, *stripped_parts))
+    candidates.append(os.path.join(base, relpath))
+    return candidates
 
 def _default_params_comments():
     """Parse this file's own source to extract each ``DEFAULT_PARAMS`` key's
