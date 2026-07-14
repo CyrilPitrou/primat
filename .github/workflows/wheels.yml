@@ -39,6 +39,11 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT: "CFLAGS='-O2'"
+          # TEMPORARY (diagnostic): surface the MSVC compile/link error that
+          # optional_build_ext (setup.py) swallows at verbosity 0, so we can
+          # see why the win_amd64 extension still isn't shipping. Revert once
+          # the Windows extension builds clean.
+          CIBW_BUILD_VERBOSITY_WINDOWS: "1"
           # setup.py's optional_build_ext deliberately lets the C extension
           # fail without failing a *source* build -- but a wheel that
           # silently shipped the 25x-slower pure-Python fallback would be a
