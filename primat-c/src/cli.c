@@ -11,8 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>   /* getcwd, for the absolute-path [output] messages */
+#include "compat_posix.h"  /* sys/stat.h + unistd.h/getcwd/mkdir, portable */
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif

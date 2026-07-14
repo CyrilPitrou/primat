@@ -52,7 +52,21 @@ ext_modules = [
         include_dirs=[CPRIMAT_INCLUDE],
         # _GNU_SOURCE: exposes M_PI on Linux (glibc) with -std=c11.
         # _USE_MATH_DEFINES: exposes M_PI on Windows (MSVC).
-        define_macros=[("_GNU_SOURCE", None), ("_USE_MATH_DEFINES", None)],
+        # On Windows we also silence MSVC's deprecation warnings (C4996) for
+        # the POSIX libc names the sources still use directly (strdup,
+        # strncpy, ...); these are portable, standard functions -- the CRT
+        # merely prefers its own _strdup/strncpy_s spellings. The
+        # unistd.h/pthread/mkdir/strtok_r differences are handled by the
+        # compat_posix.h / compat_thread.h shims (primat-c/include/), not here.
+        define_macros=(
+            [("_GNU_SOURCE", None), ("_USE_MATH_DEFINES", None)]
+            + (
+                [("_CRT_SECURE_NO_WARNINGS", None),
+                 ("_CRT_NONSTDC_NO_WARNINGS", None)]
+                if os.name == "nt"
+                else []
+            )
+        ),
         # No -march=native: wheels must run on any host of the target
         # platform/arch, not just the build machine's own CPU.
         # MSVC does not accept -std=c11 or -O2 (it uses /std:c11 and /O2).

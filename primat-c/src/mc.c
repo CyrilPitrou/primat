@@ -10,12 +10,11 @@
 #include "rng.h"
 
 #include <math.h>
-#include <pthread.h>
+#include "compat_thread.h"  /* pthreads + sysconf, portable across POSIX & MSVC */
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 /* Cooperative-cancellation flag for cpr_mc_request_cancel (mc.h): reset to
  * 0 at the start of every cpr_mc_uncertainty call, set to 1 by an external

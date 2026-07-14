@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include "compat_posix.h"  /* unistd.h / getpid, portable across POSIX & MSVC */
 
 /* ===========================================================================
  * SHA-256 (public-domain style, single-buffer one-shot implementation --

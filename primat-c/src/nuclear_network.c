@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include "compat_posix.h"  /* sys/stat.h + mkdir, portable across POSIX & MSVC */
 #include <time.h>
 
 /* Riemann zeta(3) (Apery's constant) -- see constants.c's identical

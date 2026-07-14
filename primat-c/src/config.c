@@ -7,8 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/stat.h>
+#include "compat_posix.h"  /* unistd.h + sys/stat.h + strtok_r, portable */
 
 /* ===========================================================================
  * Literal parsing (--set KEY=VALUE / ini values), mirroring the

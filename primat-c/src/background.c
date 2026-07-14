@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include "compat_posix.h"  /* sys/stat.h + mkdir + strtok_r, portable */
 #include <sys/types.h>
 #include <time.h>
 

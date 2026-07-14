@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include "compat_posix.h"  /* sys/stat.h + mkdir, portable across POSIX & MSVC */
 
 static const double EXP_CUTOFF = 3.0e2; /* integrands.exp_cutoff */
 

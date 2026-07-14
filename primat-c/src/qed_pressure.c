@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>  /* mkdir (create a fresh cache_dir subtree on demand) */
+#include "compat_posix.h"  /* sys/stat.h + mkdir (fresh cache_dir subtree), portable */
 
 /* Mirrors qed_pressure.py's module-level constants exactly (see that
  * file's comments for the rationale of each). */

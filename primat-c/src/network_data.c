@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "compat_posix.h"  /* strtok_r, portable across POSIX & MSVC */
 
 static char *trim(char *s)
 {

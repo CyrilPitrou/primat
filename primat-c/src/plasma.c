@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include "compat_posix.h"  /* sys/stat.h + mkdir, portable across POSIX & MSVC */
 
 /* Below Tg = me / _ELEC_THERMO_LOWT_RATIO the e+- number density is
  * Boltzmann-suppressed by exp(-me/Tg) < exp(-30) ~ 1e-13 relative to
