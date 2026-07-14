@@ -451,6 +451,28 @@ def main(argv=None):
     else:
         results = run_bbn(params=params, force_backend=args.backend)
         mc = None
+        # output_mc_samples/output_mc_covariance/output_mc_correlation only
+        # have an effect inside the `if mc is not None:` file-writing block
+        # below (mc_uncertainty/run_mc is what produces the MCResult they are
+        # dumped from); without --mc there is no MCResult, so any of these
+        # flags being set is silently a no-op unless we flag it here.
+        cfg_check = PRIMATConfig(params)
+        requested = [name for name, enabled in (
+            ("output_mc_samples", cfg_check.output_mc_samples),
+            ("output_mc_covariance", cfg_check.output_mc_covariance),
+            ("output_mc_correlation", cfg_check.output_mc_correlation),
+        ) if enabled]
+        if requested:
+            # Plain stderr print (matching _rates_overlay_notice above and
+            # the C CLI's fprintf(stderr, "warning: ...") in cli.c), not
+            # warnings.warn: this fires inside main() itself, the CLI entry
+            # point, so warnings.warn's source-line echo would just quote
+            # whichever line of this (multi-line) call happens to sit at the
+            # reported lineno -- noise, not information -- for a warning that
+            # has no meaningful caller frame to attribute to anyway.
+            print(f"warning: {', '.join(requested)} set but --mc was not "
+                  "passed; no MC output file(s) will be written.",
+                  file=sys.stderr)
     elapsed = time.time() - start_time
 
     if args.json:

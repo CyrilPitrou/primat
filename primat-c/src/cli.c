@@ -941,6 +941,25 @@ int cpr_cli_main(int argc, char **argv)
             mc = &mc_result;
         }
         free(quantities);
+    } else {
+        /* output_mc_samples/output_mc_covariance/output_mc_correlation only
+         * have an effect inside the `if (mc)` file-writing block below (a
+         * CPRMCResult from cpr_mc_uncertainty is what they are dumped from);
+         * without --mc there is no CPRMCResult, so any of these flags being
+         * set is silently a no-op unless we flag it here. Mirrors cli.py's
+         * equivalent warning. */
+        const char *requested[3];
+        int n_requested = 0;
+        if (cfg.output_mc_samples)     requested[n_requested++] = "output_mc_samples";
+        if (cfg.output_mc_covariance)  requested[n_requested++] = "output_mc_covariance";
+        if (cfg.output_mc_correlation) requested[n_requested++] = "output_mc_correlation";
+        if (n_requested > 0) {
+            fprintf(stderr, "warning: ");
+            for (int k = 0; k < n_requested; k++)
+                fprintf(stderr, "%s%s", k ? ", " : "", requested[k]);
+            fprintf(stderr, " set but --mc was not passed; "
+                            "no MC output file(s) will be written.\n");
+        }
     }
 
     /* ---- Output ---- */
