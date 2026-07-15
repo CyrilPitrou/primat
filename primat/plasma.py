@@ -78,6 +78,89 @@ _sigma_inf = 11. * np.pi**2 / 45.
 
 
 # ---------------------------------------------------------------------------
+# e± Fermi-Dirac integrands (for ρ_e, dρ_e/dTγ, p_e, dp_e/dTγ).
+#
+# These live at MODULE level and take the electron mass ``me`` as an explicit
+# third argument rather than closing over ``cfg.me``. That is deliberate and
+# is what makes numba's on-disk cache (cache=True below) both safe and
+# effective: a cached compile is keyed only on the function's source and
+# argument types, so a closure over a config-dependent constant could in
+# principle be served stale for a different ``cfg``. Passing ``me`` through the
+# signature removes that hazard entirely — the compiled code is identical for
+# every ``me`` — and lets a fresh process (joblib MC worker, Streamlit server)
+# load the ~0.5 s compile from disk instead of redoing it. Same rationale as
+# the weak-rate FD kernels (see weak_rates/integrands.py).
+#
+# Each integrand is a function of dimensionless energy E = ε/Tγ, the photon
+# temperature Tγ, and the electron mass me (lower integration limit x = me/Tγ);
+# see Phys. Rep. Eqs. (A4b, A4c) and _rho_e_exact()/_p_e_exact() below.
+# ---------------------------------------------------------------------------
+def _rho_e_intgd(E, Tg, me):
+    # Integrand of ρ_e: E² √(E²−(me/Tg)²) / (eᴱ+1)   [Phys. Rep. Eq. A4b]
+    return E**2 * (E**2 - (me / Tg)**2)**0.5 / (np.exp(E) + 1.)
+
+def _drho_e_dT_intgd(E, Tg, me):
+    # Integrand of dρ_e/dTg: E³ √(E²−(me/Tg)²) / (4 cosh²(E/2))
+    # Factor E/(4 cosh²(E/2)) = −Tg d/dTg [1/(eᴱ+1)]
+    return E**3 * (E**2 - (me / Tg)**2)**0.5 / np.cosh(E / 2.0)**2
+
+def _p_e_intgd(E, Tg, me):
+    # Integrand of p_e: (E²−(me/Tg)²)^{3/2} / (eᴱ+1)   [Phys. Rep. Eq. A4c]
+    return (E**2 - (me / Tg)**2)**1.5 / (np.exp(E) + 1.)
+
+def _dp_e_dT_intgd(E, Tg, me):
+    # Integrand of dp_e/dTg: E (E²−(me/Tg)²)^{3/2} / (4 cosh²(E/2))
+    return E * (E**2 - (me / Tg)**2)**1.5 / np.cosh(E / 2.0)**2
+
+
+# Pristine pure-Python implementations, kept aside so _setup_electron_integrands
+# can re-wrap from scratch if called again with a different numba_installed value
+# (mirrors weak_rates/integrands.py's _FD_IMPLS_ORIG mechanism).
+_ELEC_INTGD_ORIG = dict(
+    _rho_e_intgd=_rho_e_intgd, _drho_e_dT_intgd=_drho_e_dT_intgd,
+    _p_e_intgd=_p_e_intgd, _dp_e_dT_intgd=_dp_e_dT_intgd,
+)
+
+# Remembers which numba_installed value the module-level integrands were last
+# wrapped for; None means "not yet set up".
+_elec_intgd_numba = None
+
+
+def _setup_electron_integrands(numba_installed):
+    """(Re)bind the four module-level e± integrands, optionally njit-compiled.
+
+    Idempotent and process-wide: the first call with ``numba_installed=True``
+    wraps each integrand with ``njit(cache=True)`` (compiled lazily on first
+    use, then persisted to numba's on-disk cache); later calls with the same
+    value are a no-op, and flipping ``numba_installed`` restores the pristine
+    pure-Python versions first. All Plasma instances share the resulting
+    compiled objects (and hence the same disk cache), so only the very first
+    process to touch them pays the ~0.5 s JIT cost.
+    """
+    global _rho_e_intgd, _drho_e_dT_intgd, _p_e_intgd, _dp_e_dT_intgd, \
+           _elec_intgd_numba
+    if _elec_intgd_numba == numba_installed:
+        return
+    _elec_intgd_numba = numba_installed
+    # Always restart from the pristine implementations so this is idempotent
+    # regardless of which way numba_installed flips.
+    _rho_e_intgd     = _ELEC_INTGD_ORIG['_rho_e_intgd']
+    _drho_e_dT_intgd = _ELEC_INTGD_ORIG['_drho_e_dT_intgd']
+    _p_e_intgd       = _ELEC_INTGD_ORIG['_p_e_intgd']
+    _dp_e_dT_intgd   = _ELEC_INTGD_ORIG['_dp_e_dT_intgd']
+    if not numba_installed:
+        return
+    try:
+        from numba import njit
+        _rho_e_intgd     = njit(_rho_e_intgd, cache=True)
+        _drho_e_dT_intgd = njit(_drho_e_dT_intgd, cache=True)
+        _p_e_intgd       = njit(_p_e_intgd, cache=True)
+        _dp_e_dT_intgd   = njit(_dp_e_dT_intgd, cache=True)
+    except ImportError:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Photons and SM neutrinos: pure functions of temperature, no cfg dependence.
 # ---------------------------------------------------------------------------
 
@@ -475,45 +558,24 @@ class Plasma:
         the Fermi-Dirac factor w.r.t. Tγ: d/dTγ[1/(eᴱ+1)] = E/(4Tγ cosh²(E/2)).
 
         When ``cfg.numba_installed`` is True and ``numba`` is importable, all four
-        are wrapped with ``@njit(cache=True)`` for JIT compilation; otherwise
-        equivalent pure-Python functions are used.  Numerical results are
-        identical in both cases — only speed differs.
+        are wrapped with ``njit(cache=True)`` for JIT compilation (persisted to
+        numba's on-disk cache across processes); otherwise equivalent
+        pure-Python functions are used.  Numerical results are identical in both
+        cases — only speed differs.
+
+        The integrands themselves are defined once at module level (taking the
+        electron mass ``me`` as an explicit argument, which is what makes
+        cache=True safe — see the module-level note above) and shared by every
+        Plasma instance via :func:`_setup_electron_integrands`; this method just
+        ensures they are wrapped for the current numba setting and points the
+        instance's ``self._*_impl`` handles at them.
 
         Sets ``self._rho_e_int_impl``, ``self._drho_e_dT_impl``,
         ``self._p_e_int_impl``, ``self._dp_e_dT_impl``.
         """
-        me_val = cfg.me
-
-        # Pure-Python implementations (single source of truth for the
-        # formulae); optionally JIT-wrapped below so the numba and
-        # pure-Python code paths cannot drift out of sync with each other.
-        def _rho_e_intgd(E, Tg):
-            # Integrand of ρ_e: E² √(E²−(me/Tg)²) / (eᴱ+1)
-            return E**2 * (E**2 - (me_val / Tg)**2)**0.5 / (np.exp(E) + 1.)
-
-        def _drho_e_dT_intgd(E, Tg):
-            # Integrand of dρ_e/dTg: E³ √(E²−(me/Tg)²) / (4 cosh²(E/2))
-            # Factor E/(4 cosh²(E/2)) = −Tg d/dTg [1/(eᴱ+1)]
-            return E**3 * (E**2 - (me_val / Tg)**2)**0.5 / np.cosh(E / 2.0)**2
-
-        def _p_e_intgd(E, Tg):
-            # Integrand of p_e: (E²−(me/Tg)²)^{3/2} / (eᴱ+1)
-            return (E**2 - (me_val / Tg)**2)**1.5 / (np.exp(E) + 1.)
-
-        def _dp_e_dT_intgd(E, Tg):
-            # Integrand of dp_e/dTg: E (E²−(me/Tg)²)^{3/2} / (4 cosh²(E/2))
-            return E*(E**2 - (me_val / Tg)**2)**1.5 / np.cosh(E / 2.0)**2
-
-        if cfg.numba_installed:
-            try:
-                from numba import njit
-                _rho_e_intgd     = njit(_rho_e_intgd)
-                _drho_e_dT_intgd = njit(_drho_e_dT_intgd)
-                _p_e_intgd       = njit(_p_e_intgd)
-                _dp_e_dT_intgd   = njit(_dp_e_dT_intgd)
-            except ImportError:
-                pass
-
+        # Wrap (or restore) the module-level integrands for this numba setting;
+        # idempotent and process-wide, so the JIT cost is paid at most once.
+        _setup_electron_integrands(cfg.numba_installed)
         self._rho_e_int_impl = _rho_e_intgd
         self._drho_e_dT_impl = _drho_e_dT_intgd
         self._p_e_int_impl   = _p_e_intgd
@@ -531,7 +593,7 @@ class Plasma:
         me = self._cfg.me
         if Tg < me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
-        r = quad(self._rho_e_int_impl, me / Tg, 100., args=(Tg,),
+        r = quad(self._rho_e_int_impl, me / Tg, 100., args=(Tg, me),
                  epsabs=1e-12, epsrel=1e-12)[0]
         # Prefactor: g/(2π²) Tg⁴ with g=4 for e⁺+e⁻.
         return 4. / (2 * np.pi**2) * Tg**4 * r
@@ -541,7 +603,7 @@ class Plasma:
         me = self._cfg.me
         if Tg < me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
-        r = quad(self._drho_e_dT_impl, me / Tg, 100., args=(Tg,),
+        r = quad(self._drho_e_dT_impl, me / Tg, 100., args=(Tg, me),
                  epsabs=1e-12, epsrel=1e-12)[0]
         # Prefactor: g/(2π²) Tg³ × (1/4) = g/(8π²) Tg³; combined with the
         # extra E in the integrand this gives dρ/dT.
@@ -552,7 +614,7 @@ class Plasma:
         me = self._cfg.me
         if Tg < me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
-        r = quad(self._p_e_int_impl, me / Tg, 100., args=(Tg,),
+        r = quad(self._p_e_int_impl, me / Tg, 100., args=(Tg, me),
                  epsabs=1e-12, epsrel=1e-12)[0]
         # Prefactor: g/(6π²) Tg⁴ with g=4.
         return 4. / (6 * np.pi**2) * Tg**4 * r
@@ -562,7 +624,7 @@ class Plasma:
         me = self._cfg.me
         if Tg < me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
-        r = quad(self._dp_e_dT_impl, me / Tg, 100., args=(Tg,),
+        r = quad(self._dp_e_dT_impl, me / Tg, 100., args=(Tg, me),
                  epsabs=1e-12, epsrel=1e-12)[0]
         return 1. / (6 * np.pi**2) * Tg**3 * r
 

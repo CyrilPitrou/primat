@@ -12,6 +12,15 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Changed
+- Python backend: the ten weak-rate Fermi-Dirac integrand kernels
+  (`weak_rates/integrands.py`) and the four e± electron-thermo integrands
+  (`plasma.py`) are now numba-compiled with `cache=True`, so a fresh process
+  (joblib MC worker, Streamlit server, re-run CLI) loads the compiled machine
+  code from numba's on-disk cache instead of recompiling — ~2.3 s of cold-start
+  JIT saved per process (measured). The plasma integrands were moved to module
+  level and now take the electron mass `me` as an explicit argument (rather than
+  closing over `cfg.me`), which is what makes the on-disk cache safe. No effect
+  on any observable.
 - C backend (`primat-c`) now routes its ~250 unrecoverable heap allocations
   (ODE work vectors, spline tables, loaded network, result arrays, …) through
   new checked helpers `cpr_xmalloc`/`cpr_xcalloc`/`cpr_xrealloc`

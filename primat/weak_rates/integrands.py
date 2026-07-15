@@ -173,16 +173,28 @@ def _setup_fd_impls(numba_installed):
         return
     try:
         from numba import njit
-        FD_nu3      = njit(FD_nu3)
-        FD2         = njit(FD2)
-        FD_nu_e2p0  = njit(FD_nu_e2p0)
-        FD_nu_e3p0  = njit(FD_nu_e3p0)
-        FD_nu_e4p2  = njit(FD_nu_e4p2)
-        FD_nu_e2p2  = njit(FD_nu_e2p2)
-        FD_nu_e4p1  = njit(FD_nu_e4p1)
-        FD_nu_e2p1  = njit(FD_nu_e2p1)
-        FD_nu_e3p1  = njit(FD_nu_e3p1)
-        FD_nu_e3p2  = njit(FD_nu_e3p2)
+        # cache=True persists the compiled machine code to numba's on-disk
+        # cache (__pycache__/*.nbi/*.nbc), so a *fresh* Python process — an
+        # MC worker forked by joblib, the Streamlit server, a re-run CLI —
+        # loads it instead of recompiling. The first-call JIT cost of these
+        # ten kernels is ~2 s (measured), and it is otherwise paid on every
+        # process that hits a weak-rate cache miss. Caching is safe here
+        # precisely because these are module-level functions that close over
+        # nothing but the module constant ``exp_cutoff``: numba freezes that
+        # constant into the compiled object, and it never varies between runs,
+        # so a cached compile can never be stale. (The plasma electron-thermo
+        # integrands take their one config-dependent constant, ``me``, as an
+        # explicit argument for the same reason — see plasma.py.)
+        FD_nu3      = njit(FD_nu3, cache=True)
+        FD2         = njit(FD2, cache=True)
+        FD_nu_e2p0  = njit(FD_nu_e2p0, cache=True)
+        FD_nu_e3p0  = njit(FD_nu_e3p0, cache=True)
+        FD_nu_e4p2  = njit(FD_nu_e4p2, cache=True)
+        FD_nu_e2p2  = njit(FD_nu_e2p2, cache=True)
+        FD_nu_e4p1  = njit(FD_nu_e4p1, cache=True)
+        FD_nu_e2p1  = njit(FD_nu_e2p1, cache=True)
+        FD_nu_e3p1  = njit(FD_nu_e3p1, cache=True)
+        FD_nu_e3p2  = njit(FD_nu_e3p2, cache=True)
     except ImportError:
         pass
 
