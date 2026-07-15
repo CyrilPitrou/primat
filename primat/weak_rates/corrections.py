@@ -52,7 +52,16 @@ from scipy.special import gamma as scipy_gamma, spence
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
 
-from . import integrands
+# Import the integrands submodule by its absolute path rather than
+# ``from . import integrands``: the latter binds the module by looking it up
+# as an attribute of the *package* (``primat.weak_rates.__init__``), which is
+# still only partially initialised while __init__'s own ``from .corrections
+# import *`` is running -- a benign but real corrections->package->corrections
+# import edge. Going straight to the submodule removes that edge (the package
+# __init__ no longer sits on corrections.py's import path) while keeping the
+# module-object handle the FD_* rebinding convention requires (see this
+# module's use of ``integrands.FD_nu3`` etc. and integrands.py's docstring).
+import primat.weak_rates.integrands as integrands
 from .integrands import exp_cutoff
 from .cache import n_points_per_decade, _thermal_fingerprint
 from ..cache_utils import (fingerprint_hash, write_cache_with_fingerprint,
