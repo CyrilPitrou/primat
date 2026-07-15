@@ -7,6 +7,7 @@
  * benefit in C; the formulas are otherwise identical term-for-term.
  */
 #include "weak_rates.h"
+#include "xalloc.h"
 #include "constants.h"
 #include "cache.h"
 #include "table_io.h"
@@ -576,8 +577,8 @@ static int weak_interp_build(CPRWeakInterp *it, const double *T,
      * first node instead of flooring -- matches Python's _weak_rate_loglog_interp
      * and the old fill_value="extrapolate". */
     it->Tmin = (i0 > 0) ? T[i0] : -INFINITY;
-    it->logT = malloc(ns * sizeof(double));
-    it->logR = malloc(ns * sizeof(double));
+    it->logT = CPR_XMALLOC(ns * sizeof(double));
+    it->logR = CPR_XMALLOC(ns * sizeof(double));
     for (size_t i = 0; i < ns; i++) {
         it->logT[i] = log10(T[i0 + i]);
         it->logR[i] = log10(rate[i0 + i]);
@@ -1165,8 +1166,8 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     /* T_nu(T_gamma)/T_gamma interpolant, ascending in Tg [K] (mirrors
      * _build_rate_context's T_nuOverT). Input arrays may come in either
      * order from the caller's background grid; sort ascending if needed. */
-    double *Tg_K = malloc(n_bg * sizeof(double));
-    double *ratio = malloc(n_bg * sizeof(double));
+    double *Tg_K = CPR_XMALLOC(n_bg * sizeof(double));
+    double *ratio = CPR_XMALLOC(n_bg * sizeof(double));
     for (size_t i = 0; i < n_bg; i++) {
         Tg_K[i] = Tg_MeV[i] * cpr_MeV_to_Kelvin();
         ratio[i] = Tnu_MeV[i] / Tg_MeV[i];
@@ -1224,9 +1225,9 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             return 1;
         }
         wr->n = tab.n_rows;
-        wr->T = malloc(wr->n * sizeof(double));
-        wr->frwrd = malloc(wr->n * sizeof(double));
-        wr->bkwrd = malloc(wr->n * sizeof(double));
+        wr->T = CPR_XMALLOC(wr->n * sizeof(double));
+        wr->frwrd = CPR_XMALLOC(wr->n * sizeof(double));
+        wr->bkwrd = CPR_XMALLOC(wr->n * sizeof(double));
         memcpy(wr->T, tab.cols[0], wr->n * sizeof(double));
         memcpy(wr->frwrd, tab.cols[1], wr->n * sizeof(double));
         memcpy(wr->bkwrd, tab.cols[2], wr->n * sizeof(double));
@@ -1236,9 +1237,9 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             cpr_log(cfg, "weak", "Recomputing n<->p weak rates (no cache for this configuration).");
         int n_pts = n_points_per_decade(cfg->sampling_nTOp_per_decade, T_end, T_start);
         wr->n = (size_t)n_pts;
-        wr->T = malloc(wr->n * sizeof(double));
-        wr->frwrd = malloc(wr->n * sizeof(double));
-        wr->bkwrd = malloc(wr->n * sizeof(double));
+        wr->T = CPR_XMALLOC(wr->n * sizeof(double));
+        wr->frwrd = CPR_XMALLOC(wr->n * sizeof(double));
+        wr->bkwrd = CPR_XMALLOC(wr->n * sizeof(double));
 
         double logTlo = log10(T_end), logThi = log10(T_start);
         for (size_t i = 0; i < wr->n; i++) {
@@ -1325,9 +1326,9 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
                 return 1;
             }
             wr->n_th = tab.n_rows;
-            wr->T_th = malloc(wr->n_th * sizeof(double));
-            wr->Lnth = malloc(wr->n_th * sizeof(double));
-            wr->Lpth = malloc(wr->n_th * sizeof(double));
+            wr->T_th = CPR_XMALLOC(wr->n_th * sizeof(double));
+            wr->Lnth = CPR_XMALLOC(wr->n_th * sizeof(double));
+            wr->Lpth = CPR_XMALLOC(wr->n_th * sizeof(double));
             memcpy(wr->T_th, tab.cols[0], wr->n_th * sizeof(double));
             memcpy(wr->Lnth, tab.cols[1], wr->n_th * sizeof(double));
             memcpy(wr->Lpth, tab.cols[2], wr->n_th * sizeof(double));
@@ -1344,9 +1345,9 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             int n_th_pts = n_points_per_decade(cfg->sampling_nTOp_thermal_per_decade,
                                                  CCRTH_T_MIN, T_start);
             wr->n_th = (size_t)n_th_pts;
-            wr->T_th = malloc(wr->n_th * sizeof(double));
-            wr->Lnth = malloc(wr->n_th * sizeof(double));
-            wr->Lpth = malloc(wr->n_th * sizeof(double));
+            wr->T_th = CPR_XMALLOC(wr->n_th * sizeof(double));
+            wr->Lnth = CPR_XMALLOC(wr->n_th * sizeof(double));
+            wr->Lpth = CPR_XMALLOC(wr->n_th * sizeof(double));
 
             double logTlo = log10(CCRTH_T_MIN), logThi = log10(T_start);
             for (size_t i = 0; i < wr->n_th; i++) {

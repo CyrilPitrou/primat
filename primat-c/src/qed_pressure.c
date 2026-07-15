@@ -1,5 +1,6 @@
 /* qed_pressure.c -- see qed_pressure.h. */
 #include "qed_pressure.h"
+#include "xalloc.h"
 #include "quad.h"
 #include "spline.h"
 
@@ -106,13 +107,13 @@ int cpr_qed_compute_tables(double T_min, double T_max, size_t n_pts,
 
     memset(out, 0, sizeof(*out));
     out->n = n_pts;
-    out->T              = malloc(n_pts * sizeof(double));
-    out->dP_e2           = malloc(n_pts * sizeof(double));
-    out->dP_e3           = malloc(n_pts * sizeof(double));
-    out->d_dP_e2_dT      = malloc(n_pts * sizeof(double));
-    out->d_dP_e3_dT      = malloc(n_pts * sizeof(double));
-    out->d2_dP_e2_dT2    = malloc(n_pts * sizeof(double));
-    out->d2_dP_e3_dT2    = malloc(n_pts * sizeof(double));
+    out->T              = CPR_XMALLOC(n_pts * sizeof(double));
+    out->dP_e2           = CPR_XMALLOC(n_pts * sizeof(double));
+    out->dP_e3           = CPR_XMALLOC(n_pts * sizeof(double));
+    out->d_dP_e2_dT      = CPR_XMALLOC(n_pts * sizeof(double));
+    out->d_dP_e3_dT      = CPR_XMALLOC(n_pts * sizeof(double));
+    out->d2_dP_e2_dT2    = CPR_XMALLOC(n_pts * sizeof(double));
+    out->d2_dP_e3_dT2    = CPR_XMALLOC(n_pts * sizeof(double));
 
     /* Log-spaced grid (np.logspace(log10(T_min), log10(T_max), n_pts)). */
     double log_min = log10(T_min), log_max = log10(T_max);

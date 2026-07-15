@@ -1,4 +1,5 @@
 #include "config.h"
+#include "xalloc.h"
 #include "constants.h"
 
 #include <ctype.h>
@@ -107,7 +108,7 @@ void cpr_rxnmap_set(CPRRxnMap *map, const char *name, double value)
     }
     if (map->n == map->cap) {
         map->cap = map->cap ? map->cap * 2 : 64;
-        map->entries = realloc(map->entries, map->cap * sizeof(CPRRxnEntry));
+        map->entries = CPR_XREALLOC(map->entries, map->cap * sizeof(CPRRxnEntry));
     }
     strncpy(map->entries[map->n].name, name, sizeof(map->entries[map->n].name) - 1);
     map->entries[map->n].name[sizeof(map->entries[map->n].name) - 1] = '\0';
@@ -175,7 +176,7 @@ static int load_nuclides(CPRConfig *cfg, char **errmsg)
     }
 
     size_t cap = 64, n = 0;
-    CPRNuclide *items = malloc(cap * sizeof(CPRNuclide));
+    CPRNuclide *items = CPR_XMALLOC(cap * sizeof(CPRNuclide));
     while (fgets(line, sizeof(line), f)) {
         if (line[0] == '\0' || line[0] == '\n') continue;
         char row[512];
@@ -192,7 +193,7 @@ static int load_nuclides(CPRConfig *cfg, char **errmsg)
 
         if (n == cap) {
             cap *= 2;
-            items = realloc(items, cap * sizeof(CPRNuclide));
+            items = CPR_XREALLOC(items, cap * sizeof(CPRNuclide));
         }
         CPRNuclide *nuc = &items[n];
         strncpy(nuc->name, fields[col_name], sizeof(nuc->name) - 1);

@@ -11,6 +11,17 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+### Changed
+- C backend (`primat-c`) now routes its ~250 unrecoverable heap allocations
+  (ODE work vectors, spline tables, loaded network, result arrays, …) through
+  new checked helpers `cpr_xmalloc`/`cpr_xcalloc`/`cpr_xrealloc`
+  (`include/xalloc.h`): a failed allocation now prints
+  `primat: out of memory (<bytes>) at <file>:<line>` and exits, instead of
+  dereferencing NULL and crashing anonymously. Sites that intentionally
+  degrade gracefully (cache writers with their own NULL checks, `errmsg`-return
+  paths) are unchanged. No effect on any observable — purely OOM-diagnostic
+  robustness.
+
 ### Removed
 - `rate_interp_order` `DEFAULT_PARAMS`/C config parameter: never consumed by
   any solver, resampler, or rate-lookup path on either backend (rate-table

@@ -1,5 +1,6 @@
 /* linalg.c -- see linalg.h. Doolittle LU with partial pivoting. */
 #include "linalg.h"
+#include "xalloc.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -71,8 +72,8 @@ void cpr_lu_solve(const double *LU, size_t n, const size_t *piv, double *b)
 
 int cpr_solve_linear(const double *A, size_t n, double *b)
 {
-    double *Acopy = malloc(n * n * sizeof(double));
-    size_t *piv = malloc(n * sizeof(size_t));
+    double *Acopy = CPR_XMALLOC(n * n * sizeof(double));
+    size_t *piv = CPR_XMALLOC(n * sizeof(size_t));
     memcpy(Acopy, A, n * n * sizeof(double));
     int rc = cpr_lu_factor(Acopy, n, piv);
     if (!rc)

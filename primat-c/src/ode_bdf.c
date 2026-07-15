@@ -25,6 +25,7 @@
  * exactly what makes scipy's BDF efficient at a given tolerance.
  */
 #include "ode_bdf.h"
+#include "xalloc.h"
 #include "linalg.h"
 
 #include <float.h>
@@ -114,7 +115,7 @@ static void change_D(double *D, size_t n, int order, double factor)
     /* newD[i] = sum_k RU[k][i] * oldD[k] (i.e. RU^T applied); buffer the
      * new rows before overwriting, since every new row reads every old
      * row. */
-    double *tmp = malloc((size_t)m * n * sizeof(double));
+    double *tmp = CPR_XMALLOC((size_t)m * n * sizeof(double));
     for (int i = 0; i < m; i++)
         for (size_t c = 0; c < n; c++) {
             double s = 0.0;
@@ -280,10 +281,10 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
     /* Nordsieck array: MAX_ORDER_CAP+3 rows (indices 0..order+2 are live
      * at any given order<=MAX_ORDER_CAP), each of length n, row stride n
      * throughout (see change_D's docstring). */
-    double *D = calloc((size_t)(MAX_ORDER_CAP + 3) * n, sizeof(double));
-    double *f0 = malloc(n * sizeof(double));
-    double *scratch_y1 = malloc(n * sizeof(double));
-    double *scratch_f1 = malloc(n * sizeof(double));
+    double *D = CPR_XCALLOC((size_t)(MAX_ORDER_CAP + 3) * n, sizeof(double));
+    double *f0 = CPR_XMALLOC(n * sizeof(double));
+    double *scratch_y1 = CPR_XMALLOC(n * sizeof(double));
+    double *scratch_f1 = CPR_XMALLOC(n * sizeof(double));
 
     memcpy(D, y, n * sizeof(double)); /* D[0] = y0 */
     if (f(t0, y, f0, ctx)) {
@@ -305,9 +306,9 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
     int order = 1;
     int n_equal_steps = 0;
 
-    double *J = malloc(n * n * sizeof(double));
-    double *Jnewton = malloc(n * n * sizeof(double));
-    size_t *piv = malloc(n * sizeof(size_t));
+    double *J = CPR_XMALLOC(n * n * sizeof(double));
+    double *Jnewton = CPR_XMALLOC(n * n * sizeof(double));
+    size_t *piv = CPR_XMALLOC(n * sizeof(size_t));
     int lu_valid = 0; /* mirrors scipy's `self.LU is None` */
 
     /* Initial Jacobian, computed once up front (mirrors scipy's
@@ -320,9 +321,9 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
             return 1;
         }
     } else {
-        double *ytmp = malloc(n * sizeof(double));
-        double *f1tmp = malloc(n * sizeof(double));
-        double *f0tmp = malloc(n * sizeof(double));
+        double *ytmp = CPR_XMALLOC(n * sizeof(double));
+        double *f1tmp = CPR_XMALLOC(n * sizeof(double));
+        double *f0tmp = CPR_XMALLOC(n * sizeof(double));
         int jrc = finite_diff_jac(f, ctx, t0, y, n, f0tmp, J, ytmp, f1tmp);
         free(ytmp); free(f1tmp); free(f0tmp);
         if (jrc) {
@@ -335,14 +336,14 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
 
     double newton_tol = fmax(10.0 * DBL_EPSILON / opts.rtol, fmin(0.03, sqrt(opts.rtol)));
 
-    double *y_predict = malloc(n * sizeof(double));
-    double *psi = malloc(n * sizeof(double));
-    double *scale = malloc(n * sizeof(double));
-    double *y_new = malloc(n * sizeof(double));
-    double *d = malloc(n * sizeof(double));
-    double *fwork = malloc(n * sizeof(double));
-    double *dywork = malloc(n * sizeof(double));
-    double *error = malloc(n * sizeof(double));
+    double *y_predict = CPR_XMALLOC(n * sizeof(double));
+    double *psi = CPR_XMALLOC(n * sizeof(double));
+    double *scale = CPR_XMALLOC(n * sizeof(double));
+    double *y_new = CPR_XMALLOC(n * sizeof(double));
+    double *d = CPR_XMALLOC(n * sizeof(double));
+    double *fwork = CPR_XMALLOC(n * sizeof(double));
+    double *dywork = CPR_XMALLOC(n * sizeof(double));
+    double *error = CPR_XMALLOC(n * sizeof(double));
 
     double t = t0;
     int rc = 0;
@@ -442,9 +443,9 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
                             *errmsg = strdup("cpr_ode_bdf: jac() failed"); rc = 1; goto done;
                         }
                     } else {
-                        double *ytmp = malloc(n * sizeof(double));
-                        double *f1tmp = malloc(n * sizeof(double));
-                        double *f0tmp = malloc(n * sizeof(double));
+                        double *ytmp = CPR_XMALLOC(n * sizeof(double));
+                        double *f1tmp = CPR_XMALLOC(n * sizeof(double));
+                        double *f0tmp = CPR_XMALLOC(n * sizeof(double));
                         int jrc = finite_diff_jac(f, ctx, t_new, y_predict, n, f0tmp, J, ytmp, f1tmp);
                         free(ytmp); free(f1tmp); free(f0tmp);
                         if (jrc) {

@@ -4,6 +4,7 @@
  * safety factor and min/max clamps" rule, e.g. Hairer/Norsett/Wanner II.4).
  */
 #include "ode_rk.h"
+#include "xalloc.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -104,16 +105,16 @@ int cpr_ode_rk45(CPRODEFunc f, void *ctx, double t0, double t1, double *y, size_
     double span = fabs(t1 - t0);
     if (span == 0.0) return 0;
 
-    double *k1 = malloc(n * sizeof(double));
-    double *k2 = malloc(n * sizeof(double));
-    double *k3 = malloc(n * sizeof(double));
-    double *k4 = malloc(n * sizeof(double));
-    double *k5 = malloc(n * sizeof(double));
-    double *k6 = malloc(n * sizeof(double));
-    double *k7 = malloc(n * sizeof(double));
-    double *ytmp = malloc(n * sizeof(double));
-    double *y5 = malloc(n * sizeof(double));
-    double *y4 = malloc(n * sizeof(double));
+    double *k1 = CPR_XMALLOC(n * sizeof(double));
+    double *k2 = CPR_XMALLOC(n * sizeof(double));
+    double *k3 = CPR_XMALLOC(n * sizeof(double));
+    double *k4 = CPR_XMALLOC(n * sizeof(double));
+    double *k5 = CPR_XMALLOC(n * sizeof(double));
+    double *k6 = CPR_XMALLOC(n * sizeof(double));
+    double *k7 = CPR_XMALLOC(n * sizeof(double));
+    double *ytmp = CPR_XMALLOC(n * sizeof(double));
+    double *y5 = CPR_XMALLOC(n * sizeof(double));
+    double *y4 = CPR_XMALLOC(n * sizeof(double));
 
     double t = t0;
     /* Cursor into opts.t_eval: points strictly before t_eval[eval_idx] (in

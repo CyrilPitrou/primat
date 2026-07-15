@@ -1,5 +1,6 @@
 /* network_builder.c -- see network_builder.h. */
 #include "network_builder.h"
+#include "xalloc.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -28,11 +29,11 @@ void cpr_compile_network(const CPRReaction *reactions, size_t n_rx, size_t n_sp,
      * from the union/merge of the two CPR_STOICH_MAX_TERMS-capped sides),
      * and the row widths needed to pad everything. */
     size_t MR = 1, MP = 1, MA = 1, MV = 1;
-    long  (*af_idx_tmp)[2 * CPR_STOICH_MAX_TERMS] = malloc(n_rx ? n_rx * sizeof(*af_idx_tmp) : sizeof(*af_idx_tmp));
-    double(*af_co_tmp)[2 * CPR_STOICH_MAX_TERMS]  = malloc(n_rx ? n_rx * sizeof(*af_co_tmp)  : sizeof(*af_co_tmp));
-    size_t *af_len_tmp = calloc(n_rx ? n_rx : 1, sizeof(size_t));
-    long  (*vr_idx_tmp)[2 * CPR_STOICH_MAX_TERMS] = malloc(n_rx ? n_rx * sizeof(*vr_idx_tmp) : sizeof(*vr_idx_tmp));
-    size_t *vr_len_tmp = calloc(n_rx ? n_rx : 1, sizeof(size_t));
+    long  (*af_idx_tmp)[2 * CPR_STOICH_MAX_TERMS] = CPR_XMALLOC(n_rx ? n_rx * sizeof(*af_idx_tmp) : sizeof(*af_idx_tmp));
+    double(*af_co_tmp)[2 * CPR_STOICH_MAX_TERMS]  = CPR_XMALLOC(n_rx ? n_rx * sizeof(*af_co_tmp)  : sizeof(*af_co_tmp));
+    size_t *af_len_tmp = CPR_XCALLOC(n_rx ? n_rx : 1, sizeof(size_t));
+    long  (*vr_idx_tmp)[2 * CPR_STOICH_MAX_TERMS] = CPR_XMALLOC(n_rx ? n_rx * sizeof(*vr_idx_tmp) : sizeof(*vr_idx_tmp));
+    size_t *vr_len_tmp = CPR_XCALLOC(n_rx ? n_rx : 1, sizeof(size_t));
 
     for (size_t i = 0; i < n_rx; i++) {
         const CPRReaction *rx = &reactions[i];
@@ -101,21 +102,21 @@ void cpr_compile_network(const CPRReaction *reactions, size_t n_rx, size_t n_sp,
     out->MR = MR; out->MP = MP; out->MA = MA; out->MV = MV;
     size_t alloc_rx = n_rx ? n_rx : 1; /* avoid zero-size malloc edge cases */
 
-    out->ri_idx = calloc(alloc_rx * MR, sizeof(long));
-    out->ri_pow = calloc(alloc_rx * MR, sizeof(long));
-    out->ri_len = calloc(alloc_rx, sizeof(size_t));
-    out->pi_idx = calloc(alloc_rx * MP, sizeof(long));
-    out->pi_pow = calloc(alloc_rx * MP, sizeof(long));
-    out->pi_len = calloc(alloc_rx, sizeof(size_t));
-    out->af_idx = calloc(alloc_rx * MA, sizeof(long));
-    out->af_co  = calloc(alloc_rx * MA, sizeof(double));
-    out->af_len = calloc(alloc_rx, sizeof(size_t));
-    out->vr_idx = calloc(alloc_rx * MV, sizeof(long));
-    out->vr_len = calloc(alloc_rx, sizeof(size_t));
-    out->Rm1 = calloc(alloc_rx, sizeof(double));
-    out->Pm1 = calloc(alloc_rx, sizeof(double));
-    out->invsr = calloc(alloc_rx, sizeof(double));
-    out->invsp = calloc(alloc_rx, sizeof(double));
+    out->ri_idx = CPR_XCALLOC(alloc_rx * MR, sizeof(long));
+    out->ri_pow = CPR_XCALLOC(alloc_rx * MR, sizeof(long));
+    out->ri_len = CPR_XCALLOC(alloc_rx, sizeof(size_t));
+    out->pi_idx = CPR_XCALLOC(alloc_rx * MP, sizeof(long));
+    out->pi_pow = CPR_XCALLOC(alloc_rx * MP, sizeof(long));
+    out->pi_len = CPR_XCALLOC(alloc_rx, sizeof(size_t));
+    out->af_idx = CPR_XCALLOC(alloc_rx * MA, sizeof(long));
+    out->af_co  = CPR_XCALLOC(alloc_rx * MA, sizeof(double));
+    out->af_len = CPR_XCALLOC(alloc_rx, sizeof(size_t));
+    out->vr_idx = CPR_XCALLOC(alloc_rx * MV, sizeof(long));
+    out->vr_len = CPR_XCALLOC(alloc_rx, sizeof(size_t));
+    out->Rm1 = CPR_XCALLOC(alloc_rx, sizeof(double));
+    out->Pm1 = CPR_XCALLOC(alloc_rx, sizeof(double));
+    out->invsr = CPR_XCALLOC(alloc_rx, sizeof(double));
+    out->invsp = CPR_XCALLOC(alloc_rx, sizeof(double));
 
     for (size_t i = 0; i < n_rx; i++) {
         const CPRReaction *rx = &reactions[i];

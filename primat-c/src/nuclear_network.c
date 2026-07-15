@@ -4,6 +4,7 @@
  * cited below as "Phys. Rep.".
  */
 #include "nuclear_network.h"
+#include "xalloc.h"
 #include "constants.h"
 #include "network_builder.h"
 #include "ode_rk.h"
@@ -90,16 +91,16 @@ typedef struct {
 static void recorder_init(CPRRecorder *r, size_t n_sp)
 {
     r->n_sp = n_sp; r->n = 0; r->cap = 64;
-    r->t = malloc(r->cap * sizeof(double));
-    r->Y = malloc(r->cap * n_sp * sizeof(double));
+    r->t = CPR_XMALLOC(r->cap * sizeof(double));
+    r->Y = CPR_XMALLOC(r->cap * n_sp * sizeof(double));
 }
 
 static void recorder_push(CPRRecorder *r, double t, const double *y)
 {
     if (r->n == r->cap) {
         r->cap *= 2;
-        r->t = realloc(r->t, r->cap * sizeof(double));
-        r->Y = realloc(r->Y, r->cap * r->n_sp * sizeof(double));
+        r->t = CPR_XREALLOC(r->t, r->cap * sizeof(double));
+        r->Y = CPR_XREALLOC(r->Y, r->cap * r->n_sp * sizeof(double));
     }
     r->t[r->n] = t;
     memcpy(&r->Y[r->n * r->n_sp], y, r->n_sp * sizeof(double));
@@ -265,7 +266,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
      * ------------------------------------------------------------------ */
     char (*mt_names)[16] = nucl->mt_net.species;
     size_t n_mt = nucl->mt_net.n_species;
-    double *Yi_MT = malloc(n_mt * sizeof(double));
+    double *Yi_MT = CPR_XMALLOC(n_mt * sizeof(double));
     for (size_t i = 0; i < n_mt; i++) {
         if (strcmp(mt_names[i], "n") == 0) Yi_MT[i] = Yn_HT_f;
         else if (strcmp(mt_names[i], "p") == 0) Yi_MT[i] = Yp_HT_f;
@@ -297,7 +298,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
      * ------------------------------------------------------------------ */
     char (*lt_names)[16] = nucl->lt_net.species;
     size_t n_lt = nucl->lt_net.n_species;
-    double *Yi_LT = malloc(n_lt * sizeof(double));
+    double *Yi_LT = CPR_XMALLOC(n_lt * sizeof(double));
     for (size_t i = 0; i < n_lt; i++) {
         double *v = find_in(Yi_MT, mt_names, n_mt, lt_names[i]);
         Yi_LT[i] = v ? *v : 0.0;
@@ -337,9 +338,9 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     /* ---- Final abundances: the LT species list is the canonical name
      * list for any network (mirrors solve()'s self.abundance_names = species_L). ---- */
     nn->n_species = n_lt;
-    nn->abundance_names = malloc(n_lt * sizeof(*nn->abundance_names));
+    nn->abundance_names = CPR_XMALLOC(n_lt * sizeof(*nn->abundance_names));
     memcpy(nn->abundance_names, lt_names, n_lt * sizeof(*nn->abundance_names));
-    nn->Y_final = malloc(n_lt * sizeof(double));
+    nn->Y_final = CPR_XMALLOC(n_lt * sizeof(double));
     memcpy(nn->Y_final, Yi_LT, n_lt * sizeof(double));
 
     /* Mirrors nuclear_network.py's solve() verbose dump of the final
@@ -363,8 +364,8 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
      * Python's sol_MT.t[1:]/sol_LT.t[1:] does. ---- */
     char ht_names[2][16] = { "n", "p" };
     nn->n_t = rec_ht.n + (rec_mt.n - 1) + (rec_lt.n - 1);
-    nn->t_hist = malloc(nn->n_t * sizeof(double));
-    nn->Y_hist = calloc(nn->n_t * n_lt, sizeof(double));
+    nn->t_hist = CPR_XMALLOC(nn->n_t * sizeof(double));
+    nn->Y_hist = CPR_XCALLOC(nn->n_t * n_lt, sizeof(double));
     size_t row = 0;
     for (size_t i = 0; i < rec_ht.n; i++, row++) {
         nn->t_hist[row] = rec_ht.t[i];
@@ -579,7 +580,7 @@ size_t cpr_nuclear_network_rate_columns(const CPRNuclearNetwork *nn,
         return 0;
     size_t n = nn->nucl->lt_net.n_reac - 1;   /* one column per thermonuclear reaction */
     if (out_names) {
-        size_t *rows = malloc(n * sizeof(size_t));
+        size_t *rows = CPR_XMALLOC(n * sizeof(size_t));
         build_rate_columns(nn, out_names, rows);
         free(rows);
     }
@@ -594,8 +595,8 @@ void cpr_nuclear_network_sample_rates(const CPRNuclearNetwork *nn,
         return;
     const CPRNetworkDef *lt = &nn->nucl->lt_net;
     size_t n_cols = lt->n_reac - 1;
-    char (*names)[64] = malloc(n_cols * sizeof(*names));
-    size_t *rows = malloc(n_cols * sizeof(size_t));
+    char (*names)[64] = CPR_XMALLOC(n_cols * sizeof(*names));
+    size_t *rows = CPR_XMALLOC(n_cols * sizeof(size_t));
     build_rate_columns(nn, names, rows);
     for (size_t i = 0; i < (size_t)n_points; i++)
         for (size_t k = 0; k < n_cols; k++)
@@ -616,13 +617,13 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
         return 0;
 
     size_t n = (size_t)n_points;
-    double *t_out = malloc(n * sizeof(double));
-    double *T_out = malloc(n * sizeof(double));
-    double *a_out = malloc(n * sizeof(double));
-    double *Tnue_out = malloc(n * sizeof(double));
-    double *Tnumu_out = malloc(n * sizeof(double));
-    double *Tnutau_out = malloc(n * sizeof(double));
-    double *Y_out = malloc(n * nn->n_species * sizeof(double));
+    double *t_out = CPR_XMALLOC(n * sizeof(double));
+    double *T_out = CPR_XMALLOC(n * sizeof(double));
+    double *a_out = CPR_XMALLOC(n * sizeof(double));
+    double *Tnue_out = CPR_XMALLOC(n * sizeof(double));
+    double *Tnumu_out = CPR_XMALLOC(n * sizeof(double));
+    double *Tnutau_out = CPR_XMALLOC(n * sizeof(double));
+    double *Y_out = CPR_XMALLOC(n * nn->n_species * sizeof(double));
     cpr_nuclear_network_sample_time_evolution(nn, n_points, t_out, T_out, a_out,
                                                 Tnue_out, Tnumu_out, Tnutau_out, Y_out);
 
@@ -634,8 +635,8 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     char (*rate_names)[64] = NULL;
     double *rate_out = NULL;
     if (n_rate) {
-        rate_names = malloc(n_rate * sizeof(*rate_names));
-        rate_out = malloc(n * n_rate * sizeof(double));
+        rate_names = CPR_XMALLOC(n_rate * sizeof(*rate_names));
+        rate_out = CPR_XMALLOC(n * n_rate * sizeof(double));
         cpr_nuclear_network_rate_columns(nn, rate_names);
         cpr_nuclear_network_sample_rates(nn, T_out, n_points, rate_out);
     }

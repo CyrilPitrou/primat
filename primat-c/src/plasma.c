@@ -1,5 +1,6 @@
 /* plasma.c -- see plasma.h. */
 #include "plasma.h"
+#include "xalloc.h"
 #include "constants.h"
 #include "qed_pressure.h"
 #include "quad.h"
@@ -140,9 +141,9 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
                 if (errmsg && *errmsg) { free(*errmsg); *errmsg = NULL; }
             }
         }
-        double *sumP = malloc(t.n * sizeof(double));
-        double *sumdP = malloc(t.n * sizeof(double));
-        double *sumd2P = malloc(t.n * sizeof(double));
+        double *sumP = CPR_XMALLOC(t.n * sizeof(double));
+        double *sumdP = CPR_XMALLOC(t.n * sizeof(double));
+        double *sumd2P = CPR_XMALLOC(t.n * sizeof(double));
         for (size_t i = 0; i < t.n; i++) {
             sumP[i]   = t.dP_e2[i] + t.dP_e3[i];
             sumdP[i]  = t.d_dP_e2_dT[i] + t.d_dP_e3_dT[i];
@@ -173,8 +174,8 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
         for (int k = 0; k < 3; k++) {
             targets[k]->is_spline = 0;
             targets[k]->n = tab_e2.n_rows;
-            targets[k]->x = malloc(tab_e2.n_rows * sizeof(double));
-            targets[k]->y = malloc(tab_e2.n_rows * sizeof(double));
+            targets[k]->x = CPR_XMALLOC(tab_e2.n_rows * sizeof(double));
+            targets[k]->y = CPR_XMALLOC(tab_e2.n_rows * sizeof(double));
             for (size_t i = 0; i < tab_e2.n_rows; i++) {
                 targets[k]->x[i] = tab_e2.cols[0][i];
                 targets[k]->y[i] = tab_e2.cols[k + 1][i] + tab_e3.cols[k + 1][i];
@@ -193,8 +194,8 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
         for (int k = 0; k < 3; k++) {
             targets[k]->is_spline = 0;
             targets[k]->n = tab.n_rows;
-            targets[k]->x = malloc(tab.n_rows * sizeof(double));
-            targets[k]->y = malloc(tab.n_rows * sizeof(double));
+            targets[k]->x = CPR_XMALLOC(tab.n_rows * sizeof(double));
+            targets[k]->y = CPR_XMALLOC(tab.n_rows * sizeof(double));
             for (size_t i = 0; i < tab.n_rows; i++) {
                 targets[k]->x[i] = tab.cols[0][i];
                 targets[k]->y[i] = tab.cols[col_pairs[k][0]][i]
@@ -210,8 +211,8 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
             if (cpr_table_read(files[k], 3, &tab, errmsg)) return 1;
             targets[k]->is_spline = 0;
             targets[k]->n = tab.n_rows;
-            targets[k]->x = malloc(tab.n_rows * sizeof(double));
-            targets[k]->y = malloc(tab.n_rows * sizeof(double));
+            targets[k]->x = CPR_XMALLOC(tab.n_rows * sizeof(double));
+            targets[k]->y = CPR_XMALLOC(tab.n_rows * sizeof(double));
             for (size_t i = 0; i < tab.n_rows; i++) {
                 targets[k]->x[i] = tab.cols[0][i];
                 targets[k]->y[i] = tab.cols[1][i] + tab.cols[2][i];
@@ -364,11 +365,11 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
         free(cached_hash);
     }
 
-    double *grid = malloc(npts * sizeof(double));
-    double *rho_e_arr = malloc(npts * sizeof(double));
-    double *p_e_arr = malloc(npts * sizeof(double));
-    double *drho_e_dT_arr = malloc(npts * sizeof(double));
-    double *dp_e_dT_arr = malloc(npts * sizeof(double));
+    double *grid = CPR_XMALLOC(npts * sizeof(double));
+    double *rho_e_arr = CPR_XMALLOC(npts * sizeof(double));
+    double *p_e_arr = CPR_XMALLOC(npts * sizeof(double));
+    double *drho_e_dT_arr = CPR_XMALLOC(npts * sizeof(double));
+    double *dp_e_dT_arr = CPR_XMALLOC(npts * sizeof(double));
 
     double log_min = log10(Tmin), log_max = log10(Tmax);
     for (size_t i = 0; i < npts; i++) {

@@ -1,5 +1,6 @@
 /* neutrino_history.c -- see neutrino_history.h. */
 #include "neutrino_history.h"
+#include "xalloc.h"
 #include "constants.h"
 #include "table_io.h"
 #include "spline.h"
@@ -60,8 +61,8 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
     double *N_r    = tab.cols[5];
 
     double me = g_const.me;
-    double *Tg = malloc(n * sizeof(double));
-    double *Tnue = malloc(n * sizeof(double)), *Tnumu = malloc(n * sizeof(double)), *Tnutau = malloc(n * sizeof(double));
+    double *Tg = CPR_XMALLOC(n * sizeof(double));
+    double *Tnue = CPR_XMALLOC(n * sizeof(double)), *Tnumu = CPR_XMALLOC(n * sizeof(double)), *Tnutau = CPR_XMALLOC(n * sizeof(double));
     for (size_t i = 0; i < n; i++) {
         Tg[i]     = me * z[i] / x[i];
         Tnue[i]   = Tnue_r[i]   * me / x[i];
@@ -76,13 +77,13 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
     int need_reverse = (n >= 2 && Tg[0] > Tg[n - 1]);
 
     nh->n_tab = n;
-    nh->Tg_asc        = malloc(n * sizeof(double));
-    nh->ratio_ue_asc  = malloc(n * sizeof(double));
-    nh->ratio_umu_asc = malloc(n * sizeof(double));
-    nh->ratio_utau_asc = malloc(n * sizeof(double));
-    nh->N_asc         = malloc(n * sizeof(double));
+    nh->Tg_asc        = CPR_XMALLOC(n * sizeof(double));
+    nh->ratio_ue_asc  = CPR_XMALLOC(n * sizeof(double));
+    nh->ratio_umu_asc = CPR_XMALLOC(n * sizeof(double));
+    nh->ratio_utau_asc = CPR_XMALLOC(n * sizeof(double));
+    nh->N_asc         = CPR_XMALLOC(n * sizeof(double));
     /* Also keep an ascending-x_NEVO copy for x_of_Tg below. */
-    double *x_for_xofTg = malloc(n * sizeof(double));
+    double *x_for_xofTg = CPR_XMALLOC(n * sizeof(double));
 
     for (size_t i = 0; i < n; i++) {
         size_t src = need_reverse ? (n - 1 - i) : i;
@@ -95,8 +96,8 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
     }
 
     nh->n_x = n;
-    nh->logTg_x_asc = malloc(n * sizeof(double));
-    nh->logx_asc    = malloc(n * sizeof(double));
+    nh->logTg_x_asc = CPR_XMALLOC(n * sizeof(double));
+    nh->logx_asc    = CPR_XMALLOC(n * sizeof(double));
     for (size_t i = 0; i < n; i++) {
         nh->logTg_x_asc[i] = log(nh->Tg_asc[i]);
         nh->logx_asc[i]    = log(x_for_xofTg[i]);
@@ -144,14 +145,14 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
 
     nh->n_dist_rows = nr;
     nh->n_y = ny;
-    nh->y_nodes = malloc(ny * sizeof(double));
+    nh->y_nodes = CPR_XMALLOC(ny * sizeof(double));
     memcpy(nh->y_nodes, grid_tab.cols[0], ny * sizeof(double));
     nh->y_min = nh->y_nodes[0];
     nh->y_max = nh->y_nodes[ny - 1];
 
-    double *xNEVO_asc = malloc(nr * sizeof(double));
-    double *x_table_unsorted = malloc(nr * sizeof(double));
-    nh->df_table = malloc(nr * ny * sizeof(double));
+    double *xNEVO_asc = CPR_XMALLOC(nr * sizeof(double));
+    double *x_table_unsorted = CPR_XMALLOC(nr * sizeof(double));
+    nh->df_table = CPR_XMALLOC(nr * ny * sizeof(double));
     for (size_t i = 0; i < nr; i++) {
         size_t src = rev ? (nr - 1 - i) : i;
         xNEVO_asc[i] = x_NEVO_raw[src];
@@ -159,7 +160,7 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
         for (size_t j = 0; j < ny; j++)
             nh->df_table[i * ny + j] = full_tab.cols[6 + j][src];
     }
-    nh->logxNEVO_asc = malloc(nr * sizeof(double));
+    nh->logxNEVO_asc = CPR_XMALLOC(nr * sizeof(double));
     for (size_t i = 0; i < nr; i++) nh->logxNEVO_asc[i] = log(xNEVO_asc[i]);
 
     nh->x_min_table = x_table_unsorted[0];
@@ -172,7 +173,7 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
     /* idx_sort: sort x_table_unsorted ascending (matches np.argsort), for
      * the 1D x_table -> x_NEVO interpolant (linear-extrapolated). Simple
      * insertion sort on index array -- nr is a few hundred rows. */
-    size_t *idx = malloc(nr * sizeof(size_t));
+    size_t *idx = CPR_XMALLOC(nr * sizeof(size_t));
     for (size_t i = 0; i < nr; i++) idx[i] = i;
     for (size_t i = 1; i < nr; i++) {
         size_t key = idx[i];
@@ -181,8 +182,8 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
         while (j > 0 && x_table_unsorted[idx[j - 1]] > keyval) { idx[j] = idx[j - 1]; j--; }
         idx[j] = key;
     }
-    nh->x_table_sorted = malloc(nr * sizeof(double));
-    nh->xNEVO_of_xtable_sorted = malloc(nr * sizeof(double));
+    nh->x_table_sorted = CPR_XMALLOC(nr * sizeof(double));
+    nh->xNEVO_of_xtable_sorted = CPR_XMALLOC(nr * sizeof(double));
     for (size_t i = 0; i < nr; i++) {
         nh->x_table_sorted[i] = x_table_unsorted[idx[i]];
         nh->xNEVO_of_xtable_sorted[i] = xNEVO_asc[idx[i]];

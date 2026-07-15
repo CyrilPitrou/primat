@@ -2,6 +2,7 @@
  * PyPR.solve().
  */
 #include "api.h"
+#include "xalloc.h"
 #include "constants.h"
 #include "plasma.h"
 #include "background.h"
@@ -156,8 +157,8 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
     /* ---- Per-nuclide final abundances (owned copy: `nn` outlives this
      * call only as long as the caller keeps it alive). ---- */
     results->n_nuclides = nn->n_species;
-    results->nuclide_names = malloc(nn->n_species * sizeof(*results->nuclide_names));
-    results->Y_final = malloc(nn->n_species * sizeof(double));
+    results->nuclide_names = CPR_XMALLOC(nn->n_species * sizeof(*results->nuclide_names));
+    results->Y_final = CPR_XMALLOC(nn->n_species * sizeof(double));
     for (size_t i = 0; i < nn->n_species; i++) {
         memcpy(results->nuclide_names[i], nn->abundance_names[i], 16);
         results->Y_final[i] = nn->Y_final[i];
@@ -171,13 +172,13 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
         size_t n = (size_t)cfg->output_n_points;
         results->has_evolution = 1;
         results->n_evolution = n;
-        results->evol_t      = malloc(n * sizeof(double));
-        results->evol_a      = malloc(n * sizeof(double));
-        results->evol_T_gamma = malloc(n * sizeof(double));
-        results->evol_Tnue   = malloc(n * sizeof(double));
-        results->evol_Tnumu  = malloc(n * sizeof(double));
-        results->evol_Tnutau = malloc(n * sizeof(double));
-        results->evol_Y      = malloc(n * nn->n_species * sizeof(double));
+        results->evol_t      = CPR_XMALLOC(n * sizeof(double));
+        results->evol_a      = CPR_XMALLOC(n * sizeof(double));
+        results->evol_T_gamma = CPR_XMALLOC(n * sizeof(double));
+        results->evol_Tnue   = CPR_XMALLOC(n * sizeof(double));
+        results->evol_Tnumu  = CPR_XMALLOC(n * sizeof(double));
+        results->evol_Tnutau = CPR_XMALLOC(n * sizeof(double));
+        results->evol_Y      = CPR_XMALLOC(n * nn->n_species * sizeof(double));
         cpr_nuclear_network_sample_time_evolution(nn, cfg->output_n_points,
                                                     results->evol_t, results->evol_T_gamma,
                                                     results->evol_a, results->evol_Tnue,
@@ -192,8 +193,8 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
         size_t nr = cpr_nuclear_network_rate_columns(nn, NULL);
         if (nr) {
             results->n_evol_rates = nr;
-            results->evol_rate_names = malloc(nr * sizeof(*results->evol_rate_names));
-            results->evol_rates = malloc(n * nr * sizeof(double));
+            results->evol_rate_names = CPR_XMALLOC(nr * sizeof(*results->evol_rate_names));
+            results->evol_rates = CPR_XMALLOC(n * nr * sizeof(double));
             cpr_nuclear_network_rate_columns(nn, results->evol_rate_names);
             cpr_nuclear_network_sample_rates(nn, results->evol_T_gamma,
                                               cfg->output_n_points, results->evol_rates);
@@ -209,7 +210,7 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
 static void print_reactions(const CPRNetworkDef *lt)
 {
     size_t width = 0;
-    char **equations = malloc(lt->n_reac * sizeof(*equations));
+    char **equations = CPR_XMALLOC(lt->n_reac * sizeof(*equations));
     for (size_t i = 0; i < lt->n_reac; i++) {
         char buf[256];
         size_t off = 0;
@@ -230,7 +231,7 @@ static void print_reactions(const CPRNetworkDef *lt)
                 if (n > 0) off += (size_t)n;
             }
         }
-        equations[i] = malloc(off + 1);
+        equations[i] = CPR_XMALLOC(off + 1);
         memcpy(equations[i], buf, off + 1);
         if (off > width) width = off;
     }

@@ -1,5 +1,6 @@
 /* cli.c -- see cli.h. */
 #include "cli.h"
+#include "xalloc.h"
 #include "api.h"
 #include "cache.h"
 #include "config.h"
@@ -918,7 +919,7 @@ int cpr_cli_main(int argc, char **argv)
         size_t n_q = 0;
         /* observables (present) + every nuclide; observables never collide with
          * nuclide names (ratios vs element names), so no dedup is needed. */
-        const char **quantities = malloc((n_obs + results.n_nuclides)
+        const char **quantities = CPR_XMALLOC((n_obs + results.n_nuclides)
                                          * sizeof(*quantities));
         for (size_t qi = 0; qi < n_obs; qi++) {
             int found = 0;

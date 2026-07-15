@@ -1,4 +1,5 @@
 #include "cache.h"
+#include "xalloc.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -35,7 +36,7 @@ static void sha256(const unsigned char *msg, size_t len, unsigned char out[32])
     /* Pad: msg || 0x80 || zeros || 64-bit big-endian bit length, to a
      * multiple of 64 bytes. */
     size_t padded_len = ((len + 9 + 63) / 64) * 64;
-    unsigned char *buf = calloc(padded_len, 1);
+    unsigned char *buf = CPR_XCALLOC(padded_len, 1);
     memcpy(buf, msg, len);
     buf[len] = 0x80;
     uint64_t bitlen = (uint64_t)len * 8;
@@ -79,7 +80,7 @@ char *cpr_sha256_hex16(const char *json_str)
 {
     unsigned char digest[32];
     sha256((const unsigned char *)json_str, strlen(json_str), digest);
-    char *hex = malloc(17);
+    char *hex = CPR_XMALLOC(17);
     for (int i = 0; i < 8; i++)
         snprintf(hex + 2*i, 3, "%02x", digest[i]);
     return hex;
@@ -209,7 +210,7 @@ char *cpr_fingerprint_json(const CPRFPField *fields, size_t n)
 {
     /* Sort a local copy of the field indices by key (byte-wise, matching
      * Python's default string comparison for plain ASCII identifiers). */
-    size_t *order = malloc(n * sizeof(size_t));
+    size_t *order = CPR_XMALLOC(n * sizeof(size_t));
     for (size_t i = 0; i < n; i++) order[i] = i;
     for (size_t i = 1; i < n; i++) {
         size_t j = i;
@@ -220,7 +221,7 @@ char *cpr_fingerprint_json(const CPRFPField *fields, size_t n)
     }
 
     size_t cap = 256, len = 0;
-    char *buf = malloc(cap);
+    char *buf = CPR_XMALLOC(cap);
     buf_append(&buf, &cap, &len, "{");
     for (size_t k = 0; k < n; k++) {
         const CPRFPField *f = &fields[order[k]];

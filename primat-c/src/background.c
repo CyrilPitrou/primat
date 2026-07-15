@@ -4,6 +4,7 @@
  * cited below as "Phys. Rep.".
  */
 #include "background.h"
+#include "xalloc.h"
 #include "constants.h"
 #include "spline.h"
 #include "ode_rk.h"
@@ -141,15 +142,15 @@ static void dense_path_push(double t0, double hh, const double *y_old,
     (void)n; /* == p->n by construction (one CPRDensePath per ODE dimension) */
     if (p->nsteps == p->cap) {
         p->cap = p->cap ? p->cap * 2 : 64;
-        p->t0 = realloc(p->t0, p->cap * sizeof(double));
-        p->hh = realloc(p->hh, p->cap * sizeof(double));
-        p->y_old = realloc(p->y_old, p->cap * p->n * sizeof(double));
-        p->k1 = realloc(p->k1, p->cap * p->n * sizeof(double));
-        p->k3 = realloc(p->k3, p->cap * p->n * sizeof(double));
-        p->k4 = realloc(p->k4, p->cap * p->n * sizeof(double));
-        p->k5 = realloc(p->k5, p->cap * p->n * sizeof(double));
-        p->k6 = realloc(p->k6, p->cap * p->n * sizeof(double));
-        p->k7 = realloc(p->k7, p->cap * p->n * sizeof(double));
+        p->t0 = CPR_XREALLOC(p->t0, p->cap * sizeof(double));
+        p->hh = CPR_XREALLOC(p->hh, p->cap * sizeof(double));
+        p->y_old = CPR_XREALLOC(p->y_old, p->cap * p->n * sizeof(double));
+        p->k1 = CPR_XREALLOC(p->k1, p->cap * p->n * sizeof(double));
+        p->k3 = CPR_XREALLOC(p->k3, p->cap * p->n * sizeof(double));
+        p->k4 = CPR_XREALLOC(p->k4, p->cap * p->n * sizeof(double));
+        p->k5 = CPR_XREALLOC(p->k5, p->cap * p->n * sizeof(double));
+        p->k6 = CPR_XREALLOC(p->k6, p->cap * p->n * sizeof(double));
+        p->k7 = CPR_XREALLOC(p->k7, p->cap * p->n * sizeof(double));
     }
     size_t i = p->nsteps;
     p->t0[i] = t0;
@@ -485,9 +486,9 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
 
     int n_T_pts = n_points_per_decade(cfg->sampling_temperature_per_decade, Tend, Tstartcosmo);
     bg->n_Tsol = (size_t)n_T_pts;
-    bg->lnT_sol = malloc(bg->n_Tsol * sizeof(double));
-    bg->lna_sol = malloc(bg->n_Tsol * sizeof(double));
-    double *T_sol = malloc(bg->n_Tsol * sizeof(double));
+    bg->lnT_sol = CPR_XMALLOC(bg->n_Tsol * sizeof(double));
+    bg->lna_sol = CPR_XMALLOC(bg->n_Tsol * sizeof(double));
+    double *T_sol = CPR_XMALLOC(bg->n_Tsol * sizeof(double));
     for (size_t i = 0; i < bg->n_Tsol; i++) {
         double frac = (bg->n_Tsol == 1) ? 0.0 : (double)i / (double)(bg->n_Tsol - 1);
         bg->lnT_sol[i] = log(Tend) + frac * (log(Tstartcosmo) - log(Tend));
@@ -586,10 +587,10 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
      * decreases monotonically with T (the universe expands as T drops).
      * Build the ascending-in-a pair (a_sol_asc, T_sol_asc) by reversing,
      * for cpr_bg_T_of_a's cpr_interp_linear call (requires ascending x). */
-    double *a_grid = malloc(bg->n_Tsol * sizeof(double));
+    double *a_grid = CPR_XMALLOC(bg->n_Tsol * sizeof(double));
     for (size_t i = 0; i < bg->n_Tsol; i++) a_grid[i] = cpr_bg_a_of_T(bg, T_sol[i]);
-    bg->a_sol_asc = malloc(bg->n_Tsol * sizeof(double));
-    bg->T_sol_asc = malloc(bg->n_Tsol * sizeof(double));
+    bg->a_sol_asc = CPR_XMALLOC(bg->n_Tsol * sizeof(double));
+    bg->T_sol_asc = CPR_XMALLOC(bg->n_Tsol * sizeof(double));
     for (size_t i = 0; i < bg->n_Tsol; i++) {
         bg->a_sol_asc[i] = a_grid[bg->n_Tsol - 1 - i];
         bg->T_sol_asc[i] = T_sol[bg->n_Tsol - 1 - i];
@@ -600,7 +601,7 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     double a_fin = cpr_bg_a_of_T(bg, Tend); /* == a_end by construction */
 
     bg->n_bg = bg->n_Tsol; /* same grid density for the t(a) sampling below */
-    double *lna_samp = malloc(bg->n_bg * sizeof(double));
+    double *lna_samp = CPR_XMALLOC(bg->n_bg * sizeof(double));
     for (size_t i = 0; i < bg->n_bg; i++) {
         double frac = (bg->n_bg == 1) ? 0.0 : (double)i / (double)(bg->n_bg - 1);
         lna_samp[i] = log(a_ini) + frac * (log(a_fin) - log(a_ini));
@@ -670,13 +671,13 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
         combined_t_shift = t_ini - out2[1];
     }
 
-    bg->t_vec = malloc(bg->n_bg * sizeof(double));
-    bg->a_vec = malloc(bg->n_bg * sizeof(double));
-    bg->Tg_vec = malloc(bg->n_bg * sizeof(double));
-    bg->Tnue_vec = malloc(bg->n_bg * sizeof(double));
-    bg->Tnumu_vec = malloc(bg->n_bg * sizeof(double));
-    bg->Tnutau_vec = malloc(bg->n_bg * sizeof(double));
-    bg->Tnu_vec = malloc(bg->n_bg * sizeof(double));
+    bg->t_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->a_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->Tg_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->Tnue_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->Tnumu_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->Tnutau_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->Tnu_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
     for (size_t i = 0; i < bg->n_bg; i++) {
         double a = exp(lna_samp[i]);
         bg->a_vec[i] = a;
@@ -712,8 +713,8 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
 
     /* Tg_vec is time-ascending => T-descending; build the T-ascending
      * reverse for cpr_bg_t_of_T (see background.h's field comment). */
-    bg->Tg_asc = malloc(bg->n_bg * sizeof(double));
-    bg->t_by_Tg_asc = malloc(bg->n_bg * sizeof(double));
+    bg->Tg_asc = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->t_by_Tg_asc = CPR_XMALLOC(bg->n_bg * sizeof(double));
     for (size_t i = 0; i < bg->n_bg; i++) {
         bg->Tg_asc[i] = bg->Tg_vec[bg->n_bg - 1 - i];
         bg->t_by_Tg_asc[i] = bg->t_vec[bg->n_bg - 1 - i];
@@ -854,9 +855,9 @@ static int read_custom_table(const char *filename, double **T_out, double **t_ou
     }
 
     size_t cap = 64, n = 0;
-    double *T = malloc(cap * sizeof(double));
-    double *t = malloc(cap * sizeof(double));
-    double *a = malloc(cap * sizeof(double));
+    double *T = CPR_XMALLOC(cap * sizeof(double));
+    double *t = CPR_XMALLOC(cap * sizeof(double));
+    double *a = CPR_XMALLOC(cap * sizeof(double));
     char line[4096];
     while (fgets(line, sizeof(line), f)) {
         if (line[0] == '\n' || line[0] == '\0') continue;
@@ -873,9 +874,9 @@ static int read_custom_table(const char *filename, double **T_out, double **t_ou
         }
         if (n == cap) {
             cap *= 2;
-            T = realloc(T, cap * sizeof(double));
-            t = realloc(t, cap * sizeof(double));
-            a = realloc(a, cap * sizeof(double));
+            T = CPR_XREALLOC(T, cap * sizeof(double));
+            t = CPR_XREALLOC(t, cap * sizeof(double));
+            a = CPR_XREALLOC(a, cap * sizeof(double));
         }
         T[n] = Tv; t[n] = tv; a[n] = av;
         n++;
@@ -902,7 +903,7 @@ static int read_custom_table(const char *filename, double **T_out, double **t_ou
  * need anything better than insertion sort). */
 static void sort_by(const double *key, double *T, double *t, double *a, size_t n)
 {
-    size_t *idx = malloc(n * sizeof(size_t));
+    size_t *idx = CPR_XMALLOC(n * sizeof(size_t));
     for (size_t i = 0; i < n; i++) idx[i] = i;
     for (size_t i = 1; i < n; i++) {
         size_t cur = idx[i];
@@ -910,7 +911,7 @@ static void sort_by(const double *key, double *T, double *t, double *a, size_t n
         while (j > 0 && key[idx[j - 1]] > key[cur]) { idx[j] = idx[j - 1]; j--; }
         idx[j] = cur;
     }
-    double *T2 = malloc(n * sizeof(double)), *t2 = malloc(n * sizeof(double)), *a2 = malloc(n * sizeof(double));
+    double *T2 = CPR_XMALLOC(n * sizeof(double)), *t2 = CPR_XMALLOC(n * sizeof(double)), *a2 = CPR_XMALLOC(n * sizeof(double));
     for (size_t i = 0; i < n; i++) { T2[i] = T[idx[i]]; t2[i] = t[idx[i]]; a2[i] = a[idx[i]]; }
     memcpy(T, T2, n * sizeof(double));
     memcpy(t, t2, n * sizeof(double));
@@ -931,9 +932,9 @@ int cpr_bg_init_custom(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasma 
     if (read_custom_table(filename, &T_raw, &t_raw, &a_raw, &n, errmsg)) return 1;
     bg->n_custom = n;
 
-    bg->t_asc = malloc(n * sizeof(double)); bg->T_by_t = malloc(n * sizeof(double)); bg->a_by_t = malloc(n * sizeof(double));
-    bg->T_asc = malloc(n * sizeof(double)); bg->t_by_T = malloc(n * sizeof(double)); bg->a_by_T = malloc(n * sizeof(double));
-    bg->a_sort = malloc(n * sizeof(double)); bg->T_by_a = malloc(n * sizeof(double)); bg->t_by_a = malloc(n * sizeof(double));
+    bg->t_asc = CPR_XMALLOC(n * sizeof(double)); bg->T_by_t = CPR_XMALLOC(n * sizeof(double)); bg->a_by_t = CPR_XMALLOC(n * sizeof(double));
+    bg->T_asc = CPR_XMALLOC(n * sizeof(double)); bg->t_by_T = CPR_XMALLOC(n * sizeof(double)); bg->a_by_T = CPR_XMALLOC(n * sizeof(double));
+    bg->a_sort = CPR_XMALLOC(n * sizeof(double)); bg->T_by_a = CPR_XMALLOC(n * sizeof(double)); bg->t_by_a = CPR_XMALLOC(n * sizeof(double));
 
     memcpy(bg->t_asc, t_raw, n * sizeof(double));
     memcpy(bg->T_by_t, T_raw, n * sizeof(double));
@@ -966,8 +967,8 @@ int cpr_bg_init_custom(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasma 
     double T_lo = bg->T_asc[0], T_hi = bg->T_asc[n - 1];
     int n_T_pts = n_points_per_decade(cfg->sampling_temperature_per_decade, T_lo, T_hi);
     bg->n_bg = (size_t)n_T_pts;
-    bg->Tg_vec = malloc(bg->n_bg * sizeof(double));
-    bg->Tnue_vec = malloc(bg->n_bg * sizeof(double));
+    bg->Tg_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->Tnue_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
     for (size_t i = 0; i < bg->n_bg; i++) {
         double frac = (bg->n_bg == 1) ? 0.0 : (double)i / (double)(bg->n_bg - 1);
         bg->Tg_vec[i] = T_lo + frac * (T_hi - T_lo);

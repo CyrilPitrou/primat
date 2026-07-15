@@ -1,5 +1,6 @@
 /* network_data.c -- see network_data.h. */
 #include "network_data.h"
+#include "xalloc.h"
 
 #include "constants.h"
 #include "spline.h"
@@ -74,7 +75,7 @@ int cpr_load_network_list(const char *path, CPRNetworkList *out, char **errmsg)
 
         if (out->n == cap) {
             cap = cap ? cap * 2 : 64;
-            out->entries = realloc(out->entries, cap * sizeof(CPRNetworkEntry));
+            out->entries = CPR_XREALLOC(out->entries, cap * sizeof(CPRNetworkEntry));
         }
         CPRNetworkEntry *e = &out->entries[out->n++];
         snprintf(e->name, sizeof(e->name), "%s", name);
@@ -132,7 +133,7 @@ int cpr_load_decays(const char *path, CPRDecayTable *out, char **errmsg)
 
         if (out->n == cap) {
             cap = cap ? cap * 2 : 64;
-            out->entries = realloc(out->entries, cap * sizeof(CPRDecayEntry));
+            out->entries = CPR_XREALLOC(out->entries, cap * sizeof(CPRDecayEntry));
         }
         CPRDecayEntry *e = &out->entries[out->n++];
         snprintf(e->name, sizeof(e->name), "%s", name);
@@ -237,7 +238,7 @@ int cpr_load_detailed_balance(const char *path, CPRDetailedBalanceTable *out,
 
         if (out->n == cap) {
             cap = cap ? cap * 2 : 128;
-            out->entries = realloc(out->entries, cap * sizeof(CPRDetailedBalanceEntry));
+            out->entries = CPR_XREALLOC(out->entries, cap * sizeof(CPRDetailedBalanceEntry));
         }
         CPRDetailedBalanceEntry *e = &out->entries[out->n++];
         snprintf(e->reaction, sizeof(e->reaction), "%s", fields[0]);
@@ -293,7 +294,7 @@ int cpr_load_reactions_large(const char *path, CPRReactionTable *out, char **err
 
         if (out->n == cap) {
             cap = cap ? cap * 2 : 128;
-            out->entries = realloc(out->entries, cap * sizeof(CPRReactionEntry));
+            out->entries = CPR_XREALLOC(out->entries, cap * sizeof(CPRReactionEntry));
         }
         CPRReactionEntry *e = &out->entries[out->n++];
         snprintf(e->name, sizeof(e->name), "%s", fields[0]);
@@ -767,7 +768,7 @@ static int inject_custom_reactions(const CPRCustomNetwork *custom, CPRReactionTa
         if (parse_reaction_name(name, rfield, sizeof(rfield), pfield, sizeof(pfield), errmsg))
             return 1;
 
-        rxn_map->entries = realloc(rxn_map->entries, (rxn_map->n + 1) * sizeof(CPRReactionEntry));
+        rxn_map->entries = CPR_XREALLOC(rxn_map->entries, (rxn_map->n + 1) * sizeof(CPRReactionEntry));
         CPRReactionEntry *e = &rxn_map->entries[rxn_map->n++];
         snprintf(e->name, sizeof(e->name), "%s", name);
         snprintf(e->reactants, sizeof(e->reactants), "%s", rfield);
@@ -789,7 +790,7 @@ static int inject_custom_reactions(const CPRCustomNetwork *custom, CPRReactionTa
         double a, b, g; char *dberr = NULL;
         if (cpr_compute_detailed_balance_coefficients(reactants, nr, products, np, cfg,
                                                          &a, &b, &g, &dberr) == 0) {
-            db->entries = realloc(db->entries, (db->n + 1) * sizeof(CPRDetailedBalanceEntry));
+            db->entries = CPR_XREALLOC(db->entries, (db->n + 1) * sizeof(CPRDetailedBalanceEntry));
             CPRDetailedBalanceEntry *de = &db->entries[db->n++];
             snprintf(de->reaction, sizeof(de->reaction), "%s", name);
             de->Q_keV = 0.0; de->alpha = a; de->beta = b; de->gamma = g;
@@ -990,11 +991,11 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     add_to_set(active, &n_active, "n");
     add_to_set(active, &n_active, "p");
 
-    CPRSideCounts *react_sides = malloc(n_selected * sizeof(CPRSideCounts));
-    CPRSideCounts *prod_sides = malloc(n_selected * sizeof(CPRSideCounts));
-    long *net_lepton_dZ = malloc(n_selected * sizeof(long));
-    int *is_weak = malloc(n_selected * sizeof(int));
-    char (*sel_table_file)[128] = malloc(n_selected * sizeof(*sel_table_file));
+    CPRSideCounts *react_sides = CPR_XMALLOC(n_selected * sizeof(CPRSideCounts));
+    CPRSideCounts *prod_sides = CPR_XMALLOC(n_selected * sizeof(CPRSideCounts));
+    long *net_lepton_dZ = CPR_XMALLOC(n_selected * sizeof(long));
+    int *is_weak = CPR_XMALLOC(n_selected * sizeof(int));
+    char (*sel_table_file)[128] = CPR_XMALLOC(n_selected * sizeof(*sel_table_file));
 
     for (size_t i = 0; i < n_selected; i++) {
         /* A real standalone 64-byte object (rather than `selected[i]`
@@ -1058,9 +1059,9 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     /* ---- 7. Species ordering, N/Z arrays. ---- */
     char ordered[CPR_MAX_LOCAL_SPECIES][16];
     size_t n_species = species_order(cfg, active, n_active, ordered);
-    out->species = malloc(n_species * sizeof(*out->species));
-    out->N = malloc(n_species * sizeof(long));
-    out->Z = malloc(n_species * sizeof(long));
+    out->species = CPR_XMALLOC(n_species * sizeof(*out->species));
+    out->N = CPR_XMALLOC(n_species * sizeof(long));
+    out->Z = CPR_XMALLOC(n_species * sizeof(long));
     out->n_species = n_species;
     for (size_t i = 0; i < n_species; i++) {
         snprintf(out->species[i], 16, "%s", ordered[i]);
@@ -1071,7 +1072,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     /* ---- 8. Master T9 grid. ---- */
     size_t n_grid = (size_t)cfg->rate_grid_npts;
     out->n_grid = n_grid;
-    out->grid = malloc(n_grid * sizeof(double));
+    out->grid = CPR_XMALLOC(n_grid * sizeof(double));
     {
         double lo = log10(cfg->rate_grid_T9_min), hi = log10(cfg->rate_grid_T9_max);
         for (size_t i = 0; i < n_grid; i++) {
@@ -1083,11 +1084,11 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     /* ---- 9. Build per-reaction stoichiometry, names, rate tables. ---- */
     size_t n_reac = 1 + n_selected; /* index 0 = n__p */
     out->n_reac = n_reac;
-    out->names = malloc(n_reac * sizeof(*out->names));
-    out->sources = calloc(n_reac, sizeof(*out->sources)); /* populated per reaction below */
-    out->network = malloc(n_reac * sizeof(CPRReaction));
-    out->weak_flags = malloc(n_reac * sizeof(int));
-    out->lepton_dZ = malloc(n_reac * sizeof(long));
+    out->names = CPR_XMALLOC(n_reac * sizeof(*out->names));
+    out->sources = CPR_XCALLOC(n_reac, sizeof(*out->sources)); /* populated per reaction below */
+    out->network = CPR_XMALLOC(n_reac * sizeof(CPRReaction));
+    out->weak_flags = CPR_XMALLOC(n_reac * sizeof(int));
+    out->lepton_dZ = CPR_XMALLOC(n_reac * sizeof(long));
 
     snprintf(out->names[0], 64, "n__p");
     /* n__p source: rates come from the background weak-rate computation, not a
@@ -1103,11 +1104,11 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     out->weak_flags[0] = 1;
     out->lepton_dZ[0] = -1; /* n -> p + e- (Bm emitted): balances nuclear dZ=+1 */
 
-    out->fwd = malloc(n_selected * n_grid * sizeof(double));
-    out->fwd_median = malloc(n_selected * n_grid * sizeof(double));
-    out->fwd_expsigma = malloc(n_selected * n_grid * sizeof(double));
-    out->abg = malloc(n_selected * 3 * sizeof(double));
-    out->bwd_cap = malloc(n_selected * sizeof(double));
+    out->fwd = CPR_XMALLOC(n_selected * n_grid * sizeof(double));
+    out->fwd_median = CPR_XMALLOC(n_selected * n_grid * sizeof(double));
+    out->fwd_expsigma = CPR_XMALLOC(n_selected * n_grid * sizeof(double));
+    out->abg = CPR_XMALLOC(n_selected * 3 * sizeof(double));
+    out->bwd_cap = CPR_XMALLOC(n_selected * sizeof(double));
 
     CPRDecayTable decays = {0};
     int have_decays = 0;
@@ -1230,7 +1231,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     if (cfg->nuclear_qed_corrections) {
         double factor[CPR_MAX_REACTIONS]; /* reused per-reaction; sized for grid below */
         (void)factor;
-        double *fac = malloc(n_grid * sizeof(double));
+        double *fac = CPR_XMALLOC(n_grid * sizeof(double));
         for (size_t i = 0; i < n_selected; i++) {
             if (qed_nuclear_rescale(selected[i], out->grid, n_grid, fac)) {
                 double *row = &out->fwd_median[i * n_grid];
@@ -1245,7 +1246,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                                                  out->abg[i * 3 + 2], &out->fwd[i * n_grid], cfg);
     }
 
-    out->buf = malloc(2 * n_reac * sizeof(double));
+    out->buf = CPR_XMALLOC(2 * n_reac * sizeof(double));
     out->cache_valid = 0;
     return 0;
 }
@@ -1354,8 +1355,8 @@ int cpr_nuclear_rates_init(CPRNuclearRates *nr, const CPRConfig *cfg,
     cpr_compile_network(nr->lt_net.network, nr->lt_net.n_reac, nr->lt_net.n_species, &nr->lt_compiled);
 
     size_t mt_n_weak = 0, lt_n_weak = 0;
-    size_t *mt_weak_idx = malloc(nr->mt_net.n_reac * sizeof(size_t));
-    size_t *lt_weak_idx = malloc(nr->lt_net.n_reac * sizeof(size_t));
+    size_t *mt_weak_idx = CPR_XMALLOC(nr->mt_net.n_reac * sizeof(size_t));
+    size_t *lt_weak_idx = CPR_XMALLOC(nr->lt_net.n_reac * sizeof(size_t));
     for (size_t i = 0; i < nr->mt_net.n_reac; i++) if (nr->mt_net.weak_flags[i]) mt_weak_idx[mt_n_weak++] = i;
     for (size_t i = 0; i < nr->lt_net.n_reac; i++) if (nr->lt_net.weak_flags[i]) lt_weak_idx[lt_n_weak++] = i;
 

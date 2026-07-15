@@ -1,4 +1,5 @@
 #include "table_io.h"
+#include "xalloc.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -74,12 +75,12 @@ int cpr_table_read(const char *path, size_t n_cols_hint, CPRTable *out,
         if (out->n_rows == cap) {
             cap = cap ? cap * 2 : 64;
             if (!out->cols) {
-                out->cols = calloc(out->n_cols, sizeof(double *));
+                out->cols = CPR_XCALLOC(out->n_cols, sizeof(double *));
                 for (size_t c = 0; c < out->n_cols; c++)
                     out->cols[c] = NULL;
             }
             for (size_t c = 0; c < out->n_cols; c++)
-                out->cols[c] = realloc(out->cols[c], cap * sizeof(double));
+                out->cols[c] = CPR_XREALLOC(out->cols[c], cap * sizeof(double));
         }
 
         for (size_t c = 0; c < out->n_cols; c++) {

@@ -2,6 +2,7 @@
  * mc_uncertainty/_mc_run_batch/_mc_collect_samples.
  */
 #include "mc.h"
+#include "xalloc.h"
 #include "api.h"
 #include "plasma.h"
 #include "background.h"
@@ -239,10 +240,10 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
         : 0;
 
     out->n = n_quantities;
-    out->items = calloc(n_quantities, sizeof(CPRMCQuantity));
+    out->items = CPR_XCALLOC(n_quantities, sizeof(CPRMCQuantity));
     for (size_t q = 0; q < n_quantities; q++) {
         snprintf(out->items[q].name, sizeof(out->items[q].name), "%s", quantities[q]);
-        out->items[q].values = malloc((size_t)num_mc * sizeof(double));
+        out->items[q].values = CPR_XMALLOC((size_t)num_mc * sizeof(double));
     }
 
     if (n_prev_eff > 0) {
@@ -333,8 +334,8 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
         pthread_create(&prog_thr, NULL, progress_thread_fn, &prog_ctx);
     }
 
-    pthread_t *threads = malloc((size_t)n_jobs * sizeof(pthread_t));
-    CPRMCWorker *workers = calloc((size_t)n_jobs, sizeof(CPRMCWorker));
+    pthread_t *threads = CPR_XMALLOC((size_t)n_jobs * sizeof(pthread_t));
+    CPRMCWorker *workers = CPR_XCALLOC((size_t)n_jobs, sizeof(CPRMCWorker));
 
     /* Split [solve_seed_lo, solve_seed_lo+n_to_solve) into n_jobs contiguous
      * chunks (mirrors _mc_collect_samples' np.array_split): chunk sizes
