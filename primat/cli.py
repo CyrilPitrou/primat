@@ -45,7 +45,8 @@ from .credits import cli_credits_text
 from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
                       dump_mc_samples, run_bbn, run_mc)
 from .cache_utils import clear_weak_cache, list_weak_cache_files, weak_cache_dir
-from .config import DEFAULT_PARAMS, PRIMATConfig, _default_params_comments, _rates_overlay_notice
+from .config import (DEFAULT_PARAMS, PARAM_GROUPS, PRIMATConfig,
+                     _default_params_comments, _rates_overlay_notice)
 
 
 def _parse_set_value(raw: str):
@@ -129,16 +130,22 @@ def _print_list_params():
     users discover every parameter it accepts -- descriptions are parsed
     straight out of ``config.py``'s own inline comments
     (:func:`primat.config._default_params_comments`) rather than duplicated
-    here, so they cannot drift out of sync with the source of truth.
+    here, so they cannot drift out of sync with the source of truth. Keys
+    are printed grouped and ordered by :data:`primat.config.PARAM_GROUPS`
+    (the same taxonomy the GUI and the param-template generator use), rather
+    than in raw ``DEFAULT_PARAMS`` dict order, so related flags sit together.
     """
     comments = _default_params_comments()
     key_width = max(len(key) for key in DEFAULT_PARAMS)
-    for key, default in DEFAULT_PARAMS.items():
-        line = f"{key:<{key_width}} = {default!r}"
-        comment = comments.get(key, "")
-        if comment:
-            line += f"  # {comment}"
-        print(line)
+    for group, keys in PARAM_GROUPS.items():
+        print(f"# ---- {group} ----")
+        for key in keys:
+            line = f"{key:<{key_width}} = {DEFAULT_PARAMS[key]!r}"
+            comment = comments.get(key, "")
+            if comment:
+                line += f"  # {comment}"
+            print(line)
+        print()
 
 
 def _build_parser():
@@ -182,20 +189,21 @@ def _build_parser():
     )
     parser.add_argument(
         "--Omegabh2", type=float, default=None, metavar="VALUE",
-        help="Baryon density Omega_b h^2 (PRIMATConfig default: 0.02242).",
+        help=f"Baryon density Omega_b h^2 (PRIMATConfig default: "
+             f"{DEFAULT_PARAMS['Omegabh2']}).",
     )
     parser.add_argument(
         "--DeltaNeff", type=float, default=None, metavar="VALUE",
-        help="Extra relativistic degrees of freedom on top of the SM "
-             "neutrino sector (PRIMATConfig default: 0).",
+        help=f"Extra relativistic degrees of freedom on top of the SM "
+             f"neutrino sector (PRIMATConfig default: {DEFAULT_PARAMS['DeltaNeff']}).",
     )
     parser.add_argument(
         "--network", default=None, metavar="NAME",
-        help="Nuclear reaction network used in the LT era "
-             "(PRIMATConfig default: small). Built-in choices are 'small', "
-             "'small_parthenope' and 'large', but any name for which "
-             "data/nuclear/networks/<NAME>.txt exists is accepted; "
-             "PRIMATConfig raises a ValueError if no such file is found.",
+        help=f"Nuclear reaction network used in the LT era "
+             f"(PRIMATConfig default: {DEFAULT_PARAMS['network']!r}). Built-in "
+             "choices are 'small', 'small_parthenope' and 'large', but any "
+             "name for which data/nuclear/networks/<NAME>.txt exists is "
+             "accepted; PRIMATConfig raises a ValueError if no such file is found.",
     )
     parser.add_argument(
         "--amax", type=int, default=None, metavar="A",
@@ -206,7 +214,8 @@ def _build_parser():
     )
     parser.add_argument(
         "--numerical_precision", type=float, default=None, metavar="RTOL",
-        help="Relative tolerance passed to solve_ivp (PRIMATConfig default: 1e-7).",
+        help=f"Relative tolerance passed to solve_ivp (PRIMATConfig default: "
+             f"{DEFAULT_PARAMS['numerical_precision']}).",
     )
     parser.add_argument(
         "--data_dir", default=None, metavar="PATH",
@@ -224,8 +233,8 @@ def _build_parser():
     )
     parser.add_argument(
         "--munuOverTnu", type=float, default=None, metavar="XI",
-        help="Reduced neutrino chemical potential mu/T, the common default for "
-             "all flavours (PRIMATConfig default: 0).",
+        help=f"Reduced neutrino chemical potential mu/T, the common default "
+             f"for all flavours (PRIMATConfig default: {DEFAULT_PARAMS['munuOverTnu']}).",
     )
     parser.add_argument(
         "--munuOverTnu_e", type=float, default=None, metavar="XI_E",
@@ -266,45 +275,48 @@ def _build_parser():
              "--output_mc_covariance / --output_mc_correlation respectively.",
     )
     # Boolean PRIMATConfig flags exposed as --flag/--no-flag pairs (argparse's
-    # BooleanOptionalAction), so they don't need the --set escape hatch.
-    for flag_name, cfg_default, help_text in (
-        ("QED_corrections", True,
+    # BooleanOptionalAction), so they don't need the --set escape hatch. Each
+    # flag's default is looked up from DEFAULT_PARAMS rather than duplicated
+    # as a literal here, so the printed "(PRIMATConfig default: ...)" cannot
+    # drift from config.py if that default is ever changed.
+    for flag_name, help_text in (
+        ("QED_corrections",
          "QED interaction corrections to the EM plasma equation of state."),
-        ("nuclear_qed_corrections", True,
+        ("nuclear_qed_corrections",
          "QED corrections to radiative-capture nuclear reaction rates "
          "(Pitrou & Pospelov 2020)."),
-        ("radiative_corrections", True,
+        ("radiative_corrections",
          "Coulomb + T=0 resummed radiative corrections to n<->p (CCR); "
          "if False, use the Born approximation instead."),
-        ("finite_mass_corrections", True,
+        ("finite_mass_corrections",
          "Finite-nucleon-mass (Fokker-Planck) correction to n<->p."),
-        ("thermal_corrections", True,
+        ("thermal_corrections",
          "Finite-temperature radiative corrections to n<->p (CCRTh; "
          "Brown & Sawyer 2001)."),
-        ("spectral_distortions", True,
+        ("spectral_distortions",
          "Correct n<->p rates for non-Fermi-Dirac neutrino distributions."),
-        ("output_time_evolution", False,
+        ("output_time_evolution",
          "Write the full time-evolution series (in-memory always; to disk "
          "if output_file is set)."),
-        ("output_final_result", False,
+        ("output_final_result",
          "Write the final results dict to output_file."),
-        ("output_background_evolution", False,
+        ("output_background_evolution",
          "Write the cosmological background time series to disk."),
-        ("output_mc_samples", False,
+        ("output_mc_samples",
          "Write --mc samples to <output_mc_file_prefix>_samples.tsv."),
-        ("output_mc_covariance", False,
+        ("output_mc_covariance",
          "Write the --mc sample covariance matrix to "
          "<output_mc_file_prefix>_covariance.tsv."),
-        ("output_mc_correlation", False,
+        ("output_mc_correlation",
          "Write the --mc sample correlation matrix to "
          "<output_mc_file_prefix>_correlation.tsv."),
-        ("show_progress", True,
+        ("show_progress",
          "Print compact stderr progress indicators ('[primat]  HT.  MT.  "
          "LT.  done.' phase markers, '[MC] ...' sample counter)."),
     ):
         parser.add_argument(
             f"--{flag_name}", action=argparse.BooleanOptionalAction, default=None,
-            help=f"{help_text} (PRIMATConfig default: {cfg_default}).",
+            help=f"{help_text} (PRIMATConfig default: {DEFAULT_PARAMS[flag_name]}).",
         )
     parser.add_argument(
         "--backend", choices=("auto", "c", "python"), default="auto",

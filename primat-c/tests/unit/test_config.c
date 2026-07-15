@@ -221,6 +221,71 @@ int main(void)
               "cache_dir lacks it (overlay, never shadowed)");
     }
 
+    /* ---- Absurdly long data_dir/user_nuclear_dir/cache_dir: every
+     * path-building helper must truncate safely (NUL-terminated, never
+     * write past the caller's buffer) rather than overflow, and warn on
+     * stderr instead of silently handing back a mangled path (CODE_REVIEW.md
+     * item 6: "verify each caller checks the return or that truncation is
+     * detected once centrally"). data_dir is a fixed CPR_DATA_DIR_LEN
+     * buffer (the tightest case); user_nuclear_dir/cache_dir are malloc'd
+     * char* with no length cap at cpr_config_set_by_name time, so they are
+     * the more realistic way a user could supply an oversized path. ---- */
+    {
+        char huge[CPR_DATA_DIR_LEN + 1000];
+        memset(huge, 'a', sizeof(huge) - 1);
+        huge[sizeof(huge) - 1] = '\0';
+
+        CPRConfig cfg2;
+        char *err2 = NULL;
+        /* huge is not a real directory, so init_defaults legitimately fails
+         * (nuclides.csv not found under it) -- the point of this block is
+         * only that it fails *cleanly* (no crash, no overflow) rather than
+         * succeeding; data_dir is set/truncated before that later nuclides.csv
+         * check runs, so it is still safe to inspect and to feed to the
+         * path-building helpers below even though init "failed". */
+        CHECK(cpr_config_init_defaults(&cfg2, huge, &err2) != 0,
+              "init_defaults reports failure for a non-existent (truncated) data_dir");
+        CHECK(strlen(cfg2.data_dir) == CPR_DATA_DIR_LEN - 1,
+              "an oversized data_dir is truncated to exactly the buffer capacity");
+        CHECK(cfg2.data_dir[CPR_DATA_DIR_LEN - 1] == '\0',
+              "the truncated data_dir is NUL-terminated");
+
+        char buf2[CPR_PATH_BUF_LEN2];
+        cpr_config_resolve_rates_path(&cfg2, "nuclear/networks/small.txt", buf2, sizeof(buf2));
+        CHECK(strlen(buf2) < sizeof(buf2),
+              "resolve_rates_path on a truncated data_dir stays within its output buffer");
+        CHECK(buf2[strlen(buf2)] == '\0',
+              "resolve_rates_path output is NUL-terminated");
+
+        /* user_nuclear_dir: malloc'd char*, no length cap -- exercise a
+         * candidate buffer smaller than the field itself. */
+        char *set_err2 = NULL;
+        CPRParam p_unc = { .type = CPR_STRING, .v.s = huge };
+        CHECK(cpr_config_set_by_name(&cfg2, "user_nuclear_dir", p_unc, &set_err2) == 0,
+              "user_nuclear_dir accepts an absurdly long override");
+        free(set_err2); set_err2 = NULL;
+        cpr_config_resolve_rates_path(&cfg2, "nuclear/networks/small.txt", buf2, sizeof(buf2));
+        CHECK(strlen(buf2) < sizeof(buf2),
+              "resolve_rates_path with an absurdly long user_nuclear_dir stays within bounds");
+
+        /* cache_dir: same malloc'd-string story, exercised through both
+         * cache_write_dir and resolve_cache_file (the latter also builds an
+         * "out + n" tail-append that must not underflow outsize-n). */
+        CPRParam p_cd = { .type = CPR_STRING, .v.s = huge };
+        CHECK(cpr_config_set_by_name(&cfg2, "cache_dir", p_cd, &set_err2) == 0,
+              "cache_dir accepts an absurdly long override");
+        free(set_err2); set_err2 = NULL;
+        cpr_config_cache_write_dir(&cfg2, "weak", buf2, sizeof(buf2));
+        CHECK(strlen(buf2) < sizeof(buf2),
+              "cache_write_dir with an absurdly long cache_dir stays within bounds");
+        cpr_config_resolve_cache_file(&cfg2, "weak", "nTOp_deadbeef.txt", buf2, sizeof(buf2));
+        CHECK(strlen(buf2) < sizeof(buf2),
+              "resolve_cache_file with an absurdly long cache_dir stays within bounds");
+
+        free(err2);
+        cpr_config_free(&cfg2);
+    }
+
     cpr_config_free(&cfg);
 
     if (failures) {

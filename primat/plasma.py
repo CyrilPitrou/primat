@@ -643,7 +643,7 @@ class Plasma:
             except Exception as exc:
                 import warnings
                 warnings.warn(f"[plasma] Could not read electron-thermo cache "
-                               f"({exc}); falling back to recompute.")
+                               f"{cache_read!r} ({exc}); falling back to recompute.")
 
         # Compute from scratch.
         rho_e_arr     = np.array([self._rho_e_exact(T)     for T in grid])

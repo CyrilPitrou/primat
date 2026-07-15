@@ -1,7 +1,56 @@
 """Tests for PRIMATConfig: defaults, overrides, derived quantities, nuclide data."""
 import warnings
 import pytest
-from primat.config import PRIMATConfig, DEFAULT_PARAMS
+from primat.config import PRIMATConfig, DEFAULT_PARAMS, PARAM_GROUPS
+
+
+def test_param_groups_covers_every_default_params_key_exactly_once():
+    """PARAM_GROUPS is the single source of truth the GUI, CLI --list-params,
+    and the param-template generator all derive their section headings from
+    (CLAUDE.md's "keep the three templates in sync" chore); it must stay
+    exhaustive and non-overlapping as DEFAULT_PARAMS keys are added, removed,
+    or renamed, or those consumers would silently drop or duplicate a key."""
+    seen = []
+    for group, keys in PARAM_GROUPS.items():
+        seen.extend(keys)
+    assert len(seen) == len(set(seen)), "a key appears in more than one PARAM_GROUPS group"
+    assert set(seen) == set(DEFAULT_PARAMS), (
+        set(DEFAULT_PARAMS) - set(seen), set(seen) - set(DEFAULT_PARAMS))
+
+
+def test_config_type_annotation_block_is_up_to_date():
+    """The TYPE_CHECKING attribute-annotation block inside PRIMATConfig
+    (between the BEGIN/END GENERATED PARAM ANNOTATIONS sentinels) exists so
+    IDEs/mypy see real completions for every DEFAULT_PARAMS key despite the
+    dynamic __getattr__ used for p_*/delta_* rate variations. It is
+    generated text, not hand-maintained -- this test fails loudly if a
+    DEFAULT_PARAMS key was added/removed/renamed without regenerating it."""
+    import inspect
+    import primat.config as config_module
+
+    source = inspect.getsource(config_module)
+    begin = "# BEGIN GENERATED PARAM ANNOTATIONS"
+    end = "# END GENERATED PARAM ANNOTATIONS"
+    start_idx = source.index(begin) + len(begin)
+    end_idx = source.index(end)
+    block = source[start_idx:end_idx]
+
+    expected = config_module._generate_config_type_annotations()
+    for line in expected.splitlines():
+        assert line in block, f"missing/stale annotation line: {line!r}"
+
+
+def test_dir_includes_default_params_and_dynamic_rate_keys():
+    """dir(cfg) should offer every DEFAULT_PARAMS key (ordinary instance
+    attributes, already visible via object.__dir__) plus any p_*/delta_*
+    rate-variation attribute actually set on the instance (only reachable
+    via __getattr__/__setattr__, so object.__dir__ alone would miss it)."""
+    cfg = PRIMATConfig({"p_n_p__d_g": 0.5, "delta_d_p__He3_g": 1.0})
+    listing = dir(cfg)
+    for key in DEFAULT_PARAMS:
+        assert key in listing
+    assert "p_n_p__d_g" in listing
+    assert "delta_d_p__He3_g" in listing
 
 
 def test_default_construction():

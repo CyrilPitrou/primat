@@ -18,11 +18,12 @@ import numbers
 import os
 import re
 import warnings
+from typing import TYPE_CHECKING
 import numpy as np
 
 from .constants import CONST
 
-__all__ = ['DEFAULT_PARAMS', 'PRIMATConfig']
+__all__ = ['DEFAULT_PARAMS', 'PARAM_GROUPS', 'PRIMATConfig']
 
 # ---------------------------------------------------------------------------
 # Default parameter values exposed as a plain dict so callers can inspect them
@@ -318,6 +319,85 @@ DEFAULT_PARAMS: dict = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Machine-readable grouping of DEFAULT_PARAMS, mirroring the "# ----" section
+# comments above.  This exists so the GUI's full-parameter listing, the CLI's
+# ``--list-params``, and the param-template generator (``generate_rates/
+# gen_param_templates.py``) can all derive the same section headings/order
+# from a single place instead of three independently hand-maintained copies
+# (the standing chore CLAUDE.md calls out).  Every DEFAULT_PARAMS key appears
+# in exactly one group -- test_config.py checks that this stays exhaustive
+# and non-overlapping whenever a key is added, removed, or renamed.
+# ---------------------------------------------------------------------------
+PARAM_GROUPS: dict = {
+    "General behaviour and numerical settings": (
+        "verbose", "debug", "show_progress", "numerical_precision",
+        "numba_installed", "strict_params",
+    ),
+    "Neutrino decoupling": (
+        "incomplete_decoupling",
+    ),
+    "Electromagnetic plasma": (
+        "QED_corrections", "n_electron_table", "recompute_electron_thermo",
+        "recompute_qed_corrections",
+    ),
+    "Spectral distortions": (
+        "spectral_distortions", "analytic_distortions", "y_SZ", "y_gray",
+    ),
+    "Custom NEVO tables": (
+        "nevo_file", "nevo_spectral_file", "nevo_grid_file", "nevo_file_prefix",
+    ),
+    "Data directory override and nuclear overlay": (
+        "data_dir", "user_nuclear_dir",
+    ),
+    "Background mode": (
+        "external_scale_factor", "custom_background",
+    ),
+    "Fundamental constants": (
+        "GN",
+    ),
+    "Background thermodynamics": (
+        "T_start_cosmo_MeV", "T_end_MeV", "sampling_temperature_per_decade",
+    ),
+    "n <-> p weak rates": (
+        "radiative_corrections", "finite_mass_corrections", "thermal_corrections",
+    ),
+    "Caching/saving options": (
+        "cache_dir", "weak_rate_cache", "save_nTOp", "sampling_nTOp_per_decade",
+        "save_nTOp_thermal", "sampling_nTOp_thermal_per_decade",
+    ),
+    "Normalization of weak rates": (
+        "tau_n_normalization", "tau_n", "std_tau_n",
+    ),
+    "Thermal correction accuracy knobs": (
+        "vegas_n_eval", "vegas_n_itn", "epsrel_thermal",
+    ),
+    "Output options": (
+        "output_time_evolution", "output_rates_time_evolution",
+        "output_n_points", "output_file", "output_final_result",
+        "output_final_file", "output_background_evolution",
+        "output_background_file", "output_mc_samples", "output_mc_covariance",
+        "output_mc_correlation", "output_mc_file_prefix",
+    ),
+    "Nuclear network": (
+        "rate_grid_npts", "rate_grid_T9_min", "rate_grid_T9_max", "network",
+        "amax", "atol_large_LT", "rescale_nuclear_rates",
+        "mc_rate_rescale_cap", "nuclear_qed_corrections",
+    ),
+    "Cosmological inputs": (
+        "Omegabh2", "Omegach2", "h", "DeltaNeff", "munuOverTnu",
+        "munuOverTnu_e", "munuOverTnu_mu", "munuOverTnu_tau",
+    ),
+    "Decay-era options": (
+        "decay_reverse_rates", "decay_era", "t_decay_end", "decay_n_points",
+        "output_decay_evolution", "output_decay_file",
+    ),
+    "Early Dark Energy": (
+        "fEDE", "zcEDE", "wnEDE",
+    ),
+}
+
+
 # String-valued config keys that represent filesystem paths.
 # These are normalized with os.path.expanduser() so CLI users can pass
 # quoted "~/" prefixes through --set and still get the expected home-dir
@@ -594,6 +674,47 @@ def _param_kinds(key: str):
     return None  # unreachable: every None-defaulted key is in _PARAM_TYPESPEC
 
 
+_KIND_PYTYPE = {"bool": "bool", "int": "int", "float": "float",
+                 "str": "str", "none": "None"}
+
+# DEFAULT_PARAMS keys that must be skipped by the generator below because
+# PRIMATConfig already declares them as a real, independently-typed
+# ``@property`` further down in the class body (see Omegabh2's getter/
+# setter): a bare TYPE_CHECKING annotation of the same name would be a
+# duplicate definition as far as mypy is concerned.
+_CONFIG_ANNOTATION_SKIP = {"Omegabh2"}
+
+
+def _generate_config_type_annotations() -> str:
+    """Generate the body of the ``if TYPE_CHECKING:`` attribute-annotation
+    block inside :class:`PRIMATConfig` (between the ``BEGIN``/``END
+    GENERATED PARAM ANNOTATIONS`` sentinel comments below).
+
+    ``PRIMATConfig`` sets every ``DEFAULT_PARAMS`` key as a plain instance
+    attribute at construction time (see ``_apply_user_overrides``), but does
+    so dynamically from a loop over the dict, so neither an IDE nor mypy can
+    see ``cfg.Omegabh2`` or ``cfg.network`` coming -- worse, ``__getattr__``
+    (used for the unrelated ``p_<rxn>``/``delta_<rxn>`` dynamic pattern)
+    makes static tools treat *any* misspelled attribute access as valid
+    rather than flagging it. Bare ``name: type`` class-body annotations
+    (no assignment) fix both: they cost nothing at runtime (``TYPE_CHECKING``
+    is always ``False``) and are exactly what IDEs/mypy use for instance
+    attribute completion and checking. Generated (rather than hand-typed) so
+    it cannot drift from ``DEFAULT_PARAMS``/``_PARAM_TYPESPEC``;
+    ``test_config.py`` fails if the block in the source is stale --
+    regenerate it by running this function and pasting its output between
+    the sentinels, or via ``python -m primat.tools.gen_docs --check``.
+    """
+    lines = []
+    for key in DEFAULT_PARAMS:
+        if key in _CONFIG_ANNOTATION_SKIP:
+            continue
+        kinds = _param_kinds(key)
+        pytype = " | ".join(_KIND_PYTYPE[k] for k in kinds)
+        lines.append(f"        {key}: {pytype}")
+    return "\n".join(lines)
+
+
 def _validate_param_value(key: str, value):
     """Type-, choice-, and range-check one user-supplied ``DEFAULT_PARAMS``
     override, raising an immediate, self-explanatory error on any mismatch.
@@ -653,6 +774,96 @@ class PRIMATConfig:
     After construction every key in ``DEFAULT_PARAMS`` is an attribute, plus
     all physical constants listed below.
     """
+
+    if TYPE_CHECKING:
+        # BEGIN GENERATED PARAM ANNOTATIONS -- do not edit by hand; produced
+        # by _generate_config_type_annotations() in this module (see its
+        # docstring). test_config.py fails if this block goes stale.
+        verbose: bool
+        debug: bool
+        show_progress: bool
+        numerical_precision: float
+        numba_installed: bool
+        strict_params: bool
+        incomplete_decoupling: bool
+        QED_corrections: bool
+        n_electron_table: int
+        recompute_electron_thermo: bool
+        recompute_qed_corrections: bool
+        spectral_distortions: bool
+        analytic_distortions: bool
+        y_SZ: float
+        y_gray: float
+        nevo_file: str | None
+        nevo_spectral_file: str | None
+        nevo_grid_file: str | None
+        nevo_file_prefix: str
+        data_dir: str | None
+        user_nuclear_dir: str | None
+        external_scale_factor: bool
+        custom_background: str | None
+        GN: float
+        T_start_cosmo_MeV: float
+        T_end_MeV: float
+        sampling_temperature_per_decade: int
+        radiative_corrections: bool
+        finite_mass_corrections: bool
+        thermal_corrections: bool
+        cache_dir: str | None
+        weak_rate_cache: bool
+        save_nTOp: bool
+        sampling_nTOp_per_decade: int
+        save_nTOp_thermal: bool
+        sampling_nTOp_thermal_per_decade: int
+        tau_n_normalization: bool
+        tau_n: float
+        std_tau_n: float
+        vegas_n_eval: int
+        vegas_n_itn: int
+        epsrel_thermal: float
+        output_time_evolution: bool
+        output_rates_time_evolution: bool
+        output_n_points: int
+        output_file: str | None
+        output_final_result: bool
+        output_final_file: str | None
+        output_background_evolution: bool
+        output_background_file: str | None
+        output_mc_samples: bool
+        output_mc_covariance: bool
+        output_mc_correlation: bool
+        output_mc_file_prefix: str | None
+        rate_grid_npts: int
+        rate_grid_T9_min: float
+        rate_grid_T9_max: float
+        network: str
+        amax: int | None
+        atol_large_LT: float
+        rescale_nuclear_rates: bool
+        mc_rate_rescale_cap: float | None
+        nuclear_qed_corrections: bool
+        Omegach2: float
+        h: float
+        DeltaNeff: float
+        munuOverTnu: float
+        munuOverTnu_e: float | None
+        munuOverTnu_mu: float | None
+        munuOverTnu_tau: float | None
+        decay_reverse_rates: bool
+        decay_era: bool
+        t_decay_end: float
+        decay_n_points: int
+        output_decay_evolution: bool
+        output_decay_file: str | None
+        fEDE: float
+        zcEDE: float
+        wnEDE: float
+        # Omegabh2 is intentionally absent here: it is a real @property
+        # below with its own getter/setter type annotations.
+        # p_<reaction>/delta_<reaction> nuclear-rate-variation keys are a
+        # dynamic, unbounded pattern (any reaction name) routed through
+        # __getattr__/__setattr__ further below; not enumerable here.
+        # END GENERATED PARAM ANNOTATIONS
 
     @property
     def is_small(self) -> bool:
@@ -1202,6 +1413,22 @@ class PRIMATConfig:
         if name.startswith("delta_"):
             return object.__getattribute__(self, 'delta_rxn').get(name[6:], 0.0)
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def __dir__(self):
+        """Extend the default ``dir()``/tab-completion listing with the
+        dynamic ``p_<rxn>``/``delta_<rxn>`` rate-variation attributes
+        currently set on this instance (via ``__getattr__``/``__setattr__``
+        above, so they never appear in ``object.__dir__`` on their own).
+        The static ``DEFAULT_PARAMS`` keys are already real instance
+        attributes by construction time and need no help from here; this
+        only closes the gap for the unbounded p_*/delta_* pattern, which the
+        ``TYPE_CHECKING`` annotation block above cannot enumerate either
+        (any reaction name is valid, including ones from a custom network).
+        """
+        names = set(object.__dir__(self))
+        names.update(f"p_{rxn}" for rxn in self.p_rxn)
+        names.update(f"delta_{rxn}" for rxn in self.delta_rxn)
+        return sorted(names)
 
     def __setattr__(self, name: str, value):
         """Dynamic routing for nuclear rate variations p_* and delta_*."""

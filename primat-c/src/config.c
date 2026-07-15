@@ -3,6 +3,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -397,7 +398,24 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     memset(cfg, 0, sizeof(*cfg));
     cpr_constants_init();
 
+    /* cfg->data_dir is a fixed CPR_DATA_DIR_LEN buffer (not a malloc'd
+     * char*, unlike user_nuclear_dir/cache_dir), so an absurdly long
+     * --data_dir/CPRIMAT_DATA_DIR value must be truncated, not overflowed.
+     * strncpy alone does not guarantee NUL-termination when the source is
+     * >= the copy length, so terminate explicitly rather than relying on
+     * the memset above always running first; warn unconditionally (not
+     * gated by cfg->verbose, unlike cpr_log) since every subsequent rates
+     * lookup under a truncated data_dir will otherwise fail with a
+     * confusing "file not found" pointing at a mangled path. */
     strncpy(cfg->data_dir, data_dir, sizeof(cfg->data_dir) - 1);
+    cfg->data_dir[sizeof(cfg->data_dir) - 1] = '\0';
+    if (strlen(data_dir) >= sizeof(cfg->data_dir)) {
+        fprintf(stderr,
+                "warning: data_dir path (%zu bytes) exceeds the %zu-byte "
+                "internal limit and was truncated to %.60s...; rates lookups "
+                "will very likely fail. Use a shorter data_dir path.\n",
+                strlen(data_dir), sizeof(cfg->data_dir) - 1, cfg->data_dir);
+    }
 
     cfg->verbose = 0;
     cfg->show_progress = 1;
@@ -556,25 +574,56 @@ static int path_exists(const char *path)
     return stat(path, &st) == 0;
 }
 
+/* snprintf wrapper shared by every path-building helper below, so
+ * truncation is detected in exactly one place instead of after each of the
+ * ~8 individual snprintf calls that join a (possibly attacker/user-supplied,
+ * unbounded-length) data_dir/user_nuclear_dir/cache_dir with a relative
+ * path. snprintf itself is always memory-safe (it never writes past
+ * outsize and always NUL-terminates when outsize > 0), so a truncated
+ * result cannot overflow -- but it silently becomes a syntactically valid,
+ * *wrong* path, which then fails a later path_exists()/fopen() with a
+ * confusing "file not found" instead of the real "path too long" cause.
+ * `what` names the field/call site for that warning; printed unconditionally
+ * (unlike cpr_log, not gated by cfg->verbose) since a truncated data path
+ * is a misconfiguration a user needs to see regardless. */
+static int cpr_snprintf_path(char *out, size_t outsize, const char *what,
+                              const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(out, outsize, fmt, args);
+    va_end(args);
+    if (n >= 0 && (size_t)n >= outsize) {
+        fprintf(stderr,
+                "warning: %s path was truncated (%d bytes needed, only a "
+                "%zu-byte buffer available); the resulting path is very "
+                "likely wrong. Use a shorter data_dir/user_nuclear_dir/"
+                "cache_dir.\n", what, n, outsize);
+    }
+    return n;
+}
+
 void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
                                     char *out, size_t outsize)
 {
-    char candidate[4200];
+    char candidate[CPR_PATH_BUF_LEN2];
 
     if (cfg->user_nuclear_dir) {
         /* user_nuclear_dir is the equivalent of primat/data/nuclear, so strip
          * any leading "nuclear/" component before joining, then fall through
          * to the legacy nested layout for compatibility. */
         if (strncmp(relpath, "nuclear/", 8) == 0) {
-            snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_nuclear_dir, relpath + 8);
+            cpr_snprintf_path(candidate, sizeof(candidate), "user_nuclear_dir",
+                               "%s/%s", cfg->user_nuclear_dir, relpath + 8);
             if (path_exists(candidate)) {
-                snprintf(out, outsize, "%s", candidate);
+                cpr_snprintf_path(out, outsize, "resolved rates", "%s", candidate);
                 return;
             }
         }
-        snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_nuclear_dir, relpath);
+        cpr_snprintf_path(candidate, sizeof(candidate), "user_nuclear_dir",
+                           "%s/%s", cfg->user_nuclear_dir, relpath);
         if (path_exists(candidate)) {
-            snprintf(out, outsize, "%s", candidate);
+            cpr_snprintf_path(out, outsize, "resolved rates", "%s", candidate);
             return;
         }
     }
@@ -584,7 +633,7 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
      * missing, so the caller's "file not found" error points at the expected
      * location). cfg->data_dir is the data folder itself
      * (e.g. .../primat/data), not its parent. */
-    snprintf(out, outsize, "%s/%s", cfg->data_dir, relpath);
+    cpr_snprintf_path(out, outsize, "data_dir", "%s/%s", cfg->data_dir, relpath);
 }
 
 /* Cache-tree overlay -- mirror of primat/cache_utils.py's
@@ -594,9 +643,9 @@ void cpr_config_cache_write_dir(const CPRConfig *cfg, const char *sub,
                                 char *out, size_t outsize)
 {
     if (cfg->cache_dir && cfg->cache_dir[0])
-        snprintf(out, outsize, "%s/%s", cfg->cache_dir, sub);
+        cpr_snprintf_path(out, outsize, "cache_dir", "%s/%s", cfg->cache_dir, sub);
     else
-        snprintf(out, outsize, "%s/cache_plasma_weak/%s", cfg->data_dir, sub);
+        cpr_snprintf_path(out, outsize, "data_dir", "%s/cache_plasma_weak/%s", cfg->data_dir, sub);
 }
 
 void cpr_config_resolve_cache_file(const CPRConfig *cfg, const char *sub,
@@ -604,17 +653,17 @@ void cpr_config_resolve_cache_file(const CPRConfig *cfg, const char *sub,
 {
     char cand[CPR_PATH_BUF_LEN2];
     if (cfg->cache_dir && cfg->cache_dir[0]) {          /* overlay: redirect first */
-        snprintf(cand, sizeof(cand), "%s/%s/%s", cfg->cache_dir, sub, file);
-        if (path_exists(cand)) { snprintf(out, outsize, "%s", cand); return; }
+        cpr_snprintf_path(cand, sizeof(cand), "cache_dir", "%s/%s/%s", cfg->cache_dir, sub, file);
+        if (path_exists(cand)) { cpr_snprintf_path(out, outsize, "resolved cache", "%s", cand); return; }
     }
     /* shipped package copy (always tried, always last) */
-    snprintf(cand, sizeof(cand), "%s/cache_plasma_weak/%s/%s",
+    cpr_snprintf_path(cand, sizeof(cand), "data_dir", "%s/cache_plasma_weak/%s/%s",
              cfg->data_dir, sub, file);
-    if (path_exists(cand)) { snprintf(out, outsize, "%s", cand); return; }
+    if (path_exists(cand)) { cpr_snprintf_path(out, outsize, "resolved cache", "%s", cand); return; }
     /* miss -> the write path (where it WILL be written) */
     cpr_config_cache_write_dir(cfg, sub, out, outsize);
-    size_t n = strlen(out);
-    snprintf(out + n, outsize - n, "/%s", file);
+    size_t n = strlen(out);  /* always < outsize: snprintf NUL-terminates within outsize */
+    cpr_snprintf_path(out + n, outsize - n, "cache write path", "/%s", file);
 }
 
 void cpr_config_set_Omegabh2(CPRConfig *cfg, double value)

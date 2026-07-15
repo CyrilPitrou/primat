@@ -158,20 +158,49 @@ def test_cli_help_shows_named_output_path_flags(capsys):
 
 def test_cli_list_params_covers_every_default_params_key(capsys):
     """--list-params must print every DEFAULT_PARAMS key with its
-    default value, without running a solve."""
-    from primat.config import DEFAULT_PARAMS
+    default value, without running a solve. Output is grouped by
+    primat.config.PARAM_GROUPS (a "# ---- <group> ----" header line per
+    group, plus a blank separator line), so the key lines are a subset of
+    the total, not every printed line."""
+    from primat.config import DEFAULT_PARAMS, PARAM_GROUPS
 
     rc = main(["--list-params"])
     assert rc == 0
     out = capsys.readouterr().out
-    lines = out.splitlines()
-    assert len(lines) == len(DEFAULT_PARAMS)
     for key in DEFAULT_PARAMS:
         assert re.search(rf"(?m)^{re.escape(key)}\s*=", out)
+    for group in PARAM_GROUPS:
+        assert f"# ---- {group} ----" in out
     # A few keys with a known one-line trailing comment in config.py should
     # carry it through verbatim, so the descriptions are not silently dropped.
     assert "Omega_b h^2" in out
     assert "Coulomb + T=0 resummed radiative corrections" in out
+
+
+def test_cli_help_named_flag_defaults_match_default_params(capsys):
+    """Named --help flags that quote a "(PRIMATConfig default: ...)" value
+    (Omegabh2, DeltaNeff, network, numerical_precision, munuOverTnu, and
+    every BooleanOptionalAction flag) build that string from DEFAULT_PARAMS
+    at parser-construction time rather than a hand-typed literal, so it
+    cannot silently drift from the real default if config.py changes."""
+    from primat.config import DEFAULT_PARAMS
+
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    # argparse word-wraps --help text to the terminal width, so a literal
+    # value can land on its own line; collapse all whitespace runs to a
+    # single space before substring-matching.
+    out = re.sub(r"\s+", " ", capsys.readouterr().out)
+    for key in ("Omegabh2", "DeltaNeff", "numerical_precision", "munuOverTnu",
+                "QED_corrections", "nuclear_qed_corrections",
+                "radiative_corrections", "finite_mass_corrections",
+                "thermal_corrections", "spectral_distortions",
+                "output_time_evolution", "output_final_result",
+                "output_background_evolution", "output_mc_samples",
+                "output_mc_covariance", "output_mc_correlation",
+                "show_progress"):
+        assert f"PRIMATConfig default: {DEFAULT_PARAMS[key]}" in out, key
+    assert f"PRIMATConfig default: {DEFAULT_PARAMS['network']!r}" in out
 
 
 def test_cli_help_mentions_list_params_next_to_set(capsys):

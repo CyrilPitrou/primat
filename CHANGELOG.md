@@ -11,6 +11,16 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+### Removed
+- `rate_interp_order` `DEFAULT_PARAMS`/C config parameter: never consumed by
+  any solver, resampler, or rate-lookup path on either backend (rate-table
+  resampling always hardcoded log-log cubic, and the per-step master-grid
+  lookup always used linear `searchsorted` regardless of its value), so
+  setting it to `quadratic`/`cubic` changed neither observables nor runtime.
+  Removed together with its C field/default/validation, both param
+  templates' entries, both backends' enum tests, and the now-empty
+  `_PARAM_CHOICES` machinery it was the last user of.
+
 ## [0.3.2] - 2026-07-11
 
 ### Added

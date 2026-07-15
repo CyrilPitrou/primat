@@ -298,6 +298,25 @@ def test_ini_template_lists_every_default_param():
         f"run_basic.ini lists stale/unknown keys: {sorted(found - expected)}"
 
 
+def test_param_templates_match_generator():
+    """Both templates are build products of primat/tools/gen_param_templates.py
+    (see that module's docstring): this asserts the committed files are
+    byte-for-byte what the generator would produce right now, so a
+    DEFAULT_PARAMS/PARAM_GROUPS change that isn't followed by
+    `python -m primat.tools.gen_param_templates` fails here instead of
+    silently drifting (CLAUDE.md's "Keeping DEFAULT_PARAMS ... in sync"
+    chore, now enforced rather than merely documented)."""
+    from primat.tools.gen_param_templates import (
+        generate_run_explanatory, generate_run_basic_ini)
+
+    assert _read_text(_TEMPLATE_PY) == generate_run_explanatory(), \
+        "runfiles/primat_run_explanatory.py is stale -- regenerate with " \
+        "`python -m primat.tools.gen_param_templates`"
+    assert _read_text(_TEMPLATE_INI) == generate_run_basic_ini(), \
+        "primat-c/examples/run_basic.ini is stale -- regenerate with " \
+        "`python -m primat.tools.gen_param_templates`"
+
+
 def test_param_count_comments_match_default_params():
     """The two templates' count comments must quote len(DEFAULT_PARAMS)
     exactly. (CLAUDE.md's '(currently NN keys)' count is NOT asserted --

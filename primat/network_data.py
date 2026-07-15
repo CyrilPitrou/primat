@@ -26,6 +26,7 @@ import os
 import re
 import csv
 import io
+import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from math import factorial
@@ -1429,10 +1430,17 @@ def _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg):
             products = [s for s, c in pcounts.items() for _ in range(int(c))]
             try:
                 db[n] = compute_detailed_balance_coefficients(reactants, products, cfg)
-            except Exception:
-                # Missing spin/mass data for one of the nuclides: fall back
-                # to a forward-only reaction rather than failing the run.
-                pass
+            except KeyError as exc:
+                # Missing spin/mass data for one of the nuclides (a NuclSpin/
+                # NuclExcessMass/Nuclides lookup miss): fall back to a
+                # forward-only reaction rather than failing the run, but
+                # name the offending reaction/nuclide so a genuinely
+                # incomplete nuclide table doesn't silently degrade.
+                warnings.warn(
+                    f"reaction {n!r}: no detailed-balance reverse rate "
+                    f"(missing nuclide data for {exc}); added as forward-only.",
+                    stacklevel=2,
+                )
     return rxn_map, db
 
 
@@ -1755,7 +1763,17 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
                         abg.append([0.0, 0.0, 0.0])
                     else:
                         abg.append([_alpha, _beta, _gamma])
-                except Exception:
+                except KeyError as exc:
+                    # Missing spin/mass data for one of the nuclides: fall
+                    # back to the irreversible-decay default (abg = 0)
+                    # rather than failing the run, but name the offending
+                    # decay/nuclide so an incomplete nuclide table is visible.
+                    warnings.warn(
+                        f"decay {name!r}: no detailed-balance reverse rate "
+                        f"(missing nuclide data for {exc}); treated as "
+                        f"irreversible (abg = 0).",
+                        stacklevel=2,
+                    )
                     abg.append([0.0, 0.0, 0.0])
             else:
                 abg.append([0.0, 0.0, 0.0])
