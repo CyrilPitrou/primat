@@ -52,6 +52,58 @@ from scipy.special import zeta
 
 from .evolution import EvolutionResult, dump_evolution
 
+
+def _check_solver(sol, era, detail):
+    """Raise if ``solve_ivp`` did not reach the end of the integration interval.
+
+    Why this is needed
+    ------------------
+    scipy reports a step failure through ``sol.success`` / ``sol.status``, *not*
+    by raising: on failure it still returns whatever partial trajectory it
+    managed to compute in ``sol.y``.  Reading ``sol.y[..., -1]`` without
+    checking therefore turns a solver failure into *silently wrong abundances*
+    rather than an error -- the worst possible failure mode for a precision BBN
+    code.  This is not hypothetical: forcing the (stiff) MT era onto scipy's
+    LSODA makes it fail with "Repeated convergence failures", after which the
+    unchecked final values give YP = 0.434 instead of 0.247 and a 60%-wrong
+    D/H, with no warning of any kind.
+
+    BDF converges for every supported configuration, so in normal use this
+    helper never fires; it guards the cases the solver can still meet -- a
+    pathological custom network, an extreme Monte-Carlo rate draw, or a
+    user-tightened ``numerical_precision``.
+
+    Backend parity
+    --------------
+    The C backend already fails loudly here (``primat-c/src/nuclear_network.c``
+    checks ``cpr_ode_bdf``'s return code and propagates an error), and its
+    Python bridge surfaces such failures as ``RuntimeError``
+    (``_primat_c_src/_wrapper.c``'s ``PyErr_Format(PyExc_RuntimeError, ...)``).
+    Raising ``RuntimeError`` here keeps the two backends' error behaviour
+    identical, as required by CLAUDE.md's parity mandate.
+
+    Parameters
+    ----------
+    sol : the ``OdeResult`` returned by ``scipy.integrate.solve_ivp``.
+    era : str -- solver era tag used in the message ("HT", "MT" or "LT").
+    detail : str -- extra context for the message (temperature range, network
+        name and size), so a failure report identifies the run that produced it.
+
+    Raises
+    ------
+    RuntimeError
+        If ``sol.success`` is False, quoting scipy's own ``sol.message``
+        (e.g. "Required step size is less than spacing between numbers.").
+
+    Example
+    -------
+    >>> sol = solve_ivp(f, [t0, t1], y0, method="BDF")   # doctest: +SKIP
+    >>> _check_solver(sol, "LT", "small network, 8 nuclides")   # doctest: +SKIP
+    """
+    if not sol.success:
+        raise RuntimeError(f"[{era}] nuclear-network integration failed "
+                           f"({detail}): {sol.message}")
+
 __all__ = ["NuclearNetwork"]
 
 
@@ -217,6 +269,8 @@ class NuclearNetwork:
         _t_ht0 = time.time()
         sol_HT = solve_ivp(Y_prime_HT, [t_start, t_weak], [Yn_i, Yp_i],
                            method='LSODA', rtol=cfg.numerical_precision, atol=1e-10)
+        _check_solver(sol_HT, "HT",
+                      f"T = {T_start_MeV:.4g} -> {T_weak_MeV:.4g} MeV")
         if cfg.verbose:
             print(f"[nucl-py]  [HT] Finished solve_ivp in {time.time()-_t_ht0:.2f} s",
                   flush=True)
@@ -285,6 +339,9 @@ class NuclearNetwork:
         sol_MT = solve_ivp(Y_prime_MT, [t_weak, t_nucl], Yi_MT,
                            method='BDF', jac=Jacobian_MT,
                            rtol=cfg.numerical_precision, atol=1e-15)
+        _check_solver(sol_MT, "MT",
+                      f"{cfg.network} network, {len(mt_species)} species, "
+                      f"T = {T_weak_MeV:.4g} -> {T_nucl_MeV:.4g} MeV")
         if cfg.verbose:
             print(f"[nucl-py]  [MT] Finished solve_ivp ({cfg.network} network, "
                   f"{len(mt_species)} species) in {time.time()-_t_mt0:.2f} s",
@@ -361,6 +418,9 @@ class NuclearNetwork:
         sol_LT = solve_ivp(Y_prime_LT, [t_nucl, t_end], Yi_LT,
                            method='BDF', jac=Jacobian_LT,
                            rtol=10.*cfg.numerical_precision, atol=atol)
+        _check_solver(sol_LT, "LT",
+                      f"{cfg.network} network, {len(species_L)} nuclides, "
+                      f"T = {T_nucl_MeV:.4g} -> {cfg.T_end_MeV:.4g} MeV")
         if cfg.verbose:
             print(f"[nucl-py]  [LT] Finished solve_ivp ({cfg.network} network, "
                   f"{len(species_L)} nuclides) in {time.time()-_t_lt0:.2f} s",

@@ -125,3 +125,74 @@ def test_result_values_physical(solved_small):
     assert 1e-6 < res["He3oH"] < 1e-4
     assert 1e-10 < res["Li7oH"] < 1e-9
     assert 2.5 < res["Neff"] < 3.5
+
+
+# ---------------------------------------------------------------------------
+# Solver-failure reporting
+#
+# scipy's solve_ivp signals a step failure via sol.success/sol.status rather
+# than raising, and still returns the partial trajectory in sol.y.  Reading
+# sol.y[..., -1] unchecked would silently yield wrong abundances instead of an
+# error (an LSODA convergence failure forced on the stiff MT era gives
+# YP = 0.434 instead of 0.247, D/H 60% off, with no warning).  The C backend
+# already fails loudly (nuclear_network.c checks cpr_ode_bdf's return code),
+# so nuclear_network._check_solver keeps the Python backend's error behaviour
+# in parity with it.  BDF converges for every supported configuration, so these
+# guards never fire in normal use -- hence the failure is injected here.
+# ---------------------------------------------------------------------------
+
+def _fake_failed_sol(n_species):
+    """A minimal stand-in for a failed scipy OdeResult (success=False)."""
+    class _Sol:
+        success = False
+        status = -1
+        message = "Required step size is less than spacing between numbers."
+        y = np.ones((n_species, 2))
+    return _Sol()
+
+
+def test_check_solver_passes_on_success():
+    """A converged solve must not raise."""
+    from primat.nuclear_network import _check_solver
+
+    class _OK:
+        success = True
+        message = "The solver successfully reached the end of the integration interval."
+
+    _check_solver(_OK(), "LT", "small network, 8 nuclides")   # must not raise
+
+
+def test_check_solver_raises_on_failure():
+    """A failed solve must raise RuntimeError quoting the era and scipy's message."""
+    from primat.nuclear_network import _check_solver
+
+    with pytest.raises(RuntimeError) as exc:
+        _check_solver(_fake_failed_sol(8), "MT", "small network, 8 species")
+    msg = str(exc.value)
+    assert "[MT]" in msg                       # era is identified
+    assert "small network, 8 species" in msg   # run context is carried
+    assert "Required step size" in msg         # scipy's own diagnosis is quoted
+
+
+@pytest.mark.parametrize("failing_era, tag", [(0, "[HT]"), (1, "[MT]"), (2, "[LT]")])
+def test_solve_raises_when_integrator_fails(monkeypatch, failing_era, tag):
+    """Each of the three eras must surface an integrator failure as RuntimeError.
+
+    Rather than returning fabricated abundances: the n-th solve_ivp call is made
+    to report failure, and PRIMAT.solve() must raise instead of completing.
+    """
+    import primat.nuclear_network as nn
+    real_solve_ivp = nn.solve_ivp
+    calls = {"n": 0}
+
+    def flaky(fun, tspan, y0, **kw):
+        i = calls["n"]
+        calls["n"] += 1
+        if i == failing_era:
+            return _fake_failed_sol(len(y0))
+        return real_solve_ivp(fun, tspan, y0, **kw)
+
+    monkeypatch.setattr(nn, "solve_ivp", flaky)
+    with pytest.raises(RuntimeError) as exc:
+        PRIMAT().solve()
+    assert tag in str(exc.value)
