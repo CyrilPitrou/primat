@@ -244,12 +244,27 @@ class NuclearNetwork:
         T_weak_MeV = cfg.T_weak / cfg.MeV_to_Kelvin
         T_nucl_MeV = cfg.T_nucl / cfg.MeV_to_Kelvin
 
+        # One-slot memo on the cosmic time ``t``: BDF evaluates the RHS and the
+        # (separately supplied) analytic Jacobian at the *same* ``t`` before
+        # advancing the step, so ``rhoB_BBN(t)`` and ``T_of_t(t)`` -- each a
+        # scipy interpolant call -- would otherwise be recomputed identically.
+        # Keying on bit-identical ``t`` (no tolerance) keeps the result exact
+        # while halving the background-interpolant traffic. Mirrors the same
+        # pattern already used by ``NetworkDefinition.fill_buffer``.
+        _bg = {"t": None, "rho": 0.0, "T_K": 0.0}
+        def _bg_at(t):
+            if t != _bg["t"]:
+                _bg["rho"] = rhoB_BBN(t)
+                _bg["T_K"] = T_of_t(t) * cfg.MeV_to_Kelvin
+                _bg["t"]   = t
+            return _bg["rho"], _bg["T_K"]
+
         def Y_prime_MT(t, Y):
-            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            rho, T_K = _bg_at(t)
             return nucl.rhsMT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
         def Jacobian_MT(t, Y):
-            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            rho, T_K = _bg_at(t)
             return nucl.JacobianMT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
         if cfg.verbose:
@@ -300,12 +315,23 @@ class NuclearNetwork:
 
         T_nucl_MeV = cfg.T_nucl / cfg.MeV_to_Kelvin
 
+        # One-slot memo on the cosmic time ``t`` (see the identical comment in
+        # ``_solve_MT``): skips the duplicate ``rhoB_BBN``/``T_of_t`` interpolant
+        # calls when BDF evaluates the RHS and Jacobian at the same ``t``.
+        _bg = {"t": None, "rho": 0.0, "T_K": 0.0}
+        def _bg_at(t):
+            if t != _bg["t"]:
+                _bg["rho"] = rhoB_BBN(t)
+                _bg["T_K"] = T_of_t(t) * cfg.MeV_to_Kelvin
+                _bg["t"]   = t
+            return _bg["rho"], _bg["T_K"]
+
         def Y_prime_LT(t, Y):
-            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            rho, T_K = _bg_at(t)
             return nucl.rhsLT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
         def Jacobian_LT(t, Y):
-            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            rho, T_K = _bg_at(t)
             return nucl.JacobianLT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
         if cfg.verbose:

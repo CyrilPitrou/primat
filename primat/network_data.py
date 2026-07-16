@@ -88,6 +88,67 @@ _PHOTONS = {"g"}
 _LEPTONS = {"Bm", "Bp"}
 
 
+def _fill_buffer_core(T9, grid, fwd_table, abg, bwd_cap, clamp, r):
+    """Numba-friendly inner loop of :meth:`NetworkDefinition.fill_buffer`.
+
+    Given the photon temperature already converted to ``T9`` [GK], this fills
+    the thermonuclear (non-weak) forward/backward rate slots of the flat buffer
+    ``r`` in place: ``r[2::2]`` are the forward rates linearly interpolated on
+    the master ``grid`` from the active table ``fwd_table`` (shape
+    ``(n_thermo_reac, ngrid)``), and ``r[3::2]`` the reverse rates obtained from
+    detailed balance, ``bwd = α T9^β exp(min(γ/T9, _EXP_CAP)) × fwd`` with
+    ``(α, β, γ) = abg[k]``, then floored to 0 (when the forward rate is below
+    ``_FLOOR`` or the result is negative noise) and, if ``clamp``, capped at
+    ``bwd_cap[k]``.  Slots ``r[0]``/``r[1]`` (the weak n↔p rates) are set by the
+    caller and left untouched here.
+
+    This is a straight transcription of the previous vectorised NumPy body into
+    a scalar loop so numba can JIT it: on the hot BDF path it removes the
+    per-call temporaries and slice copies that profiling showed dominated the
+    LT-era solve.  The arithmetic (and its left-to-right associativity) is
+    unchanged, so results are bit-identical whether or not numba compiles this.
+    Without numba it still runs correctly as plain Python (just slower).
+    """
+    n = grid.shape[0]
+    # Bracketing interval on the ascending master grid, clamped to the valid
+    # range so out-of-grid T9 extrapolates linearly off the edge cell (matching
+    # the previous np.searchsorted-based lookup exactly).
+    i = int(np.searchsorted(grid, T9)) - 1
+    if i < 0:
+        i = 0
+    elif i > n - 2:
+        i = n - 2
+    w = (T9 - grid[i]) / (grid[i + 1] - grid[i])
+    m = fwd_table.shape[0]
+    for k in range(m):
+        fwd = fwd_table[k, i] * (1.0 - w) + fwd_table[k, i + 1] * w
+        e = abg[k, 2] / T9
+        if e > _EXP_CAP:
+            e = _EXP_CAP
+        bwd = abg[k, 0] * T9 ** abg[k, 1] * np.exp(e) * fwd
+        # A frozen-out forward rate (below _FLOOR) or negative interpolation
+        # noise must not seed a spurious reverse flux; a reverse rate is
+        # physically >= 0.
+        if fwd <= _FLOOR or bwd < 0.0:
+            bwd = 0.0
+        if clamp and bwd > bwd_cap[k]:
+            bwd = bwd_cap[k]
+        r[2 + 2 * k] = fwd
+        r[3 + 2 * k] = bwd
+    return r
+
+
+# JIT-compile the fill-buffer inner loop once if numba is importable; otherwise
+# fall back to the identical pure-Python function above (numba is a recommended,
+# not mandatory, dependency -- see CLAUDE.md).  cache=True persists the compiled
+# kernel across processes, matching network_builder's kernels.
+try:                                                    # pragma: no cover
+    from numba import njit as _njit
+    _fill_buffer_core = _njit(cache=True)(_fill_buffer_core)
+except Exception:                                       # numba absent/broken
+    pass
+
+
 def _resample_rate_table(T9_src, rate_src, T9_dst):
     """Resample a rate table from its source T9 grid to the master T9 grid.
 
@@ -978,32 +1039,15 @@ class NetworkDefinition:
         r[0] = nTOp_frwrd(T_t)
         r[1] = nTOp_bkwrd(T_t)
 
-        T9 = T_t * 1e-9
-        g = self.grid
-        i = int(np.searchsorted(g, T9) - 1)
-        if i < 0:
-            i = 0
-        elif i > g.size - 2:
-            i = g.size - 2
-        w = (T9 - g[i]) / (g[i + 1] - g[i])
-
-        # Slice copies are intentional: the backward-rate clipping below must
-        # not mutate the cached table columns shared by later evaluations.
-        fwd = self._fwd[:, i] * (1.0 - w) + self._fwd[:, i + 1] * w
-        alpha, beta, gamma = self._abg[:, 0], self._abg[:, 1], self._abg[:, 2]
-        bwd = alpha * T9 ** beta * np.exp(np.minimum(gamma / T9, _EXP_CAP)) * fwd
-        bwd[fwd <= _FLOOR] = 0.0
-        # A reverse rate is physically non-negative.  At low T9 the resampled
-        # forward table can carry tiny negative interpolation/extrapolation
-        # noise (and the detailed-balance prefactor amplifies it), which would
-        # turn the reverse flux into a spurious source/sink.  Floor at 0.
-        np.maximum(bwd, 0.0, out=bwd)
-
-        if clamp:
-            np.minimum(bwd, self._bwd_cap, out=bwd)
-
-        r[2::2] = fwd
-        r[3::2] = bwd
+        # Fill the thermonuclear forward/reverse slots (r[2:]) in place.  The
+        # detailed-balance reverse rate, the _FLOOR/_EXP_CAP handling and the
+        # optional bwd_cap clamp all live in the numba kernel now; it writes
+        # straight into r without the previous per-call slice copies (the copies
+        # were only there to protect the cached table columns from in-place
+        # clipping -- the kernel never mutates self._fwd/self._abg, so that
+        # invariant is preserved by construction).
+        _fill_buffer_core(T_t * 1e-9, self.grid, self._fwd, self._abg,
+                          self._bwd_cap, clamp, r)
         self._cache_T_t = T_t
         self._cache_clamp = clamp
         return r

@@ -1321,8 +1321,12 @@ def _L_CCRTh_interpolants(ctx):
         # anything below the grid floor must be pinned to 0 here rather than
         # left to interp1d's quadratic extrapolation, which is unconstrained
         # there.
-        return lambda T: np.where(np.asarray(T) < _T_CCRTH_MIN, 0.,
-                                   interp(np.maximum(T, _T_CCRTH_MIN)))
+        f = lambda T: np.where(np.asarray(T) < _T_CCRTH_MIN, 0.,
+                               interp(np.maximum(T, _T_CCRTH_MIN)))
+        # Expose the fitted interpolant so the fast scalar evaluator
+        # (weak_rates.fast_eval) can extract its PPoly; behaviour is unchanged.
+        f.interp = interp
+        return f
 
     L_nTOpCCRTh = _clamp_below_floor(_interp_n)
     L_pTOnCCRTh = _clamp_below_floor(_interp_p)
@@ -1475,5 +1479,15 @@ def _thermal_correction_interpolants(Tvec, cfg):
     ctx = _build_rate_context(Tvec, cfg)
     L_nTOpCCRTh, L_pTOnCCRTh = _L_CCRTh_interpolants(ctx)
     Fn = ComputeFn(cfg)
-    return (lambda T: L_nTOpCCRTh(T) / Fn), (lambda T: L_pTOnCCRTh(T) / Fn)
+    inv_Fn = 1.0 / Fn
+    fn = lambda T: L_nTOpCCRTh(T) / Fn
+    fp = lambda T: L_pTOnCCRTh(T) / Fn
+    # Expose the underlying (pre-1/Fn) quadratic interpolant and the constant
+    # 1/Fn scale so weak_rates.fast_eval can JIT the scalar thermal term as
+    # ``scale * PPoly(T)``; the closures' own behaviour is unchanged.
+    fn.interp = L_nTOpCCRTh.interp
+    fn.scale = inv_Fn
+    fp.interp = L_pTOnCCRTh.interp
+    fp.scale = inv_Fn
+    return fn, fp
 

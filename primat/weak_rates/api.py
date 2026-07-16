@@ -107,6 +107,11 @@ def _weak_rate_loglog_interp(T, rate):
         val = np.where(Tq >= T_zero_below, val, 0.0)
         return val if val.ndim else float(val)
 
+    # Expose the fitted spline and the zero-mask threshold so the fast scalar
+    # evaluator (weak_rates.fast_eval.FastWeakRate) can extract the PPoly and
+    # JIT the hot scalar path. Does not change _eval's behaviour.
+    _eval.spline = spline
+    _eval.T_zero_below = T_zero_below
     return _eval
 
 def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
@@ -352,5 +357,17 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     # non-thermal flag reuses the same thermal table, and vice versa.
     nTOp_thermal, pTOn_thermal = _thermal_correction_interpolants(Tvec, cfg)
     frwrd_nt, bkwrd_nt = nonthermal
-    return [lambda T: frwrd_nt(T) + nTOp_thermal(T),
-            lambda T: bkwrd_nt(T) + pTOn_thermal(T)]
+
+    # Original array-safe closures (kept as the fallback / array-input path).
+    frwrd_orig = lambda T: frwrd_nt(T) + nTOp_thermal(T)
+    bkwrd_orig = lambda T: bkwrd_nt(T) + pTOn_thermal(T)
+
+    # Wrap in JIT scalar evaluators for the hot solver path. FastWeakRate
+    # self-checks against the closures above at build time and transparently
+    # falls back to them (per channel) if the JIT path ever disagrees, so this
+    # can only speed things up, never change the numbers.
+    from .fast_eval import FastWeakRate
+    from .corrections import _T_CCRTH_MIN
+    frwrd = FastWeakRate(frwrd_nt, nTOp_thermal, _T_CCRTH_MIN, frwrd_orig)
+    bkwrd = FastWeakRate(bkwrd_nt, pTOn_thermal, _T_CCRTH_MIN, bkwrd_orig)
+    return [frwrd, bkwrd]
