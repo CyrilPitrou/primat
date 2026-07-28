@@ -1,6 +1,6 @@
 # Thermal-Average Rate-Generation Notebook — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task, inline in the current session. Do **not** dispatch subagents. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build `generate_rates/thermal_average.ipynb`, a self-contained Jupyter notebook that turns a user-supplied astrophysical S-factor or cross-section — with a parameter covariance — into a primat-format rate table with a Monte-Carlo 1σ error column.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - The deliverable is a **single self-contained notebook**. Do not create an importable helper module under `generate_rates/` or `primat/`. No pytest files.
-- **No changes to `primat/` or `primat-c/`.** The notebook only reads primat APIs and writes data files, so `CLAUDE.md`'s backend-parity rule does not apply.
+- **No changes to `primat/` or `primat-c/`** — source *or* data. The notebook reads primat APIs and writes only into its own untracked output directory `generate_rates/rate_tables_out/`; the shipped `primat/data/` tree is never modified, so `CLAUDE.md`'s backend-parity rule does not apply.
 - **No hard-coded nuclide data.** Masses, charges, spins, Q-values and detailed-balance coefficients come from `PRIMATConfig()` / `primat.network_data`. `α_FS` comes from `primat.constants.CONST.alphaem`. Avogadro's number is derived as `1/m_u[g]`.
 - **Comment heavily** (`CLAUDE.md`): every function gets a docstring stating what it computes and why, the meaning and units of each argument and of the return value, and a usage example. Every non-obvious step gets an inline comment. Every magic number is named and explained.
 - Units throughout: energies in **MeV**, cross-sections in **barn** at the user interface and **cm²** inside the kernel, temperatures as **T9** (10⁹ K), output rate `N_A⟨σv⟩` in **cm³ mol⁻¹ s⁻¹**.
@@ -27,6 +27,8 @@
 |---|---|
 | `generate_rates/thermal_average.ipynb` | **Create.** The entire deliverable: nine sections, §3 being the only user-edited cell. |
 | `generate_rates/README.md` | **Modify.** Add a "Pipeline map" entry pointing at the notebook. |
+| `.gitignore` | **Modify.** Ignore `generate_rates/rate_tables_out/`. |
+| `generate_rates/rate_tables_out/` | Generated, untracked. The notebook's default output: a `user_nuclear_dir`-shaped overlay holding `tables/<reaction>/<reaction>_<ref>.txt` and `networks/custom_rate.txt`. |
 | `<scratchpad>/build_nb.py` | Throwaway. One-off nbformat script that creates the empty notebook in Task 1. Not committed. |
 | `<scratchpad>/run_nb.py` | Throwaway. Executes the notebook and prints cell outputs; the verification harness for every task. Not committed. |
 
@@ -394,10 +396,13 @@ SAMPLE_THETA = None
 N_MC = 300          # Monte-Carlo samples; 300 is ample for a 16/84 percentile
 SEED = 20260728     # fixed seed so the written table is reproducible
 
-# Where to write.  Defaults to the shipped tables tree, so the new rate is
-# immediately selectable as a sibling table variant; point it at a
-# user_nuclear_dir overlay ("<overlay>/tables") to keep the shipped tree clean.
-OUTDIR = REPO / "primat" / "data" / "nuclear" / "tables"
+# Where to write.  The default is an untracked overlay directory, so this
+# notebook never touches the shipped primat/data/ tree.  Its layout is exactly
+# what primat's `user_nuclear_dir` parameter expects, so a run can pick the new
+# table up with  user_nuclear_dir="<REPO>/generate_rates/rate_tables_out"
+# (see §8).  Point OUTDIR at primat/data/nuclear/tables only if you really do
+# intend to modify the shipped data.
+OUTDIR = REPO / "generate_rates" / "rate_tables_out" / "tables"
 
 OVERWRITE = False   # refuse to clobber an existing file unless True
 # ===========================================================================
@@ -1000,10 +1005,16 @@ function — rather than copying numbers out of an existing header — is what
 guarantees the new table's reverse rate is consistent with the rest of the
 network.
 
-The file is written to `OUTDIR/<reaction>/<reaction>_<REF>.txt`, i.e. as a
-**sibling** of the shipped `<reaction>_primat.txt` inside the same
-per-reaction folder. That is the mechanism primat uses for multiple candidate
-tables per reaction (`network_data.available_rate_tables()`).
+The file is written to `OUTDIR/<reaction>/<reaction>_<REF>.txt` — the same
+per-reaction-folder layout the shipped tree uses, which is the mechanism
+primat uses for multiple candidate tables per reaction
+(`network_data.available_rate_tables()`).
+
+`OUTDIR` defaults to the untracked `generate_rates/rate_tables_out/tables`, so
+**nothing is written into `primat/data/`**. That directory doubles as a
+ready-made `user_nuclear_dir` overlay; §8 shows how to point a run at it.
+Overlay resolution is per-file, so an overlaid `d_d__t_p` does not shadow any
+other table.
 ````
 
 - [ ] **Step 2: Append the §7 code cell**
@@ -1042,7 +1053,7 @@ def write_rate_table():
 
     Example:
         >>> write_rate_table()
-        PosixPath('.../primat/data/nuclear/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt')
+        PosixPath('.../generate_rates/rate_tables_out/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt')
     """
     lhs, rhs = REACTION.split("__")
     display = f"{' + '.join(lhs.split('_'))} > {' + '.join(rhs.split('_'))}"
@@ -1088,17 +1099,17 @@ Expected `NOTEBOOK OK`, with the detailed-balance line reading
 detailed balance: alpha=1.73492 beta=0 gamma=-46.7971  Q=4.03266 MeV
 ```
 
-which must match line 2 of the shipped table exactly. Confirm with:
+which must match line 2 of the *shipped* table, since both are derived from
+the same nuclide data. Confirm with:
 
 ```bash
 sed -n 2p primat/data/nuclear/tables/d_d__t_p/d_d__t_p_primat.txt
-sed -n 2p primat/data/nuclear/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt
+sed -n 2p generate_rates/rate_tables_out/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt
 ```
 
-Expected: the two lines are identical apart from nothing — they must be
-byte-identical.
+Expected: the two lines are byte-identical.
 
-- [ ] **Step 4: Verify the generated table loads through primat**
+- [ ] **Step 4: Verify the generated table is loadable and well-shaped**
 
 Run:
 
@@ -1106,18 +1117,24 @@ Run:
 python -c "
 import sys; sys.path.insert(0, '.')
 import numpy as np
+from primat.config import PRIMATConfig
 from primat.network_data import available_rate_tables
-tabs = available_rate_tables('d_d__t_p')
-print(sorted(tabs) if isinstance(tabs, dict) else tabs)
-d = np.loadtxt('primat/data/nuclear/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt')
+cfg = PRIMATConfig(params={'user_nuclear_dir': 'generate_rates/rate_tables_out'})
+print(available_rate_tables('d_d__t_p', cfg))
+d = np.loadtxt('generate_rates/rate_tables_out/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt')
 print(d.shape, d[0], d[-1])
 "
 ```
 
-Expected: the listing includes `Mathematica-Sddp`, and the array shape is
-`(60, 3)`. (If `available_rate_tables` has a different signature, inspect it
-with `python -c "import inspect, primat.network_data as n; print(inspect.signature(n.available_rate_tables))"`
-and adapt the call — do not change `primat/`.)
+Expected: the listing is `['d_d__t_p_Mathematica-Sddp.txt']` and the array
+shape is `(60, 3)`.
+
+Note the listing shows *only* the overlay's file, not the shipped
+`_primat.txt`: for a reaction folder that exists in the overlay,
+`available_rate_tables` reports the overlay folder's contents. Overlay
+resolution is still per-*file* at solve time, so every other reaction keeps
+falling back to the shipped tree — this is a listing quirk, not a shadowing
+bug, and §8 does not depend on it.
 
 - [ ] **Step 5: Verify the overwrite guardrail**
 
@@ -1128,8 +1145,11 @@ Then set `OVERWRITE = True` in §3 and re-run; expected `NOTEBOOK OK`. Leave
 
 - [ ] **Step 6: Commit**
 
+Only the notebook is committed — `generate_rates/rate_tables_out/` is a
+generated artifact and is gitignored in Task 7.
+
 ```bash
-git add generate_rates/thermal_average.ipynb primat/data/nuclear/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt
+git add generate_rates/thermal_average.ipynb
 git commit -m "generate_rates: write primat-format rate tables with detailed-balance header"
 ```
 
@@ -1227,31 +1247,51 @@ fig.tight_layout()
 plt.show()
 ```
 
-- [ ] **Step 3: Append the §8b closing markdown cell**
+- [ ] **Step 3: Append the §8b markdown cell, then the §8b code cell**
+
+The prose below (down to the `large.txt` sentence) goes in a **markdown**
+cell; the Python block inside it goes in a **code** cell immediately after.
 
 ````markdown
 ### Using the new table in a primat run
 
-The file now sits beside the shipped table in the same per-reaction folder, so
-primat can select it by its variant label — the part of the filename after
-`<reaction>_`:
+Which table file a run uses is decided by the **network list file**, whose
+lines are `<reaction>, <table filename>`. So pointing primat at the new rate
+takes two things: a network file naming it, and `user_nuclear_dir` pointing at
+the overlay this notebook wrote into.
+
+The cell below writes such a network file next to the table — a copy of the
+shipped `small` network with this one reaction's filename swapped — and runs
+BBN with it. Every *other* reaction still resolves to its shipped table,
+because overlay resolution is per-file.
 
 ```python
-from primat import PRIMAT
-res = PRIMAT(params={"network": "small",
-                     "rate_table_d_d__t_p": "Mathematica-Sddp"}).solve()
-print(res["DoH"])
+import shutil
+from primat.backend import run_bbn
+
+overlay = Path(OUTDIR).parent                     # .../rate_tables_out
+(overlay / "networks").mkdir(parents=True, exist_ok=True)
+
+base = REPO / "primat/data/nuclear/networks/small.txt"
+lines = []
+for line in base.read_text().splitlines():
+    reac = line.split(",")[0].strip()
+    if reac == REACTION:
+        line = f"{REACTION}, {OUT_PATH.name}"
+    lines.append(line)
+net = overlay / "networks" / "custom_rate.txt"
+net.write_text("\n".join(lines) + "\n")
+
+res = run_bbn(params={"network": "custom_rate",
+                      "user_nuclear_dir": str(overlay)})
+print(f"with {OUT_PATH.name}:  D/H = {res['DoH']:.7e}, YP = {res['YPBBN']:.8f}")
+
+ref = run_bbn(params={"network": "small"})
+print(f"shipped small network: D/H = {ref['DoH']:.7e}, YP = {ref['YPBBN']:.8f}")
 ```
 
-Check the exact parameter spelling for your primat version with
-
-```python
-from primat.network_data import available_rate_tables
-available_rate_tables("d_d__t_p")
-```
-
-If you wrote to a `user_nuclear_dir` overlay instead of the shipped tree, pass
-`"user_nuclear_dir": "<overlay>"` alongside it.
+This only works if `REACTION` is one of the 12 small-network reactions; for
+anything else, start from `large.txt` instead of `small.txt`.
 ````
 
 - [ ] **Step 4: Run and check both channels agree with the shipped tables**
@@ -1270,22 +1310,28 @@ order: (a) confirm the §5 self-tests still pass — if they do the quadrature i
 fine; (b) print `sigma_of_E_cm2` at E = 0.1 MeV and check it against the hand
 value in Task 2 Step 5; (c) check the Gamow exponent sign.
 
-- [ ] **Step 5: Verify the §8b snippet actually works**
+- [ ] **Step 5: Check the §8b BBN run reproduces the shipped result**
 
-Run the snippet from the §8b markdown cell as written:
+§8b is a live code cell, so `run_nb.py` already executed it. Its two printed
+lines must agree, because the worked example's polynomial S-factor is close to
+— but not identical with — the shipped table:
 
-```bash
-python -c "
-import sys; sys.path.insert(0, '.')
-from primat.network_data import available_rate_tables
-print(available_rate_tables('d_d__t_p'))
-"
+```
+with d_d__t_p_Mathematica-Sddp.txt:  D/H = 2.4...e-05, YP = 0.246...
+shipped small network:               D/H = 2.4359107e-05, YP = 0.24699714
 ```
 
-Expected: the `Mathematica-Sddp` variant appears. If the parameter name in the
-§8b `PRIMAT(params=...)` example does not match what primat actually accepts,
-**fix the markdown cell** to the real spelling — a documented snippet that
-does not run is a defect.
+The **second** line is the hard check: it must read exactly
+`D/H = 2.4359107e-05, YP = 0.24699714`, the shipped `network="small"` result
+verified during planning. If it does not, the overlay is leaking into the
+reference run — investigate before continuing.
+
+The first line should differ from it by no more than a few percent in D/H
+(`d_d__t_p` competes with `d_d__He3_n` for deuterium burning, so a ~10%
+rate change moves D/H by ~1%). A first line *identical* to the second means
+the overlay was not picked up at all — check that
+`user_nuclear_dir` points at `rate_tables_out`, not at its `tables/`
+subdirectory.
 
 - [ ] **Step 6: Commit**
 
@@ -1324,27 +1370,39 @@ with the other runnable entry points rather than with the raw source data):
   Q-values) is read from a live `PRIMATConfig`, so it cannot drift from the
   solver's own nuclear data.
 
-  The output lands as a *sibling* variant inside an existing per-reaction
-  folder (`tables/<reaction>/<reaction>_<ref>.txt`) — it does not rebuild the
-  tree. This notebook supersedes the Mathematica `Thermal-Average.nb`, whose
-  loader stub `Thermal-Average.m` is kept here for reference.
+  Output goes to `generate_rates/rate_tables_out/` (gitignored), laid out as a
+  ready-made `user_nuclear_dir` overlay — the shipped `primat/data/` tree is
+  never modified. The notebook's last section builds a matching network list
+  file and runs BBN with the new rate to show the effect. This notebook
+  supersedes the Mathematica `Thermal-Average.nb`, whose loader stub
+  `Thermal-Average.m` is kept here for reference.
 ```
 
-- [ ] **Step 2: Verify the README renders and the claims are true**
+- [ ] **Step 2: Gitignore the generated overlay**
+
+Append to `.gitignore`:
+
+```
+# Rate tables generated by generate_rates/thermal_average.ipynb
+generate_rates/rate_tables_out/
+```
+
+- [ ] **Step 3: Verify the README claims are true**
 
 Run:
 
 ```bash
 grep -n "thermal_average.ipynb" generate_rates/README.md
 ls generate_rates/thermal_average.ipynb
-ls primat/data/nuclear/tables/d_d__t_p/
+ls generate_rates/rate_tables_out/tables/d_d__t_p/ generate_rates/rate_tables_out/networks/
+git check-ignore -v generate_rates/rate_tables_out/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt
 ```
 
-Expected: the grep hits, the notebook exists, and the tables folder lists both
-`d_d__t_p_primat.txt` and `d_d__t_p_Mathematica-Sddp.txt`, confirming the
-"sibling variant" claim.
+Expected: the grep hits; the notebook exists; the overlay contains
+`d_d__t_p_Mathematica-Sddp.txt` and `custom_rate.txt`; and `git check-ignore`
+prints the `.gitignore` rule, confirming the generated tree stays untracked.
 
-- [ ] **Step 3: Clear outputs and do a final clean run**
+- [ ] **Step 4: Clear outputs and do a final clean run**
 
 Clearing execution counts and outputs keeps the committed notebook's diff
 readable and proves it runs from a cold start.
@@ -1366,19 +1424,21 @@ python <scratchpad>/run_nb.py
 Expected: `cleared`, then the full output sequence ending in `NOTEBOOK OK`,
 with all three §5 self-tests passing and both §8 deviations under 30%.
 
-- [ ] **Step 4: Confirm no primat source was touched**
+- [ ] **Step 5: Confirm nothing outside `generate_rates/` was touched**
 
 Run: `git status --short`
 
 Expected: the only modified/added paths are
 `generate_rates/thermal_average.ipynb`, `generate_rates/README.md`, and
-`primat/data/nuclear/tables/d_d__t_p/d_d__t_p_Mathematica-Sddp.txt`. Nothing
-under `primat/*.py` or `primat-c/`. If anything else appears, revert it.
+`.gitignore`. Nothing under `primat/` (source *or* data) and nothing under
+`primat-c/`. In particular `primat/data/nuclear/tables/` must be untouched —
+if it is not, `OUTDIR` was left pointing at the shipped tree; revert those
+files and fix §3.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add generate_rates/README.md generate_rates/thermal_average.ipynb
+git add generate_rates/README.md generate_rates/thermal_average.ipynb .gitignore
 git commit -m "generate_rates: document thermal_average.ipynb in the pipeline map"
 ```
 
@@ -1392,6 +1452,21 @@ git commit -m "generate_rates: document thermal_average.ipynb in the pipeline ma
 Step 7), `Z₁Z₂ = 0` warning (Task 2 Step 6), non-PSD `COV` (Task 4 Step 4),
 negative-σ clipping (reported in Task 4 Step 2's code and surfaced in §8's
 S(E) inspection). The overwrite guardrail is checked in Task 5 Step 5.
+
+**Output location.** The notebook writes to the untracked overlay
+`generate_rates/rate_tables_out/`, never into `primat/data/`. Task 5 Step 6
+commits only the notebook; Task 7 Step 2 gitignores the overlay and Step 5
+verifies `primat/` is untouched.
+
+**Verified during planning, not assumed.** Table-variant selection is by
+*network list file* (`networks/<name>.txt` lines of the form
+`<reaction>, <filename>`), not by a `params` key — an earlier draft of §8b
+invented a `rate_table_<reaction>` parameter that does not exist. The overlay
+route was checked end to end with a real run: `network="custom_rate"` plus
+`user_nuclear_dir` pointing at the overlay reproduces the shipped
+`network="small"` result exactly (D/H = 2.4359107e-05, YP = 0.24699714) when
+the overlaid table is a copy of the shipped one. Task 6 Step 5 pins those two
+numbers.
 
 **Known deviation from the spec.** The spec's §3 sketch showed `COV = None`;
 the plan ships a small non-zero `COV` in the worked example instead, so that

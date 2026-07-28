@@ -41,7 +41,7 @@ here.
 | Uncertainty | Monte Carlo over the S(E) parameter vector |
 | Temperature grid | Wagoner 60-point grid (as in the Mathematica original) |
 | Code layout | Self-contained notebook — no new importable module |
-| Output location | User-chosen `OUTDIR`, defaulting to the shipped tables tree |
+| Output location | User-chosen `OUTDIR`, defaulting to an untracked overlay under `generate_rates/` |
 | Cross-section entry points | `S(E)` for charged particles **and** direct `σ(E)` |
 | Validation | Reproduce d+d as a worked, pre-filled example |
 
@@ -116,7 +116,7 @@ def cross_section(E_MeV, theta):        # vectorized in E
 THETA0    = np.array([0.05520, 0.2151, -0.02555])
 COV       = None           # covariance, or None → error column ≡ 1.0
 N_MC      = 300
-OUTDIR    = REPO / "primat/data/nuclear/tables"
+OUTDIR    = REPO / "generate_rates/rate_tables_out/tables"
 OVERWRITE = False
 ```
 
@@ -169,6 +169,13 @@ Columns are written on the 60-point Wagoner T9 grid transcribed from
 `OUTDIR/<reaction>/<reaction>_<REF>.txt`. Existing files are not clobbered
 unless `OVERWRITE=True`.
 
+`OUTDIR` defaults to `generate_rates/rate_tables_out/tables`, which is
+gitignored: the notebook never writes into the shipped `primat/data/` tree
+unless the user deliberately redirects it there. The default layout is chosen
+so that `rate_tables_out` works directly as a `user_nuclear_dir` overlay
+(which is resolved per-file, so one overlaid table does not shadow the rest of
+the shipped tree).
+
 The Wagoner grid is coarse below T9 = 0.01 relative to primat's 1000-point
 master grid, onto which `network_data.py` resamples at load time. This is the
 same grid the Mathematica notebook used; the notebook states the trade-off in
@@ -186,10 +193,10 @@ select the new table variant in a primat run.
 `generate_rates/README.md`'s "Pipeline map" gains an entry for
 `thermal_average.ipynb`, describing it as the user-facing entry point for
 adding a rate from one's own S(E)/σ(E) — distinct from the bulk
-`convert_ac2024_rates.py` regeneration — and noting that it writes a *sibling*
-table variant inside an existing per-reaction folder rather than rebuilding
-the tree. The entry also records that it supersedes the Mathematica
-`Thermal-Average.nb`.
+`convert_ac2024_rates.py` regeneration — and noting that it writes a
+per-reaction table variant into a `user_nuclear_dir`-shaped overlay rather
+than rebuilding or modifying the shipped tree. The entry also records that it
+supersedes the Mathematica `Thermal-Average.nb`.
 
 ## Guardrails
 
