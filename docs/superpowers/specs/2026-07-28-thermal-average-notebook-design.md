@@ -25,7 +25,7 @@ Extracted from the `.nb`'s input cells:
   `E = ½μv²`.
 - `Rate[T] = N_A ∫₀^{20 v_th} σ(v) Φ_MB(T,v) v dv`, evaluated with
   `NIntegrate` at `AccuracyGoal → PrecisionGoal → 40`.
-- Tabulated over `ListTWagoner` (59 points, `PRIMAT-Main.m:2136`).
+- Tabulated over `ListTWagoner` (60 points, `PRIMAT-Main.m:2136`).
 - Two worked S-factors, in MeV·barn with `E` in MeV:
   - `S_ddp(E) = 0.05520 + 0.2151 E − 0.02555 E²`
   - `S_ddn(E) = 0.05225 + 0.3655 E − 0.1799 E² + 0.05832 E³ − 0.007393 E⁴`
@@ -39,7 +39,7 @@ here.
 |---|---|
 | S(E) input form | Uniform interface accepting *either* a Python callable *or* a tabulated file |
 | Uncertainty | Monte Carlo over the S(E) parameter vector |
-| Temperature grid | Wagoner 59-point grid (as in the Mathematica original) |
+| Temperature grid | Wagoner 60-point grid (as in the Mathematica original) |
 | Code layout | Self-contained notebook — no new importable module |
 | Output location | User-chosen `OUTDIR`, defaulting to the shipped tables tree |
 | Cross-section entry points | `S(E)` for charged particles **and** direct `σ(E)` |
@@ -141,7 +141,7 @@ No code downstream of this cell branches on the input form.
 domain `x ∈ [0, 200]` reproduces the Mathematica cutoff `v < 20 v_th`. The
 domain is split into log-spaced panels, each integrated with 20-point
 Gauss–Legendre, so the Gamow peak is resolved at every temperature. The whole
-evaluation is vectorized over `(59 temperatures × N_MC samples)`, making the
+evaluation is vectorized over `(60 temperatures × N_MC samples)`, making the
 Monte Carlo one array operation.
 
 ### §6 Monte-Carlo uncertainty
@@ -164,7 +164,7 @@ produce the two header lines used by every shipped table:
 # T9                 rate                error
 ```
 
-Columns are written on the 59-point Wagoner T9 grid transcribed from
+Columns are written on the 60-point Wagoner T9 grid transcribed from
 `PRIMAT-Main.m:2136`, `%.6e` formatted, to
 `OUTDIR/<reaction>/<reaction>_<REF>.txt`. Existing files are not clobbered
 unless `OVERWRITE=True`.
@@ -180,6 +180,16 @@ overlays the generated rate on the shipped `d_d__t_p_primat.txt` and
 `d_d__He3_n_primat.txt`, with a ratio panel — this is simultaneously the
 user's template and the correctness check on §5. A closing cell shows how to
 select the new table variant in a primat run.
+
+### §9 Documentation pointer
+
+`generate_rates/README.md`'s "Pipeline map" gains an entry for
+`thermal_average.ipynb`, describing it as the user-facing entry point for
+adding a rate from one's own S(E)/σ(E) — distinct from the bulk
+`convert_ac2024_rates.py` regeneration — and noting that it writes a *sibling*
+table variant inside an existing per-reaction folder rather than rebuilding
+the tree. The entry also records that it supersedes the Mathematica
+`Thermal-Average.nb`.
 
 ## Guardrails
 
