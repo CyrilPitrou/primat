@@ -114,7 +114,8 @@ thermonuclear rate table**, with a Monte-Carlo-propagated 1σ uncertainty
 column and the correct detailed-balance header.
 
 It is the Python replacement for the Mathematica notebook
-`Thermal-Average.nb` (see `Thermal-Average.m`, the `<<PRIMAT-Main.m` stub).
+`Thermal-Average.nb`, which lived outside this repository and is superseded by
+this file.
 
 ## Physics
 
@@ -1345,14 +1346,36 @@ git commit -m "generate_rates: validate thermal-average notebook against shipped
 ### Task 7: §9 README pointer and final end-to-end check
 
 **Files:**
-- Modify: `generate_rates/README.md:41` (after the `PRIMAT-Main.m` bullet)
+- Delete: `generate_rates/Thermal-Average.m` (untracked stub, superseded)
+- Modify: `generate_rates/README.md:41` (before the `PRIMAT-Main.m` bullet)
+- Modify: `.gitignore`
 - Modify: `generate_rates/thermal_average.ipynb` (final clean re-execution)
 
 **Interfaces:**
 - Consumes: the finished notebook.
 - Produces: the committed deliverable.
 
-- [ ] **Step 1: Add the README entry**
+- [ ] **Step 1: Delete the obsolete Mathematica loader stub**
+
+`generate_rates/Thermal-Average.m` contains nothing but
+`SetDirectory[NotebookDirectory[]]` and `<<PRIMAT-Main.m` — it is the
+initialization-cell export of the Mathematica notebook this notebook replaces,
+and carries none of its physics. Now that `thermal_average.ipynb` exists, it
+is dead weight and nothing may refer to it.
+
+It is untracked, so this is a plain delete, not a `git rm`:
+
+```bash
+rm generate_rates/Thermal-Average.m
+grep -rn "Thermal-Average" generate_rates/ docs/ --include="*.md" --include="*.py" --include="*.ipynb"
+```
+
+Expected: the file is gone, and the grep returns only references to
+`Thermal-Average.nb` (the *Mathematica notebook*, which lives outside this
+repository and is legitimate provenance) — no reference to `Thermal-Average.m`
+survives anywhere.
+
+- [ ] **Step 2: Add the README entry**
 
 In `generate_rates/README.md`, insert this bullet into the "Pipeline map"
 list, immediately **before** the `PRIMAT-Main.m` bullet (so the notebook sits
@@ -1374,11 +1397,10 @@ with the other runnable entry points rather than with the raw source data):
   ready-made `user_nuclear_dir` overlay — the shipped `primat/data/` tree is
   never modified. The notebook's last section builds a matching network list
   file and runs BBN with the new rate to show the effect. This notebook
-  supersedes the Mathematica `Thermal-Average.nb`, whose loader stub
-  `Thermal-Average.m` is kept here for reference.
+  supersedes the Mathematica `Thermal-Average.nb`.
 ```
 
-- [ ] **Step 2: Gitignore the generated overlay**
+- [ ] **Step 3: Gitignore the generated overlay**
 
 Append to `.gitignore`:
 
@@ -1387,7 +1409,7 @@ Append to `.gitignore`:
 generate_rates/rate_tables_out/
 ```
 
-- [ ] **Step 3: Verify the README claims are true**
+- [ ] **Step 4: Verify the README claims are true**
 
 Run:
 
@@ -1402,7 +1424,7 @@ Expected: the grep hits; the notebook exists; the overlay contains
 `d_d__t_p_Mathematica-Sddp.txt` and `custom_rate.txt`; and `git check-ignore`
 prints the `.gitignore` rule, confirming the generated tree stays untracked.
 
-- [ ] **Step 4: Clear outputs and do a final clean run**
+- [ ] **Step 5: Clear outputs and do a final clean run**
 
 Clearing execution counts and outputs keeps the committed notebook's diff
 readable and proves it runs from a cold start.
@@ -1424,18 +1446,19 @@ python <scratchpad>/run_nb.py
 Expected: `cleared`, then the full output sequence ending in `NOTEBOOK OK`,
 with all three §5 self-tests passing and both §8 deviations under 30%.
 
-- [ ] **Step 5: Confirm nothing outside `generate_rates/` was touched**
+- [ ] **Step 6: Confirm nothing outside `generate_rates/` was touched**
 
 Run: `git status --short`
 
 Expected: the only modified/added paths are
 `generate_rates/thermal_average.ipynb`, `generate_rates/README.md`, and
-`.gitignore`. Nothing under `primat/` (source *or* data) and nothing under
-`primat-c/`. In particular `primat/data/nuclear/tables/` must be untouched —
+`.gitignore`. `generate_rates/Thermal-Average.m` must not appear at all — it
+was untracked, so deleting it leaves no trace in `git status`. Nothing under
+`primat/` (source *or* data) and nothing under `primat-c/`. In particular `primat/data/nuclear/tables/` must be untouched —
 if it is not, `OUTDIR` was left pointing at the shipped tree; revert those
 files and fix §3.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add generate_rates/README.md generate_rates/thermal_average.ipynb .gitignore
@@ -1455,8 +1478,13 @@ S(E) inspection). The overwrite guardrail is checked in Task 5 Step 5.
 
 **Output location.** The notebook writes to the untracked overlay
 `generate_rates/rate_tables_out/`, never into `primat/data/`. Task 5 Step 6
-commits only the notebook; Task 7 Step 2 gitignores the overlay and Step 5
+commits only the notebook; Task 7 Step 3 gitignores the overlay and Step 6
 verifies `primat/` is untouched.
+
+**Retiring the Mathematica stub.** `generate_rates/Thermal-Average.m` is
+deleted in Task 7 Step 1, and no document produced by this work refers to it.
+References to `Thermal-Average.nb` — the actual Mathematica notebook, which
+lives outside this repository — are kept as provenance.
 
 **Verified during planning, not assumed.** Table-variant selection is by
 *network list file* (`networks/<name>.txt` lines of the form

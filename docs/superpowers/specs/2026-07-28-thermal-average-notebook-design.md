@@ -8,9 +8,8 @@ Give a user a Jupyter notebook that turns an astrophysical S-factor — or a
 bare cross-section — into a primat-format thermonuclear rate table, complete
 with a Monte-Carlo-propagated 1σ uncertainty column and the detailed-balance
 header line. It is the Python replacement for the Mathematica notebook
-`PRIMAT-mma-dev/AlternateRates/Thermal-Average.nb` (whose repo-local stub is
-`generate_rates/Thermal-Average.m`, containing only the `<<PRIMAT-Main.m`
-loader).
+`Thermal-Average.nb`, which lives outside this repository in
+`PRIMAT-mma-dev/AlternateRates/`.
 
 The user should be able to drop in their own `S(E)` with an uncertainty and
 get a usable rate file, without editing anything outside a single input cell.
@@ -197,6 +196,10 @@ adding a rate from one's own S(E)/σ(E) — distinct from the bulk
 per-reaction table variant into a `user_nuclear_dir`-shaped overlay rather
 than rebuilding or modifying the shipped tree. The entry also records that it
 supersedes the Mathematica `Thermal-Average.nb`.
+
+The obsolete Mathematica loader stub `generate_rates/Thermal-Average.m` is
+deleted as part of this work: once the notebook exists nothing should refer to
+it. It is currently untracked, so removing it is a plain `rm`.
 
 ## Guardrails
 
