@@ -34,6 +34,23 @@ upstream source changes) to regenerate committed data files.
   per-reaction-folder layout used today). Kept for reference/reproducibility
   in case a fresh `--keep-source-grid` export ever needs the same treatment.
 
+- **`thermal_average.ipynb`** — the user-facing entry point for adding a rate
+  from your *own* cross-section data, as opposed to the bulk regeneration
+  above. Give it an astrophysical S-factor `S(E)` (or a cross-section
+  `σ(E)`) plus a parameter covariance, and it computes the
+  Maxwell–Boltzmann-averaged `N_A<σv>` on the 60-point Wagoner temperature
+  grid, propagates the uncertainty by Monte Carlo into the table's
+  multiplicative error column, and writes a primat-format table with the
+  correct detailed-balance header. All nuclide data (masses, charges, spins,
+  Q-values) is read from a live `PRIMATConfig`, so it cannot drift from the
+  solver's own nuclear data.
+
+  Output goes to `generate_rates/rate_tables_out/` (gitignored), laid out as a
+  ready-made `user_nuclear_dir` overlay — the shipped `primat/data/` tree is
+  never modified. The notebook's last section builds a matching network list
+  file and runs BBN with the new rate to show the effect. This notebook
+  supersedes the Mathematica `Thermal-Average.nb`.
+
 - **`PRIMAT-Main.m`** — the original Mathematica source
   `convert_ac2024_rates.py`'s hard-coded analytic-rate table was extracted
   from. Kept only as the input to `--dump-analytic`, which regenerates that
