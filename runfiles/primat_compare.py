@@ -68,6 +68,7 @@ def _print_res(label, res):
     print(f"  [{label}]")
     print(f"    Neff         = {res['Neff']:.8f}")
     print(f"    YP (BBN)     = {res['YPBBN']:.8f}")
+    print(f"    He4/H        = {res['He4oH']:.7e}")
     print(f"    D/H          = {res['DoH']:.7e}")
     print(f"    He3/H        = {res['He3oH']:.7e}")
     print(f"    Li7/H        = {res['Li7oH']:.7e}")

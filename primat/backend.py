@@ -127,8 +127,8 @@ def _log_backend(func_name: str, used: str, reason: str, log_backend: bool) -> N
 # originally curated; some entries (Li6oLi7, YCNO) only exist for networks
 # that track Li6/CNO and are silently dropped when unavailable -- see
 # _default_mc_quantities and _c_mc below.
-_DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4",
-                           "Li7oH", "Li6oLi7", "YCNO")
+_DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "He4oH", "DoH", "He3oH",
+                           "He3oHe4", "Li7oH", "Li6oLi7", "YCNO")
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 # The C extension's cpr_config_init_defaults() takes the data folder itself

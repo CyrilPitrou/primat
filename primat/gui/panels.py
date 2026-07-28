@@ -44,6 +44,7 @@ _RATIO_FORMAT = {
     "Neff":    ".8f",
     "YPBBN":   ".8f",
     "YPCMB":   ".8f",
+    "He4oH":   ".7e",
     "DoH":     ".7e",
     "He3oH":   ".7e",
     "He3oHe4": ".6e",
@@ -58,6 +59,7 @@ _RATIO_LABELS = {
     "Neff":    r"$N_{\text{eff}}$",
     "YPBBN":   r"$Y_P\ (\text{BBN})$",
     "YPCMB":   r"$Y_P\ (\text{CMB})$",
+    "He4oH":   r"${}^{4}\text{He}/\text{H}$",
     "DoH":     r"$\text{D}/\text{H}$",
     "He3oH":   r"$({}^{3}\text{He}+\text{T})/\text{H}$",
     "He3oHe4": r"$({}^{3}\text{He}+\text{T})/{}^{4}\text{He}$",
@@ -88,7 +90,7 @@ def render_results_panel(run, mc=None, run_params=None, backend_used=None):
     Layout
     ------
     1. A vertical table (Markdown, with LaTeX-rendered labels) of the 7
-       headline observables from ``run.primat_results()`` (the 9-key results
+       headline observables from ``run.primat_results()`` (the 10-key results
        dict built up in ``main.py``'s ``solve()`` starting at ``results["Neff"]
        = ...`` and exposed via ``primat_results()``; ``Omeganurel``/
        ``OneOverOmeganunr`` are

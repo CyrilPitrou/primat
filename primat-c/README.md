@@ -150,6 +150,7 @@ The C backend produces identical output to the Python backend:
 
 - `YPBBN` - Helium-4 mass fraction (BBN convention)
 - `YPCMB` - Helium-4 mass fraction (CMB convention)  
+- `He4oH` - He4/H ratio (by number)
 - `DoH` - D/H ratio
 - `He3oH` - (He3+T)/H ratio
 - `Li7oH` - (Li7+Be7)/H ratio
@@ -163,13 +164,14 @@ The C backend produces identical output to the Python backend:
 Default console output:
 ```
 Neff       = 3.04397730
-YP (BBN)   = 0.24699808
-YP (CMB)   = 0.24567178
-D/H        = 2.4365389e-05
-He3/H      = 1.0397042e-05
-He3/He4    = 1.2677615e-04
-Li7/H      = 5.501865e-10
-Li6/Li7    = 1.418945e-05
+YP (BBN)   = 0.24700068
+YP (CMB)   = 0.24567436
+He4/H      = 8.2012164e-02
+D/H        = 2.4365872e-05
+He3/H      = 1.0397390e-05
+He3/He4    = 1.2677863e-04
+Li7/H      = 5.500349e-10
+Li6/Li7    = 1.419389e-05
 --- running time: 3.67 seconds ---
 ```
 

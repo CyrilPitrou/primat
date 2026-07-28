@@ -148,13 +148,14 @@ which prints a short summary:
           PRIMAT results at T = 0.001 MeV
 ----------------------------------------------------
 Neff       = 3.04397730
-YP (BBN)   = 0.24700946
-YP (CMB)   = 0.24568312
-D/H        = 2.4357346e-05
-He3/H      = 1.0396114e-05
-He3/He4    = 1.2675709e-04
-Li7/H      = 5.502968e-10
-Li6/Li7    = 1.418288e-05
+YP (BBN)   = 0.24700285
+YP (CMB)   = 0.24567653
+He4/H      = 8.2013121e-02
+D/H        = 2.4356967e-05
+He3/H      = 1.0396057e-05
+He3/He4    = 1.2676090e-04
+Li7/H      = 5.502881e-10
+Li6/Li7    = 1.418238e-05
 --- running time: 0.69 seconds ---
 \end{lstlisting}
 The main named flags are \code{-{}-Omegabh2}, \code{-{}-DeltaNeff},
@@ -188,7 +189,7 @@ print(f"Neff      = {result['Neff']:.8f}")     # 3.04397730
 \end{lstlisting}
 \code{solve()} (equivalently \code{primat\_results()}, kept for backwards
 compatibility) returns a dictionary with \code{Neff}, the helium mass
-fractions \code{YPBBN}/\code{YPCMB}, the ratios \code{DoH}, \code{He3oH},
+fractions \code{YPBBN}/\code{YPCMB}, the ratios \code{He4oH}, \code{DoH}, \code{He3oH},
 \code{He3oHe4}, \code{Li7oH} (and, for networks tracking them, \code{Li6oLi7}
 and CNO yields), and the neutrino observables
 \code{Omeganurel}/\code{OneOverOmeganunr}. \code{PRIMAT} is a thin facade over

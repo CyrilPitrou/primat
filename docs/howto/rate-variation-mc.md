@@ -75,7 +75,7 @@ mc["DoH"].values    # full array of per-sample values, length 100
 
 Regardless of which `quantities` you ask for, the result also always
 includes every standard observable (`Neff`, `YPBBN`, `YPCMB`, `DoH`,
-`He3oH`, `He3oHe4`, `Li7oH`, `Li6oLi7`, `YCNO`) and every tracked nuclide's
+`He4oH`, `He3oH`, `He3oHe4`, `Li7oH`, `Li6oLi7`, `YCNO`) and every tracked nuclide's
 final abundance, at no extra cost.
 
 ### Joint uncertainty (covariance and correlation)

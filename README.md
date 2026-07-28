@@ -134,13 +134,14 @@ primat --Omegabh2 0.02242 --network large --amax 8
 Output:
 ```
 Neff       = 3.04397730
-YP (BBN)   = 0.24699808
-YP (CMB)   = 0.24567178
-D/H        = 2.4365389e-05
-He3/H      = 1.0397042e-05
-He3/He4    = 1.2677615e-04
-Li7/H      = 5.501865e-10
-Li6/Li7    = 1.418945e-05
+YP (BBN)   = 0.24700068
+YP (CMB)   = 0.24567436
+He4/H      = 8.2012164e-02
+D/H        = 2.4365872e-05
+He3/H      = 1.0397390e-05
+He3/He4    = 1.2677863e-04
+Li7/H      = 5.500349e-10
+Li6/Li7    = 1.419389e-05
 --- running time: 3.67 seconds ---
 ```
 
@@ -423,7 +424,7 @@ mc["DoH"].values    # full array of per-sample values, length 100
 ```
 
 Regardless of which `quantities` you ask for, the result also always
-includes every standard observable (`Neff`, `YPBBN`, `YPCMB`, `DoH`,
+includes every standard observable (`Neff`, `YPBBN`, `YPCMB`, `He4oH`, `DoH`,
 `He3oH`, `He3oHe4`, `Li7oH`, `Li6oLi7`, `YCNO`) and every tracked nuclide's
 final abundance, at no extra cost.
 
@@ -485,6 +486,7 @@ writers are `primat.backend.dump_mc_samples` / `dump_mc_covariance` /
 |-----|-------------|
 | `YPBBN` | Helium-4 mass fraction (BBN convention) |
 | `YPCMB` | Helium-4 mass fraction (CMB convention) |
+| `He4oH` | He4/H (by number) |
 | `DoH` | D/H |
 | `He3oH` | (He3+H3)/H |
 | `He3oHe4` | (He3+H3)/He4 |

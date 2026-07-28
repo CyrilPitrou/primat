@@ -204,7 +204,7 @@ def _quick_mc(params_items, num_mc, run):
     -------
     (primat.main.MCResult, float)
         MCResult is indexed by whichever ``_RATIO_FORMAT`` keys are valid for
-        this run's network (Neff, YPBBN, YPCMB, DoH, He3oH, He3oHe4, Li7oH,
+        this run's network (Neff, YPBBN, YPCMB, He4oH, DoH, He3oH, He3oHe4, Li7oH,
         and Li6oLi7/YCNO when applicable); each entry has ``.mean`` and ``.std``.
         The float is the elapsed wall-clock time (seconds) the MC computation took.
 

@@ -359,7 +359,7 @@ def test_readme_result_dict_table_is_complete():
     readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
     # Keep in sync with cpr_assemble_results/_python_solve; cheap static list
     # (a live solve here would drag this file into the slow tier).
-    for key in ("YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4", "Li7oH",
+    for key in ("YPBBN", "YPCMB", "He4oH", "DoH", "He3oH", "He3oHe4", "Li7oH",
                 "Neff", "Omeganurel", "OneOverOmeganunr", "Y_final"):
         assert f"`{key}`" in readme, f"README result-dict table is missing {key}"
 

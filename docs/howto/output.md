@@ -8,6 +8,7 @@
 |-----|-------------|
 | `YPBBN` | Helium-4 mass fraction (BBN convention) |
 | `YPCMB` | Helium-4 mass fraction (CMB convention) |
+| `He4oH` | He4/H (by number) |
 | `DoH` | D/H |
 | `He3oH` | (He3+H3)/H |
 | `Li7oH` | (Li7+Be7)/H |

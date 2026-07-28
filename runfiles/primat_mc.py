@@ -36,7 +36,7 @@ NUM_MC = 20 if _quick else 500
 PARAMS = {"Omegabh2": 0.02242}
 
 # `quantities=None` still returns every standard observable (Neff, YPBBN,
-# YPCMB, DoH, He3oH, He3oHe4, Li7oH, Li6oLi7, YCNO) plus every tracked
+# YPCMB, He4oH, DoH, He3oH, He3oHe4, Li7oH, Li6oLi7, YCNO) plus every tracked
 # nuclide's final Y, at no extra solving cost (see run_mc's docstring) --
 # so the three dump_mc_* files below are always complete even though we
 # only print a handful of quantities here.

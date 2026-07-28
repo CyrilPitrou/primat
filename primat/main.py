@@ -53,8 +53,8 @@ _NUC_NAMES_FULL  = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7",
 # C-backend counterpart). Li6oLi7/YCNO only exist for networks tracking
 # Li6/CNO and are silently dropped when unavailable, exactly like nuclides
 # that a custom_network removes.
-_DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4",
-                           "Li7oH", "Li6oLi7", "YCNO")
+_DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "He4oH", "DoH", "He3oH",
+                           "He3oHe4", "Li7oH", "Li6oLi7", "YCNO")
 
 _BANNER_TEMPLATE = """
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -363,6 +363,11 @@ class PRIMAT:
         results = {
             "YPCMB":   YPCMB,
             "YPBBN":   YPBBN,
+            # He4/H by *number* (not mass): the directly observed quantity in
+            # e.g. extragalactic HII-region spectroscopy, related to the mass
+            # fraction by Y_P = 4 Y_He4 and He4/H = Y_He4/Y_p, i.e.
+            # He4/H = (Y_P/4)/(1-Y_P) to a very good approximation.
+            "He4oH":   _ratio(Ya_f, Yp_f),
             "DoH":     _ratio(Yd_f, Yp_f),
             "He3oH":   _ratio(Yt_f + YHe3_f, Yp_f),
             "He3oHe4": _ratio(Yt_f + YHe3_f, Ya_f),
@@ -525,6 +530,7 @@ class PRIMAT:
     def Omeganunonrel(self) -> float: self._ensure_solved(); return 1. / cast(dict, self.results)["OneOverOmeganunr"]
     def YPCMB(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["YPCMB"]
     def YPBBN(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["YPBBN"]
+    def He4oH(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["He4oH"]
     def DoH(self) -> float:           self._ensure_solved(); return cast(dict, self.results)["DoH"]
     def He3oH(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["He3oH"]
     def Li7oH(self) -> float:         self._ensure_solved(); return cast(dict, self.results)["Li7oH"]
@@ -1092,10 +1098,10 @@ def mc_uncertainty(num_mc: int, quantity: str | list[str] | None,
         :class:`MCResult` always additionally contains every tracked
         nuclide's final Y and every standard observable in
         ``_DEFAULT_MC_OBSERVABLES`` that this network/custom_network actually
-        produces (``Neff``, ``YPBBN``, ``YPCMB``, ``DoH``, ``He3oH``,
-        ``He3oHe4``, ``Li7oH``, ``Li6oLi7``, ``YCNO``), at no extra solving
-        cost (each MC sample already runs a full solve). This keeps a TSV
-        dump (``primat.backend.dump_mc_samples``) complete even when the
+        produces (``Neff``, ``YPBBN``, ``YPCMB``, ``He4oH``, ``DoH``,
+        ``He3oH``, ``He3oHe4``, ``Li7oH``, ``Li6oLi7``, ``YCNO``), at no
+        extra solving cost (each MC sample already runs a full solve). This
+        keeps a TSV dump (``primat.backend.dump_mc_samples``) complete even when the
         caller only asked for one or two quantities for display purposes.
     params : dict, optional
         Base parameters for PRIMAT (e.g. Omegabh2, is_small, network).

@@ -215,6 +215,7 @@ static PyObject *results_to_dict(const CPRResults *r)
     SET("YPCMB", r->YPCMB);
     SET("YPBBN", r->YPBBN);
     SET("DoH", r->DoH);
+    SET("He4oH", r->He4oH);
     SET("He3oH", r->He3oH);
     SET("He3oHe4", r->He3oHe4);
     SET("Li7oH", r->Li7oH);

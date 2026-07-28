@@ -61,7 +61,7 @@ requires_c_backend = pytest.mark.skipif(
 # Keys always present in solve()'s result dict (see primat/main.py), i.e.
 # regardless of network/flags -- excludes the conditional keys
 # (Li6oLi7/YCNO/Neff/Omeganurel/OneOverOmeganunr).
-_ALWAYS_KEYS = {"YPCMB", "YPBBN", "DoH", "He3oH", "He3oHe4", "Li7oH"}
+_ALWAYS_KEYS = {"YPCMB", "YPBBN", "He4oH", "DoH", "He3oH", "He3oHe4", "Li7oH"}
 
 
 @requires_c_backend

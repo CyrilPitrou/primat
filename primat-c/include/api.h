@@ -35,7 +35,7 @@ typedef struct {
     /* ---- Light-element ratios (always present; mirrors PyPR.solve()'s
      * unconditional dict entries). _ratio's "0/0 -> nan, x/0 -> inf"
      * convention (main.py) is reproduced exactly. ---- */
-    double YPCMB, YPBBN, DoH, He3oH, He3oHe4, Li7oH;
+    double YPCMB, YPBBN, He4oH, DoH, He3oH, He3oHe4, Li7oH;
 
     /* ---- Large-network-only (set iff the corresponding nuclide is
      * tracked with Y>0 at the final state -- mirrors main.py's

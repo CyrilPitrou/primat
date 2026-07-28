@@ -57,7 +57,7 @@ def _ini_literal(value):
 # source of truth); duplicated here so this module has no import cycle with
 # panels (panels imports this module). Precision follows CLAUDE.md.
 _STANDARD_RATIOS = [
-    ("Neff", ".8f"), ("YPBBN", ".8f"), ("YPCMB", ".8f"),
+    ("Neff", ".8f"), ("YPBBN", ".8f"), ("YPCMB", ".8f"), ("He4oH", ".7e"),
     ("DoH", ".7e"), ("He3oH", ".7e"), ("He3oHe4", ".6e"),
     ("Li7oH", ".6e"), ("Li6oLi7", ".6e"), ("YCNO", ".6e"),
 ]

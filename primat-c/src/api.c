@@ -104,6 +104,9 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
     results->YPCMB = ((g_const.He4Overma / 4.0) * results->YPBBN)
         / ((g_const.He4Overma / 4.0) * results->YPBBN
            + g_const.HOverma * (1.0 - results->YPBBN));
+    /* He4/H by *number* (not mass): the directly observed quantity in e.g.
+     * extragalactic HII-region spectroscopy; He4/H = Y_He4/Y_p. */
+    results->He4oH   = ratio(Ya, Yp);
     results->DoH     = ratio(Yd, Yp);
     results->He3oH   = ratio(Yt + YHe3, Yp);
     results->He3oHe4 = ratio(Yt + YHe3, Ya);
@@ -373,6 +376,7 @@ double cpr_results_get_quantity(const CPRResults *r, const char *name, int *foun
     *found = 1;
     if (strcmp(name, "YPCMB") == 0) return r->YPCMB;
     if (strcmp(name, "YPBBN") == 0) return r->YPBBN;
+    if (strcmp(name, "He4oH") == 0) return r->He4oH;
     if (strcmp(name, "DoH") == 0) return r->DoH;
     if (strcmp(name, "He3oH") == 0) return r->He3oH;
     if (strcmp(name, "He3oHe4") == 0) return r->He3oHe4;

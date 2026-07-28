@@ -81,6 +81,7 @@ import numpy as np
 DEFAULT_OBS_LABELS: dict[str, str] = {
     "YPBBN": "$Y_P$",
     "YPCMB": "$Y_P^{\\rm CMB}$",
+    "He4oH": "$^4$He/H",
     "DoH": "D/H",
     "He3oH": "$^3$He/H",
     "Li7oH": "$^7$Li/H",

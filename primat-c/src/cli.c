@@ -361,6 +361,7 @@ static void print_json(const CPRResults *results, const CPRMCResult *mc)
     }
     printf("%s  \"YPBBN\": %.10g", sep, results->YPBBN);   sep = ",\n";
     printf("%s  \"YPCMB\": %.10g", sep, results->YPCMB);   sep = ",\n";
+    printf("%s  \"He4oH\": %.10g", sep, results->He4oH);    sep = ",\n";
     printf("%s  \"DoH\": %.10g",   sep, results->DoH);      sep = ",\n";
     printf("%s  \"He3oH\": %.10g", sep, results->He3oH);    sep = ",\n";
     printf("%s  \"He3oHe4\": %.10g", sep, results->He3oHe4); sep = ",\n";
@@ -640,6 +641,8 @@ static void print_plain(const CPRConfig *cfg, const CPRResults *results,
     MC_STD("YPBBN", "%.8f"); putchar('\n');
     printf("YP (CMB)   = %.8f", results->YPCMB);
     MC_STD("YPCMB", "%.8f"); putchar('\n');
+    printf("He4/H      = %.7e", results->He4oH);
+    MC_STD("He4oH", "%.7e"); putchar('\n');
     printf("D/H        = %.7e", results->DoH);
     MC_STD("DoH", "%.7e"); putchar('\n');
     printf("He3/H      = %.7e", results->He3oH);
@@ -912,8 +915,8 @@ int cpr_cli_main(int argc, char **argv)
          * the observables. cpr_mc_uncertainty resolves each
          * nuclide name via cpr_results_get_quantity's Y_final fallback. */
         const char *all_quantities[] = {
-            "Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4", "Li7oH",
-            "Li6oLi7", "YCNO"
+            "Neff", "YPBBN", "YPCMB", "He4oH", "DoH", "He3oH", "He3oHe4",
+            "Li7oH", "Li6oLi7", "YCNO"
         };
         size_t n_obs = sizeof(all_quantities)/sizeof(all_quantities[0]);
         size_t n_q = 0;

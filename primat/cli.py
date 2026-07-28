@@ -507,6 +507,8 @@ def main(argv=None):
               (f" +/- {mc['YPBBN'].std:.8f}" if mc is not None and "YPBBN" in mc.quantity_names() else ""))
         print(f"YP (CMB)   = {results['YPCMB']:.8f}" +
               (f" +/- {mc['YPCMB'].std:.8f}" if mc is not None and "YPCMB" in mc.quantity_names() else ""))
+        print(f"He4/H      = {results['He4oH']:.7e}" +
+              (f" +/- {mc['He4oH'].std:.7e}" if mc is not None and "He4oH" in mc.quantity_names() else ""))
         print(f"D/H        = {results['DoH']:.7e}" +
               (f" +/- {mc['DoH'].std:.7e}" if mc is not None and "DoH" in mc.quantity_names() else ""))
         print(f"He3/H      = {results['He3oH']:.7e}" +

@@ -37,7 +37,7 @@ consumed by the nuclear solve.
 and populates the public ``Y_final``, ``abundance_names`` and ``Y_of_t``
 attributes consumed by ``PRIMAT``'s observable accessors (``get_quantity``,
 ``__getitem__``, ...) and by ``PRIMAT.solve()`` (which builds the BBN
-observables dict -- ``Neff``, ``YPBBN``, ``YPCMB``, ``DoH``, ``He3oH``,
+observables dict -- ``Neff``, ``YPBBN``, ``YPCMB``, ``He4oH``, ``DoH``, ``He3oH``,
 ``He3oHe4``, ``Li7oH``, ``Omeganurel``, ``OneOverOmeganunr`` -- from
 ``Y_final`` and from ``background``'s optional neutrino-sector hooks).
 """
