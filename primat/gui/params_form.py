@@ -132,13 +132,14 @@ _FORM_METADATA = {
     "finite_mass_corrections": (
         "Physics", "Finite-mass corrections (n↔p)",
         "Include the Fokker-Planck finite-nucleon-mass correction to the n↔p rate "
-        "(Phys. Rep. §III.G).  Uses FMCCR when radiative_corrections=True, "
+        "(Phys. Rep. §III.G, Eqs. 115a/115b).  Uses FMCCR when "
+        "radiative_corrections=True, "
         "FMNoCCR otherwise.",
     ),
     "thermal_corrections": (
         "Physics", "Thermal radiative corrections (n↔p)",
         "Include finite-temperature radiative corrections to the n↔p rate "
-        "(CCRTh; Brown & Sawyer 2001, Phys. Rep. §III.H).",
+        "(CCRTh; Brown & Sawyer 2001, Phys. Rep. §III.F).",
     ),
     "spectral_distortions": (
         "Physics", "Spectral distortions",

@@ -9,11 +9,20 @@
  *     print(fingerprint_hash(_weak_rate_fingerprint(cfg)))
  *     print(fingerprint_hash(_thermal_fingerprint(cfg)))
  *   "
- * -> 2218248995f018af
- * -> 0eccbdd5dbb5dd93
+ * -> ca8641b916d081a2
+ * -> 769a94a8780de8a7
  * (default PyPRConfig(): incomplete_decoupling/QED_corrections/
  * spectral_distortions/radiative_corrections/finite_mass_corrections all
  * True, analytic_distortions False, every numeric default unchanged.)
+ *
+ * Both hashes moved at WEAK_RATE_FORMAT_VERSION 4 (was 2218248995f018af /
+ * 0eccbdd5dbb5dd93 at v1): the version constant was bumped to pay off the
+ * documented-but-never-applied v2/v3 content changes, the thermal
+ * fingerprint gained munuOverTnu, and the weak-rate fingerprint gained
+ * nevo_grid_file and sampling_temperature_per_decade. See
+ * weak_rates/cache.py's changelog. The shipped tables under
+ * primat/data/cache_plasma_weak/weak/ were re-keyed to match, so the
+ * round-trip check below still finds the default file.
  */
 #include "cache.h"
 #include "config.h"
@@ -48,7 +57,7 @@ int main(void)
     char *wjson = cpr_fingerprint_json(wfields, nw);
     char *whash = cpr_sha256_hex16(wjson);
     printf("weak json: %s\n", wjson);
-    expect_str_eq("weak_rate_fingerprint hash", whash, "2218248995f018af");
+    expect_str_eq("weak_rate_fingerprint hash", whash, "ca8641b916d081a2");
     free(wjson);
     free(whash);
 
@@ -57,25 +66,25 @@ int main(void)
     char *tjson = cpr_fingerprint_json(tfields, nt);
     char *thash = cpr_sha256_hex16(tjson);
     printf("thermal json: %s\n", tjson);
-    expect_str_eq("thermal_fingerprint hash", thash, "0eccbdd5dbb5dd93");
+    expect_str_eq("thermal_fingerprint hash", thash, "769a94a8780de8a7");
     free(tjson);
     free(thash);
 
     /* Round-trip: read back the hash header of an existing Python-written
      * cache file and confirm cpr_cache_read_fingerprint_hash parses it.
-     * Uses the default-config hash (2218248995f018af, also relied on by
+     * Uses the default-config hash (ca8641b916d081a2, also relied on by
      * test_weak_rates.c) rather than a one-off file, since that one is
      * load-bearing for another test and so less likely to silently
      * disappear from a future "refresh shipped weak-rate caches"-style
      * regeneration on the Python side. */
     char *read_hash = cpr_cache_read_fingerprint_hash(
-        "../primat/data/cache_plasma_weak/weak/nTOp_2218248995f018af.txt");
+        "../primat/data/cache_plasma_weak/weak/nTOp_ca8641b916d081a2.txt");
     if (!read_hash) {
         printf("FAIL reading existing cache file header\n");
         failures++;
     } else {
         expect_str_eq("read existing cache file's own hash header",
-                       read_hash, "2218248995f018af");
+                       read_hash, "ca8641b916d081a2");
         free(read_hash);
     }
 
@@ -89,7 +98,7 @@ int main(void)
         failures++;
     } else {
         char *rt_hash = cpr_cache_read_fingerprint_hash(out_path);
-        expect_str_eq("write-then-read-back hash", rt_hash, "2218248995f018af");
+        expect_str_eq("write-then-read-back hash", rt_hash, "ca8641b916d081a2");
         free(rt_hash);
     }
 

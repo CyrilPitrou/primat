@@ -5,9 +5,9 @@
  * finite_mass_corrections=thermal_corrections=spectral_distortions=
  * weak_rate_cache=save_nTOp=tau_n_normalization=True, T_end_MeV=1e-3,
  * T_start_cosmo_MeV=40.0). The default config's weak-rate fingerprint hash
- * is "2218248995f018af" (rates/weak/nTOp_2218248995f018af.txt, confirmed
- * present) and its thermal fingerprint hash is "0eccbdd5dbb5dd93"
- * (rates/weak/nTOp_thermal_0eccbdd5dbb5dd93.txt, confirmed present), so
+ * is "ca8641b916d081a2" (rates/weak/nTOp_ca8641b916d081a2.txt, confirmed
+ * present) and its thermal fingerprint hash is "769a94a8780de8a7"
+ * (rates/weak/nTOp_thermal_769a94a8780de8a7.txt, confirmed present), so
  * this run is a cache hit on both tables -- the from-scratch Gauss-Legendre
  * integration path (cache miss) is exercised by neither this test nor the
  * current C port.
@@ -68,6 +68,15 @@ int main(void)
     cfg.save_nTOp = 1;
     cfg.sampling_nTOp_per_decade = 80;
     cfg.sampling_nTOp_thermal_per_decade = 20;
+    /* Part of the weak-rate fingerprint since format v4 (it sets the node
+     * spacing of the T_nu(T_gamma) interpolant, hence the rates -- see
+     * weak_rates/cache.py's _WEAK_RATE_BG_FIELDS). This cfg is hand-rolled
+     * from a memset(0) rather than cpr_config_init_defaults, so the Python
+     * default has to be restated here or the fingerprint carries 0, misses
+     * the shipped nTOp_<hash>.txt, and silently falls through to a
+     * from-scratch integration instead of the cache-hit path this test is
+     * meant to exercise. */
+    cfg.sampling_temperature_per_decade = 600;
     cfg.tau_n_normalization = 1;
     cfg.munuOverTnu = 0.0;
 

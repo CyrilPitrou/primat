@@ -90,6 +90,70 @@ def test_ComputeFn_order_of_magnitude(cfg):
     assert 1.0 < Fn < 3.0
 
 
+def test_vacuum_limit_reproduces_tau_n():
+    """GOAL: Gamma_{n->p}(T -> 0) must equal exactly 1/tau_n.
+
+    This is the property the whole normalisation machinery exists for. K is
+    fixed as K = 1/(tau_n * Fn) (Phys. Rep. Eqs. 89-91) with Fn = ComputeFn,
+    the *vacuum* neutron-decay phase-space integral; the stored rate is the
+    thermal integral divided by that same Fn. So as T -> 0 -- where the
+    thermal integral degenerates into the vacuum one -- the stored forward
+    rate must tend to 1 in units of 1/tau_n, or every rate in the run is
+    misnormalised by whatever the discrepancy is.
+
+    Nothing pinned this before, even though it is exactly what caught the
+    historical mn-vs-mp mix-up in ChiFMnDec (corrections.py's "Mass
+    convention" docstring: an O(Q/mp) error inside the finite-mass term showed
+    up here as a ~2.85e-6 offset) and what motivates _quad_grid's two-panel
+    Gauss-Legendre split (a single panel spanning the beta-decay endpoint left
+    a ~1e-6 floor that did not shrink with more nodes).
+
+    Two regimes, checked separately because they converge differently:
+
+    * Born (no radiative, no finite-mass): the T -> 0 limit is Fn to
+      quadrature accuracy, ~6e-12 measured. 1e-10 leaves headroom for
+      platform/BLAS variation without being able to hide the ~1e-6-class
+      regressions above.
+    * With the finite-mass correction on: the approach is LINEAR in T rather
+      than flat, because chi_FM carries genuinely thermal 1/x = kB T/m_e
+      pieces (_chi_func_fm_v). That is physics, not error, so the test asserts
+      the *slope* instead: dividing T by 10 must shrink the offset by ~10.
+    """
+    import numpy as np
+
+    ratio = (4. / 11.) ** (1. / 3.)   # any smooth T_nu/T_gamma will do here
+
+    def _ctx(cfg_):
+        me = cfg_.me * cfg_.MeV
+        return wr._RateContext(
+            cfg=cfg_, me=me, mn=cfg_.mn * cfg_.MeV, mp=cfg_.mp * cfg_.MeV,
+            Q=(cfg_.mn - cfg_.mp) * cfg_.MeV, xi_nu=0.0,
+            T_nuOverT=lambda T: ratio, gA=cfg_.gA,
+            deltakappa=cfg_.deltakappa, my_dir=cfg_._resolved_data_dir)
+
+    # --- Born: flat convergence to Fn -------------------------------------
+    cfg_born = PRIMATConfig({"radiative_corrections": False,
+                             "finite_mass_corrections": False})
+    Fn_born = wr.ComputeFn(cfg_born)
+    born = wr._L_BORN(_ctx(cfg_born), np.array([1e6]), +1)[0]
+    assert born / Fn_born == pytest.approx(1.0, abs=1e-10)
+
+    # --- CCR + finite mass: offset linear in T ----------------------------
+    cfg_full = PRIMATConfig({})
+    ctx_full = _ctx(cfg_full)
+    Fn_full = wr.ComputeFn(cfg_full)
+    T_hi, T_lo = 1e7, 1e6
+    off = {}
+    for T in (T_hi, T_lo):
+        T_arr = np.array([T])
+        total = (wr._L_CCR(ctx_full, T_arr, +1)[0]
+                 + wr._L_FMCCR(ctx_full, T_arr, +1)[0])
+        off[T] = abs(total / Fn_full - 1.0)
+    # Offsets are ~1.4e-6 and ~1.4e-7: small, and shrinking in proportion to T.
+    assert off[T_hi] < 1e-5
+    assert off[T_lo] / off[T_hi] == pytest.approx(T_lo / T_hi, rel=0.2)
+
+
 # ---------------------------------------------------------------------------
 # RecomputeWeakRates — interpolated rate functions
 # ---------------------------------------------------------------------------
@@ -222,8 +286,10 @@ def test_fingerprint_changes_with_munuOverTnu():
 
     munuOverTnu shifts the neutrino Fermi-Dirac occupation that enters every
     n<->p rate integral, so a cache built for one value must not be silently
-    reused for another.  This pins ``_BACKGROUND_FINGERPRINT_FIELDS``
-    (weak_rates.py) to keep including ``munuOverTnu``.
+    reused for another.  This pins ``_WEAK_RATE_BG_FIELDS``
+    (weak_rates/cache.py) to keep including ``munuOverTnu`` (stored under that
+    historical key by ``_weak_rate_fingerprint``, holding the effective
+    ``cfg.xi_nu_e``).
     """
     cfg0 = PRIMATConfig({"munuOverTnu": 0.0})
     cfg1 = PRIMATConfig({"munuOverTnu": 0.1})
@@ -231,6 +297,141 @@ def test_fingerprint_changes_with_munuOverTnu():
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
+
+
+@pytest.mark.parametrize("params", [{"munuOverTnu": 0.1},
+                                    {"munuOverTnu_e": 0.1}])
+def test_thermal_fingerprint_changes_with_chemical_potential(params):
+    """GOAL: the CCRTh cache must be keyed on the neutrino degeneracy too.
+
+    The finite-temperature radiative correction is stored in its own
+    ``nTOp_thermal_<hash>.txt``, and its integrands carry an explicit neutrino
+    occupation ``exp(znu*(en - sgnq*q) - sgnq*xi_nu)``
+    (``corrections._ccrth_IPENCCRT`` / ``_ccrth_IPENCCRDiffBremsstrahlung`` /
+    ``_ccrth_C2dE1dE2``, all reading ``ctx.xi_nu = cfg.xi_nu_e``).  Until
+    format v4 the thermal fingerprint omitted it, so every degenerate-BBN run
+    silently reused the xi_e = 0 table -- worth ~4e-3 of the base CCR rate at
+    xi_e = 0.3, T = 1e10 K, i.e. far above anything YP tolerates -- and, on a
+    cold cache, wrote its own xi_e-specific numbers under the filename
+    standard runs then load.
+
+    Both spellings must invalidate: the common ``munuOverTnu`` and the
+    per-flavour ``munuOverTnu_e`` override (only nu_e reaches these
+    integrands, so both funnel through the effective ``cfg.xi_nu_e``).
+    """
+    fp0 = wr.fingerprint_hash(wr._thermal_fingerprint(PRIMATConfig({})))
+    fp1 = wr.fingerprint_hash(wr._thermal_fingerprint(PRIMATConfig(params)))
+    assert fp0 != fp1
+
+
+def test_thermal_fingerprint_ignores_muon_tau_degeneracy():
+    """GOAL: only xi_e may key the CCRTh cache -- xi_mu/xi_tau gravitate only.
+
+    The complement of the test above: a nu_mu or nu_tau degeneracy changes the
+    neutrino energy density (hence Neff) but never enters the n<->p
+    integrands, so forcing a multi-minute vegas recompute for it would be
+    pure waste.  Mirrors the same rule in ``_weak_rate_fingerprint``.
+    """
+    fp0 = wr.fingerprint_hash(wr._thermal_fingerprint(PRIMATConfig({})))
+    for key in ("munuOverTnu_mu", "munuOverTnu_tau"):
+        fp1 = wr.fingerprint_hash(wr._thermal_fingerprint(PRIMATConfig({key: 0.1})))
+        assert fp0 == fp1, f"{key} must not invalidate the thermal cache"
+
+
+def test_fingerprint_changes_with_nevo_grid_file():
+    """GOAL: the distortion's energy grid is part of the weak-rate cache key.
+
+    ``nevo_spectral_file`` supplies the distortion columns and
+    ``nevo_grid_file`` the energy nodes they are sampled on
+    (``neutrino_history.NEVOTable``); together they define the ``dFDneu_func``
+    that ``_L_SD``/``_L_SD_CCR`` integrate.  The fingerprint used to include
+    only the first, so a custom grid of the same length (which
+    ``PRIMATConfig`` accepts -- it validates the length, not the values)
+    silently reused rates computed on the shipped grid.
+    """
+    cfg0 = PRIMATConfig({"spectral_distortions": True})
+    cfg1 = PRIMATConfig({"spectral_distortions": True,
+                         "nevo_grid_file": "NEVOGrid.csv"})
+    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    assert fp0 != fp1
+
+
+def test_fingerprint_changes_with_sampling_temperature_per_decade():
+    """GOAL: the T grid density behind T_nu(T_gamma) is part of the cache key.
+
+    ``sampling_temperature_per_decade`` does not set the rate table's own grid
+    (``sampling_nTOp_per_decade`` does), which is why it looks cache-neutral --
+    but it does set the node spacing of the *linear* T_nu(T_gamma) interpolant
+    that ``corrections._build_rate_context`` builds and every rate integrand
+    evaluates.  Measured against a 2000-points/decade reference, coarsening it
+    moves Gamma_{n->p} by ~2e-3 (10 points/decade), ~1e-3 (40), ~1.4e-4 (200)
+    and ~1.4e-5 at the default 600 -- orders of magnitude above the +-3e-9 D/H
+    regression tolerance, so runs at different densities must not share a
+    table.
+    """
+    cfg0 = PRIMATConfig({})
+    cfg1 = PRIMATConfig({"sampling_temperature_per_decade": 300})
+    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    assert fp0 != fp1
+
+
+def test_shipped_weak_caches_carry_current_format_version():
+    """GOAL: the shipped cache files are keyed on the *current* fingerprint.
+
+    Each cache file embeds the fingerprint dict that produced it, and its
+    filename embeds that dict's hash.  If a fingerprint field or
+    ``WEAK_RATE_FORMAT_VERSION`` changes without the shipped tables being
+    re-keyed, every default run silently misses the cache and pays a fresh
+    integration (minutes, for the thermal ones) -- the failure mode is slow,
+    not wrong, which is exactly why it can go unnoticed for a long time.
+
+    This also guards the inverse mistake, the one that motivated the v4 bump:
+    bumping the *content* of these tables while leaving the version constant
+    alone, so stale files keep being loaded under a name that no longer
+    describes them.
+    """
+    import glob
+    import json
+    import os
+    from primat.weak_rates.cache import WEAK_RATE_FORMAT_VERSION
+
+    def _header_fingerprint(path):
+        """The fingerprint dict a cache file stores, or None if header-less."""
+        with open(path) as fh:
+            header = [line for line in fh if line.startswith("#")]
+        fp_line = [l for l in header if l.startswith("# fingerprint:")]
+        return json.loads(fp_line[0].split(":", 1)[1].strip()) if fp_line else None
+
+    cfg = PRIMATConfig({})
+    weak_dir = str(cfg.resolve_rates_path("cache_plasma_weak", "weak"))
+
+    # 1. The two tables a default run needs must be present AND current. This
+    #    is the check that fails if a fingerprint change lands without the
+    #    shipped tables being re-keyed.
+    for fp_fn, prefix in ((wr._weak_rate_fingerprint, "nTOp_"),
+                          (wr._thermal_fingerprint, "nTOp_thermal_")):
+        fp = fp_fn(cfg)
+        assert fp["format_version"] == WEAK_RATE_FORMAT_VERSION
+        path = os.path.join(weak_dir, prefix + wr.fingerprint_hash(fp) + ".txt")
+        assert os.path.exists(path), (
+            f"the default configuration has no shipped {prefix}*.txt cache "
+            f"({os.path.basename(path)}): every default run will recompute it. "
+            "Re-key the shipped tables onto the current fingerprint.")
+
+    # 2. Every cache file on disk must agree with its OWN header, whatever
+    #    version it was written for -- older files legitimately linger in a
+    #    working tree (they are simply never loaded again), but a file whose
+    #    name and header disagree means something rewrote one without the
+    #    other, and it would be served to the wrong configuration.
+    for path in sorted(glob.glob(os.path.join(weak_dir, "nTOp_*.txt"))):
+        fp = _header_fingerprint(path)
+        if fp is None:
+            continue          # header-less legacy file: nothing to check
+        assert wr.fingerprint_hash(fp) in os.path.basename(path), (
+            f"{os.path.basename(path)}: filename hash does not match its own "
+            "fingerprint header")
 
 
 def test_fingerprint_changes_with_y_SZ():

@@ -148,7 +148,8 @@ DEFAULT_PARAMS: dict = {
     #                              FMNoCCR otherwise; Phys. Rep. §III.G).
     #   thermal_corrections     -- True: add the finite-temperature radiative
     #                              correction (CCRTh; Brown & Sawyer 2001,
-    #                              Phys. Rep. §III.H, Eqs. 107-113).
+    #                              Phys. Rep. §III.F, Eq. 108 = Eqs. 109+112+113,
+    #                              plus the bremsstrahlung correction Eq. 107).
     #   spectral_distortions    -- (controlled in the neutrino section above)
     #                              Corrections from non-FD neutrino distributions;
     #                              internally uses SD_CCR or SD_Born depending on
@@ -156,6 +157,30 @@ DEFAULT_PARAMS: dict = {
     #
     # Born (crude) mode = radiative_corrections=False, finite_mass_corrections=False,
     #                     thermal_corrections=False.  All True = full PRIMAT rate.
+    #
+    # Two combinations are ACCEPTED but are not self-consistent orders of the
+    # same expansion; they are allowed on purpose (they isolate one term at a
+    # time, which is what the flags are for) but should not be read as "PRIMAT
+    # minus one effect":
+    #
+    #   thermal_corrections=True with radiative_corrections=False
+    #       CCRTh is itself an O(alpha) radiative correction, and its integrands
+    #       keep the Coulomb factor unconditionally
+    #       (weak_rates.corrections._fermi_stat inside _ccrth_IPENCCRT and
+    #       _ccrth_IPENCCRDiffBremsstrahlung), so the result is a Born base rate
+    #       carrying a finite-temperature radiative correction *and* a Coulomb
+    #       factor the base rate itself does not have.  For a clean Born rate,
+    #       set thermal_corrections=False too.
+    #
+    #   spectral_distortions=True with analytic_distortions=False and
+    #   finite_mass_corrections=True
+    #       The finite-mass correction to the distortion channel (SD-FM,
+    #       PRIMAT-Main-gray.m's deltaChiFM) needs closed-form energy
+    #       derivatives of the distortion, which only the analytic (y_SZ/y_gray)
+    #       distortion provides -- the tabulated NEVO distortion has none.  So
+    #       in the DEFAULT (table) distortion mode the SD term is included at
+    #       Born/CCR level but its finite-mass companion is silently absent.
+    #       See weak_rates.corrections._correction_terms.
     "radiative_corrections":      True,  # True: Coulomb + T=0 resummed radiative corrections (CCR); False: Born approximation.
     "finite_mass_corrections":    True,  # True: add Fokker-Planck finite-nucleon-mass correction (FMCCR or FMNoCCR).
     "thermal_corrections":        True,  # True: add finite-temperature radiative corrections (CCRTh; Brown & Sawyer 2001).

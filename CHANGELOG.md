@@ -11,6 +11,60 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+### Fixed
+- **n↔p weak-rate cache keys** (`WEAK_RATE_FORMAT_VERSION` 1 → 4, both
+  backends). Three configuration fields changed the rates but were absent from
+  the fingerprint, so runs that differed only in one of them silently shared a
+  cache file:
+  - `munuOverTnu`/`munuOverTnu_e` was missing from the **thermal** (CCRTh)
+    fingerprint, although the thermal integrands carry an explicit
+    `exp(−sgnq·ξ_ν)` neutrino occupation. Degenerate-BBN runs were reusing the
+    ξ=0 table — worth ~4e-3 of the base rate at ξ_e = 0.3, T = 1e10 K, i.e. far
+    above anything YP tolerates — and, on a cold cache, writing their own
+    ξ-specific numbers under the filename standard runs load.
+  - `nevo_grid_file` was missing from the weak-rate fingerprint while its
+    partner `nevo_spectral_file` was present; the two jointly define the
+    tabulated distortion the SD term integrates.
+  - `sampling_temperature_per_decade` was missing from the weak-rate
+    fingerprint. It sets the node spacing of the linear T_ν(T_γ) interpolant
+    every rate integrand reads: coarsening it moves the rates by ~1e-3 (40
+    points/decade) down to ~1e-5 at the default 600.
+
+  The version constant is also bumped past the v2/v3 generations that were
+  documented in the changelog comment but never actually applied, so pre-v3
+  cache files (whose `nTOp_*.txt` still included CCRTh, and whose thermal table
+  was unclamped below 10^8.2 K) can no longer be loaded. The shipped tables were
+  re-keyed in place — same numbers, new hash-named filenames — so default runs
+  still hit the cache. **Existing `cache_dir` trees and editable installs:**
+  stale files are simply never loaded again (delete them, or `primat
+  --cache-clear`), but a compiled C extension built before this change computes
+  the old hashes and will miss the re-keyed tables — rebuild it
+  (`python setup.py build_ext --inplace`).
+- No observable changes: with a rebuilt extension both backends reproduce the
+  previous D/H, YP and Neff bit-for-bit.
+
+### Documented
+- `primat/weak_rates/corrections.py` now cites the Phys. Rep. **equation**
+  numbers for every correction term, instead of section numbers alone: the
+  relativistic Fermi function (Eq. 100), the resummed radiative factor
+  (Eq. B35, with g = B32, Spence L = B33, constants B31/B36), the finite-mass
+  terms (Eqs. 114, 115a/115b, χ_FM from App. B.3) and the four CCRTh
+  sub-integrands (Eqs. 107, 109, 112a, 113, with the F_± kernels of Eq. B41 and
+  the B51a/B51b kernel). Three section references were also off against
+  `biblio/Pitrou_etal_PhysReptArxivVersion.pdf` and are corrected: the T=0
+  radiative corrections are §III.E (was §III.D) and the finite-temperature ones
+  §III.F (was §III.H, which is "Weak magnetism").
+- The `F_+`/`F_−` asymmetry in the bremsstrahlung soft subtraction is now
+  documented as deliberate on both backends, citing Phys. Rep. Eq. B43 where it
+  is printed, plus the measured consequence of "correcting" it (the CCRTh sum
+  would grow to ~0.8% of the base rate at 3e10 K).
+- Two accepted-but-not-self-consistent flag combinations are called out in
+  `config.py`: `thermal_corrections=True` with `radiative_corrections=False`,
+  and the absence of the SD-FM term outside analytic-distortion mode.
+- `background=`: documented that the weak-rate cache is keyed on the config
+  alone and cannot see a custom background's temperature grid — use
+  `weak_rate_cache=False`/`save_nTOp=False` for a non-standard history.
+
 ### Changed
 - Python backend: the ten weak-rate Fermi-Dirac integrand kernels
   (`weak_rates/integrands.py`) and the four e± electron-thermo integrands

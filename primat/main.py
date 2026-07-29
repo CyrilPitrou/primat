@@ -153,6 +153,22 @@ class PRIMAT:
         ``background`` together with ``params`` or ``extra_rho`` emits a
         warning, and the supplied ``background`` instance wins.
 
+        .. warning::
+           **The n<->p weak-rate cache cannot see your background.** It is
+           keyed on the config alone
+           (:func:`weak_rates.cache._weak_rate_fingerprint`), while the rates
+           themselves are integrated against the ``[Tg_vec, Tnue_vec]`` grid
+           *your* instance builds -- the grid behind the T_nu(T_gamma)
+           interpolant every rate integrand reads. Two Background subclasses
+           with different neutrino histories but the same ``cfg`` therefore
+           hash to the same ``nTOp_<hash>.txt`` file, and whichever runs first
+           defines the rates the other silently reuses. If your background
+           departs from the standard T_nu(T_gamma) history, build its
+           ``PRIMATConfig`` with ``weak_rate_cache=False`` (skip the load) and
+           ``save_nTOp=False`` (skip the write-back). PRIMAT cannot detect
+           this for you, and by the time it sees your instance the rates are
+           already computed inside your constructor.
+
         Example: drive the network with a hand-built background::
 
             >>> from primat import Background

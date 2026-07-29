@@ -10,18 +10,22 @@ The physical correction terms applied in sequence to the Born n<->p rate
   _L_BORN    — Born approximation (Eqs. 77-78).  Active when
                cfg.radiative_corrections=False.
   _L_CCR     — Born integrand x R(b,y,E) [Coulomb x T=0 resummed radiative
-               corrections, Phys. Rep. Eq. 101; R from Czarnecki et al. 2004].
+               corrections, Phys. Rep. Eq. 101 (n->p) / Eq. 104 (p->n);
+               R from Czarnecki et al. 2004, Phys. Rep. Eq. B35].
                Active when cfg.radiative_corrections=True (replaces _L_BORN).
-  _L_FMCCR   — Finite-nucleon-mass correction x R x Coulomb (Phys. Rep. §III.G,
+  _L_FMCCR   — Finite-nucleon-mass correction x R x Coulomb (Phys. Rep.
+               Eqs. 115a/115b, with chi_FM from App. B.3; §III.G,
                Fokker-Planck expansion to first order in T/m_N).  Active when
                cfg.finite_mass_corrections=True and cfg.radiative_corrections=True.
-  _L_FMNoCCR — Finite-nucleon-mass correction without Coulomb/radiative factors.
+  _L_FMNoCCR — Finite-nucleon-mass correction without Coulomb/radiative factors
+               (Phys. Rep. Eq. 114, the same chi_FM without the F x R factors).
                Active when cfg.finite_mass_corrections=True and
                cfg.radiative_corrections=False.
-  _L_CCRTh   — Finite-temperature radiative corrections (Phys. Rep. §III.H;
-               Brown & Sawyer 2001, Eqs. 5.10-5.15).  Active when
-               cfg.thermal_corrections=True; uses vegas or scipy.dblquad;
-               results cached to rates/weak/*.txt.
+  _L_CCRTh   — Finite-temperature radiative corrections (Phys. Rep. §III.F,
+               Eq. 108 = Eqs. 109 + 112 + 113, plus the bremsstrahlung
+               correction Eq. 107; Brown & Sawyer 2001, Eqs. 5.10-5.15).
+               Active when cfg.thermal_corrections=True; uses vegas or
+               scipy.dblquad; results cached to rates/weak/*.txt.
   _L_SD      — Spectral-distortion correction (Born-level chi): replaces the
                Fermi-Dirac g_nu with the actual distribution f_nu from NEVO.
                Active when dFDneu_func is supplied and
@@ -42,6 +46,18 @@ Reference
 ---------
 Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095)
 — cited below as "Phys. Rep." with equation numbers.
+
+Equation and section numbers here follow the arXiv version shipped as
+``biblio/Pitrou_etal_PhysReptArxivVersion.pdf`` (dated 2019-04-29), whose
+relevant structure is: §III.E "Radiative corrections at T = 0", §III.F
+"Finite temperature radiative corrections", §III.G "Finite nucleon mass
+corrections"; App. B.3 "Finite nucleon mass corrections", App. B.6
+"Radiative corrections and Sirlin's universal function", App. B.7
+"Bremsstrahlung", App. B.8 "Finite temperature radiative corrections".
+(Earlier revisions of this module cited §III.D for the T=0 radiative
+corrections and §III.H for the finite-temperature ones -- both off by one or
+two letters against that PDF, the drift CLAUDE.md warns about for
+PRIMAT-Main.m; they have been corrected throughout.)
 """
 
 import os
@@ -85,8 +101,11 @@ def FermiCoulomb(b, cfg):
     """Fermi–Coulomb factor F(b) for the T=0 Coulomb correction to neutron decay.
 
     Returns the Fermi function F(Z=1, E) = F(b) that accounts for the Coulomb
-    interaction between the outgoing electron and the daughter proton (Phys. Rep.
-    §III.D).  The exact relativistic Fermi function is (see also Sirlin 1967):
+    interaction between the outgoing electron and the daughter proton
+    (Phys. Rep. §III.E).  This is the *relativistic* Fermi function,
+    Phys. Rep. Eq. 100 (quoted there from Ivanov et al. 2013, Eq. 5) -- not the
+    non-relativistic form Eq. 99, which the paper notes is adequate only to
+    ~0.06% and shifts YP by ~3e-5 (see also Sirlin 1967):
 
         F(b) = (1 + Γ/2) × 4 × (2 r_p b / λ_C)^{2Γ} / Γ(3+2Γ)²
                × exp(π α / b) / (1−b²)^Γ × |Γ(1+Γ + iα/b)|²
@@ -126,13 +145,17 @@ def RadCorrResum(b, y, en, cfg):
 
     Returns the product of Sirlin's outer radiative correction g(b,y,E) and the
     Czarnecki et al. 2004 constants for the resummed QED and short-distance
-    corrections (Phys. Rep. Eq. 101–105).  The full corrected integrand for
-    _L_CCR is
+    corrections.  The value returned is Phys. Rep. **Eq. B35** — the resummed
+    form of R(E, k_max), which the paper adopts in preference to the
+    lowest-order Eq. 103 (R = 1 + α/(2π) C, with C given by Eq. B30) precisely
+    because it resums higher orders.  The full corrected integrand for _L_CCR
+    (Phys. Rep. Eq. 101 for n->p, Eq. 104 for p->n) is
 
         Born integrand × FermiCoulomb(b) × RadCorrResum(b, y, en)
 
-    Sirlin's function g(b,y,E) captures the O(α) virtual+real photon corrections
-    from the electron and proton legs (Sirlin 1967; Phys. Rep. §III.D):
+    Sirlin's universal function g(b,y,E) is Phys. Rep. Eq. B32 (App. B.6); it
+    captures the O(α) virtual+real photon corrections from the electron and
+    proton legs (Sirlin 1967, Eq. 20b; Phys. Rep. §III.E):
 
         g = 3 ln(mₚ/mₑ) − 3/4
             + 4(atanh(b)/b − 1)(y/(3E) − 3/2 + ln(2y))
@@ -140,23 +163,31 @@ def RadCorrResum(b, y, en, cfg):
             − (4/b) Li₂(1 − 2b/(1+b))
 
     where b = v/c (electron velocity), y = E_ν/mₑ (neutrino energy in mₑ units),
-    E = E_e/mₑ (electron energy in mₑ units).
+    E = E_e/mₑ (electron energy in mₑ units).  Li₂ is the Spence function
+    L[x] = ∫₀ˣ ln(1−t)/t dt of Phys. Rep. Eq. B33 (``scipy.special.spence``).
 
-    Outer correction:
-        (1 + α/(2π) × (g − 3 ln(mₚ / 2Q)))   [Phys. Rep. Eq. 103]
+    The three factors below are the three brackets of Phys. Rep. Eq. B35.
 
-    Long-distance factor (QED running, Marciano & Sirlin 2006):
-        Lndecay = 1.02094                       [L_factor, PRIMAT-Main.m]
+    Outer correction (first bracket):
+        (1 + α/(2π) × (g − 3 ln(mₚ / 2Q)))
 
-    Inner short-distance factor (Czarnecki et al. 2004, Phys. Rev. Lett. 92):
-        Sndecay = 1.02248                       [S_factor, PRIMAT-Main.m]
-        Cndecay = 0.891                         [C_{nDecay}]
-        Agndecay = -0.34                        [A_g, hadronic contribution]
-        mA = 1.2 GeV                            [hadronic cutoff matching onto QCD]
-        1/(134 × 2π)                            [= α/(2π) × 1/Cndecay for mA log]
+    Long-distance factor (QED running, Marciano & Sirlin 2006), second bracket:
+        Lndecay = 1.02094                       [L in Phys. Rep. Eq. B36]
+        deltand = -0.00043                      [δ in Phys. Rep. Eq. B36]
+
+    Inner short-distance factor (Czarnecki et al. 2004, Phys. Rev. Lett. 92),
+    third bracket, with the constants of Phys. Rep. Eqs. B31/B36:
+        Sndecay = 1.02248                       [S in Eq. B36]
+        Cndecay = 0.891                         [C in Eq. B31]
+        Agndecay = -0.34                        [A_g in Eq. B31, hadronic]
+        mA = 1.2 GeV                            [m_A in Eq. B31, QCD matching]
+        1/(134 × 2π)                            [α(mₚ)/(2π), Eq. B36]
 
     NLL correction:
-        NLLndecay = -0.0001                     [next-to-leading log, ~10⁻⁴]
+        NLLndecay = -0.0001                     [next-to-leading log, ~10⁻⁴;
+                                                 not in Phys. Rep. Eq. B35 --
+                                                 carried over from
+                                                 PRIMAT-Main.m]
 
     Args:
         b   : electron velocity v/c = p_e/E_e  (dimensionless).
@@ -172,14 +203,16 @@ def RadCorrResum(b, y, en, cfg):
         >>> b = 0.5; y = 1.0; en = 1.15
         >>> R = RadCorrResum(b, y, en, cfg)   # ≈ 1.040
     """
-    # Czarnecki et al. 2004 (Phys. Rev. Lett. 92, 071801) constants.
-    mA        = 1.2e+3 * cfg.MeV   # hadronic scale: matching QCD at ~1.2 GeV
-    Agndecay  = -0.34              # A_g: hadronic logarithm coefficient
-    Cndecay   =  0.891             # C_{nDecay}: inner radiative constant
-    deltand   = -0.00043           # δ_{nd}: small correction
-    Lndecay   =  1.02094           # long-distance QED running factor
-    Sndecay   =  1.02248           # short-distance factor
-    NLLndecay = -0.0001            # next-to-leading logarithm
+    # Czarnecki et al. 2004 (Phys. Rev. Lett. 92, 071801) constants, as
+    # tabulated in Phys. Rep. Eqs. B31 and B36.
+    mA        = 1.2e+3 * cfg.MeV   # m_A [Eq. B31]: QCD matching scale ~1.2 GeV
+    Agndecay  = -0.34              # A_g [Eq. B31]: hadronic logarithm coefficient
+    Cndecay   =  0.891             # C   [Eq. B31]: inner radiative constant
+    deltand   = -0.00043           # δ   [Eq. B36]: small correction
+    Lndecay   =  1.02094           # L   [Eq. B36]: long-distance QED running
+    Sndecay   =  1.02248           # S   [Eq. B36]: short-distance factor
+    NLLndecay = -0.0001            # next-to-leading logarithm (not in Eq. B35;
+                                   # inherited from PRIMAT-Main.m)
 
     me = cfg.me * cfg.MeV
     mn = cfg.mn * cfg.MeV
@@ -358,15 +391,23 @@ def ComputeFn(cfg):
 # *whole* panel) -- as T -> 0 this left a ~1-3e-6 floor in Gamma_{n->p}/tau_n^-1
 # that did not shrink, and could even grow, with more nodes.  _quad_grid
 # therefore places a panel boundary exactly at p_edge and runs two
-# independent GL rules on either side, which restores normal fast convergence
-# (the Born/CCR vacuum limit then matches the analytic Fn from ComputeFn to
-# ~1e-11, see tests/test_weak_rates.py).
+# independent GL rules on either side, which restores normal fast convergence:
+# the Born vacuum limit then matches the analytic Fn from ComputeFn to ~6e-12
+# (tests/test_weak_rates.py::test_vacuum_limit_reproduces_tau_n).  With the
+# finite-mass correction on, the T -> 0 approach is instead LINEAR in T
+# (-1.4e-6 at 1e7 K, -1.5e-8 at 1e5 K) -- that residual is physics, not
+# quadrature error: chi_FM carries genuinely thermal 1/x = kB T/m_e pieces
+# (see _chi_func_fm_v), so only the strict T = 0 limit is Fn.
 #
-# _N_GL is pinned by tests/test_weak_rates.py::test_gauss_legendre_converged,
-# which checks that doubling the node count moves the rates by <1e-6 over the
-# full BBN temperature range.  160 nodes per panel give that margin comfortably
-# (the integrand peak sits near p_max/15, where Gauss-Legendre is sparsest, so
-# we deliberately oversample rather than tune to the edge).
+# _N_GL is pinned by two tests. tests/test_weak_rates.py::test_gauss_legendre_converged
+# checks that doubling the node count moves the rates by <1e-5 over the full BBN
+# temperature range (the residual sits in the low-T free-neutron-decay regime,
+# where the rates no longer matter to BBN -- see that test's docstring).
+# tests/test_weak_rates.py::test_vacuum_limit_reproduces_tau_n pins the absolute
+# accuracy the panel split exists for: the Born vacuum limit reproduces the
+# analytic Fn to ~1e-11.  160 nodes per panel give both margins comfortably (the
+# integrand peak sits near p_max/15, where Gauss-Legendre is sparsest, so we
+# deliberately oversample rather than tune to the edge).
 _N_GL = 160
 _GL_NODES, _GL_WEIGHTS = np.polynomial.legendre.leggauss(_N_GL)
 
@@ -510,7 +551,11 @@ def _quad_grid(ctx, T_arr):
     reference normalisation Fn (see ComputeFn) already handles correctly,
     since Fn's adaptive `quad` is given the very same edge as an explicit
     integration bound (E from 1 to Q/me).  Splitting here simply makes the
-    rate integral structurally match what Fn already does.
+    rate integral structurally match what Fn already does.  The payoff is
+    pinned by tests/test_weak_rates.py::test_vacuum_limit_reproduces_tau_n:
+    with the split, the Born vacuum limit reproduces the analytic Fn to
+    ~6e-12, i.e. Gamma_{n->p}(T -> 0) -> 1/tau_n exactly, which is what the
+    whole tau_n normalisation rests on.
 
     This is conceptually the same fix you would apply to integrate, say,
     |x| over [-1, 1] with a polynomial rule: a single global polynomial rule
@@ -603,12 +648,13 @@ def _L_CCR(ctx, T_arr, sgnq):
 
 
 # ---------------------------------------------------------------------------
-# _L_FMCCR -- finite-nucleon-mass correction (Phys. Rep. §III.G)
+# _L_FMCCR -- finite-nucleon-mass correction (Phys. Rep. §III.G, Eqs. 115a/115b)
 # ---------------------------------------------------------------------------
 
 def _chi_func_fm_v(ctx, en, pe, x, znu, sgnq):
     """Vectorised chi_FM: finite-nucleon-mass correction to chi_+/-
-    (Phys. Rep. §III.G, Fokker-Planck expansion to first order in T/m_N).
+    (Phys. Rep. chi_FM, defined in App. B.3 and used in §III.G's Eqs. 114 and
+    115a/115b; Fokker-Planck expansion of App. B.2 to first order in T/m_N).
 
     No separate scalar twin exists (this term was always evaluated on the
     array grid).  f_1, f_2, f_3 are the Fokker-Planck expansion coefficients
@@ -639,7 +685,11 @@ def _chi_func_fm_v(ctx, en, pe, x, znu, sgnq):
 
 
 def _L_FMCCR(ctx, T_arr, sgnq):
-    """Finite-nucleon-mass correction x Coulomb x radiative (Phys. Rep. §III.G).
+    """Finite-nucleon-mass correction x Coulomb x radiative: Phys. Rep.
+    Eq. 115a (n->p, sgnq=+1) / Eq. 115b (p->n, sgnq=-1) -- delta_Gamma^{RC+FM},
+    i.e. chi_FM(+-E, +-g_A) carrying the same F(E) R(E,k) factors as the base
+    CCR rate, since finite-mass and radiative effects are large enough that
+    they cannot simply be added linearly (Phys. Rep. §III.G).
 
     Vectorised over the whole T grid.  Used when cfg.finite_mass_corrections=True
     and cfg.radiative_corrections=True.
@@ -664,9 +714,11 @@ def _L_FMCCR(ctx, T_arr, sgnq):
 def _L_FMNoCCR(ctx, T_arr, sgnq):
     """Finite-nucleon-mass correction WITHOUT Coulomb or radiative factors.
 
-    Mirrors PRIMAT-Main.m ``λFMNoCCR``.  Used when cfg.finite_mass_corrections=True and
-    cfg.radiative_corrections=False, so that the finite-mass correction is
-    self-consistently computed at the same (Born) level as the base rate.
+    Phys. Rep. Eq. 114 (PRIMAT-Main.m ``λFMNoCCR``): the same chi_FM as
+    Eqs. 115a/115b but without the Fermi-Coulomb and radiative factors.  Used
+    when cfg.finite_mass_corrections=True and cfg.radiative_corrections=False,
+    so that the finite-mass correction is self-consistently computed at the
+    same (Born) level as the base rate.
 
     The Fokker-Planck chi_FM function (_chi_func_fm_v) is identical to the
     one used in _L_FMCCR; the only difference is the absence of the
@@ -849,8 +901,9 @@ def _L_SD_FMNoCCR(ctx, T_arr, sgnq, dFDneu_moments):
 
 
 # ---------------------------------------------------------------------------
-# _L_CCRTh -- finite-temperature radiative corrections (Phys. Rep. §III.H,
-# Eqs. 107-113; Brown & Sawyer 2001)
+# _L_CCRTh -- finite-temperature radiative corrections (Phys. Rep. §III.F,
+# Eq. 108 = Eqs. 109 + 112 + 113, plus the bremsstrahlung correction Eq. 107;
+# derivations in App. B.7-B.8; Brown & Sawyer 2001)
 # ---------------------------------------------------------------------------
 
 # Below this temperature the correction is clamped to exactly 0 (see
@@ -882,24 +935,31 @@ class _ThermalIntegOpts:
 
 
 def _ccrth_A(E, k):
-    """Bremsstrahlung kernel A(E,k): appears in both the true-photon
+    """Bremsstrahlung kernel A(E,k) = (2E^2+k^2) ln[(E+p)/(E-p)] - 4 p E,
+    Phys. Rep. Eq. B41 (App. B.7).  Appears in both the true-photon
     (:func:`_ccrth_IPENCCRT`) and differential-bremsstrahlung
-    (:func:`_ccrth_IPENCCRDiffBremsstrahlung`) L_CCRTh sub-terms below.
+    (:func:`_ccrth_IPENCCRDiffBremsstrahlung`) L_CCRTh sub-terms below, which
+    combine it with :func:`_ccrth_B` into F_+-(E,k) = A(E,k) +- k B(E,k).
     """
     pE = np.sqrt(E**2 - 1.)
     return (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E
 
 
 def _ccrth_B(E):
-    """Bremsstrahlung kernel B(E), the k-linear companion of :func:`_ccrth_A`."""
+    """Bremsstrahlung kernel B(E) = 2E ln[(E+p)/(E-p)] - 4p, the k-linear
+    companion of :func:`_ccrth_A` in F_+- = A +- k B (Phys. Rep. Eq. B41)."""
     pE = np.sqrt(E**2 - 1.)
     return 2. * E * np.log((E + pE) / (E - pE)) - 4. * pE
 
 
 def _ccrth_IPENCCRT(ctx, E, k, x, znu, sgnq):
-    """Integrand of the "true photon" thermal-bremsstrahlung L_CCRTh
-    sub-term: real photon absorption/emission off the thermal photon bath
-    (:func:`_L_ThermalTruePhoton` integrates this over E and k).
+    """Integrand of Gamma^{gamma,T}, Phys. Rep. Eq. 109: stimulated emission
+    and absorption of real photons off the thermal bath (plus the matching
+    piece of diagram 17a).  The A(E,k) term multiplies the *sum* combination
+    chi^A_+-(E,k) = chi(E-k) + chi(E+k) - 2 chi(E) (Eq. 110) and the k B(E,k)
+    term the *difference* chi^B_+-(E,k) = +-[chi(E-k) - chi(E+k)] (Eq. 111);
+    BE() is the Bose-Einstein occupation f(k) of the photon bath.
+    :func:`_L_ThermalTruePhoton` integrates this over E and k.
     """
     me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
     cfg = ctx.cfg
@@ -942,9 +1002,16 @@ def _ccrth_IPENCCRT(ctx, E, k, x, znu, sgnq):
 
 
 def _ccrth_IPENCCRDiffBremsstrahlung(ctx, E, k, x, znu, sgnq):
-    """Integrand of the differential-bremsstrahlung L_CCRTh sub-term (soft
-    subtraction of the true-photon piece; :func:`_L_ThermalDiffBremsstrahlung`
-    integrates this over E and k).
+    """Integrand of the bremsstrahlung correction, Phys. Rep. Eq. 107 with the
+    definitions Eqs. B43 (App. B.7.c).
+
+    This term repairs the ad-hoc treatment of §III.E, where the *neutron beta
+    decay* bremsstrahlung was used for every reaction: it adds the difference
+    between each reaction's true bremsstrahlung and the one already folded into
+    R(E,k_max) (Phys. Rep. Eq. B46 splits R = R_pure + R_BS).  Written so that
+    the infrared 1/k divergence cancels explicitly against the subtraction
+    term, which is why the k-integral can start at a small but finite k_min.
+    :func:`_L_ThermalDiffBremsstrahlung` integrates this over E and k.
     """
     me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
     cfg = ctx.cfg
@@ -980,14 +1047,34 @@ def _ccrth_IPENCCRDiffBremsstrahlung(ctx, E, k, x, znu, sgnq):
     res2_fac = FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
     res2vec  = Fm * Chitilde_vec(-E + k, znu, sgnq)
     my_index = np.where(np.abs(argvec) < np.abs(E + sgnq * q))[0]
+    # NOT a typo: the soft subtraction below uses Fp even though the term it is
+    # subtracted from carries Fm (unlike res1, which is Fp throughout).  The
+    # asymmetry is printed in the paper -- Phys. Rep. Eq. B43, the
+    # gamma^BS_{n+e->p} line, reads
+    #     int dk/k [ F_-(E,k) chi^e_+(k-E) - F_+(E,k) (|Delta+E|-k)^2 g_nu(-E-Delta) ]
+    # with F_- on the main term and F_+ on the subtraction (likewise for
+    # gamma^BS_{p+e->n}); PRIMAT-Main.m's IPENCCRDiffBremsstrahlung, lines
+    # 1570-1571, transcribes it the same way.  It is also what makes the
+    # infrared cancellation work:
+    # this sub-term is meant to cancel most of the true-photon term
+    # (_L_ThermalTruePhoton) point by point.  Substituting Fm here was tried and
+    # breaks that cancellation outright -- the sub-term flips sign (at T = 1e10 K,
+    # n->p: -3.58 -> +0.52 in raw units, so it stops opposing the true-photon
+    # term's +2.78) and the summed CCRTh correction blows up to ~0.8% of the base
+    # CCR rate at 3e10 K, two to three orders of magnitude too large for an
+    # O(alpha) finite-temperature refinement.  primat-c/src/weak_rates.c's
+    # ipen_ccr_diff_brems carries the same Fp for the same reason.
     res2vec[my_index] -= Fp[my_index] * FD2_vec(-E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] + sgnq * q) - k[my_index])**2
     res2vec *= res2_fac
     return res_fac * (res1vec + res2vec)
 
 
 def _ccrth_C1dE(ctx, E, x, znu, sgnq):
-    """Integrand of L_CCRTh's single-integral sub-term (:func:`_L_Thermal_1`),
-    built from the zero-temperature chi function :func:`_chi_func`.
+    """Integrand of Gamma^{Delta E,T}, Phys. Rep. Eq. 112a: the electron
+    energy (mass) shift in the thermal bath, built from the zero-temperature
+    chi function :func:`_chi_func`.  The 2 pi^2 T^2/3 factor here is the
+    leading (pi^2 T^2/6) piece of Eq. 112a; :func:`_L_Thermal_1` integrates it
+    over E.  Brown & Sawyer 2001, Eq. 5.13.
     """
     cfg = ctx.cfg
     pE = np.sqrt(E**2 - 1.)
@@ -996,9 +1083,14 @@ def _ccrth_C1dE(ctx, E, x, znu, sgnq):
 
 
 def _ccrth_C2dE1dE2(ctx, e1v, e2v, x, znu, sgnq):
-    """Integrand of L_CCRTh's double-integral sub-term
-    (:func:`_L_Thermal_2_3`), the two-electron-energy piece of the
-    finite-temperature radiative correction.
+    """Integrand of Gamma^{ep+ee,T}, Phys. Rep. Eq. 113: proton-electron
+    interactions (the finite-temperature counterpart of diagram 13c) together
+    with electron self-energy and wave-function renormalisation (Brown &
+    Sawyer 2001, Eq. 5.10).  The kernel below is Phys. Rep. Eq. B51a and the
+    ``L_fac`` logarithm is L(E,E') of Eq. B51b;
+    :func:`_L_Thermal_2_3` integrates it over the two electron energies,
+    changed to the (e1+e2, e1-e2) variables the paper recommends for
+    numerical work.
     """
     me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
     cfg = ctx.cfg
@@ -1250,7 +1342,10 @@ def _compute_or_load_L_CCRTh_grid(ctx):
             ImportWarning, stacklevel=2)
     opts = _ThermalIntegOpts(use_vegas, n_eval, n_itn, cfg.epsrel_thermal)
 
-    #if cfg.verbose:
+    # Deliberately NOT gated on cfg.verbose: a cold thermal cache costs minutes,
+    # and a silent multi-minute stall looks like a hang. The C backend prints the
+    # same notice unconditionally (primat-c/src/weak_rates.c, "[weak-c]
+    # Re-evaluating ..."), so the two backends stay in step here.
     print(f"[weak-py] Re-evaluating n <--> p thermal corrections "
           f"({'vegas' if use_vegas else 'scipy.dblquad'}). This may take a while ...")
 
@@ -1290,14 +1385,19 @@ def _L_CCRTh_interpolants(ctx):
 
     Loaded from the fingerprinted cache in rates/weak/ when
     cfg.thermal_corrections=True and a cache file is present (see the
-    module docstring and cache_utils).  A fingerprint mismatch (or a
-    header-less legacy file) is reported but used anyway: recomputing this
-    term is a multi-minute Monte-Carlo integration, far too slow to trigger
-    automatically for what is itself only a ~1e-3-level refinement of
-    L_CCR + L_FMCCR.  Only a *missing* cache file triggers a fresh
-    computation.  Set cfg.thermal_corrections=False to skip this term, or
-    delete the cache files and re-run with save_nTOp_thermal=True to force
-    a refresh stamped with the current configuration's fingerprint.
+    module docstring and cache_utils).  The fingerprint is enforced through
+    the *filename* (``nTOp_thermal_<hash>.txt``): a configuration whose hash
+    differs simply does not find a file and recomputes.  The ``#
+    fingerprint_hash:``/``# fingerprint:`` header lines that
+    :func:`cache_utils.write_cache_with_fingerprint` writes into the file are
+    NOT re-read on load -- they are there so a human (or a migration script)
+    can tell which configuration produced a given table; they never gate the
+    hit/miss decision, which is why a header-less legacy file with a matching
+    name still loads.  Set cfg.thermal_corrections=False to skip this term,
+    or delete the cache files and re-run with save_nTOp_thermal=True to force
+    a refresh stamped with the current configuration's fingerprint (a cold
+    recompute is a multi-minute Monte-Carlo integration, for what is itself
+    only a ~1e-3-level refinement of L_CCR + L_FMCCR).
 
     The actual physics (four correction sub-terms, each its own
     Monte-Carlo/quadrature integral -- see :func:`_L_CCRTh_compute`) or the
@@ -1354,6 +1454,17 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, dFDneu_moments=None):
       additionally SD_FMCCR (if radiative_corrections) or SD_FM
       (generate_rates/PRIMAT-Main-gray.m's δχFM; analytic-distortion mode
       only -- see _L_SD_FMCCR/_L_SD_FMNoCCR's docstrings)
+
+    Known asymmetry between the two distortion modes: the SD-FM term needs
+    closed-form energy derivatives of the distortion, which only
+    ``AnalyticDistortion`` supplies (``dFDneu_moments``); the tabulated NEVO
+    distortion has none, so in the DEFAULT (table) mode the SD term is
+    included but its finite-mass companion is not, even with
+    finite_mass_corrections=True.  This is a real, if small, physics
+    difference between the two modes rather than an implementation detail --
+    it is also flagged in config.py's weak-rate flag block.  Adding it for the
+    table mode would mean differentiating the interpolated distortion
+    numerically, which is not done anywhere in primat today.
 
     The finite-temperature radiative correction (CCRTh) is deliberately NOT in
     this list: it is computed and cached separately (``nTOp_thermal_<hash>.txt``

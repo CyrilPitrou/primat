@@ -968,7 +968,16 @@ static double ipen_ccr_diff_brems(const RateCtx *ctx, double E, double k, double
 
     double res2_fac = FD2(E, x) * fermi_stat(ctx, sgnq, -1.0, pE / E);
     double res2 = Fm * th_chitilde(ctx, -E + k, znu, sgnq);
-    /* Python's own res2 subtraction re-uses Fp (not Fm) here -- kept as-is. */
+    /* Fp (not Fm) in the subtraction, although the term it is subtracted from
+     * carries Fm: deliberate, and printed that way in Phys. Rep. Eq. B43
+     * (the gamma^BS_{n+e->p} line pairs F_- on the main term with F_+ on the
+     * subtraction). Mirrored from Python's
+     * _ccrth_IPENCCRDiffBremsstrahlung / PRIMAT-Main.m lines 1570-1571. The
+     * asymmetry is what lets this sub-term cancel the true-photon term
+     * (l_thermal_true_photon) point by point; with Fm the sub-term flips sign
+     * and the summed CCRTh correction grows to ~0.8% of the base CCR rate at
+     * 3e10 K -- see the longer note in corrections.py for the measured
+     * comparison. */
     if (fabs(k) < fabs(E + sgnq * q))
         res2 -= Fp * FD2(-E - sgnq * q, znu) * pow(fabs(E + sgnq * q) - k, 2.0);
     res2 *= res2_fac;
@@ -1305,7 +1314,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
      * compute from scratch via L_CCRTh_compute (Phase 3b). ---- */
     wr->has_thermal = 0;
     if (cfg->thermal_corrections) {
-        CPRFPField th_fields[8];
+        CPRFPField th_fields[12];   /* cpr_thermal_fingerprint fills 8 */
         size_t n_th_fp = cpr_thermal_fingerprint(cfg, th_fields);
         char *th_hash = cpr_fingerprint_hash(th_fields, n_th_fp);
         char th_fname[512];

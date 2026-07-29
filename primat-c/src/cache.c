@@ -276,8 +276,11 @@ static CPRParam ps(const char *s) {
     return p;
 }
 
-/* WEAK_RATE_FORMAT_VERSION in weak_rates/cache.py. */
-#define WEAK_RATE_FORMAT_VERSION 1
+/* WEAK_RATE_FORMAT_VERSION in weak_rates/cache.py (see its changelog comment
+ * for what each generation changed; v4 pays off the v2/v3 bumps that were
+ * documented but never applied, and adds the munuOverTnu / nevo_grid_file /
+ * sampling_temperature_per_decade fields below). */
+#define WEAK_RATE_FORMAT_VERSION 4
 
 size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
 {
@@ -299,10 +302,19 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"y_gray", pd(cfg->y_gray)};
     out[n++] = (CPRFPField){"T_start_cosmo_MeV", pd(cfg->T_start_cosmo_MeV)};
     out[n++] = (CPRFPField){"T_end_MeV", pd(cfg->T_end_MeV)};
+    /* Sets the node spacing of the linear T_nu(T_gamma) interpolant every rate
+     * integrand reads, hence the rates themselves (~1e-5 at the default 600
+     * points/decade, ~1e-3 at 40) -- see the matching note in
+     * weak_rates/cache.py's _WEAK_RATE_BG_FIELDS. */
+    out[n++] = (CPRFPField){"sampling_temperature_per_decade",
+                            pi(cfg->sampling_temperature_per_decade)};
     out[n++] = (CPRFPField){"nevo_file", ps(cfg->nevo_file)};
     out[n++] = (CPRFPField){"nevo_spectral_file", ps(cfg->nevo_spectral_file)};
+    /* Pairs with nevo_spectral_file: grid nodes + distortion columns jointly
+     * define the dFDneu the spectral-distortion term integrates. */
+    out[n++] = (CPRFPField){"nevo_grid_file", ps(cfg->nevo_grid_file)};
     out[n++] = (CPRFPField){"nevo_file_prefix", ps(cfg->nevo_file_prefix)};
-    return n; /* 16 entries; sampling_nTOp_per_decade/radiative_corrections/
+    return n; /* 18 entries; sampling_nTOp_per_decade/radiative_corrections/
                  finite_mass_corrections each appear once here already
                  (the Python dict's apparent "duplicate" assignment from
                  looping over _WEAK_RATE_BG_FIELDS after the literal dict
@@ -327,7 +339,13 @@ size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"incomplete_decoupling", pb(cfg->incomplete_decoupling)};
     out[n++] = (CPRFPField){"nevo_file", ps(cfg->nevo_file)};
     out[n++] = (CPRFPField){"nevo_file_prefix", ps(cfg->nevo_file_prefix)};
-    return n;
+    /* Effective ξ_e, same historical key as the weak-rate fingerprint: the
+     * thermal integrands' Chitilde carries exp(znu*(en - sgnq*q) - sgnq*xi_nu)
+     * (th_chitilde in weak_rates.c), so the CCRTh table is xi_e-specific --
+     * measured ~4e-3 of the base rate at xi_e = 0.3, T = 1e10 K. Mirrors
+     * weak_rates/cache.py's _thermal_fingerprint. */
+    out[n++] = (CPRFPField){"munuOverTnu", pd(cpr_config_xi_nu_e(cfg))};
+    return n; /* 8 entries */
 }
 
 /* ===========================================================================

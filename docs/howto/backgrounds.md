@@ -123,6 +123,18 @@ class MyBackground(Background):
 PRIMAT(background=MyBackground(cfg, plasma))
 ```
 
+> **Turn the weak-rate cache off if your history differs.** The n↔p
+> weak-rate cache is keyed on the *config* alone
+> (`_weak_rate_fingerprint`), but the rates are integrated against the
+> `[Tg_vec, Tnue_vec]` grid **your** instance builds — the grid behind the
+> `T_nu(T_gamma)` interpolant every rate integrand reads. Two subclasses with
+> different neutrino histories and the same `cfg` therefore hash to the same
+> `nTOp_<hash>.txt`, and whichever runs first defines the rates the other
+> silently reuses. Build your config with `weak_rate_cache=False` (skip the
+> load) and `save_nTOp=False` (skip the write-back) unless your history is the
+> standard one. primat cannot detect this for you: by the time `PRIMAT` sees
+> your instance, its constructor has already computed the rates.
+
 `None` (default) preserves the standard `cfg.custom_background`-based
 dispatch. `background=` is mutually exclusive with `params`/`extra_rho`/
 `cfg.custom_background` (only meaningful for the default dispatch);

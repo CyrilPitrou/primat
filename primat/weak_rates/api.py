@@ -142,7 +142,7 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
                    Active when cfg.finite_mass_corrections=True and
                    cfg.radiative_corrections=False.
       (_L_CCRTh  — Finite-temperature radiative corrections (Brown & Sawyer 2001;
-                   Phys. Rep. §III.H, Eqs. 107–113) are NOT summed here; they are
+                   Phys. Rep. §III.F, Eqs. 107–113) are NOT summed here; they are
                    built separately by _thermal_correction_interpolants and added
                    in RecomputeWeakRates.)
       _L_SD      — Born-level spectral-distortion correction (deviation of f_ν
@@ -222,6 +222,11 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     # the actual rate in s^-1).  Values below 1e-28 are purely numerical
     # noise (the p->n rate at very low T is exp(-Q/T)-suppressed to
     # ~1e-40 and cancellation makes it alternate sign); clamp them to 0.
+    # The threshold is applied to the RAW integral, before the 1/Fn division,
+    # so in stored (1/tau_n) units it sits at 1e-28/Fn ~ 5.7e-29 -- irrelevant
+    # at 28 orders of magnitude below the rates that matter, but worth stating
+    # since everything else on this path is quoted in 1/tau_n. The C backend
+    # clamps identically (weak_rates.c, `(f < 1e-28) ? 0.0 : f / Fn`).
     Fn    = ComputeFn(cfg)
     frwrd = np.where(frwrd < 1e-28, 0.0, frwrd / Fn)
     bkwrd = np.where(bkwrd < 1e-28, 0.0, bkwrd / Fn)
@@ -269,8 +274,11 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     1. Compute the fingerprint hash of the current configuration
        (:func:`_weak_rate_fingerprint`).
     2. If `cfg.weak_rate_cache` is True and `rates/weak/nTOp_<hash>.txt`
-       exists with a matching `fingerprint_hash` header, load and interpolate
-       it directly (cheap: no integration at all).
+       exists, load and interpolate it directly (cheap: no integration at
+       all).  The fingerprint is enforced by the *filename*: a different
+       configuration hashes to a different name and therefore misses.  The
+       `# fingerprint_hash:`/`# fingerprint:` header lines inside the file are
+       written for human/migration use and are never re-read by the loader.
     3. Otherwise call :func:`ComputeWeakRates` to recompute from scratch
        (~2 s).  If `cfg.save_nTOp` is True, save the new data and the current
        fingerprint header to that file.

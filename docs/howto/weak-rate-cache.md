@@ -6,11 +6,17 @@ The non-thermal rate (Born+FM+CCR+SD) is cached in
 together); the finite-temperature radiative correction (CCRTh) is cached
 separately in `data/cache_plasma_weak/weak/nTOp_thermal_<hash>.txt`.
 
-Each file is tagged with a *fingerprint* header: a hash of every config field
-that affects its numeric content (background thermodynamics,
+Each file is named after a *fingerprint*: a hash of every config field that
+affects its numeric content (background thermodynamics,
 `sampling_nTOp_per_decade`/`sampling_nTOp_thermal_per_decade`,
-`radiative_corrections`, `finite_mass_corrections`, `thermal_corrections`,
-etc. — see `primat.weak_rates`). At every run:
+`radiative_corrections`, `finite_mass_corrections`, the neutrino degeneracy
+`munuOverTnu`, the NEVO table selection, etc. — the authoritative lists are
+`_WEAK_RATE_BG_FIELDS` and `_THERMAL_BG_FIELDS` in
+`primat/weak_rates/cache.py`, each field carrying a comment on why it is in
+or out). The same hash is also written into the file as a
+`# fingerprint_hash:`/`# fingerprint:` header, together with the full field
+dict — that header is for humans (and migration scripts) to read, not for the
+loader, which matches on the *filename* alone. At every run:
 
 - If `weak_rate_cache=True` (default) and a cache file's fingerprint matches
   the current configuration, the corresponding rates are loaded directly —
@@ -28,6 +34,29 @@ Recomputing the thermal correction (`thermal_corrections=True`) requires a
 `vegas` Monte-Carlo integration that can take a few minutes; the fingerprint
 mechanism above is what makes this avoidable across runs that share the same
 configuration.
+
+Because that recompute is expensive, the thermal fingerprint deliberately
+depends on *fewer* fields than the non-thermal one: the CCRTh table is reused
+across runs that differ only in something the thermal integral cannot see
+(`T_end_MeV`, the spectral-distortion settings, the T-grid density). Anything
+the integral *does* see is keyed — including the electron-neutrino degeneracy
+`munuOverTnu`/`munuOverTnu_e`, which enters the integrands' neutrino
+occupation directly. Each exclusion is justified in a comment next to
+`_THERMAL_BG_FIELDS`; if you add a term to the thermal integrand, check
+whether it reads a config field that list does not yet cover.
+
+### Format version
+
+`WEAK_RATE_FORMAT_VERSION` (`primat/weak_rates/cache.py`, mirrored in
+`primat-c/src/cache.c`) is part of both fingerprints, so bumping it
+invalidates every cache file at once. Bump it whenever a code change alters
+the *numeric content* of these files for an unchanged configuration — a new
+term, a changed formula, a new clamp. The shipped tables under
+`primat/data/cache_plasma_weak/weak/` must then be re-keyed in the same
+commit (their filenames and headers carry the old hash), or every default run
+silently misses the cache and pays a fresh integration;
+`tests/test_weak_rates.py::test_shipped_weak_caches_carry_current_format_version`
+fails if that step is forgotten.
 
 ## Typical workflow for a high-precision study
 
