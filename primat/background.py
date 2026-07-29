@@ -136,12 +136,30 @@ class Background(object):
 
     def T_of_t(self, t):
         """Photon temperature T_gamma(t) [MeV] at cosmic time ``t`` [s]
-        (array-safe)."""
+        (array-safe).
+
+        Defined on the solved range only -- see :meth:`t_of_T` for what
+        implementations do outside it."""
         raise NotImplementedError
 
     def t_of_T(self, T):
         """Cosmic time t(T_gamma) [s] at photon temperature ``T`` [MeV]
-        (array-safe)."""
+        (array-safe).
+
+        **Valid range.** Implementations are only meaningful between
+        ``cfg.T_end`` and ``cfg.T_start_cosmo``, the span over which the
+        background was actually solved.  :class:`StandardBackground` builds
+        this as a linear ``interp1d`` with ``fill_value="extrapolate"``, so a
+        query outside that span is a straight-line continuation in ``(T, t)``
+        -- not the ``t ∝ 1/T²`` of radiation domination, and far enough out it
+        returns a *negative* time (with the default 0.001-40 MeV grid,
+        ``t_of_T(80 MeV) ≈ -4.7e-04 s``).  Nothing inside primat queries
+        outside the span -- the nuclear network starts at ``cfg.T_start``,
+        comfortably inside -- but callers driving a background directly should
+        stay in range or clamp.  Note this is a different question from the
+        radiation-domination extrapolation *below* the NEVO table's lower edge
+        (0.0141 MeV), which is inside the solved span and is handled correctly
+        by both ``external_scale_factor`` modes."""
         raise NotImplementedError
 
     # ======================================================================
@@ -222,15 +240,26 @@ class Background(object):
         return None
 
     def Omeganuh2_relnu(self):
-        """Omega_nu h^2 x 1e-6 for the relic neutrino background, treated as
-        relativistic today (massless-neutrino convention), or ``None`` if
-        not tracked."""
+        """Omega_nu h^2 **per neutrino flavour** (nu + nubar), treating the
+        relic neutrinos as relativistic today (massless-neutrino convention),
+        or ``None`` if not tracked.
+
+        Per flavour, not summed over the three: multiply by 3 to compare with
+        the usual quoted total (Omega_nu h^2 ~ 1.7e-5 for Neff ~ 3.044).  The
+        per-flavour convention matches :meth:`Omeganuh2_nrnu` below, whose
+        reciprocal is the standard ~93 eV constant.
+        """
         return None
 
     def Omeganuh2_nrnu(self):
-        """Omega_nu h^2 x 1e-6 for the relic neutrino background, treated as
-        non-relativistic today (massive-neutrino convention), or ``None`` if
-        not tracked."""
+        """Omega_nu h^2 **per neutrino flavour**, per unit neutrino mass
+        [MeV^-1], treating the relic neutrinos as non-relativistic today
+        (massive-neutrino convention), or ``None`` if not tracked.
+
+        This is ``n_nu / rho_crit,100``, so ``1 / (Omeganuh2_nrnu * 1e-6)``
+        recovers the familiar ``sum(m_nu) / 93.1 eV`` normalisation -- which is
+        itself a per-flavour number density, hence the convention here.
+        """
         return None
 
     def N_eff(self, Tg, rho_nu_tot):
@@ -638,7 +667,10 @@ class StandardBackground(Background):
             extrapolation (``a ∝ 1/T_γ``) outside the table. No ODE is
             solved for ``a(T)``. ``t(a)`` is obtained the same way in both
             modes (Hubble integration below), since no NEVO file carries a
-            cosmic-time column. The two modes agree to ~1e-6.
+            cosmic-time column. The two modes agree to ~1e-5 on the
+            observables: measured on the default config, ``Neff`` to 1.5e-16,
+            ``YPBBN`` to 7.0e-07, ``D/H`` to 8.8e-06 and ``Li7/H`` to 2.0e-05
+            relative.
 
         The five numbered steps below are delegated to
         :meth:`_setup_neutrino_sector` (1), :meth:`_build_a_of_T` (2), and
@@ -897,7 +929,11 @@ class StandardBackground(Background):
         """
         cfg    = self.cfg
 
-        # Relic neutrino abundances
+        # Relic neutrino abundances, both PER FLAVOUR (nu + nubar) -- there is
+        # deliberately no factor 3 here, see the base-class docstrings.
+        # 7 pi^2/120 * T^4 is plasma.rho_nu(T), i.e. one flavour; and
+        # 3/2 zeta(3)/pi^2 * T^3 is one flavour's number density, the
+        # normalisation behind the standard sum(m_nu)/93.1 eV relation.
         def Omeganuh2_relnu():
             Tnu0 = self.Tnu_vec[-1] / self.Tg_vec[-1] * cfg.T0CMB / cfg.MeV_to_Kelvin
             return (7. * np.pi**2 / 120. * Tnu0**4) / cfg.rhocOverh2
@@ -946,13 +982,13 @@ class StandardBackground(Background):
         return Tg_f, rho_nu_tot_f
 
     def Omeganuh2_relnu(self):
-        """Omega_nu h^2 x 1e-6, relativistic-neutrino convention (see
-        :meth:`Background.Omeganuh2_relnu`)."""
+        """Omega_nu h^2 per flavour, relativistic-neutrino convention (see
+        :meth:`Background.Omeganuh2_relnu` for the per-flavour caveat)."""
         return self._Omeganuh2_relnu()
 
     def Omeganuh2_nrnu(self):
-        """Omega_nu h^2 x 1e-6, non-relativistic-neutrino convention (see
-        :meth:`Background.Omeganuh2_nrnu`)."""
+        """Omega_nu h^2 per flavour per unit mass, non-relativistic-neutrino
+        convention (see :meth:`Background.Omeganuh2_nrnu`)."""
         return self._Omeganuh2_nrnu()
 
     # ======================================================================

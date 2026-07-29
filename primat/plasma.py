@@ -15,7 +15,7 @@ Einstein integrals defined in App. A of the main reference (Eq. A1–A7):
 with x ≡ m/T and g the spin degeneracy (g=2 photons, g=4 e±, g=1 ν).
 
 QED interaction-pressure corrections to the EM plasma thermodynamics
-are loaded from pre-saved tables in ``rates/plasma/`` when available,
+are loaded from pre-saved tables in ``data/cache_plasma_weak/plasma/`` when available,
 or computed analytically via :mod:`primat.qed_pressure` otherwise
 (see §II.E, Eq. 47–49 of the reference).
 
@@ -35,9 +35,21 @@ the per-worker instances used by the Monte-Carlo machinery — can coexist
 in the same process without overwriting each other's tables.
 
 Aside from a handful of genuinely cfg-independent pure functions
-(``rho_g``, ``drho_g_dT``, ``rho_nu``, ``drho_nu_dT``), every quantity here
-is config-dependent and lives on a :class:`Plasma` instance — there is no
-module-level mutable default. Build one explicitly:
+(``rho_g``, ``drho_g_dT``, ``rho_nu``, ``drho_nu_dT``), every *physical*
+quantity here is config-dependent and lives on a :class:`Plasma` instance —
+no table, interpolant or derived number is shared through a module global.
+
+The one piece of module-level mutable state is the four e± integrand
+handles rebound by ``_setup_electron_integrands`` (``_rho_e_intgd`` &c.,
+plus the ``_elec_intgd_numba`` memo).  Those are compilation artefacts, not
+config-dependent values — they take ``me`` as an explicit argument precisely
+so the compiled code is identical for every config — and each instance
+captures its own references in ``_setup_integrand_impls``, so a later rebind
+cannot retroactively change an existing :class:`Plasma`.  The only residual
+cost is that alternating ``cfg.numba_installed`` between instances re-wraps
+them each time.
+
+Build an instance explicitly:
 
     >>> from primat.config import PRIMATConfig
     >>> from primat.plasma import Plasma
@@ -75,6 +87,47 @@ _ELEC_THERMO_LOWT_RATIO = 30.
 # From Phys. Rep. Eq. 25d and 26d: s̄_γ = 4π²/45, s̄_e± = 7/8 × s̄_γ each,
 # so s̄_pl = s̄_γ + 2 × (7/8) × s̄_γ = (1 + 7/4) s̄_γ = (11/4) × 4π²/45 = 11π²/45.
 _sigma_inf = 11. * np.pi**2 / 45.
+
+
+def _qed_spline(T, values):
+    """Interpolant for one QED pressure-correction column, as a function of Tγ.
+
+    Every δP interpolant in :meth:`Plasma._load_tables` -- whether the values
+    were just computed analytically or read back from
+    ``cache_plasma_weak/plasma/QED_pressure_correction_e{2,3}.txt`` -- goes
+    through here, so the "computed" and "loaded" paths cannot drift apart
+    numerically (they did, by ~8e-4 relative, while the file path used a linear
+    ``interp1d``).
+
+    A not-a-knot cubic spline, matching the ``interp1d(kind='cubic')`` used for
+    the electron-thermo tables and the C backend's
+    ``cpr_cubic_spline_fit_notaknot``.  Extrapolation outside the tabulated
+    range continues the end cubic (``CubicSpline``'s default); see the
+    "Extrapolation domain" note in :meth:`Plasma._load_tables` for why that is
+    acceptable below 1e-3 MeV and warned about above 100 MeV.
+
+    Parameters
+    ----------
+    T : ndarray
+        Photon temperatures [MeV]; need not be sorted (they are sorted here,
+        since ``CubicSpline`` requires strictly increasing abscissae whereas
+        the old ``interp1d`` accepted ``assume_sorted=False``).
+    values : ndarray
+        The column to interpolate: δP [MeV⁴], dδP/dTγ [MeV³] or d²δP/dTγ² [MeV²].
+
+    Returns
+    -------
+    scipy.interpolate.CubicSpline
+        Callable on scalars or arrays, like the ``interp1d`` it replaces.
+
+    Example
+    -------
+    >>> dP = _qed_spline(np.array([1., 2., 3., 4.]), np.array([-1., -2., -3., -4.]))
+    >>> float(dP(2.5))
+    -2.5
+    """
+    order = np.argsort(T)
+    return CubicSpline(np.asarray(T)[order], np.asarray(values)[order])
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +442,7 @@ class Plasma:
         Three modes (controlled by ``cfg.recompute_qed_corrections``):
 
         **File mode** (default, ``recompute_qed_corrections=False``, files present):
-            Loads ``data/plasma/QED_pressure_correction_e2.txt`` and
+            Loads ``cache_plasma_weak/plasma/QED_pressure_correction_e2.txt`` and
             ``QED_pressure_correction_e3.txt``: two 4-column files, each with columns
             T [MeV], δP [MeV^4], d(δP)/dT [MeV^3], d²(δP)/dT² [MeV^2] — one
             for δP_a [O(e²)], one for δP_{e3} [O(e³)].  The two files' values
@@ -405,9 +458,21 @@ class Plasma:
             writing any files.  Useful on a fresh checkout.
 
         **Recompute mode** (``recompute_qed_corrections=True``):
-            Always computes analytically and overwrites ``data/plasma/QED_tables.txt``
-            so it serves as a cached copy for subsequent runs.  Use this after
-            changing physical constants or to regenerate after deleting the file.
+            Always computes analytically and overwrites the two
+            ``cache_plasma_weak/plasma/QED_pressure_correction_e{2,3}.txt``
+            files (via :func:`primat.qed_pressure.save_qed_tables`, which only
+            ever writes the current two-file format) so they serve as a cached
+            copy for subsequent runs.  Use this after changing physical
+            constants or to regenerate after deleting the files.
+
+        All three modes build the *same* not-a-knot cubic interpolant
+        (:func:`_qed_spline`), so they are numerically interchangeable: whether
+        the tables happen to be on disk cannot shift the answer.  **Caveat**:
+        the files carry no fingerprint header (unlike the electron-thermo cache
+        in :meth:`_build_electron_tables`), so a table generated with a
+        different ``alpha``/``me`` or different T bounds is loaded silently.
+        Delete the files or set ``recompute_qed_corrections=True`` after
+        changing :mod:`primat.qed_pressure`'s constants.
 
         The QED pressure decomposition follows PRIMAT-Main.m:
           - δP_a [O(e²)]:  leading one-loop correction (dPa in PRIMAT)
@@ -427,22 +492,21 @@ class Plasma:
         # docstring: "well above BBN start"). Below 1e-3 MeV, e± are so
         # Boltzmann-suppressed (T << me/30) that delta_P_QED is negligible
         # relative to numerical precision, so extrapolating the (already
-        # tiny and smooth) low-T tail is harmless. Above 100 MeV the
-        # interpolants below use *linear* extrapolation
-        # (fill_value="extrapolate", kind='linear'), which is only a good
+        # tiny and smooth) low-T tail is harmless. Above 100 MeV every
+        # interpolant below extrapolates by continuing its last cubic
+        # segment (CubicSpline's default), which is only a good
         # approximation locally near the boundary: unlike the electron-thermo
         # cache (_build_electron_tables), this table's upper bound is NOT
         # rescaled to track cfg.T_start_cosmo_MeV, because delta_P_a/delta_P_e3
-        # grow faster than linearly with T (they scale like the leading
-        # e±/photon pressure, i.e. ~T^4, times a slowly-varying log/alpha
-        # prefactor -- see Phys. Rep. Eq. 47-49), so a straight-line
-        # continuation of the last table segment is not a physically
-        # trustworthy substitute for the real T^4-ish growth. This is fine
+        # keep growing like the leading e±/photon pressure (i.e. ~T^4, times a
+        # slowly-varying log/alpha prefactor -- see Phys. Rep. Eq. 47-49), and
+        # a polynomial continuation of the last table segment is not a
+        # physically trustworthy substitute for that. This is fine
         # for the default/validated configurations (T_start_cosmo_MeV <= 100,
         # e.g. the 40 MeV default and the 100 MeV reference-run value sit at
         # or below the table edge), but a user raising T_start_cosmo_MeV
-        # above 100 MeV would silently run the solver's HT era on an
-        # under-estimated (linear, not T^4) QED correction. Warn instead of
+        # above 100 MeV would silently run the solver's HT era on a
+        # mis-estimated QED correction. Warn instead of
         # failing silently -- the correction is small enough that most such
         # runs would still complete, just with a systematic bias in Neff.
         if cfg.T_start_cosmo_MeV > 100.:
@@ -450,8 +514,9 @@ class Plasma:
             warnings.warn(
                 f"[plasma] cfg.T_start_cosmo_MeV={cfg.T_start_cosmo_MeV} MeV exceeds "
                 "the QED plasma-pressure correction table's fixed upper bound "
-                "(100 MeV); delta_P_QED will be linearly extrapolated above 100 MeV, "
-                "which underestimates the true (~T^4) growth of the correction. "
+                "(100 MeV); delta_P_QED will be extrapolated above 100 MeV by "
+                "continuing the last cubic segment, which does not reproduce the "
+                "true (~T^4) growth of the correction. "
                 "Consider recompute_qed_corrections=True with a wider table, or "
                 "treat Neff/YP results above this temperature with caution.")
 
@@ -509,38 +574,40 @@ class Plasma:
             self.d2PQEDdT2 = lambda T, _s=spl_d2P: float(_s(T))
             return
 
-        # Load from the saved file(s), linear interpolation matches file precision.
+        # Load from the saved file(s).  The interpolant is the SAME
+        # not-a-knot cubic spline the analytic branch above builds, so the
+        # three modes documented in this method's docstring really are
+        # interchangeable.  It used to be a linear interp1d here, on the
+        # reasoning that "linear matches file precision" -- but the limiting
+        # error is the grid spacing, not the stored digits: 500 log-spaced
+        # points over [1e-3, 1e2] MeV is d(lnT) = 0.023, and delta_P ~ T^4, so
+        # linear interpolation carried a ~8e-4 relative error against the same
+        # table read cubically.  Since delta_P/rho_pl ~ 4e-4 during BBN that
+        # displaced Neff in its 6th decimal purely according to whether the
+        # tables happened to be on disk.  Pinned by
+        # tests/test_qed_pressure.py::test_file_and_analytic_paths_agree.
         if split_present:
             # Current format: two 4-column files, one per order in e
             # (T, dP, d(dP)/dT, d2(dP)/dT2), summed column-by-column.
             t2 = np.loadtxt(e2_file)
             t3 = np.loadtxt(e3_file)
-            self.PQEDofT = interp1d(t2[:, 0], t2[:, 1] + t3[:, 1], bounds_error=False,
-                            fill_value="extrapolate", assume_sorted=False, kind='linear')
-            self.dPQEDdT = interp1d(t2[:, 0], t2[:, 2] + t3[:, 2], bounds_error=False,
-                            fill_value="extrapolate", assume_sorted=False, kind='linear')
-            self.d2PQEDdT2 = interp1d(t2[:, 0], t2[:, 3] + t3[:, 3], bounds_error=False,
-                              fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.PQEDofT   = _qed_spline(t2[:, 0], t2[:, 1] + t3[:, 1])
+            self.dPQEDdT   = _qed_spline(t2[:, 0], t2[:, 2] + t3[:, 2])
+            self.d2PQEDdT2 = _qed_spline(t2[:, 0], t2[:, 3] + t3[:, 3])
         elif old_present:
             # Older format: single 7-column file (T, dP_a, dP_e3, derivatives…).
             t = np.loadtxt(old_file)
-            self.PQEDofT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
-                            fill_value="extrapolate", assume_sorted=False, kind='linear')
-            self.dPQEDdT = interp1d(t[:, 0], t[:, 3] + t[:, 4], bounds_error=False,
-                            fill_value="extrapolate", assume_sorted=False, kind='linear')
-            self.d2PQEDdT2 = interp1d(t[:, 0], t[:, 5] + t[:, 6], bounds_error=False,
-                              fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.PQEDofT   = _qed_spline(t[:, 0], t[:, 1] + t[:, 2])
+            self.dPQEDdT   = _qed_spline(t[:, 0], t[:, 3] + t[:, 4])
+            self.d2PQEDdT2 = _qed_spline(t[:, 0], t[:, 5] + t[:, 6])
         else:
             # Legacy 3-file format (backward compat with old cached copies).
             t = np.loadtxt(p_file_leg)
-            self.PQEDofT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
-                            fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.PQEDofT   = _qed_spline(t[:, 0], t[:, 1] + t[:, 2])
             t = np.loadtxt(dp_file_leg)
-            self.dPQEDdT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
-                            fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.dPQEDdT   = _qed_spline(t[:, 0], t[:, 1] + t[:, 2])
             t = np.loadtxt(d2p_file_leg)
-            self.d2PQEDdT2 = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
-                              fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.d2PQEDdT2 = _qed_spline(t[:, 0], t[:, 1] + t[:, 2])
 
     def _setup_integrand_impls(self, cfg):
         """Define the four e± Fermi-Dirac integrands, optionally JIT-compiled.
@@ -637,7 +704,7 @@ class Plasma:
         grid reproduces the exact integrals to a few parts in 1e6 over the
         active temperature range, well within BBN tolerances.
 
-        The computed arrays are stored in ``rates/plasma/electron_thermo_cache.txt``
+        The computed arrays are stored in ``data/cache_plasma_weak/plasma/electron_thermo_cache.txt``
         (one row per temperature, columns: T ρ_e p_e dρ_e/dT dp_e/dT) so that
         subsequent runs load from disk instead of repeating the ~8000 quad
         calls (~0.7 s).  The file carries a fingerprint header (see
@@ -648,7 +715,7 @@ class Plasma:
         ``cfg.recompute_electron_thermo = True`` to force a fresh computation
         regardless of the fingerprint.  Whenever the table is recomputed
         (fingerprint mismatch, missing file, or ``recompute_electron_thermo``)
-        it is written back to ``rates/plasma/electron_thermo_cache.txt`` with
+        it is written back to ``data/cache_plasma_weak/plasma/electron_thermo_cache.txt`` with
         the current fingerprint, so the cache is always self-consistent with
         the configuration that last ran.
 
@@ -662,7 +729,7 @@ class Plasma:
                                    "electron_thermo_cache.txt")
 
         # --- Extrapolation domain --------------------------------------
-        # Unlike the QED pressure-correction table (_setup_qed_pressure),
+        # Unlike the QED pressure-correction table (_load_tables),
         # this grid's upper edge Tmax is derived from cfg.T_start_cosmo_MeV
         # itself (with a 1.5x safety margin), so the solver's HT era --
         # which starts exactly at T_start_cosmo_MeV and only decreases --
@@ -835,9 +902,29 @@ class Plasma:
 
         Models additional light species (e.g. a sterile neutrino or dark
         radiation) that decoupled instantaneously and whose temperature
-        therefore scales as 1/a exactly (same as the instantaneous-decoupling
-        SM neutrino temperature :meth:`T_nu_decoupling`).  Returns 0 when
-        ``cfg.DeltaNeff == 0``.
+        therefore scales as 1/a exactly, via :meth:`T_nu_decoupling`.
+        Returns 0 when ``cfg.DeltaNeff == 0``.
+
+        **Normalisation convention (read this before "fixing" it).**
+        :meth:`T_nu_decoupling` normalises with the free-gas ``σ_∞ = 11π²/45``.
+        When ``cfg.QED_corrections=True`` the *SM* neutrinos do not: they use
+        the QED-corrected high-T entropy coefficient ``_sbar_ref``
+        (``neutrino_history.InstantaneousDecoupling._build_temperatures``).  So
+        the two "instantaneous decoupling" temperatures in one run differ by
+        ``(σ_∞/sbar_ref)^{1/3} - 1 ≈ 7.7e-4``, making this species ~0.31 % low
+        in energy density during BBN relative to an SM-normalised one.
+
+        That is deliberate, not an oversight.  σ_∞ is exactly the choice that
+        makes the reported ``Neff`` come out as ``Neff_SM + ΔNeff`` to machine
+        precision (verified: 8.9e-16 for ΔNeff = 1), because at ``T_end`` the
+        plasma is photons-only and ``T_dec/T_γ → (4/11)^{1/3}`` identically —
+        i.e. ΔNeff means what its name says.  Switching to ``_sbar_ref`` would
+        make the species physically flush with the SM neutrinos but turn the
+        knob into ``Neff_SM + 1.0032·ΔNeff`` (measured: ``Neff`` 4.04397730 →
+        4.04719236, ``YPBBN`` 0.25948638 → 0.25952420, ``D/H`` 2.7629646e-05 →
+        2.7640142e-05 at ΔNeff = 1).  Both conventions are defensible; primat
+        picks Neff-additivity.  Mirrored in ``primat-c/src/plasma.c``
+        (``cpr_plasma_rho_nu_extra`` → ``cpr_plasma_T_nu_decoupling``).
 
         Parameters
         ----------
@@ -855,11 +942,23 @@ class Plasma:
         return self._cfg.DeltaNeff * 2. * (7. / 8.) * (np.pi**2 / 30.) * Tnu_dec**4
 
     def rho_SM(self, Tg, Tnue, Tnumu):
-        """Total SM energy density during BBN [MeV⁴] (Phys. Rep. Eq. 43).
+        """Total SM energy density during BBN [MeV⁴] (Phys. Rep. Eq. 43), in
+        the **ξ = 0, no-spectral-distortion** limit.
 
         Includes photons, e±, QED interaction-pressure correction, the
         3 SM neutrino flavours (νe with temperature Tnue, νμ and ντ sharing
         Tnumu), and any extra ΔNeff species.
+
+        **Not the Friedmann source.**  This is a reference/diagnostic quantity;
+        the energy density that actually drives the expansion is assembled in
+        :meth:`primat.background.StandardBackground.Hubble`, which differs in
+        two ways: it passes each flavour's own reduced chemical potential to
+        :meth:`rho_nu` (``cfg.xi_nu_e``/``xi_nu_mu``/``xi_nu_tau``), and it
+        adds the analytic spectral-distortion energy ``rho_nu_SD``.  So this
+        method and ``Hubble`` agree only when every ξ is zero and there are no
+        analytic distortions.  Nothing in ``primat/`` calls it; it is kept as
+        the plain textbook sum (and is exercised by the C port's unit tests,
+        ``primat-c/tests/unit/test_plasma.c``).
 
         The QED energy density correction is ρ_QED = Tγ dδP/dTγ − δP
         (Phys. Rep. §II.E, Eq. 47).  Baryons and cold dark matter are
@@ -890,7 +989,10 @@ class Plasma:
                 + self.rho_nu_extra(Tg))
 
     def p_SM(self, Tg, Tnue, Tnumu):
-        """Total SM pressure during BBN [MeV⁴] (Phys. Rep. Eq. 43).
+        """Total SM pressure during BBN [MeV⁴] (Phys. Rep. Eq. 43), in the
+        **ξ = 0, no-spectral-distortion** limit — the pressure counterpart of
+        :meth:`rho_SM`; see that method for why it is a reference quantity
+        rather than the one the solver uses.
 
         The QED pressure correction is p_QED = δP (Phys. Rep. §II.E).
         Massless neutrinos satisfy p_ν = ρ_ν/3.
@@ -1033,14 +1135,19 @@ class Plasma:
         where σ_∞ ≡ 11π²/45 is the free-gas high-T entropy coefficient.
 
         **QED-correction caveat**: when ``cfg.QED_corrections`` is True,
-        spl(T)/T³ ≠ σ_∞ even at high T, so using σ_∞ as the normalisation
-        is inconsistent.  This method is self-consistent only when
-        ``QED_corrections=False``.  For the incomplete-decoupling mode,
-        ``main._setup_background_and_cosmo`` uses a QED-corrected
-        normalisation instead.
+        spl(T)/T³ ≠ σ_∞ even at high T, so σ_∞ is not the normalisation that
+        makes ``Tν → Tγ`` before e± annihilation: measured,
+        ``Tν/Tγ = 0.99923`` at 40 MeV rather than 1.  The SM neutrino sector
+        therefore does *not* use this method in that mode —
+        :class:`~primat.neutrino_history.InstantaneousDecoupling` normalises
+        with the QED-corrected ``_sbar_ref`` instead, and the NEVO tables
+        supply their own temperatures.
 
-        This method is used by :meth:`rho_nu_extra` (extra ΔNeff species) and
-        as a convenience when ``QED_corrections=False``.
+        This method survives as the definition of the ΔNeff extra-species
+        temperature (:meth:`rho_nu_extra`, where the σ_∞ choice is what makes
+        ``Neff = Neff_SM + ΔNeff`` exact — see that method's docstring) and as
+        a convenience when ``QED_corrections=False``, where σ_∞ *is* the
+        correct high-T limit and the two agree exactly.
 
         Parameters
         ----------

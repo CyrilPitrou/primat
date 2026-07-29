@@ -47,13 +47,16 @@ class Constants:
     Grouped as:
 
     - CGS base units (all set to 1; natural units throughout)
-    - Fundamental constants (PDG): kB, clight, hbar, Mpc, MeV, keV
-    - Electroweak sector (PDG): alphaem, GF, mZ
-    - Fermion masses [MeV] (PDG): me, mn, mp
+    - Fundamental constants: kB, clight, hbar, Mpc, MeV, keV
+    - Electroweak sector: alphaem, GF, mZ
+    - Fermion masses [MeV]: me, mn, mp
     - CMB: T0CMB
-    - Weak-rate nuclear-structure constants (PDG): gA, kappa_p, kappa_n,
+    - Weak-rate nuclear-structure constants: gA, kappa_p, kappa_n,
       Vud, radproton
     - Atomic masses: ma, He4Overma, HOverma
+
+    Each field below carries the edition it came from (CODATA/PDG/AME year, or
+    "SI 2019, exact"); they are not all from one vintage.
 
     plus derived quantities (unit-conversion factors, fixed temperature
     eras, electroweak mixing-angle couplings, and the high-T plasma
@@ -67,38 +70,49 @@ class Constants:
     cm:     float = 1.
     gram:   float = 1.
 
-    # ---- Fundamental constants (PDG) ----
-    kB:     float = 1.380649e-16          # Boltzmann constant [erg/K]
-    clight: float = 2.99792458e+10        # speed of light [cm/s]
-    hbar:   float = 6.62607015 / (2 * np.pi) * 1e-27  # Planck constant [erg s]
-    Mpc:    float = 3.08567758149e+24     # megaparsec [cm]
-    MeV:    float = 1.602176634e-6        # 1 MeV [erg]
-    keV:    float = 1.602176634e-9        # 1 keV [erg]
+    # ------------------------------------------------------------------
+    # Provenance. These values were assembled over time and are NOT all from
+    # one edition; the per-field tags below record which, so a future refresh
+    # can tell what must move together. All are well within primat's target
+    # precision as they stand -- this is bookkeeping, not a correction list.
+    # The weak-rate sector (gA, Vud, and the two anomalous moments) is the one
+    # to watch: it feeds the n<->p rates directly (primat/weak_rates/).
+    # ------------------------------------------------------------------
 
-    # ---- Electroweak sector (PDG) ----
-    alphaem: float = 1. / 137.035999084   # fine-structure constant
-    GF:      float = 1.1663787e-5 * 1.e-6 # Fermi constant [MeV^-2]
-    mZ:      float = 91.1876e3            # Z boson mass [MeV]
+    # ---- Fundamental constants ----
+    # The first four are *exact* by the 2019 SI redefinition (no uncertainty).
+    kB:     float = 1.380649e-16          # Boltzmann constant [erg/K]      (SI 2019, exact)
+    clight: float = 2.99792458e+10        # speed of light [cm/s]           (SI 2019, exact)
+    hbar:   float = 6.62607015 / (2 * np.pi) * 1e-27  # Planck constant [erg s]  (SI 2019, exact h)
+    Mpc:    float = 3.08567758149e+24     # megaparsec [cm]                 (IAU 2015)
+    MeV:    float = 1.602176634e-6        # 1 MeV [erg]                     (SI 2019, exact e)
+    keV:    float = 1.602176634e-9        # 1 keV [erg]                     (SI 2019, exact e)
 
-    # ---- Fermion masses [MeV] (PDG) ----
-    me: float = 0.51099895
-    mn: float = 939.56542052
-    mp: float = 938.27208816
+    # ---- Electroweak sector ----
+    alphaem: float = 1. / 137.035999084   # fine-structure constant         (CODATA 2018)
+    GF:      float = 1.1663787e-5 * 1.e-6 # Fermi constant [MeV^-2]         (PDG 2020)
+    mZ:      float = 91.1876e3            # Z boson mass [MeV]              (PDG 2020)
+
+    # ---- Fermion masses [MeV] ----
+    me: float = 0.51099895                # electron                        (CODATA 2018)
+    mn: float = 939.56542052              # neutron                         (PDG/CODATA 2018)
+    mp: float = 938.27208816              # proton                          (CODATA 2018)
 
     # ---- CMB ----
-    T0CMB: float = 2.7255                 # photon temperature today [K]
+    T0CMB: float = 2.7255                 # photon temperature today [K]    (Fixsen 2009, ApJ 707, 916)
 
-    # ---- Weak-rate nuclear-structure constants (PDG) ----
-    gA:        float = 1.2756              # nucleon axial coupling
-    kappa_p:   float = 2.79284734463 - 1.  # proton anomalous magnetic moment
-    kappa_n:   float = -1.91304273         # neutron anomalous magnetic moment
-    Vud:       float = 0.9738              # CKM matrix element |V_ud|
-    radproton: float = 0.8409e-13          # proton charge radius [cm]
+    # ---- Weak-rate nuclear-structure constants ----
+    gA:        float = 1.2756              # nucleon axial coupling         (PDG 2018)
+    kappa_p:   float = 2.79284734463 - 1.  # proton anomalous magnetic moment  (CODATA 2018)
+    kappa_n:   float = -1.91304273         # neutron anomalous magnetic moment (CODATA 2018)
+    Vud:       float = 0.9738              # CKM matrix element |V_ud|      (PDG 2018)
+    radproton: float = 0.8409e-13          # proton charge radius [cm]      (CODATA 2018)
 
     # ---- Atomic masses ----
-    ma:        float = 931.494061          # 1 unified atomic mass unit [MeV]
-    He4Overma: float = 4.0026032541        # M(He4) / u
-    HOverma:   float = 1.00782503223       # M(H) / u
+    ma:        float = 931.494061          # 1 unified atomic mass unit [MeV]  (CODATA 2010;
+                                           #   CODATA 2018 is 931.49410242, a 4e-8 relative shift)
+    He4Overma: float = 4.0026032541        # M(He4) / u                     (AME2020)
+    HOverma:   float = 1.00782503223       # M(H) / u                       (AME2016)
 
     # ---- Standard-model effective neutrino number ----
     # The Standard Model prediction for N_eff including non-instantaneous
@@ -119,8 +133,16 @@ class Constants:
 
     @property
     def erg(self) -> float:
-        """1 erg in natural units (= gram cm^2 / second^2 with all = 1)."""
-        return self.gram * self.cm**2 / self.second
+        """1 erg in natural units (= gram cm^2 / second^2 with all = 1).
+
+        The ``second`` is squared, as the dimensions require.  This evaluates
+        to exactly 1.0 under the module's natural-units convention (``gram``,
+        ``cm`` and ``second`` are all set to 1 above), so the square is
+        currently inert -- but the whole point of keeping the CGS base units as
+        named symbols is that they could be given real values, and then the
+        exponent would matter.
+        """
+        return self.gram * self.cm**2 / self.second**2
 
     @property
     def MeV_to_Kelvin(self) -> float:

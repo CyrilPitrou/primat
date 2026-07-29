@@ -1175,6 +1175,41 @@ class PRIMATConfig:
                 "(fEDE is the EDE fraction of the total energy density at its peak)."
             )
 
+        # wnEDE is only consulted when EDE is switched on at all.
+        if self.fEDE == 0.:
+            return
+
+        # background._setup_EDE locates the peak of the EDE fraction by solving
+        #     d/du [ u^4 / (1 + u^q) ] = 0,   u = a/a_c,  q = 3(1 + wnEDE)
+        # whose root is u^q = 4/(q - 4) = 4/(3 wnEDE - 1).  That root exists
+        # only for q > 4, i.e. wnEDE > 1/3: for wnEDE <= 1/3 the EDE component
+        # dilutes no faster than radiation, so its *fraction* of the total
+        # never peaks during radiation domination and "fEDE at the peak" is
+        # simply undefined in this parametrisation.  This is a genuine domain
+        # limit, not a removable algebraic singularity.
+        #
+        # Caught here because the downstream failure is opaque: at wnEDE = 1/3
+        # exactly, 4/(3 wnEDE - 1) raises ZeroDivisionError from inside
+        # _setup_EDE; below 1/3 the base is negative and Python's float ** frac
+        # silently returns a *complex* number, which then propagates through
+        # amaxEDE/TmaxEDE/rhocEDEac and only surfaces hundreds of lines later
+        # as solve_ivp's "`y0` is complex" -- naming neither EDE nor wnEDE.
+        # (The C backend's pow() does not raise at all: it yields NaN.)
+        #
+        # Note the standard axion-like potential V ∝ (1 − cos φ)^n gives
+        # wn = (n−1)/(n+1), so n = 1 -> 0 and n = 2 -> 1/3 both land in the
+        # excluded region; n >= 3 (wn >= 1/2) is the usual EDE regime.
+        if self.wnEDE <= 1. / 3.:
+            raise ValueError(
+                f"wnEDE={self.wnEDE!r} is out of range: must satisfy wnEDE > 1/3 "
+                "when fEDE > 0. The EDE peak scale factor solves "
+                "u^(3(1+wnEDE)) = 4/(3*wnEDE - 1), which has no solution for "
+                "wnEDE ≤ 1/3 -- such a component dilutes no faster than "
+                "radiation, so its energy fraction never peaks during radiation "
+                "domination and fEDE (defined at that peak) is meaningless. "
+                "For V ∝ (1 - cos φ)^n use wnEDE = (n-1)/(n+1) with n ≥ 3."
+            )
+
     def _validate_custom_background(self):
         """custom_background: force instantaneous decoupling and no spectral
         distortions (the custom-background driver does not load NEVO tables
@@ -1337,8 +1372,13 @@ class PRIMATConfig:
                                   f"{ncols} columns; expected 6 or 7 (the NEVO "
                                   f"x,z,Tnue,Tnumu,Tnutau,N[,extra] thermo table)")
 
-        n_grid_nodes = 80  # default NEVOGrid.csv length, used if nevo_spectral_file is not overridden
-        if self.nevo_spectral_file is not None:
+        # The shipped spectral table has 86 columns TOTAL = 6 thermo + 80
+        # spectral, so the shipped NEVOGrid.csv has 80 y-nodes.  (Both numbers
+        # used to be quoted as "86", which read as 86 spectral columns.)
+        n_grid_nodes = 80  # shipped NEVOGrid.csv length; overridden below if a
+                           # custom spectral table declares a different width
+        spectral_overridden = self.nevo_spectral_file is not None
+        if spectral_overridden:
             path = resolve_nevo_path(self, self.nevo_spectral_file, "")
             if not os.path.exists(path):
                 raise ValueError(f"nevo_spectral_file={self.nevo_spectral_file!r} "
@@ -1348,20 +1388,40 @@ class PRIMATConfig:
                 raise ValueError(f"nevo_spectral_file={self.nevo_spectral_file!r} "
                                   f"({path!r}) has {ncols} columns; expected "
                                   f"6 thermo columns plus at least one spectral "
-                                  f"column (86 in the shipped tables)")
+                                  f"column (86 columns total in the shipped "
+                                  f"tables: 6 thermo + 80 spectral)")
             n_grid_nodes = ncols - 6
 
+        # Resolve the y-grid actually in play: the override if given, else the
+        # shipped NEVOGrid.csv.  Checking the *shipped* grid too closes the
+        # case where only nevo_spectral_file is overridden -- previously
+        # n_grid_nodes was computed and then never compared against anything,
+        # so a custom spectral table of the wrong width sailed past this method
+        # and failed later inside NEVOTable's RegularGridInterpolator, which is
+        # exactly the confusing deep-shape-mismatch this method exists to
+        # prevent.
         if self.nevo_grid_file is not None:
-            path = resolve_nevo_path(self, self.nevo_grid_file, "")
-            if not os.path.exists(path):
-                raise ValueError(f"nevo_grid_file={self.nevo_grid_file!r} not "
-                                  f"found (resolved to {path!r})")
-            n_nodes = np.loadtxt(path, delimiter=',').size
+            grid_path = resolve_nevo_path(self, self.nevo_grid_file, "")
+            grid_desc = f"nevo_grid_file={self.nevo_grid_file!r}"
+            if not os.path.exists(grid_path):
+                raise ValueError(f"{grid_desc} not found "
+                                  f"(resolved to {grid_path!r})")
+        elif spectral_overridden:
+            grid_path = resolve_nevo_path(self, None, "NEVOGrid.csv")
+            grid_desc = "the shipped NEVOGrid.csv"
+            if not os.path.exists(grid_path):
+                grid_path = None   # nothing to check against
+        else:
+            grid_path = None       # neither overridden: shipped pair, known good
+
+        if grid_path is not None:
+            n_nodes = np.loadtxt(grid_path, delimiter=',').size
             if n_nodes != n_grid_nodes:
-                raise ValueError(f"nevo_grid_file={self.nevo_grid_file!r} "
-                                  f"({path!r}) has {n_nodes} nodes; expected "
-                                  f"{n_grid_nodes} to match the spectral "
-                                  f"table's {n_grid_nodes} y-columns")
+                raise ValueError(f"{grid_desc} ({grid_path!r}) has {n_nodes} "
+                                  f"nodes; expected {n_grid_nodes} to match the "
+                                  f"spectral table's {n_grid_nodes} y-columns. "
+                                  f"Override nevo_grid_file to supply a matching "
+                                  f"grid.")
 
         # Validate nevo_file_prefix: when not the shipped default, check that
         # the *derived* default filenames it implies exist and have the right

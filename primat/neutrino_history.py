@@ -242,6 +242,25 @@ class NEVOTable(NeutrinoHistory):
         self.Tnue_of_Tg   = Tnue_of_Tg
         self.Tnumu_of_Tg  = Tnumu_of_Tg
         self.Tnutau_of_Tg = Tnutau_of_Tg
+        # Heating is entropy flowing from the EM plasma *into* the neutrinos,
+        # so N >= 0 physically.  The shipped tables carry a residual
+        # sign-alternating tail from the NEVO solve itself -- in
+        # NEVOPRIMAT_col_1_7.csv, 74 of the 600 rows are negative, all within
+        # T_gamma in [0.0315, 0.0835] MeV, reaching -4.2e-06 against a peak
+        # N of 4.2e-03.  That noise would otherwise be integrated by the
+        # a(T_gamma) ODE in background._build_a_of_T as a spurious *reverse*
+        # transfer (neutrinos handing entropy back to the plasma).  Clamping at
+        # zero removes the unphysical sign while keeping every genuine value.
+        # generate_rates/PRIMAT-Main.m:1072 instead zeroes N wholesale for
+        # x = me/T >= 5 (T <= 0.102 MeV); we keep the tabulated values there
+        # and clamp only the sign, which is the narrower intervention.
+        N_NEVO_tab = np.maximum(N_NEVO_tab, 0.)
+        # Interpolated linearly in T_gamma.  PRIMAT-Main.m:668 interpolates
+        # linearly in x = me/(kB T_gamma) instead (same nodes, different
+        # variable), which differs between nodes by ~3e-4 relative over
+        # T_gamma in [0.1, 10] MeV -- about 5e-7 on the a(T) ODE's right-hand
+        # side, since N/(3 sbar) ~ 1.6e-03.  Kept in T_gamma because every
+        # other interpolant in this class is built that way.
         self.N_NEVO_of_Tg = interp1d(Tg_tab, N_NEVO_tab, bounds_error=False,
                                      fill_value=(0., 0.), kind='linear')
 
@@ -483,6 +502,17 @@ class AnalyticDistortion(NeutrinoHistory):
         self.Tnumu_of_Tg  = base.Tnumu_of_Tg
         self.Tnutau_of_Tg = base.Tnutau_of_Tg
         self.N_NEVO_of_Tg = base.N_NEVO_of_Tg
+        # x_of_Tg is part of the NeutrinoHistory protocol (see that class's
+        # docstring), so it must be carried across even though the decorator
+        # does not touch it: only NEVOTable sets it to a real callable, and
+        # PRIMATConfig currently makes NEVOTable + AnalyticDistortion an
+        # illegal pairing (analytic distortions require instantaneous
+        # decoupling, external_scale_factor requires the NEVO table), so in
+        # practice this forwards None.  Forwarding it anyway keeps the
+        # decorator a faithful stand-in for its base: without this line the
+        # attribute is absent entirely and any protocol-level access raises
+        # AttributeError rather than seeing the documented None.
+        self.x_of_Tg = base.x_of_Tg
         self.dFDneu_func = None
         self.rho_nu_SD = None
         self._build_analytic_distortion()

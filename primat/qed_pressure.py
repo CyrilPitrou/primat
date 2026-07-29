@@ -85,9 +85,15 @@ from scipy.integrate import quad, dblquad
 from scipy.interpolate import CubicSpline
 
 # Physical constants — kept local to this module (not imported from config)
-# to allow standalone use in generate_rates/ scripts.
-_ALPHA_FS = 1. / 137.035999084   # fine-structure constant (CODATA 2018)
-_ME_MEV   = 0.5109989461         # electron mass [MeV]
+# to allow standalone use in generate_rates/ scripts.  They must nevertheless
+# agree numerically with primat.constants.CONST, or the tables written here
+# would describe a slightly different plasma from the rest of the code; the
+# values below are kept identical to CONST.alphaem / CONST.me by hand.
+# (_ME_MEV read 0.5109989461, the CODATA 2014 electron mass, until it was
+# aligned with CONST.me = 0.51099895; the 8e-9 relative shift is far below any
+# BBN tolerance, but the divergence itself was a trap.)
+_ALPHA_FS = 1. / 137.035999084   # fine-structure constant (CODATA 2018) == CONST.alphaem
+_ME_MEV   = 0.51099895           # electron mass [MeV] (CODATA 2018) == CONST.me
 
 # Low-x cutoff: for x = mₑ/T > 50 (T < mₑ/50 ≈ 10 keV) the e± are so
 # non-relativistic that δP is effectively zero (Boltzmann-suppressed).

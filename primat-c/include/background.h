@@ -205,7 +205,12 @@ double cpr_bg_N_eff(const CPRBackground *bg, double Tg, double rho_nu_tot);
  * (CustomBackground does not track a separate relic-neutrino calculation,
  * mirroring Python's CustomBackground which does not override these and
  * so inherits Background's `None` default); `*out` is left untouched and
- * this returns nonzero when kind != CPR_BG_STANDARD. */
+ * this returns nonzero when kind != CPR_BG_STANDARD.
+ *
+ * Both are PER NEUTRINO FLAVOUR (nu + nubar), not summed over the three --
+ * matching Python's Background.Omeganuh2_relnu/_nrnu. Multiply the relnu
+ * value by 3 for the usual quoted total; the nrnu reciprocal is the standard
+ * ~93 eV constant, which is per-flavour by convention. */
 int cpr_bg_Omeganuh2_relnu(const CPRBackground *bg, double *out);
 int cpr_bg_Omeganuh2_nrnu(const CPRBackground *bg, double *out);
 

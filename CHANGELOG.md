@@ -12,6 +12,52 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **QED plasma-pressure tables are now read with the same interpolant they are
+  written with** (both backends). `Plasma._load_tables` documents three
+  interchangeable modes (load from file / compute analytically / recompute),
+  but the file path built a *linear* `interp1d` while the analytic path built a
+  cubic spline. On the shipped 500-point log grid over [1e-3, 1e2] MeV
+  (`d(lnT) = 0.023`, `δP ~ T⁴`) that cost ~8e-4 relative on δP, so — since
+  `δP/ρ_pl ~ 4e-4` during BBN — Neff shifted in its 6th decimal according only
+  to whether the cache files happened to exist. Both paths now go through
+  `plasma._qed_spline` (and `cpr_cubic_spline_fit_notaknot` in C). Residual
+  file-vs-analytic disagreement is 3.9e-06, set by the tables' own `%.6E` write
+  precision rather than by interpolation, and pinned by
+  `tests/test_qed_pressure.py::test_file_and_analytic_paths_agree`.
+- **The NEVO heating function is clamped to N ≥ 0** (both backends). Heating is
+  entropy flowing from the EM plasma into the neutrinos and cannot reverse, but
+  74 of the 600 rows of the shipped `NEVOPRIMAT_col_1_7.csv` carry a negative
+  residual from the NEVO solve itself (all within T_γ ∈ [0.0315, 0.0835] MeV,
+  reaching −4.2e-06 against a peak N of 4.2e-03), which the a(T_γ) ODE
+  integrated as a spurious reverse transfer.
+- Together these two shift the default run by ~4e-6 relative in D/H and Li7/H
+  (`D/H` 2.4358955e-05 → 2.4359049e-05 on the Python backend) — two orders of
+  magnitude inside the ±3e-9 D/H regression tolerance, and cross-backend
+  agreement stays at ~5e-6 against the documented 5e-5 bound.
+- **`wnEDE ≤ 1/3` is now rejected** when `fEDE > 0`, on both backends. The EDE
+  peak scale factor solves `u^(3(1+wnEDE)) = 4/(3·wnEDE − 1)`, which has no root
+  for `wnEDE ≤ 1/3`: such a component dilutes no faster than radiation, so its
+  energy *fraction* never peaks during radiation domination and `fEDE` (defined
+  at that peak) is meaningless. Previously `wnEDE = 1/3` raised a bare
+  `ZeroDivisionError` and `wnEDE = 0` silently produced a *complex* scale factor
+  that surfaced hundreds of lines later as solve_ivp's "`y0` is complex", while
+  the C backend produced a NaN background without complaint. Both are standard
+  axion-like values (`wn = (n−1)/(n+1)` for n = 2 and n = 1).
+- `AnalyticDistortion` no longer omits `x_of_Tg`, which made a documented
+  `NeutrinoHistory` protocol attribute raise `AttributeError` instead of
+  returning `None`. Latent only — `PRIMATConfig` currently forbids the flag
+  combination that would reach it.
+- Custom NEVO tables: overriding `nevo_spectral_file` *without* also overriding
+  `nevo_grid_file` is now validated against the shipped `NEVOGrid.csv`, instead
+  of being computed and then never compared — a width mismatch used to surface
+  as a shape error deep inside `RegularGridInterpolator`.
+- `Constants.erg` was missing a square on `second` (it read `gram·cm²/second`
+  against its own docstring). Numerically inert under the natural-units
+  convention, where all three base units are 1.
+- `primat/qed_pressure.py`'s local `_ME_MEV` was the CODATA 2014 electron mass
+  while `CONST.me` is CODATA 2018 — and the C backend already used the latter,
+  so the two backends generated QED tables at different electron masses. Now
+  identical (an 8e-9 relative change to freshly computed tables).
 - **n↔p weak-rate cache keys** (`WEAK_RATE_FORMAT_VERSION` 1 → 4, both
   backends). Three configuration fields changed the rates but were absent from
   the fingerprint, so runs that differed only in one of them silently shared a
@@ -44,6 +90,39 @@ in this repository is the authoritative source.
   previous D/H, YP and Neff bit-for-bit.
 
 ### Documented
+- **`Omeganurel` and `OneOverOmeganunr` are per neutrino flavour** (ν + ν̄), not
+  summed over the three — now stated in `Background.Omeganuh2_relnu`/`_nrnu`,
+  `docs/howto/output.md` and `primat-c/include/background.h`. The values are
+  unchanged (multiply `Omeganurel` by 3 for the usual quoted total ≈ 17); the
+  per-flavour convention is the natural one for `OneOverOmeganunr`, whose ≈ 93
+  reproduces the standard Σm_ν / 93.1 eV normalisation.
+- **The ΔNeff extra species deliberately uses a different "instantaneous
+  decoupling" normalisation from the SM neutrinos** when `QED_corrections=True`:
+  `T_nu_decoupling`'s free-gas σ_∞ rather than the QED-corrected `_sbar_ref`,
+  leaving it ~0.31 % low in energy density during BBN. That is what makes the
+  reported `Neff` come out as `Neff_SM + ΔNeff` to machine precision, i.e. makes
+  the knob mean what its name says; `rho_nu_extra` now spells out the trade-off
+  and the measured cost of the alternative, and `T_nu_decoupling` no longer
+  claims to be the SM neutrino temperature in that mode.
+- `plasma.rho_SM`/`p_SM` are labelled as the ξ = 0, no-spectral-distortion
+  reference quantities they are — **not** the Friedmann source, which is
+  `StandardBackground.Hubble` (it adds each flavour's own ξ and `rho_nu_SD`).
+- `Background.t_of_T` documents its valid range: outside
+  `[T_end, T_start_cosmo]` it extrapolates linearly and can return a negative
+  time. This is distinct from the radiation-domination extrapolation below the
+  NEVO table's edge, which is inside the solved span and correct in both
+  `external_scale_factor` modes.
+- The `external_scale_factor` True/False agreement is quoted at its measured
+  ~1e-5 (per-observable figures given) instead of "~1e-6".
+- Every constant in `primat/constants.py` now records its edition (SI 2019
+  exact / CODATA 2018 / CODATA 2010 / PDG 2020 / PDG 2018 / AME2020 / AME2016 /
+  Fixsen 2009); the set is deliberately not single-vintage, and `gA`/`Vud` are
+  flagged as the group that feeds the n↔p rates.
+- Assorted `plasma.py` docstring drift corrected: a reference to a
+  `_setup_qed_pressure` method that does not exist, a recompute-mode paragraph
+  naming the wrong output file, stale `rates/plasma/` paths, and a "no
+  module-level mutable state" claim that overlooked the four numba integrand
+  handles (harmless, but now described accurately).
 - `primat/weak_rates/corrections.py` now cites the Phys. Rep. **equation**
   numbers for every correction term, instead of section numbers alone: the
   relativistic Fermi function (Eq. 100), the resummed radiative factor

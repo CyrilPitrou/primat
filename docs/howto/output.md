@@ -13,8 +13,14 @@
 | `He3oH` | (He3+H3)/H |
 | `Li7oH` | (Li7+Be7)/H |
 | `Neff` | Effective number of neutrino species |
-| `Omeganurel` | Ω_ν h² × 10⁶ (relativistic) |
-| `OneOverOmeganunr` | 1 / (Ω_ν h² × 10⁻⁶) (non-relativistic) |
+| `Omeganurel` | Ω_ν h² × 10⁶ **per flavour** (relativistic) |
+| `OneOverOmeganunr` | 1 / (Ω_ν h² × 10⁻⁶) **per flavour** (non-relativistic) |
+
+Both Ω_ν keys are **per neutrino flavour** (ν + ν̄), not summed over the three.
+Multiply `Omeganurel` by 3 to compare with the usual quoted total (≈ 17 for
+Neff ≈ 3.044). The per-flavour convention is the natural one for
+`OneOverOmeganunr`, whose value ≈ 93 reproduces the standard
+Σm_ν / 93.1 eV normalisation, and `Omeganurel` follows it for consistency.
 
 The neutrino-sector keys (`Neff`, `Omeganurel`, `OneOverOmeganunr`) are only
 present if the background actually provides that information — see

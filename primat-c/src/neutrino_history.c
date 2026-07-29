@@ -91,7 +91,14 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
         nh->ratio_ue_asc[i]  = Tnue[src]   / Tg[src];
         nh->ratio_umu_asc[i] = Tnumu[src]  / Tg[src];
         nh->ratio_utau_asc[i] = Tnutau[src] / Tg[src];
-        nh->N_asc[i]         = N_r[src];
+        /* Clamp the heating to N >= 0: entropy flows from the EM plasma into
+         * the neutrinos, never back. The shipped tables carry a residual
+         * sign-alternating tail from the NEVO solve (74 of 600 rows negative
+         * in NEVOPRIMAT_col_1_7.csv, all in T_gamma in [0.0315, 0.0835] MeV,
+         * down to -4.2e-06 against a peak N of 4.2e-03) which the a(T_gamma)
+         * ODE would otherwise integrate as a spurious reverse transfer.
+         * Mirrors neutrino_history.py's np.maximum(N_NEVO_tab, 0.). */
+        nh->N_asc[i]         = N_r[src] > 0.0 ? N_r[src] : 0.0;
         x_for_xofTg[i]       = x[src];
     }
 

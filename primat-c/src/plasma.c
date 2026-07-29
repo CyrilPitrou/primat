@@ -42,7 +42,9 @@ double cpr_rho_nu_chempot_excess(double Tnu, double c)
 }
 
 /* ---------------------------------------------------------------------
- * CPRInterp1D: linear-from-file or not-a-knot-spline-from-computation.
+ * CPRInterp1D: not-a-knot cubic spline, however the values were obtained.
+ * The !is_spline (raw x/y linear) branch is retained only as the transient
+ * state in which qed_load_tables stages a freshly read file before fitting.
  * ------------------------------------------------------------------- */
 
 double cpr_interp1d_eval(const CPRInterp1D *itp, double xq)
@@ -158,9 +160,13 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
         return rc;
     }
 
-    /* File mode: load and sum the e^2/e^3 columns, linear interpolation
-     * with linear extrapolation outside the table (matches
-     * interp1d(kind='linear', fill_value="extrapolate")). */
+    /* File mode: load and sum the e^2/e^3 columns into (x, y) pairs, which the
+     * loop at the end of this function then converts to the SAME not-a-knot
+     * cubic spline the analytic path above builds (matches plasma.py's
+     * _qed_spline). The columns used to be interpolated linearly here, which
+     * left the "loaded" and "computed" paths ~8e-4 apart in delta_P -- enough
+     * to move Neff in its 6th decimal depending only on whether the tables
+     * happened to be on disk. */
     CPRTable tab;
     if (split_present) {
         /* Current format: two 4-column files, one per order in e
@@ -219,6 +225,24 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
             }
             cpr_table_free(&tab);
         }
+    }
+
+    /* Convert the three freshly loaded (x, y) pairs into not-a-knot cubic
+     * splines, so every file format above lands on the same interpolant as
+     * the analytic branch (see the file-mode comment). Done once here rather
+     * than in each branch because all three formats fill x/y identically. */
+    CPRInterp1D *loaded[3] = { &pl->P_QED, &pl->dP_QED, &pl->d2P_QED };
+    for (int k = 0; k < 3; k++) {
+        CPRCubicSpline spl;
+        if (cpr_cubic_spline_fit_notaknot(loaded[k]->x, loaded[k]->y,
+                                          loaded[k]->n, &spl, errmsg))
+            return 1;
+        free(loaded[k]->x);
+        free(loaded[k]->y);
+        loaded[k]->x = NULL;
+        loaded[k]->y = NULL;
+        loaded[k]->spl = spl;
+        loaded[k]->is_spline = 1;
     }
     return 0;
 }

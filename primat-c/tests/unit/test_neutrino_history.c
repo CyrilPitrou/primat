@@ -56,7 +56,12 @@ int main(void)
     CHECK(close_rel(cpr_nu_x_of_Tg(&nh, 1.0), 0.513572224877158, 1e-7), "x_of_Tg(1.0) matches Python");
 
     CHECK(close_rel(cpr_nu_Tnue_of_Tg(&nh, 0.05), 0.03589191744637729, 1e-6), "Tnue(0.05) matches Python");
-    CHECK(close_rel(cpr_nu_N_NEVO_of_Tg(&nh, 0.05), -2.9820043203872707e-06, 1e-5), "N(0.05) matches Python");
+    /* Tg=0.05 MeV sits inside the band where the shipped NEVO table's heating
+     * column goes negative (74 of 600 rows, Tg in [0.0315, 0.0835] MeV, here
+     * -2.982e-06 raw). Heating is entropy flowing plasma -> neutrinos and can
+     * never reverse, so both backends clamp it to exactly 0; this pins that
+     * clamp rather than the old raw negative value. */
+    CHECK(cpr_nu_N_NEVO_of_Tg(&nh, 0.05) == 0.0, "N(0.05) is clamped to 0 (negative NEVO noise band)");
     CHECK(close_rel(cpr_nu_x_of_Tg(&nh, 0.05), 14.262052006482783, 1e-6), "x_of_Tg(0.05) matches Python");
 
     /* Tg=50 is above the table's range (radiation-domination extrapolation
@@ -96,7 +101,11 @@ int main(void)
     rc = cpr_neutrino_history_init(&nh2, &cfg2, &pl2, &err);
     CHECK(rc == 0, "cpr_neutrino_history_init succeeds for InstantaneousDecoupling");
     CHECK(nh2.kind == CPR_NU_INSTANTANEOUS, "incomplete_decoupling=False selects CPR_NU_INSTANTANEOUS");
-    CHECK(close_rel(cpr_nu_Tnue_of_Tg(&nh2, 1.0), 0.9941462369183307, 1e-7), "InstantaneousDecoupling Tnue(1.0) matches Python");
+    /* Depends on spl(T) and hence on the QED delta_P interpolant; the value
+     * moved by ~3e-7 relative when the file-loading path switched from linear
+     * interpolation to the same not-a-knot cubic spline the analytic path
+     * uses (see plasma.c's qed_load_tables). */
+    CHECK(close_rel(cpr_nu_Tnue_of_Tg(&nh2, 1.0), 0.9941465469295386, 1e-7), "InstantaneousDecoupling Tnue(1.0) matches Python");
     CHECK(close_rel(cpr_nu_Tnue_of_Tg(&nh2, 0.01), 0.007143388657256258, 1e-7), "InstantaneousDecoupling Tnue(0.01) matches Python");
     CHECK(cpr_nu_N_NEVO_of_Tg(&nh2, 1.0) == 0.0, "InstantaneousDecoupling N(Tg) is identically 0");
     CHECK(cpr_nu_dFDneu(&nh2, 2.0, 1.0, 1.0, 1.0) == 0.0, "InstantaneousDecoupling dFDneu is identically 0 (no distortion table)");

@@ -951,6 +951,24 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
         return 1;
     }
 
+    /* wnEDE > 1/3 whenever EDE is on. background.c's _setup_EDE locates the
+     * EDE-fraction peak at u^(3(1+wnEDE)) = 4/(3*wnEDE - 1), which has no
+     * solution for wnEDE <= 1/3: such a component dilutes no faster than
+     * radiation, so its fraction never peaks during radiation domination and
+     * fEDE (defined at that peak) is meaningless. Without this check C's pow()
+     * quietly produces NaN -- 4.0/0.0 -> +inf at wnEDE = 1/3, or pow(negative,
+     * fractional) -> NaN below -- and the whole background silently becomes
+     * NaN, whereas Python raises. Mirrors _validate_fEDE in config.py. */
+    if (cfg->fEDE != 0.0 && !(cfg->wnEDE > 1.0 / 3.0)) {
+        *errmsg = malloc(256);
+        snprintf(*errmsg, 256,
+                 "wnEDE=%.6g is out of range: must satisfy wnEDE > 1/3 when "
+                 "fEDE > 0 (the EDE peak u^(3(1+wnEDE)) = 4/(3*wnEDE - 1) has "
+                 "no solution otherwise). For V ~ (1 - cos phi)^n use "
+                 "wnEDE = (n-1)/(n+1) with n >= 3.", cfg->wnEDE);
+        return 1;
+    }
+
     if (cfg->external_scale_factor && !cfg->incomplete_decoupling) {
         *errmsg = strdup("external_scale_factor=True requires incomplete_decoupling=True");
         return 1;

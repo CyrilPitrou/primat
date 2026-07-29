@@ -197,3 +197,63 @@ def test_save_and_load_roundtrip(tmp_path):
     np.testing.assert_allclose(data_e3[:, 1], tables["dP_e3"],        rtol=1e-5)
     np.testing.assert_allclose(data_e3[:, 2], tables["d_dP_e3_dT"],   rtol=1e-5)
     np.testing.assert_allclose(data_e3[:, 3], tables["d2_dP_e3_dT2"], rtol=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# The two ways Plasma can obtain delta_P must agree
+# ---------------------------------------------------------------------------
+
+def test_file_and_analytic_paths_agree(tmp_path):
+    """GOAL: reading the QED tables from disk and computing them analytically
+    must give the same delta_P(T), so a run's answer cannot depend on whether
+    the cache files happen to exist.
+
+    ``Plasma._load_tables`` has three modes (file / analytic fallback /
+    recompute) that its docstring presents as interchangeable.  They were not:
+    the file branch used a linear ``interp1d`` while the analytic branch used a
+    ``CubicSpline``, and on the shipped 500-point log grid over [1e-3, 1e2] MeV
+    (d(lnT) = 0.023, delta_P ~ T^4) linear interpolation carried a ~8e-4
+    relative error.  Since delta_P/rho_pl ~ 4e-4 during BBN, that moved Neff in
+    its 6th decimal purely according to whether the tables were on disk --
+    invisible to every other test, which only ever sees one of the two paths.
+
+    Both branches now go through ``plasma._qed_spline``, so the interpolation
+    is identical and the only remaining difference is the files' own
+    ``fmt="%.6E"`` write precision in ``save_qed_tables`` -- 6 significant
+    digits, i.e. ~1e-6 relative, measured here at 3.9e-06 worst case.  That is
+    the floor this test pins: still ~200x tighter than the ~8e-4 the
+    interpolation mismatch used to cost, and small enough that Neff is
+    unaffected at its 8-decimal reporting precision.  A regression to ~1e-3
+    would mean the two paths' interpolants have diverged again.
+    """
+    from primat.config import PRIMATConfig
+    from primat.plasma import Plasma
+
+    # Same table, written to a scratch cache_dir so the "file" run is forced to
+    # read from disk rather than reuse anything shipped.
+    plasma_dir = tmp_path / "plasma"
+    plasma_dir.mkdir(parents=True)
+    tables = compute_qed_pressure_tables(T_min=1e-3, T_max=1e2, n_pts=500,
+                                         verbose=False)
+    save_qed_tables(tables, str(plasma_dir), verbose=False)
+    (tmp_path / "weak").mkdir(parents=True)
+
+    # File path: tables present in the overlay -> loaded from disk.
+    p_file = Plasma(PRIMATConfig({"verbose": False, "cache_dir": str(tmp_path)}))
+    # Analytic path: recompute, evaluated straight from the computed arrays.
+    p_calc = Plasma(PRIMATConfig({"verbose": False, "cache_dir": str(tmp_path),
+                                  "recompute_qed_corrections": True}))
+
+    # Sample across the BBN-relevant range. Below ~m_e/50 both are identically
+    # zero (the x > 50 cutoff in _I01/_I2m1), so relative comparison there is
+    # meaningless; start above it.
+    T_grid = np.logspace(np.log10(0.03), np.log10(30.), 200)
+    for name in ("PQEDofT", "dPQEDdT", "d2PQEDdT2"):
+        a = np.array([float(getattr(p_file, name)(T)) for T in T_grid])
+        b = np.array([float(getattr(p_calc, name)(T)) for T in T_grid])
+        np.testing.assert_allclose(
+            a, b, rtol=2e-5,
+            err_msg=f"{name}: file-loaded and analytically computed QED "
+                    f"tables disagree by more than the files' 6-significant-"
+                    f"digit write precision; the two Plasma._load_tables paths "
+                    f"have drifted apart again")
