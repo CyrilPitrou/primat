@@ -74,7 +74,7 @@ import re
 import sys
 
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.interpolate import PchipInterpolator, interp1d
 
 # Make the script self-contained when run as `python generate_rates/convert_ac2024_rates.py`
 # from the repo root: put both this script's directory (for the sibling
@@ -313,10 +313,13 @@ def parse_blocks(path):
 def interp_loglog(x_src, y_src, x_dst, kind="cubic"):
     """Interpolate y(x) on the target grid in log-log space.
 
-    Reaction rates and their (multiplicative) errors are smooth and positive in
-    log-log, so this is the physically appropriate scheme; it reproduces the
-    existing key-reaction tables to a few parts in 1e5.  Falls back to linear
-    interpolation of y vs log10(x) if any value is non-positive.
+    Reaction rates are smooth and positive in log-log, so this is the
+    physically appropriate scheme; it reproduces the existing key-reaction
+    tables to a few parts in 1e5.  Falls back to linear interpolation of y vs
+    log10(x) if any value is non-positive.
+
+    Use :func:`interp_loglog_monotone` instead for the *uncertainty* column,
+    which is not smooth (see that function).
     """
     lx_src, lx_dst = np.log10(x_src), np.log10(x_dst)
     if np.all(y_src > 0):
@@ -328,14 +331,69 @@ def interp_loglog(x_src, y_src, x_dst, kind="cubic"):
     return f(lx_dst)
 
 
+def interp_loglog_monotone(x_src, y_src, x_dst):
+    """Shape-preserving log-log interpolation, for the uncertainty column.
+
+    The third column of ``BBNRatesAC2024.dat`` is ``exp(sigma) =
+    sqrt(sv_high/sv_low)`` (see that file's header), a one-sided multiplicative
+    1-sigma factor: the rate's band is ``[rate/f, rate*f]``, so ``f >= 1``
+    always, and the source data respects that everywhere (verified: zero rows
+    below 1 across all 337 blocks).
+
+    That column is *not* smooth, though.  It is flat at exactly 1.0 across the
+    rows where the source rate is the ``0.999E-99`` "effectively zero" sentinel
+    (see the 22/11/2017 note in the .dat header, which introduced it for o17ag,
+    o17an, f19pg and f19pa), then steps up sharply where real data resumes --
+    reaching f ~ 27 for O17_a__Ne20_n.  A **cubic** through such a step rings
+    Runge-style around it, and the undershoot dips *below* 1: resampling with
+    :func:`interp_loglog` put 38 of the shipped tables' error columns under 1,
+    the worst at 0.649.
+
+    That inverts the meaning of the variation knob for those reactions --
+    ``NetworkDefinition.apply_variations`` computes ``exp(p * log(f))``, so
+    ``f < 1`` makes a positive ``p`` *lower* the rate while it raises the other
+    ~390.  A monotone (PCHIP) interpolant cannot overshoot its data by
+    construction, so it removes the ringing at the source rather than clamping
+    the one visually obvious half of it (the overshoot *above* 1 is just as
+    spurious as the dip below).
+
+    Args:
+        x_src: 1-D array, source T9 values [GK], strictly increasing.
+        y_src: 1-D array, uncertainty factors on x_src (same length, all > 0).
+        x_dst: 1-D array, target T9 grid [GK].
+
+    Returns:
+        1-D array of uncertainty factors on x_dst, never overshooting the
+        source data's own range.
+
+    Example:
+        >>> import numpy as np
+        >>> t = np.array([0.01, 0.02, 0.04, 0.08])
+        >>> f = np.array([1.0, 1.0, 5.0, 8.0])       # a flat run, then a step
+        >>> out = interp_loglog_monotone(t, f, np.logspace(-2, -1.1, 20))
+        >>> bool((out >= 1.0).all())                  # cubic would dip below 1
+        True
+    """
+    if not np.all(y_src > 0):
+        # No log to take; a monotone scheme still applies in linear y.
+        return PchipInterpolator(np.log10(x_src), y_src,
+                                  extrapolate=True)(np.log10(x_dst))
+    f = PchipInterpolator(np.log10(x_src), np.log10(y_src), extrapolate=True)
+    return 10.0 ** f(np.log10(x_dst))
+
+
 def write_reaction_file(block, grid, outdir, suffix=""):
     """Write one reaction's rate table to a .txt file.
 
     Args:
         block  : reaction dict from parse_blocks (keys: T9, rate, error, name, …).
         grid   : 1-D T9 array to write.  When equal to block["T9"] (i.e. with
-                 --keep-source-grid) the rates are written directly without
-                 reinterpolation; otherwise log-log cubic interpolation is applied.
+                 --keep-source-grid) the columns are written directly without
+                 reinterpolation; otherwise the rate is resampled with log-log
+                 cubic interpolation and the uncertainty factor with a
+                 shape-preserving (monotone) one -- see
+                 :func:`interp_loglog_monotone` for why the two columns need
+                 different schemes.
         outdir : directory containing one subfolder per reaction.
         suffix : appended to the reaction name before ".txt" (alternate-source
                  variants land as a sibling file inside the same per-reaction
@@ -349,7 +407,10 @@ def write_reaction_file(block, grid, outdir, suffix=""):
         err  = block["error"]
     else:
         rate = interp_loglog(block["T9"], block["rate"], grid)
-        err  = interp_loglog(block["T9"], block["error"], grid)
+        # The uncertainty factor is one-sided (f >= 1) and steps sharply out of
+        # its flat f = 1 runs, so a cubic rings below 1 there; PCHIP cannot
+        # overshoot its data.  See interp_loglog_monotone.
+        err  = interp_loglog_monotone(block["T9"], block["error"], grid)
     header = (
         f"{' + '.join(block['reactants'])} > {' + '.join(block['products'])}"
         f"   [{block['name']}]   ref={expand_ref(block['ref'])}\n"

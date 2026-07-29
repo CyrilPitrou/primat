@@ -328,6 +328,16 @@ class NuclearNetwork:
         # Saha (NSE) seed for all MT species except n and p, which come from
         # the HT solution.  The MT network's species list is determined by the
         # NetworkDefinition, so this loop is independent of the network size.
+        #
+        # The seed is *added on top of* the HT solution's Yn + Yp = 1 rather
+        # than renormalised, so the baryon budget sum_s A_s Y_s steps up by
+        # sum_{A>=2} A_s Y_s^Saha(T_weak) at this handoff.  At T_weak = 1 MeV
+        # every composite is still far below its BBN abundance, so the step is
+        # ~1.6e-12 (measured end-to-end on `large`, amax=8: 1.0 at the start of
+        # HT, 1.000000000001649 at the end of LT) -- ten orders of magnitude
+        # below the last digit any observable is reported to.  Renormalising
+        # here would perturb every reference number for no physical gain, so
+        # the excess is documented rather than removed.
         mt_species = nucl._mt_net.species   # e.g. 8 for small, 12 for large/amax=8
         mt_saha = {"n": Yn_HT_f, "p": Yp_HT_f}
         for s in mt_species:
@@ -564,7 +574,7 @@ class NuclearNetwork:
             self._write_final_result()
 
         # ------------------------------------------------------------------
-        # Decay Time (DT) era (optional, large network only)
+        # Decay Time (DT) era (optional; needs a network carrying decays)
         # ------------------------------------------------------------------
         # After BBN ends at t_end, long-lived radioactive isotopes (C14, Be10,
         # Na22, …) continue to decay on timescales of years to millions of
@@ -574,7 +584,15 @@ class NuclearNetwork:
         #   Y(t) = exp(D × Δt) × Y(t_end)
         # where D is the (constant) decay-rate matrix assembled from the decay
         # reactions in the LT network (see _build_decay_matrix).
-        if cfg.decay_era and cfg.is_large:
+        #
+        # Gated on the network *actually carrying* a decay reaction, not on the
+        # literal name "large" (cfg.is_large).  Name-keying was the same trap
+        # the LT atol above was de-named to escape: a large-equivalent network
+        # reproduced under a renamed user_nuclear_dir overlay carries exactly
+        # the same decays.txt reactions, yet silently got no DT era at all.
+        # weak_indices holds the n__p entry (index 0) plus every decay, so
+        # "more than just n__p" is precisely "this network has decays".
+        if cfg.decay_era and len(nucl._lt_net.weak_indices) > 1:
             Y0_DT = np.array([self.Y_final.get(s, 0.0) for s in self.abundance_names])
             D = self._build_decay_matrix(nucl._lt_net)
             t_decay_end = cfg.t_decay_end
@@ -825,21 +843,33 @@ class NuclearNetwork:
 
         In the DT era all thermonuclear reactions are frozen (T is too low for
         any thermal activation), so only radioactive decays remain.  The
-        abundance vector Y (mass fractions Y_s = A_s n_s / n_B) evolves as:
+        abundance vector Y evolves as:
 
             dY/dt = D · Y
 
         where D is a constant N×N matrix (N = number of nuclides in the LT
-        network).  Each decay reaction ``X → Y + (Z) + B±`` contributes:
+        network).  Each decay reaction ``X → P1 + P2 + ... + B±`` contributes:
 
-            D[X_idx, X_idx] -= rate_X         (loss term for the parent X)
-            D[s_idx, X_idx] += rate_X × A_s / A_X  for each stable product s
-                                                    (gain term, mass-fraction
-                                                    weighted by A_s / A_X)
+            D[X_idx, X_idx] -= rate_X × mult_X        (loss term for parent X)
+            D[P_idx, X_idx] += rate_X × mult_P        (gain term per product P)
 
-        The factor A_s / A_X converts the number-fraction decay flux into a
-        mass-fraction flux: if X decays to Y with rate λ, then
-        dY_Y/dt = λ × (A_Y / A_X) × Y_X (mass-fraction balance).
+        **Convention (important).**  ``Y`` is the *number* abundance per baryon,
+        ``Y_s = n_s / n_B``, normalised so that ``Σ_s A_s Y_s = 1`` — it is
+        **not** a mass fraction, despite the loose "mass fraction" wording used
+        elsewhere in this file.  That is the convention the LT/MT right-hand
+        side itself uses: ``network_builder._rhs_kernel`` applies the bare
+        integer stoichiometry ``af_co = c_prod − c_react`` with no mass
+        weighting, and ``network_builder.check_conservation`` verifies exactly
+        ``Σ_s A_s ΔY_s = 0``.
+
+        The gain term is therefore the bare multiplicity ``mult_P``, with **no**
+        ``A_P / A_X`` factor.  A previous version carried such a factor (on the
+        mistaken premise that Y was a mass fraction) *in addition to* ``mult_P``,
+        which broke baryon conservation for every decay whose products differ in
+        mass number from the parent: ``Li8 → α + α`` produced ``+λ`` of He4
+        instead of ``+2λ``, i.e. half the alphas, and ``C9 → α + α + p`` lost 4/9
+        of the baryon number.  The 33 ordinary β decays (``A_P = A_X``, e.g.
+        ``C14 → N14``) were unaffected, which is why the error went unnoticed.
 
         Photons and leptons (Bm/Bp) are excluded from the ODE state vector; only
         nuclear species (those in ``net.species``) appear in D.
@@ -861,25 +891,34 @@ class NuclearNetwork:
         -------
         D : np.ndarray, shape (N, N)
             Decay-rate matrix in [s^-1].  Off-diagonal entries are ≥ 0;
-            diagonal entries are ≤ 0 (D is a generator matrix for a Markov
-            chain, i.e. column sums are approximately 0 by mass-fraction
-            conservation — approximately because small fractions go to photons
-            and leptons).
+            diagonal entries are ≤ 0.
 
         Notes
         -----
-        Mass-fraction conservation: Σ_s A_s D_{s,X} = 0 for each parent X.
-        Checking this is a useful consistency test (verified in the
-        implementation by the mass-action stoichiometry).
+        Baryon-number conservation: ``Σ_s A_s D[s, X] = 0`` for every parent
+        column X.  This holds *exactly* (not approximately): the emitted
+        leptons and photons carry A = 0, so they remove no baryon number, and
+        every decay in ``decays.txt`` balances A between its parent and its
+        nuclear products.  ``tests/test_nuclear.py`` pins it for the whole
+        ``large`` network — it is the check that would have caught the
+        ``A_P/A_X`` bug described above.
 
         Example
         -------
-        For a single decay C14 → N14 + Bm with rate λ (and A_C14 = A_N14 = 14):
+        ``C14 → N14 + Bm`` with rate λ (a mass-preserving β decay):
 
             D[C14, C14] = -λ      (C14 is lost)
-            D[N14, C14] = +λ × 14/14 = +λ    (N14 is gained)
+            D[N14, C14] = +λ      (N14 is gained)
 
-        The sum Σ_s A_s D_{s,C14} = 14×λ + 14×(-λ) = 0 ✓ (mass conserved).
+        ``Σ_s A_s D[s, C14] = 14×(-λ) + 14×(+λ) = 0`` ✓
+
+        ``Li8 → α + α + Bm``, where the multiplicity — not any mass ratio — is
+        what closes the budget:
+
+            D[Li8,  Li8] = -λ     (one Li8 lost)
+            D[He4,  Li8] = +2λ    (two alphas gained: mult_P = 2)
+
+        ``Σ_s A_s D[s, Li8] = 8×(-λ) + 4×(+2λ) = 0`` ✓
         """
         N = len(net.species)
         D = np.zeros((N, N))
@@ -887,8 +926,6 @@ class NuclearNetwork:
         # The rate tables (_fwd_median) are indexed without the n__p slot:
         # names[0] = "n__p", names[1:] = thermonuclear reactions.
         # _fwd_median[i] corresponds to names[i+1], so we need offset by 1.
-        # Mass numbers A_s for each species:
-        A_s = (net.N + net.Z).astype(float)   # shape (N,)
 
         for rxn_idx in net.weak_indices:
             if rxn_idx == 0:
@@ -909,15 +946,15 @@ class NuclearNetwork:
             for X_idx, X_mult in react.items():
                 # Loss term for the parent X
                 D[X_idx, X_idx] -= rate * X_mult
-                A_X = A_s[X_idx]
 
                 # Gain terms for nuclear products (the lepton Bm/Bp and photons
                 # are excluded from the ODE state and are already absent from
-                # net.network's index-based stoichiometry).
+                # net.network's index-based stoichiometry).  Y is the number
+                # abundance per baryon, so the gain is the bare multiplicity:
+                # dY_P/dt = rate × mult_P × Y_X, with no A_P/A_X weighting (see
+                # the "Convention" paragraph in this method's docstring).
                 for P_idx, P_mult in prod.items():
-                    A_P = A_s[P_idx]
-                    # Mass-fraction gain: dY_P/dt = rate × P_mult × A_P/A_X × Y_X
-                    D[P_idx, X_idx] += rate * P_mult * A_P / A_X
+                    D[P_idx, X_idx] += rate * P_mult
 
         # ------------------------------------------------------------------
         # Free-neutron β decay  n → p + e⁻ + ν̄
@@ -929,8 +966,8 @@ class NuclearNetwork:
         # (τ_n = cfg.tau_n, the neutron lifetime).  Without this term the
         # residual free neutrons surviving at t_end (Y_n ~ 4×10⁻¹⁶) would be
         # frozen for all of cosmic time instead of decaying to protons within
-        # ~minutes; including it lets the DT era track n correctly.  A_n = A_p
-        # = 1, so the mass-fraction gain factor A_p/A_n is unity.
+        # ~minutes; including it lets the DT era track n correctly.  One
+        # neutron makes one proton, so the gain is a bare +lam_n.
         if "n" in net.species and "p" in net.species:
             n_idx = list(net.species).index("n")
             p_idx = list(net.species).index("p")

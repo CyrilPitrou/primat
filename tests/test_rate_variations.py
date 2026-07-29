@@ -85,6 +85,78 @@ def test_mc_large_network():
     assert mc["B10"].std > 0, "B10 should have non-zero uncertainty in large network"
 
 
+# ---------------------------------------------------------------------------
+# Derived state that must be refreshed alongside the forward-rate table
+#
+# GOAL: pin that ``NetworkDefinition.apply_variations`` updates *everything*
+# that depends on the active forward rates, not just ``_fwd`` itself.  Two
+# pieces of derived state were previously left stale, so a variation was only
+# half-applied -- silently, with no error and plausible-looking numbers.
+# ---------------------------------------------------------------------------
+def test_apply_variations_invalidates_fill_buffer_cache():
+    """``fill_buffer`` memoises on ``(T_t, clamp)`` only, so it cannot see that
+    the rate table changed underneath it.  ``apply_variations`` must drop that
+    one-slot cache.
+
+    Regression guard: without the invalidation, the first ``fill_buffer`` call
+    after a variation returned the *previous* solve's rates whenever it landed
+    on a bit-identical temperature -- the exact situation an MC loop reusing one
+    ``UpdateNuclearRates`` across samples creates.  The C backend has always
+    done this (``cpr_network_apply_variations``'s ``net->cache_valid = 0``), so
+    this is also a backend-parity guard.
+    """
+    from primat.config import PRIMATConfig
+    from primat.network_data import load_network
+
+    cfg = PRIMATConfig({"network": "small", "verbose": False})
+    net = load_network(cfg, era="LT")
+    frwrd, bkwrd = (lambda T: 1.0), (lambda T: 2.0)
+
+    T = 1.0e9
+    before = net.fill_buffer(T, frwrd, bkwrd, clamp=True).copy()
+    cfg.delta_n_p__d_g = 1.0                      # +100% on the forward rate
+    net.apply_variations(cfg)
+    after = net.fill_buffer(T, frwrd, bkwrd, clamp=True).copy()
+
+    # r[2] is n_p__d_g's forward slot (r[0]/r[1] are the weak n<->p rates).
+    assert after[2] == pytest.approx(2.0 * before[2], rel=1e-12), (
+        "fill_buffer returned a stale rate after apply_variations")
+
+
+def test_apply_variations_rescales_the_reverse_rate_cap():
+    """The reverse-rate cap is ``bwd(T_nucl)``, hence proportional to the
+    forward rate: it must scale with the variation, not stay at the median.
+
+    Regression guard: ``_bwd_cap`` was computed once in ``load_network`` from
+    the *median* table and never rebuilt.  Wherever the clamp binds, a varied
+    reverse rate was therefore clamped back to its unvaried value -- breaking
+    detailed balance by exactly the variation factor, in the one code path
+    (MC uncertainty propagation) whose whole purpose is varying rates.
+
+    ``B10_p__a_a_He3`` is one of only two reactions in the full ``large``
+    network whose clamp actually binds inside the LT temperature range, which
+    is what makes it the sharp test case.
+    """
+    from primat.config import PRIMATConfig
+    from primat.network_data import load_network
+
+    cfg = PRIMATConfig({"network": "large", "verbose": False})
+    net = load_network(cfg, era="LT")
+    i = net.names.index("B10_p__a_a_He3") - 1     # -1: names[0] is the weak n__p
+    cap_median = float(net._bwd_cap[i])
+    assert cap_median > 0.0
+
+    cfg.delta_B10_p__a_a_He3 = 0.5                # +50% on the forward rate
+    net.apply_variations(cfg)
+    assert net._bwd_cap[i] == pytest.approx(1.5 * cap_median, rel=1e-12)
+
+    # Restoring the baseline must restore the cap exactly, so repeated MC
+    # samples do not drift.
+    cfg.delta_B10_p__a_a_He3 = 0.0
+    net.apply_variations(cfg)
+    assert net._bwd_cap[i] == pytest.approx(cap_median, rel=1e-12)
+
+
 if __name__ == "__main__":
     test_solve_variation()
     test_mc_large_network()

@@ -238,3 +238,73 @@ def test_detailed_balance_formula_consistency():
             assert abs(alpha - ref_alpha) / abs(ref_alpha) < 0.01
         if ref_gamma:
             assert abs(gamma - ref_gamma) / abs(ref_gamma) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# Uncertainty column: one-sided multiplicative factor
+#
+# GOAL: pin that every shipped table's third column is a factor f >= 1, so
+# that ``p_<rxn>`` means the same thing for every reaction.
+#
+# ``NetworkDefinition.apply_variations`` forms ``exp(p * log(f))``, so an
+# ``f < 1`` silently flips the *direction* of the variation: a deterministic
+# ``p = +1`` sweep would raise ~390 rates and lower the handful with f < 1.
+#
+# Regression guard: the source data (BBNRatesAC2024.dat, whose header defines
+# the column as ``exp(sigma) = sqrt(sv_high/sv_low)``) is clean -- zero rows
+# below 1 across all 337 blocks.  The sub-1 values were manufactured by the
+# converter, which resampled that column with a log-log *cubic*.  The column
+# is flat at exactly 1.0 wherever the rate is the ``0.999E-99`` sentinel and
+# then steps up sharply (to f ~ 27 for O17_a__Ne20_n); a cubic rings around
+# such a step and its undershoot crossed below 1 in 38 tables, worst 0.649.
+# The converter now uses a shape-preserving (PCHIP) interpolant there, which
+# cannot overshoot its data.
+# ---------------------------------------------------------------------------
+def test_shipped_uncertainty_columns_are_at_least_one():
+    """Every primat-generated rate table has ``f >= 1`` at every T9.
+
+    The Parthenope-sourced tables are excluded: they come from a different
+    generator (see CLAUDE.md's rate-table provenance), so their uncertainty
+    column is not this converter's to guarantee.
+    """
+    import glob
+    import os
+
+    import numpy as np
+
+    offenders = []
+    for path in sorted(glob.glob(
+            os.path.join(os.path.dirname(__file__), os.pardir, "primat", "data",
+                         "nuclear", "tables", "*", "*_primat.txt"))):
+        col = np.loadtxt(path, unpack=True)
+        if col.shape[0] < 3:
+            continue
+        if col[2].min() < 1.0:
+            offenders.append((os.path.basename(path), float(col[2].min())))
+    assert not offenders, (
+        "rate tables whose uncertainty factor dips below 1 (this inverts the "
+        f"sign of their p_<rxn> variation): {offenders[:5]}")
+
+
+def test_monotone_interpolant_does_not_ring_below_a_flat_run():
+    """A flat ``f = 1`` run followed by a step must not undershoot.
+
+    This is the exact shape the ``0.999E-99`` sentinel rows produce, reduced to
+    its essentials: a cubic through it dips below 1 between the knots, a
+    shape-preserving interpolant cannot.
+    """
+    import numpy as np
+
+    from generate_rates.convert_ac2024_rates import (
+        interp_loglog, interp_loglog_monotone)
+
+    T9 = np.array([0.01, 0.02, 0.04, 0.08, 0.16, 0.32])
+    f = np.array([1.0, 1.0, 1.0, 12.0, 20.0, 27.0])
+    dense = np.logspace(np.log10(T9[0]), np.log10(T9[-1]), 500)
+
+    # The scheme that caused the bug does undershoot here ...
+    assert interp_loglog(T9, f, dense).min() < 1.0
+    # ... and the one now used does not, while still honouring the knots.
+    got = interp_loglog_monotone(T9, f, dense)
+    assert got.min() >= 1.0
+    assert np.allclose(interp_loglog_monotone(T9, f, T9), f, rtol=1e-12)

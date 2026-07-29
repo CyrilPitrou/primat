@@ -117,3 +117,167 @@ def test_small_network_reports_exactly_its_eight_nuclides():
     # None of the four SPECIES_MD-only extras should appear.
     for phantom in ("He6", "Li8", "Li6", "B8"):
         assert phantom not in pr.nuclear.Y_final
+
+
+# ---------------------------------------------------------------------------
+# DT-era decay matrix: baryon-number conservation
+#
+# GOAL: pin the convention that ``Y`` is the *number* abundance per baryon
+# (``Y_s = n_s/n_B``, ``sum_s A_s Y_s = 1``), which is what the LT/MT
+# right-hand side uses, and which fixes the form of the DT-era decay matrix:
+# each decay's product gain is the bare stoichiometric multiplicity, with no
+# ``A_P/A_X`` mass weighting.
+#
+# Regression guard: ``_build_decay_matrix`` used to multiply the gain term by
+# ``A_P/A_X`` *in addition to* the multiplicity, on the mistaken premise that
+# Y was a mass fraction.  That silently destroyed baryon number for every
+# decay whose products differ in mass number from the parent -- ``Li8 -> a+a``
+# produced one alpha instead of two, ``C9 -> a+a+p`` lost 4/9 of the baryons.
+# The 33 ordinary beta decays have ``A_P == A_X``, so they were unaffected and
+# the error went unnoticed.  The column-sum identity below is exactly the
+# check that catches it.
+# ---------------------------------------------------------------------------
+def _decay_matrix(network="large", amax=None):
+    """Build the DT-era decay matrix without running a full BBN solve."""
+    import numpy as np
+    from primat.network_data import UpdateNuclearRates
+    from primat.nuclear_network import NuclearNetwork
+
+    cfg = PRIMATConfig({"network": network, "amax": amax, "verbose": False})
+    nucl = UpdateNuclearRates(cfg)
+    nn = NuclearNetwork.__new__(NuclearNetwork)   # only cfg is needed
+    nn.cfg = cfg
+    net = nucl._lt_net
+    D = NuclearNetwork._build_decay_matrix(nn, net)
+    A = (net.N + net.Z).astype(float)
+    return net, np.asarray(A), D
+
+
+def test_decay_matrix_conserves_baryon_number():
+    """Every parent column of D must satisfy ``sum_s A_s D[s, X] = 0``.
+
+    Leptons (Bm/Bp) and photons carry A = 0, so they remove no baryon number,
+    and every decays.txt reaction balances A between parent and products.  The
+    identity is therefore exact, not approximate.
+    """
+    import numpy as np
+
+    net, A, D = _decay_matrix()
+    colsum = A @ D
+    # Scale the tolerance by each column's own decay rate, so a fast decay
+    # (rate ~ 70 s^-1) is not held to the same absolute bound as a slow one.
+    scale = np.maximum(np.abs(np.diag(D)), 1.0)
+    worst = int(np.argmax(np.abs(colsum) / scale))
+    assert np.allclose(colsum, 0.0, atol=1e-9 * scale, rtol=0), (
+        f"baryon number not conserved in column {net.species[worst]!r}: "
+        f"sum_s A_s D[s,X] = {colsum[worst]:.6e} (diagonal {D[worst, worst]:.6e})")
+
+
+def test_decay_matrix_multi_fragment_decay_yields_both_alphas():
+    """``Li8 -> a + a + Bm`` must put *two* alphas into the He4 row.
+
+    This is the decay the ``A_P/A_X`` bug halved (``A_He4/A_Li8 = 4/8``
+    exactly cancelled the multiplicity 2), so it is the sharpest single-number
+    guard available.  ``B8 -> a + a + Bp`` is the mirror case.
+    """
+    net, A, D = _decay_matrix()
+    for parent in ("Li8", "B8"):
+        X = net.species.index(parent)
+        P = net.species.index("He4")
+        lam = -D[X, X]                       # the parent's own loss rate
+        assert lam > 0.0, f"{parent} has no decay rate"
+        assert D[P, X] == pytest.approx(2.0 * lam, rel=1e-12), (
+            f"{parent} -> a + a should give D[He4,{parent}] = 2*lambda")
+
+
+def test_decay_matrix_beta_decay_is_one_to_one():
+    """A mass-preserving beta decay (``C14 -> N14``) gives a unit gain.
+
+    The complement of the test above: where ``A_P == A_X`` the old and new
+    formulas agree, so this pins that the fix did not disturb the 33 ordinary
+    beta decays.
+    """
+    net, A, D = _decay_matrix()
+    X = net.species.index("C14")
+    P = net.species.index("N14")
+    lam = -D[X, X]
+    assert D[P, X] == pytest.approx(lam, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Network-list parsing and rate-table resampling
+#
+# GOAL: two silent-corruption paths in load_network's front end -- a repeated
+# reaction being integrated twice, and a user-supplied rate table narrower than
+# the master grid being extrapolated without bound.
+# ---------------------------------------------------------------------------
+def test_duplicate_entry_detected_across_alternate_table_suffix():
+    """A repeat differing only in its ``", filename"`` column is still a repeat.
+
+    Regression guard: the duplicate check used to compare *raw entries*, so
+    ``"n_p__d_g"`` alongside ``"n_p__d_g, n_p__d_g_primat.txt"`` slipped
+    through and the reaction was compiled as two identical rows -- doubling its
+    flux, with no warning.  The C backend has always keyed this check on the
+    bare name (``cpr_load_network_list``), so this is a parity guard too.
+    """
+    cfg = PRIMATConfig({"network": "small", "verbose": False})
+    with pytest.raises(ValueError, match="n_p__d_g.*already present"):
+        load_network(cfg, era="LT",
+                      reaction_names=["n_p__d_g",
+                                      "n_p__d_g, n_p__d_g_primat.txt",
+                                      "d_p__He3_g"])
+
+
+def test_shipped_tables_resample_to_an_exact_identity():
+    """A table already on the master grid must come back byte-identical.
+
+    This is the fast path every shipped table takes; it is what keeps the two
+    backends bit-for-bit equal on rate loading, so it must not regress when the
+    out-of-range branches change.
+    """
+    import numpy as np
+    from primat.network_data import _resample_rate_table
+
+    grid = np.logspace(-3, 1, 1000)
+    rate = np.exp(-1.0 / grid)                    # any smooth positive function
+    out = _resample_rate_table(grid, rate, grid, label="test")
+    assert np.array_equal(out, rate)
+
+
+def test_short_rate_table_extrapolates_by_end_slope_and_warns():
+    """A table narrower than the master grid warns, and stays bounded.
+
+    Regression guard: out-of-range points used to be produced by evaluating the
+    **cubic** spline outside its data, which is unbounded -- the case below
+    came out a factor 3.2 low at the bottom of the grid, silently.  Continuing
+    the table's end slope in log-log keeps the error to tens of percent and the
+    warning makes it visible.
+    """
+    import numpy as np
+    from primat.network_data import _resample_rate_table
+
+    # A pure power law in log-log: the end slope is the exact continuation, so
+    # any departure from it is the interpolator's own doing.
+    grid = np.logspace(-3, 1, 200)
+    T9_src = np.logspace(np.log10(0.05), np.log10(5.0), 100)
+    out = pytest.warns(UserWarning, match=r"extrapolated by continuing")
+    with out:
+        got = _resample_rate_table(T9_src, T9_src ** 2.5, grid, label="x_y__z_g")
+
+    # Exact for a power law, everywhere including the extrapolated ends.
+    assert np.allclose(got, grid ** 2.5, rtol=1e-8)
+    # And bounded: no runaway at either edge.
+    assert np.isfinite(got).all() and (got > 0).all()
+
+
+def test_full_coverage_rate_table_does_not_warn():
+    """A table spanning the whole master grid must resample silently."""
+    import numpy as np
+    import warnings as _warnings
+    from primat.network_data import _resample_rate_table
+
+    grid = np.logspace(-3, 1, 200)
+    T9_src = np.logspace(-3, 1, 137)             # different npts, same span
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")           # any warning fails the test
+        _resample_rate_table(T9_src, T9_src ** 2.5, grid, label="x_y__z_g")

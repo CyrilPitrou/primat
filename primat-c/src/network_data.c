@@ -1291,6 +1291,21 @@ void cpr_network_apply_variations(CPRNetworkDef *net, const CPRConfig *cfg)
             }
         }
     }
+    /* Rebuild the reverse-rate cap from the now-active forward rates. The cap
+     * is bwd(T_nucl) = alpha T9c^beta exp(gamma/T9c) x fwd(T_nucl), so it is
+     * proportional to the forward rate and must track the variation just
+     * applied -- leaving it at the median value would clamp a varied reverse
+     * rate back to the unvaried one wherever the cap binds, breaking detailed
+     * balance by exactly the variation factor. Kept in lockstep with
+     * NetworkDefinition.apply_variations. */
+    for (size_t i = 1; i < net->n_reac; i++) {
+        size_t row = i - 1;
+        net->bwd_cap[row] = reverse_rate_cap_one(net->grid, n_grid,
+                                                   net->abg[row * 3],
+                                                   net->abg[row * 3 + 1],
+                                                   net->abg[row * 3 + 2],
+                                                   &net->fwd[row * n_grid], cfg);
+    }
     net->cache_valid = 0; /* the active fwd table changed underneath any cached buf */
 }
 

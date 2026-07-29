@@ -149,13 +149,27 @@ except Exception:                                       # numba absent/broken
     pass
 
 
-def _resample_rate_table(T9_src, rate_src, T9_dst):
+def _resample_rate_table(T9_src, rate_src, T9_dst, label=None):
     """Resample a rate table from its source T9 grid to the master T9 grid.
 
-    Uses log-log cubic interpolation (rates are smooth positive functions of T9
-    in log-log space; this reproduces the existing tables to a few parts in 1e5).
-    Falls back to semi-log (log T9, linear rate) when any rate value is
-    non-positive (e.g. error columns that may contain zeros).
+    *Inside* the source table's own T9 span, uses log-log cubic interpolation
+    (rates are smooth positive functions of T9 in log-log space; this reproduces
+    the existing tables to a few parts in 1e5).  Falls back to semi-log
+    (log T9, linear rate) when any rate value is non-positive (e.g. error
+    columns that may contain zeros), or when the table has fewer than the four
+    points a cubic needs.
+
+    *Outside* that span the value is obtained by *linear* extrapolation in
+    log-log, i.e. by continuing the table's own end slope, and a
+    :class:`UserWarning` is raised naming the reaction and both spans.  This
+    matters only for user-supplied tables: the shipped ones cover the whole
+    master grid and take the exact-identity fast path below.  An earlier version
+    extrapolated with the **cubic** spline (``fill_value="extrapolate"``), which
+    is unbounded — a table truncated to T9 ∈ [0.05, 5] resampled onto the
+    default [1e-3, 10] grid came out a factor 3.2 low at the bottom end, and a
+    cubic can equally diverge upward, silently either way.  Continuing the end
+    slope is the tamest defensible choice and keeps a partial upload usable;
+    the warning is what makes the extrapolation visible.
 
     The master grid is built from cfg.rate_grid_{npts,T9_min,T9_max} in
     load_network.  This makes load_network grid-agnostic: tables generated with
@@ -164,12 +178,21 @@ def _resample_rate_table(T9_src, rate_src, T9_dst):
     fill_buffer's single searchsorted path remains valid.
 
     Args:
-        T9_src  : 1-D float array, source T9 values [GK].
+        T9_src  : 1-D float array, source T9 values [GK], strictly increasing.
         rate_src: 1-D float array, rate values on T9_src (same length).
         T9_dst  : 1-D float array, master T9 grid [GK].
+        label   : str or None, the reaction name used in the out-of-range
+            warning (omitted from the message when None).
 
     Returns:
         1-D float array of rate values resampled onto T9_dst.
+
+    Example:
+        >>> import numpy as np
+        >>> T9 = np.logspace(-3, 1, 200)
+        >>> out = _resample_rate_table(T9, T9 ** 2, np.logspace(-3, 1, 50))
+        >>> out.shape
+        (50,)
     """
     # Fast path: the shipped tables are written *already on the master grid*
     # (convert_ac2024_rates.py / parthenope postprocess.py both target
@@ -185,13 +208,43 @@ def _resample_rate_table(T9_src, rate_src, T9_dst):
     if T9_src.shape == T9_dst.shape and np.all(
             np.abs(np.asarray(T9_src) / np.asarray(T9_dst) - 1.0) < 1.0e-6):
         return np.array(rate_src, dtype=float)
+
     lx_src, lx_dst = np.log10(T9_src), np.log10(T9_dst)
-    if np.all(rate_src > 0):
-        f = interp1d(lx_src, np.log10(rate_src), kind="cubic",
-                     bounds_error=False, fill_value="extrapolate")
-        return 10.0 ** f(lx_dst)
-    # Non-positive values (e.g. error column): fall back to linear interpolation
-    # of rate vs log10(T9) to avoid taking log of zero.
+
+    # Warn once per table if the master grid reaches outside the source span:
+    # everything there is extrapolated, not interpolated, and the caller (a
+    # user-supplied table -- the shipped ones never get here) should know.
+    below, above = lx_dst < lx_src[0], lx_dst > lx_src[-1]
+    if below.any() or above.any():
+        who = f"rate table for {label!r}" if label else "rate table"
+        warnings.warn(
+            f"{who}: covers T9 in [{T9_src[0]:.4g}, {T9_src[-1]:.4g}] GK but "
+            f"the master grid spans [{T9_dst[0]:.4g}, {T9_dst[-1]:.4g}] GK; "
+            f"{int(below.sum() + above.sum())} of {lx_dst.size} grid points are "
+            f"extrapolated by continuing the table's end slope in log-log. "
+            f"Supply a table covering the full grid to avoid this.",
+            stacklevel=2,
+        )
+
+    # A cubic needs four points; below that (and for non-positive values) fall
+    # back to the linear branch rather than letting scipy raise.
+    if np.all(rate_src > 0) and lx_src.size >= 4:
+        ly = np.log10(rate_src)
+        # NaN outside the source span, so the two edge branches below own those
+        # points outright rather than inheriting the spline's own extrapolation.
+        f = interp1d(lx_src, ly, kind="cubic",
+                     bounds_error=False, fill_value=np.nan)
+        out = f(lx_dst)
+        if below.any():          # continue the first cell's slope downward
+            slope = (ly[1] - ly[0]) / (lx_src[1] - lx_src[0])
+            out[below] = ly[0] + slope * (lx_dst[below] - lx_src[0])
+        if above.any():          # continue the last cell's slope upward
+            slope = (ly[-1] - ly[-2]) / (lx_src[-1] - lx_src[-2])
+            out[above] = ly[-1] + slope * (lx_dst[above] - lx_src[-1])
+        return 10.0 ** out
+    # Non-positive values (e.g. an error column containing zeros): linear in
+    # (log10 T9, rate) to avoid taking log of zero.  scipy's own "extrapolate"
+    # is already just the end slope here, so it needs no special casing.
     f = interp1d(lx_src, rate_src, kind="linear",
                  bounds_error=False, fill_value="extrapolate")
     return f(lx_dst)
@@ -214,8 +267,16 @@ _RATE_SYNTAX_ = "spaced"
 
 # The two literal forms of the weak n -> p conversion name, accepted
 # interchangeably wherever a reaction name is parsed (e.g. by
-# reaction_stoichiometry, to_filename, load_network).
-_WEAK_NTOP_NAMES = ("n__p", "n__p")
+# reaction_stoichiometry, to_filename, load_network): the spaced "n__p" and
+# the legacy compact "nTOp".
+#
+# Both entries must stay distinct.  A past compact->spaced rename collapsed
+# this tuple to ("n__p", "n__p"), which silently dropped compact support for
+# the *weak* name only: "nTOp" then missed this special case in
+# reaction_stoichiometry and fell through to the auto-derivation branch, which
+# raises "does not conserve baryon number / charge" -- because the emitted
+# electron is not part of the name.  A confusing error for a documented input.
+_WEAK_NTOP_NAMES = ("n__p", "nTOp")
 
 # MT-era reaction order.  MT always integrates the intersection of the selected
 # network with this list, because activating the full network before the
@@ -351,7 +412,10 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
         be initialised without constructing a full configuration.
     network : str, optional
         Which list to read.  ``"small"`` is special and returns
-        :data:`ORDER_SMALL` without touching the filesystem.  Any other value
+        :data:`_KEY12_REACTIONS` (``ORDER_SMALL`` *without* its leading weak
+        ``n__p`` entry, since these lists name only the thermonuclear
+        reactions -- ``load_network`` prepends the weak conversion itself)
+        without touching the filesystem.  Any other value
         is interpreted as ``<network>.txt`` inside ``data/nuclear/networks``
         unless it already ends in ``.txt``.
 
@@ -429,7 +493,7 @@ def _read_csv(path):
     return rows[0], rows[1:]
 
 
-def reaction_species(name):
+def reaction_species(name, data_dir=None):
     """Expand a reaction name into explicit reactant and product nuclide lists.
 
     The reaction *name* (e.g. ``'ddtp'``) is compact; this returns the two sides
@@ -438,7 +502,7 @@ def reaction_species(name):
 
     Example
     -------
-    >>> reaction_species('ddtp')          # d + d -> t + p
+    >>> reaction_species('d_d__t_p')      # d + d -> t + p
     (['H2', 'H2'], ['H3', 'p'])
 
     Returns
@@ -448,7 +512,7 @@ def reaction_species(name):
         'He3', 'He4', ...), with each species repeated by its multiplicity.
         The photon 'g' is dropped (it carries no nuclear mass/spin).
     """
-    react, prod = reaction_stoichiometry(name)
+    react, prod = reaction_stoichiometry(name, data_dir)
 
     def expand(multiplicity_dict):
         # {'H2': 2} -> ['H2', 'H2']
@@ -573,7 +637,7 @@ def _tokenise(name):
     * **compact** (legacy, ``"abTOcd"``): tokens are concatenated with no
       separator and greedily matched against :data:`_TOKENS` (which includes
       the literal ``"TO"`` marking the reactant/product split), e.g.
-      ``"n_p__d_g"`` -> ``["n", "p", "TO", "d", "g"]``.
+      ``"npTOdg"`` -> ``["n", "p", "TO", "d", "g"]``.
 
     The returned token list is the same in both cases, with a literal
     ``"TO"`` entry standing in for whichever separator was actually used.
@@ -612,7 +676,7 @@ def _format_name(react_tokens, prod_tokens, syntax=None):
     >>> _format_name(["n", "p"], ["d", "g"])
     'n_p__d_g'
     >>> _format_name(["n", "p"], ["d", "g"], syntax="compact")
-    'n_p__d_g'
+    'npTOdg'
     """
     syntax = syntax or _RATE_SYNTAX_
     if syntax == "spaced":
@@ -654,7 +718,7 @@ def reaction_display_name(name):
     return f"{' + '.join(react)} > {' + '.join(prod)}"
 
 
-def reaction_stoichiometry(name):
+def reaction_stoichiometry(name, data_dir=None):
     """Return ``(reactants, products)`` as nuclide-multiplicity dictionaries.
 
     The compact PRIMAT names concatenate nuclide tokens.  For example
@@ -675,6 +739,18 @@ def reaction_stoichiometry(name):
       raises ``ValueError`` naming the reaction and the imbalance, instead of
       a cryptic ``KeyError``.
 
+    Parameters
+    ----------
+    name : str
+        Reaction name in either syntax (see :func:`_tokenise`).
+    data_dir : str, optional
+        Data root whose ``csv/`` catalog supplies ``detailed_balance.csv``
+        (the reactant/product split) and ``nuclides.csv`` (the A/Z validation
+        on the fallback path).  Defaults to the package-shipped tree.  Pass
+        ``cfg._resolved_data_dir`` to honour a ``cfg.data_dir`` override --
+        without it the shipped catalog is used, which is wrong whenever the
+        replacement tree defines different reactions or nuclide data.
+
     Example
     -------
     >>> reaction_stoichiometry("n_p__d_g")
@@ -692,7 +768,7 @@ def reaction_stoichiometry(name):
     # We use the detailed_balance.csv to determine the split between reactants
     # and products, avoiding the need for the hardcoded tokens and aliases for
     # most reactions.
-    _, _, _, nuc_NZ, db, _ = _reaction_catalog(_default_data_dir())
+    _, _, _, nuc_NZ, db, _ = _reaction_catalog(data_dir or _default_data_dir())
 
     def count(seq):
         counts = {}
@@ -744,7 +820,7 @@ def reaction_stoichiometry(name):
     return count(tokens[:n_react]), count(tokens[n_react:])
 
 
-def to_filename(name):
+def to_filename(name, data_dir=None):
     """Map a bare reaction name to its fully-separated catalog/file name.
 
     Some historical code (and tests) used names without any explicit
@@ -754,17 +830,20 @@ def to_filename(name):
     already carry either separator (``"__"`` or the literal ``"TO"``) are
     returned unchanged.
 
+    ``data_dir`` selects the catalog root, exactly as in
+    :func:`reaction_stoichiometry`; it defaults to the shipped tree.
+
     Example
     -------
     >>> to_filename("npdg")
     'n_p__d_g'
     """
     if name in _WEAK_NTOP_NAMES:
-        return "n__p" if _RATE_SYNTAX_ == "spaced" else "n__p"
+        return _format_name(["n"], ["p"])
     if "__" in name or "TO" in name:
         return name
 
-    _, _, _, _, db, _ = _reaction_catalog(_default_data_dir())
+    _, _, _, _, db, _ = _reaction_catalog(data_dir or _default_data_dir())
 
     if name in db: return name
 
@@ -783,7 +862,7 @@ def to_filename(name):
     raise ValueError(f"cannot map reaction name {name!r} to a separated filename")
 
 
-def phase_network(order, species):
+def phase_network(order, species, data_dir=None):
     """Resolve reaction names into an index-based stoichiometric network.
 
     Parameters
@@ -793,6 +872,9 @@ def phase_network(order, species):
         and ``r[2*i+1]`` for the backward rate.
     species : sequence[str]
         Abundance-vector species order.
+    data_dir : str, optional
+        Catalog root, forwarded to :func:`reaction_stoichiometry`; defaults to
+        the shipped tree.
 
     Returns
     -------
@@ -808,7 +890,7 @@ def phase_network(order, species):
     idx = {s: i for i, s in enumerate(species)}
     net = []
     for name in order:
-        react, prod = reaction_stoichiometry(name)
+        react, prod = reaction_stoichiometry(name, data_dir)
         # Bm/Bp (emitted electron/positron) are lepton bookkeeping tokens, not
         # part of the ODE state vector (see reaction_stoichiometry's "n__p"
         # special case docstring) -- decay reactions such as "Be7__Li7_Bp" carry
@@ -822,6 +904,13 @@ def phase_network(order, species):
 
 class _LinearRate:
     """Fast equivalent of ``interp1d(kind='linear', fill_value='extrapolate')``.
+
+    .. note::
+       No longer on any solver path -- ``fill_buffer`` interpolates through
+       ``_fill_buffer_core`` and ``_make_frwrd`` inlines its own grid lookup.
+       Kept as a small, self-contained utility (and exercised by
+       ``tests/test_refactor_invariants.py``) for code that wants a fast
+       drop-in for the scipy call above.
 
     Appends one synthetic knot on each side of the grid whose value is obtained
     by projecting the edge slope, then delegates to ``np.interp`` (a fast C
@@ -904,6 +993,13 @@ class NetworkDefinition:
     # was built without source bookkeeping. Used by the GUI reactions table to
     # offer a download button per reaction.
     files: list[str] | None = None
+    # Master-grid index of the capping temperature T_nucl (see
+    # :func:`_reverse_rate_cap`).  Kept so :meth:`apply_variations` can rebuild
+    # ``_bwd_cap`` from the *active* forward rate after a p_*/delta_* variation
+    # -- the cap is ``bwd(T_nucl)``, so it has to track ``_fwd`` rather than
+    # stay frozen at the median.  ``None`` disables the rebuild (a network
+    # built without a cap, e.g. directly in a test).
+    _bwd_cap_j: int | None = None
 
     def __post_init__(self):
         self.index = {s: i for i, s in enumerate(self.species)}
@@ -999,6 +1095,19 @@ class NetworkDefinition:
         such a rate can otherwise inflate D/H's MC variance with a single
         unphysical outlier sample rather than a smooth uncertainty estimate.
         Set ``cfg.mc_rate_rescale_cap = None`` to disable the cap entirely.
+
+        Two pieces of derived state must be refreshed alongside ``_fwd``, or the
+        variation is silently only half-applied:
+
+        * the reverse-rate cap ``_bwd_cap`` (= ``bwd(T_nucl)``, itself
+          proportional to the forward rate), rebuilt here from the *active*
+          ``_fwd``.  Leaving it at its median value would clamp a varied reverse
+          rate back to the unvaried one wherever the cap binds, breaking
+          detailed balance by exactly the variation factor.
+        * :meth:`fill_buffer`'s one-slot ``(T_t, clamp)`` memo, which is keyed
+          on temperature only and cannot see that the rate table changed
+          underneath it.  Invalidated below, mirroring the C backend's
+          ``net->cache_valid = 0`` in ``cpr_network_apply_variations``.
         """
         cap = cfg.mc_rate_rescale_cap  # None = no cap; positive float = clamp to [1/cap, cap]
         # Skip names[0] which is always n__p (handled separately in the solver)
@@ -1017,6 +1126,23 @@ class NetworkDefinition:
                     # for poorly-constrained rates when p is drawn from a wide distribution.
                     variation = np.clip(variation, 1.0 / cap, cap)
                 self._fwd[i] = self._fwd_median[i] * variation
+
+        # Rebuild the reverse-rate cap from the now-active forward rates: the
+        # cap is bwd(T_nucl) = alpha T9c^beta exp(gamma/T9c) x fwd(T_nucl), so
+        # it scales with whatever variation was just applied (see the docstring).
+        if self._bwd_cap_j is not None:
+            j = self._bwd_cap_j
+            T9c = self.grid[j]
+            a_, b_, g_ = self._abg[:, 0], self._abg[:, 1], self._abg[:, 2]
+            self._bwd_cap[:] = (a_ * T9c ** b_
+                                * np.exp(np.minimum(g_ / T9c, _EXP_CAP))
+                                * self._fwd[:, j])
+
+        # The active table changed underneath any memoised buffer; drop the
+        # one-slot cache so the next fill_buffer recomputes (C parity: see
+        # cpr_network_apply_variations' `net->cache_valid = 0`).
+        self._cache_T_t = None
+        self._cache_clamp = None
 
     def fill_buffer(self, T_t, nTOp_frwrd, nTOp_bkwrd, clamp=True):
         """Fill the forward/backward rate buffer at photon temperature ``T_t``.
@@ -1181,7 +1307,7 @@ def _qed_nuclear_rescale(name, T9_grid):
     # Electron mass [MeV] (PDG)
     ME_MEV = 0.51099895
 
-    if name in ("n_p__d_g", "n_p__d_g"):
+    if name in ("n_p__d_g", "npTOdg"):
         # Polynomial fit to the QED correction for n + p → d + γ, derived from
         # the Gamow-peak integration with the electric-dipole model in
         # Pitrou & Pospelov 2020.  The polynomial slightly exceeds its T9=0
@@ -1382,9 +1508,18 @@ def _parse_network_entries(reaction_names, network_label):
 
     Each entry is either a bare reaction name (``"n_p__d_g"``) or a
     ``"bare_name, filename.txt"`` pair pointing at a non-default rate table.
-    Literal duplicate entries (e.g. the same line twice in a network file)
-    are rejected rather than silently dropped, since a duplicate is far more
+    Duplicate entries (e.g. the same line twice in a network file) are
+    rejected rather than silently dropped, since a duplicate is far more
     likely to be a copy-paste mistake than an intentional no-op.
+
+    The check is keyed on the **bare reaction name**, not on the raw entry.
+    Keying it on the raw entry (as an earlier version did) let a repeat slip
+    through whenever the two lines differed only in their ``", filename"``
+    suffix -- e.g. ``"n_p__d_g"`` together with
+    ``"n_p__d_g, n_p__d_g_primat.txt"``.  Those are the *same* reaction, so the
+    network ended up carrying two identical rows and double-counting its flux,
+    with no warning; ``bare_to_file`` meanwhile silently kept only the last
+    filename, so the two rows did not even use different tables.
 
     Args:
         reaction_names: sequence[str], the raw entries (one per network-file
@@ -1398,16 +1533,9 @@ def _parse_network_entries(reaction_names, network_label):
         PRIMAT-default table written by convert_ac2024_rates.py) when no
         filename was given.
     """
-    seen_entries = set()
-    for entry in reaction_names:
-        if entry in seen_entries:
-            raise ValueError(
-                f"reaction entry {entry!r} is already present in network "
-                f"{network_label!r} (duplicate line in the network file)")
-        seen_entries.add(entry)
-
     bare_to_file = {}
     bare_names = []
+    seen_bare = {}
     for entry in reaction_names:
         parts = re.split(r'[, ]+', entry, maxsplit=1)
         if len(parts) > 1:
@@ -1415,6 +1543,16 @@ def _parse_network_entries(reaction_names, network_label):
         else:
             bare = entry.strip()
             fname = bare + "_primat.txt"
+        # Reject on the bare name, so a repeat is caught even when the two
+        # entries differ only in their optional ", filename" column (see the
+        # docstring); quote both raw entries so the message points at the
+        # actual lines to fix.
+        if bare in seen_bare:
+            raise ValueError(
+                f"reaction {bare!r} is already present in network "
+                f"{network_label!r} (duplicate entries {seen_bare[bare]!r} "
+                f"and {entry!r})")
+        seen_bare[bare] = entry
         bare_names.append(bare)
         bare_to_file[bare] = fname
     return bare_names, bare_to_file
@@ -1452,7 +1590,8 @@ def _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg):
     db = dict(db)
     for n in new_names:
         try:
-            react_counts, prod_counts = reaction_stoichiometry(n)
+            react_counts, prod_counts = reaction_stoichiometry(
+                n, cfg._resolved_data_dir)
         except (ValueError, KeyError) as exc:
             # Unparseable name, unknown nuclide token, or a stoichiometry
             # that does not conserve baryon number/charge: surface a clear
@@ -1729,8 +1868,10 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
                 # really is the only case "custom upload" describes.
                 sources.append("custom upload")
             files.append(custom_filename)
-            fwd_median.append(_resample_rate_table(T9_src, rate_src, grid))
-            fwd_expsigma.append(_resample_rate_table(T9_src, err_src, grid))
+            fwd_median.append(_resample_rate_table(T9_src, rate_src, grid,
+                                                    label=name))
+            fwd_expsigma.append(_resample_rate_table(T9_src, err_src, grid,
+                                                      label=name))
         elif is_weak:
             # Radioactive decay: constant (T9-independent) rate from
             # decays.txt, broadcast onto the master grid -- no rate table,
@@ -1775,8 +1916,10 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             # Resample from the file's own T9 grid to the master grid.  When
             # all tables share the same grid (the common case) this is nearly
             # a no-op.
-            fwd_median.append(_resample_rate_table(T9_src, data[1], grid))
-            fwd_expsigma.append(_resample_rate_table(T9_src, data[2], grid))
+            fwd_median.append(_resample_rate_table(T9_src, data[1], grid,
+                                                    label=name))
+            fwd_expsigma.append(_resample_rate_table(T9_src, data[2], grid,
+                                                      label=name))
 
         # Detailed-balance (reverse-rate) coefficients (alpha, beta, gamma).
         # For decays: by default abg = (0,0,0) i.e. no reverse rate (decays
@@ -1875,13 +2018,19 @@ def _reverse_rate_cap(grid, abg, fwd, cfg):
         cfg: PRIMATConfig instance (``cfg.T_nucl`` in K).
 
     Returns:
-        np.ndarray (n_reactions,), the reverse-rate cap per reaction.
+        (cap, j): ``cap`` is an np.ndarray (n_reactions,), the reverse-rate cap
+        per reaction; ``j`` is the master-grid index of the capping temperature.
+        ``j`` is handed to :class:`NetworkDefinition` so that
+        :meth:`NetworkDefinition.apply_variations` can rebuild ``cap`` from the
+        *active* forward rate after a p_*/delta_* variation -- the cap is
+        proportional to ``fwd(T_nucl)`` and must not stay frozen at the median.
     """
     j = int(np.searchsorted(grid, cfg.T_nucl / 1.0e9))  # index of T9 ≈ T_nucl/10⁹
     j = min(max(j, 0), grid.size - 1)
     a_, b_, g_ = abg[:, 0], abg[:, 1], abg[:, 2]
     T9c = grid[j]                              # T9 at the capping temperature
-    return a_ * T9c ** b_ * np.exp(np.minimum(g_ / T9c, _EXP_CAP)) * fwd[:, j]
+    cap = a_ * T9c ** b_ * np.exp(np.minimum(g_ / T9c, _EXP_CAP)) * fwd[:, j]
+    return cap, j
 
 
 def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
@@ -1962,6 +2111,18 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     # Master T9 grid: all tables are resampled onto this grid at load time so
     # that fill_buffer's single searchsorted path is always valid, regardless of
     # the grid used when generating the rate files (e.g. --keep-source-grid).
+    #
+    # NOTE the top of this grid is *below* the start of the MT era: the default
+    # rate_grid_T9_max = 10 GK against T_weak = 1 MeV = 11.6 GK.  The shipped
+    # tables themselves stop at T9 = 10 (that is the AC2024 source grid's own
+    # ceiling), so the gap is intrinsic, not a grid-resolution choice: rates in
+    # T9 in [10, 11.6] are produced by _fill_buffer_core extrapolating linearly
+    # off the last grid cell.  Measured effect for n_p__d_g at T9 = 11.6: +0.4%
+    # against the table's own log-log cubic; on the observables, nothing --
+    # raising rate_grid_T9_max to 12 or 15 (which forces the shipped tables to
+    # be extrapolated instead) moves YP/D/H/He3/Li7 by <= 2e-6 relative, because
+    # the network is still in nuclear statistical equilibrium up there and the
+    # abundances are Saha-determined rather than rate-determined.
     grid = np.logspace(np.log10(cfg.rate_grid_T9_min),
                        np.log10(cfg.rate_grid_T9_max),
                        cfg.rate_grid_npts)
@@ -1975,15 +2136,15 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     # Active forward rates (initially median)
     fwd = fwd_median.copy()
 
-    bwd_cap = _reverse_rate_cap(grid, abg, fwd, cfg)
+    bwd_cap, bwd_cap_j = _reverse_rate_cap(grid, abg, fwd, cfg)
 
     return NetworkDefinition(species, N, Z, network, weak_indices, names, grid,
                              fwd, fwd_median, fwd_expsigma, abg, bwd_cap,
                              lepton_dZ=lepton_dZ_list, sources=sources,
-                             files=files)
+                             files=files, _bwd_cap_j=bwd_cap_j)
 
 
-def reaction_category(name: str) -> int:
+def reaction_category(name: str, data_dir=None) -> int:
     """Heaviest nuclide's mass number A (=N+Z) among name's reactants/products.
 
     Drives the GUI popup's mass-number-banded category view:
@@ -1997,22 +2158,29 @@ def reaction_category(name: str) -> int:
     reactions, network-file "TO"-derived reactions, and brand-new GUI-added
     reactions alike (anything reaction_stoichiometry can parse).
 
+    ``data_dir`` selects the catalog root (defaulting to the shipped tree);
+    pass ``cfg._resolved_data_dir`` so that a ``cfg.data_dir`` override's own
+    ``nuclides.csv`` decides the categories.
+
     Example
     -------
     >>> reaction_category("n_p__d_g")
     2
     """
-    react, prod = reaction_stoichiometry(name)
-    _, _, _, nuc_NZ, _, _ = _reaction_catalog(_default_data_dir())
+    react, prod = reaction_stoichiometry(name, data_dir)
+    _, _, _, nuc_NZ, _, _ = _reaction_catalog(data_dir or _default_data_dir())
     nuclides = set(react) | set(prod)
     return max(sum(nuc_NZ[s]) for s in nuclides if s in nuc_NZ)
 
 
-def group_reactions_by_category(names) -> dict:
-    """{category_A: [bare_name, ...]}, sorted by category; names keep input order."""
+def group_reactions_by_category(names, data_dir=None) -> dict:
+    """{category_A: [bare_name, ...]}, sorted by category; names keep input order.
+
+    ``data_dir`` is forwarded to :func:`reaction_category`.
+    """
     groups: dict[int, list[str]] = {}
     for name in names:
-        groups.setdefault(reaction_category(name), []).append(name)
+        groups.setdefault(reaction_category(name, data_dir), []).append(name)
     return dict(sorted(groups.items()))
 
 
@@ -2208,7 +2376,8 @@ def _make_frwrd(rxn):
     Returns the *active* forward reaction rate of ``rxn`` (post rate-variation,
     same units as the shipped nuclear rate tables) at temperature ``T`` [Kelvin],
     linearly interpolated on the master T9 grid -- the exact same interpolation
-    the LT-network ODE right-hand side uses (``_LinearRate.fill_buffer``), and
+    the LT-network ODE right-hand side uses
+    (:meth:`NetworkDefinition.fill_buffer`, via ``_fill_buffer_core``), and
     the one the C backend mirrors in ``cpr_network_fill_buffer`` /
     ``cpr_nuclear_network_sample_rates`` (CLAUDE.md schema-parity mandate).
     Returns 0 for any reaction not present in the active LT network (so the

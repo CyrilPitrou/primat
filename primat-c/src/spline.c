@@ -288,11 +288,32 @@ int cpr_resample_rate_table(const double *T9_src, const double *rate_src, size_t
     for (size_t i = 0; i < n_src; i++) lx_src[i] = log10(T9_src[i]);
     for (size_t i = 0; i < n_dst; i++) lx_dst[i] = log10(T9_dst[i]);
 
+    /* Warn if the master grid reaches outside the source table's own span:
+     * every such point is extrapolated, not interpolated. Only user-supplied
+     * tables can get here (the shipped ones take the fast path above), and a
+     * silently extrapolated rate is exactly the failure mode worth shouting
+     * about -- mirrors the UserWarning in Python's _resample_rate_table. */
+    {
+        size_t n_out = 0;
+        for (size_t i = 0; i < n_dst; i++)
+            if (lx_dst[i] < lx_src[0] || lx_dst[i] > lx_src[n_src - 1]) n_out++;
+        if (n_out)
+            fprintf(stderr,
+                     "[warn] rate table covers T9 in [%.4g, %.4g] GK but the master "
+                     "grid spans [%.4g, %.4g] GK; %zu of %zu grid points are "
+                     "extrapolated by continuing the table's end slope in log-log. "
+                     "Supply a table covering the full grid to avoid this.\n",
+                     T9_src[0], T9_src[n_src - 1], T9_dst[0], T9_dst[n_dst - 1],
+                     n_out, n_dst);
+    }
+
     int all_positive = 1;
     for (size_t i = 0; i < n_src; i++)
         if (!(rate_src[i] > 0.0)) { all_positive = 0; break; }
 
-    if (all_positive) {
+    /* A not-a-knot cubic needs four points; below that fall back to the linear
+     * branch rather than failing, matching Python's `lx_src.size >= 4` guard. */
+    if (all_positive && n_src >= 4) {
         double *log_rate = CPR_XMALLOC(n_src * sizeof(double));
         for (size_t i = 0; i < n_src; i++) log_rate[i] = log10(rate_src[i]);
 
@@ -301,8 +322,25 @@ int cpr_resample_rate_table(const double *T9_src, const double *rate_src, size_t
             free(log_rate); free(lx_src); free(lx_dst);
             return 1;
         }
-        for (size_t i = 0; i < n_dst; i++)
-            rate_dst[i] = pow(10.0, cpr_cubic_spline_eval(&sp, lx_dst[i]));
+        /* Interpolate inside the source span; outside it, continue the end
+         * slope *linearly* in log-log. Evaluating the cubic out of range (as
+         * this loop used to) is unbounded: a table truncated to T9 in
+         * [0.05, 5] resampled onto the default [1e-3, 10] grid came out a
+         * factor 3.2 low at the bottom end, silently. Kept in lockstep with
+         * Python's _resample_rate_table. */
+        double slope_lo = (log_rate[1] - log_rate[0]) / (lx_src[1] - lx_src[0]);
+        double slope_hi = (log_rate[n_src - 1] - log_rate[n_src - 2])
+                          / (lx_src[n_src - 1] - lx_src[n_src - 2]);
+        for (size_t i = 0; i < n_dst; i++) {
+            double ly;
+            if (lx_dst[i] < lx_src[0])
+                ly = log_rate[0] + slope_lo * (lx_dst[i] - lx_src[0]);
+            else if (lx_dst[i] > lx_src[n_src - 1])
+                ly = log_rate[n_src - 1] + slope_hi * (lx_dst[i] - lx_src[n_src - 1]);
+            else
+                ly = cpr_cubic_spline_eval(&sp, lx_dst[i]);
+            rate_dst[i] = pow(10.0, ly);
+        }
         cpr_cubic_spline_free(&sp);
         free(log_rate);
     } else {

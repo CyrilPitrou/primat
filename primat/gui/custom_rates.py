@@ -36,7 +36,7 @@ from primat.network_data import (
 )
 
 
-def validate_new_reaction(name):
+def validate_new_reaction(name, data_dir=None):
     """Validate a brand-new reaction name and return its readable equation.
 
     Backs the GUI's "Add a new reaction" pop-up: a user types a reaction name
@@ -52,6 +52,11 @@ def validate_new_reaction(name):
     ----------
     name : str
         Candidate reaction name, e.g. ``"He3_d__He4_p"``.
+    data_dir : str, optional
+        Catalog root supplying ``nuclides.csv``/``detailed_balance.csv``,
+        forwarded to :func:`primat.network_data.reaction_stoichiometry`.
+        Defaults to the shipped tree; the GUI passes its own resolved root so
+        a ``data_dir`` override validates against *its* nuclide table.
 
     Returns
     -------
@@ -79,7 +84,7 @@ def validate_new_reaction(name):
             "name must use the 'a_b__c_d' syntax: reactants and products "
             "separated by a double underscore '__'.")
     try:
-        react, prod = reaction_stoichiometry(name)
+        react, prod = reaction_stoichiometry(name, data_dir)
     except (ValueError, KeyError) as exc:
         raise ValueError(str(exc)) from exc
 
@@ -152,8 +157,10 @@ def parse_rate_upload(fh):
     Emits an ``st.warning`` (not an error -- the table is still usable) if its
     T9 range does not cover the master grid's span (``rate_grid_T9_min``..
     ``rate_grid_T9_max``, default 0.001-10 GK): outside the upload's own range,
-    ``_resample_rate_table`` extrapolates the log-log cubic spline, which can
-    be inaccurate far from the data.
+    ``_resample_rate_table`` extrapolates by continuing the table's end slope
+    in log-log, which drifts from the truth the further out it goes.  (That
+    function raises its own ``UserWarning`` too; this one surfaces the problem
+    in the GUI at upload time, before a run is launched.)
     """
     if hasattr(fh, "read"):
         text = fh.read()

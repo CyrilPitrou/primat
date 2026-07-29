@@ -242,7 +242,7 @@ def _equation_for(name):
     if name in equations:
         return equations[name]
     try:
-        react, prod = reaction_stoichiometry(name)
+        react, prod = reaction_stoichiometry(name, _root())
     except (ValueError, KeyError):
         return name
 
@@ -261,6 +261,21 @@ def _bare(entry):
 def _cfg():
     """A throwaway ``PRIMATConfig`` for helpers that only need ``cfg._resolved_data_dir``."""
     return PRIMATConfig()
+
+
+def _root():
+    """The data root every catalog lookup in this module should read from.
+
+    ``reaction_stoichiometry`` / ``reaction_category`` /
+    ``group_reactions_by_category`` each take an optional catalog root and fall
+    back to the *shipped* tree when it is omitted -- which silently ignores a
+    ``data_dir`` override.  Routing them all through this one helper (as the
+    rate-table paths at ``_table_choices``/``_shipped_table_text`` already do)
+    keeps "which data tree is the GUI showing?" a single question with a single
+    answer, so teaching :func:`_cfg` about a user-set ``data_dir`` fixes every
+    call site at once.
+    """
+    return _cfg()._resolved_data_dir
 
 
 def _available_networks():
@@ -469,7 +484,7 @@ def _render_evolved_nuclides_section():
     nuclides = {"n", "p"}
     for name in kept:
         try:
-            react, prod = reaction_stoichiometry(name)
+            react, prod = reaction_stoichiometry(name, _root())
         except (ValueError, KeyError):
             continue
         nuclides.update(s for s in react if s in _cfg().Nuclides)
@@ -573,7 +588,8 @@ class _DialogState:
                 # stayed "kept" regardless of amax, while the rows shown
                 # above (filtered by amax) and the totals caption below
                 # disagreed (e.g. "41/17 kept").
-                if dialog_amax is not None and reaction_category(name) > dialog_amax:
+                if (dialog_amax is not None
+                        and reaction_category(name, _root()) > dialog_amax):
                     continue
                 keep[name] = True
                 raw = info.get("tables", {}).get(name)
@@ -763,7 +779,7 @@ def _dialog_superset_entries(dialog_amax):
     entries = load_reaction_names(_cfg(), "large")
     if dialog_amax is None:
         return entries
-    return [e for e in entries if reaction_category(_bare(e)) <= dialog_amax]
+    return [e for e in entries if reaction_category(_bare(e), _root()) <= dialog_amax]
 
 
 def _dialog_base_selection_and_tables(base_network, dialog_amax):
@@ -786,7 +802,8 @@ def _dialog_base_selection_and_tables(base_network, dialog_amax):
     for entry in entries:
         parts = re.split(r'[, ]+', entry, maxsplit=1)
         bare = parts[0].strip()
-        if dialog_amax is not None and reaction_category(bare) > dialog_amax:
+        if (dialog_amax is not None
+                and reaction_category(bare, _root()) > dialog_amax):
             continue
         kept.add(bare)
         if len(parts) > 1:
@@ -1061,7 +1078,7 @@ def _render_add_rate_section(dialog_amax, all_entries):
         parsed_ok = False
         if name.strip():
             try:
-                eq = custom_rates.validate_new_reaction(name)
+                eq = custom_rates.validate_new_reaction(name, _root())
             except ValueError as exc:
                 st.error(str(exc))
             else:
@@ -1077,7 +1094,7 @@ def _render_add_rate_section(dialog_amax, all_entries):
                 st.error(f"'{bare}' already exists in the current selection.")
                 return
             try:
-                cat = reaction_category(bare)
+                cat = reaction_category(bare, _root())
             except (ValueError, KeyError) as exc:
                 st.error(str(exc))
                 return
@@ -1233,7 +1250,8 @@ def _custom_network_dialog(params):
     if base_network != st.session_state.get(SessionKeys.dialog_prev_base_network):
         if base_network in known_for_amax_default:
             kept = known_for_amax_default[base_network]["kept"]
-            categories = [reaction_category(n) for n in kept if not _is_decay(n)]
+            categories = [reaction_category(n, _root())
+                          for n in kept if not _is_decay(n)]
             if categories:
                 st.session_state[SessionKeys.dialog_amax_value] = max(categories)
         st.session_state[SessionKeys.dialog_prev_base_network] = base_network
@@ -1264,7 +1282,7 @@ def _custom_network_dialog(params):
     decay_rates = _decay_rates()
     decay_names = sorted(n for n in bare_all if n in decay_rates)
     nuclide_names = [n for n in bare_all if n not in decay_rates]
-    groups = group_reactions_by_category(nuclide_names)
+    groups = group_reactions_by_category(nuclide_names, _root())
 
     for cat in sorted(groups):
         _render_category(cat, groups[cat])

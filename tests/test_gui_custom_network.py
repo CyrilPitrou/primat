@@ -1211,7 +1211,15 @@ def _coarse_upload_text(cfg, name, fname):
     """A synthetic 'uploaded' rate table for ``name`` on a COARSE grid (55
     points over its own range), distinct from the shipped 1000-point master
     grid -- so the export path's resample/round vs verbatim handling matters.
-    Scaled x1.3 so the edit visibly moves abundances."""
+    Scaled x1.3 so the edit visibly moves abundances.
+
+    Its span, T9 in [0.01, 7.94] GK, is deliberately *narrower* than the master
+    grid's [0.001, 10]: that is what a real partial upload looks like, and it
+    keeps this test exercising the out-of-range branch of
+    ``_resample_rate_table``.  Loading it therefore raises that function's
+    "grid points are extrapolated" UserWarning, which the test filters (see the
+    ``filterwarnings`` mark) rather than avoids -- the warning is correct here
+    and narrowing the fixture to silence it would lose the coverage."""
     import numpy as np
     data = np.loadtxt(cfg.resolve_rates_path("nuclear", "tables", name, fname))
     T9 = np.logspace(-2, 0.9, 55)
@@ -1243,6 +1251,10 @@ def _first_tabulated_reaction(cfg, nucl):
 ])
 @pytest.mark.parametrize("mode", ["removed", "uploaded"])
 @pytest.mark.parametrize("backend", ["python", "c"])
+# The "uploaded" cases feed a deliberately narrow synthetic table (see
+# _coarse_upload_text), so the out-of-range extrapolation warning is the
+# expected, correct response -- not something to fix in the fixture.
+@pytest.mark.filterwarnings("ignore:rate table for:UserWarning")
 def test_reproduction_bundle_matches_gui_bit_for_bit(base, label, mode, backend,
                                                      tmp_path):
     """GUI dict-run == exported-bundle overlay run, bit-for-bit, for every

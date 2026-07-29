@@ -258,7 +258,12 @@ DEFAULT_PARAMS: dict = {
     # fill_buffer's single searchsorted path remains valid.
     "rate_grid_npts":             1000,       # number of points in the master T9 grid
     "rate_grid_T9_min":          1.0e-3,     # minimum T9 [GK] on the master grid
-    "rate_grid_T9_max":          10.0,       # maximum T9 [GK] on the master grid
+    # Maximum T9 [GK] on the master grid.  Deliberately *below* the MT era's
+    # start (T_weak = 1 MeV = 11.6 GK): the shipped tables' own source data
+    # stops at T9 = 10, so rates above it are extrapolated off the last grid
+    # cell either way.  Verified numerically inert (<= 2e-6 on every
+    # observable) -- see load_network's grid comment in network_data.py.
+    "rate_grid_T9_max":          10.0,
 
     # Network selector.  "small" is the built-in ORDER_SMALL network.  Any other
     # value loads data/nuclear/networks/<network>.txt -- shipped options are
@@ -1292,7 +1297,8 @@ class PRIMATConfig:
         valid_rxns = set()
         for entry in reactions_with_tables:
             bare = re.split(r'[, ]+', entry, maxsplit=1)[0]
-            if self.amax is not None and reaction_category(bare) > self.amax:
+            if (self.amax is not None
+                    and reaction_category(bare, self._resolved_data_dir) > self.amax):
                 continue
             valid_rxns.add(bare)
         for rxn in valid_rxns:

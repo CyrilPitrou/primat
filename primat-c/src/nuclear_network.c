@@ -698,12 +698,24 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
  * expansion, no thermal production, since T is far too low for any thermal
  * activation): dY/dt = D.Y, solved exactly by Y(t) = exp(D*(t-t_end)) Y0.
  *
- * Only the `large` network carries the decays.txt beta/EC reactions this era
- * needs, so (mirroring Python) the whole era is gated on
- * cfg->decay_era && is_large. It changes no BBN *observable* (Y_final and the
- * result dict are the end-of-LT state, unchanged by the DT era in Python
- * too); its only output is the optional output_decay_evolution TSV, so the C
- * port computes it only when that file was requested.
+ * Gated (mirroring Python) on cfg->decay_era plus the LT network actually
+ * carrying a decay reaction -- weak_flags holds n__p (index 0) plus every
+ * decay, so "any weak reaction past index 0" is exactly that test. It used to
+ * be keyed on the literal network name `large`, which silently skipped the era
+ * for a large-equivalent network reproduced under a renamed user_nuclear_dir
+ * overlay.
+ *
+ * DIVERGENCE FROM PYTHON, deliberate: this port additionally requires
+ * cfg->output_decay_evolution, i.e. it runs only when the TSV was requested.
+ * Y_final and the result dict are the end-of-LT state on both backends, so no
+ * BBN *observable* differs. But Python does more than write the file: its
+ * solve() also extends the public Y_of_t interpolator across the DT era, so
+ * run[species](t) past t_end returns the decayed state there. That accessor
+ * has no representation across this ABI -- there is nothing for C to expose it
+ * through -- so computing 200 dense matrix exponentials whose result nothing
+ * could read would be pure waste. If a future revision surfaces a post-t_end
+ * abundance history through the C API, drop the output_decay_evolution term
+ * from the gate below so the two triggers match again.
  * ===================================================================== */
 
 /* Dense n x n matrix multiply C = A*B, row-major. n is small (<= ~60, the
@@ -829,11 +841,23 @@ static int dt_expm(const double *A_in, size_t n, double *E, char **errmsg)
 }
 
 /* Build the constant N x N decay-rate matrix D [s^-1] for the DT era (port
- * of _build_decay_matrix). dY/dt = D.Y with Y in mass fractions and D's
- * columns index the *parent*: each decay X -> products with rate lambda
- * contributes D[X,X] -= lambda*mult_X and D[P,X] += lambda*mult_P*A_P/A_X
- * (the A_P/A_X factor converts a number-fraction flux to a mass-fraction
- * one). Decay reactions are the LT network's weak reactions other than n__p
+ * of _build_decay_matrix). dY/dt = D.Y, D's columns indexing the *parent*:
+ * each decay X -> products with rate lambda contributes D[X,X] -= lambda*mult_X
+ * and D[P,X] += lambda*mult_P.
+ *
+ * CONVENTION: Y is the *number* abundance per baryon, Y_s = n_s/n_B with
+ * sum_s A_s Y_s = 1 -- not a mass fraction. That is what the LT/MT right-hand
+ * side uses (cpr_network_builder applies the bare integer stoichiometry
+ * c_prod - c_react, and the conservation check verifies sum_s A_s dY_s = 0).
+ * The product gain is therefore the bare multiplicity, with NO A_P/A_X factor.
+ * An earlier version carried such a factor *in addition to* mult_P, which
+ * broke baryon conservation for every decay whose products differ in mass
+ * number from the parent (Li8 -> a+a yielded one alpha instead of two; C9 ->
+ * a+a+p lost 4/9 of the baryon number). The 33 ordinary beta decays have
+ * A_P == A_X and were unaffected, which is why it went unnoticed. Kept in
+ * lockstep with nuclear_network.py's _build_decay_matrix.
+ *
+ * Decay reactions are the LT network's weak reactions other than n__p
  * (index 0, handled by the HT/MT/LT thermal weak rate); their rate is the
  * T9-independent decays.txt constant, stored uniformly across the master T9
  * grid, so grid index 0 is representative. The free-neutron beta decay
@@ -856,14 +880,13 @@ static void dt_build_decay_matrix(const CPRNetworkDef *net, const CPRConfig *cfg
         for (size_t a = 0; a < react->n; a++) {
             long X = react->species_idx[a];
             double X_mult = (double)react->mult[a];
-            double A_X = (double)(net->N[X] + net->Z[X]);
             D[(size_t)X * N + (size_t)X] -= rate * X_mult;   /* parent loss */
             for (size_t p = 0; p < prod->n; p++) {
                 long P = prod->species_idx[p];
                 double P_mult = (double)prod->mult[p];
-                double A_P = (double)(net->N[P] + net->Z[P]);
-                /* mass-fraction gain, weighted by A_P/A_X */
-                D[(size_t)P * N + (size_t)X] += rate * P_mult * A_P / A_X;
+                /* number-abundance gain: the bare multiplicity (see the
+                 * CONVENTION note above -- no A_P/A_X weighting). */
+                D[(size_t)P * N + (size_t)X] += rate * P_mult;
             }
         }
     }
@@ -884,15 +907,17 @@ static void dt_build_decay_matrix(const CPRNetworkDef *net, const CPRConfig *cfg
 int cpr_nuclear_network_decay_era(const CPRNuclearNetwork *nn, char **errmsg)
 {
     const CPRConfig *cfg = nn->cfg;
-    /* Gated exactly like Python's solve(): only the `large` network carries
-     * the decays.txt reactions this era propagates. Its only output is the
-     * optional decay-evolution TSV (no BBN observable changes -- see this
-     * section's top comment), so skip the work entirely when that file was
-     * not requested. */
-    if (!cfg->decay_era || !cpr_config_is_large(cfg) || !cfg->output_decay_evolution)
+    const CPRNetworkDef *net = &nn->nucl->lt_net;
+
+    /* See this section's top comment for the gate and its one deliberate
+     * divergence from Python. "Has decays" = any weak reaction past index 0
+     * (index 0 is n__p, handled by the thermal weak rate, not decays.txt). */
+    int has_decays = 0;
+    for (size_t i = 1; i < net->n_reac; i++)
+        if (net->weak_flags[i]) { has_decays = 1; break; }
+    if (!cfg->decay_era || !has_decays || !cfg->output_decay_evolution)
         return 0;
 
-    const CPRNetworkDef *net = &nn->nucl->lt_net;
     size_t N = net->n_species;
     int M = cfg->decay_n_points;
     if (M < 1) return 0;
