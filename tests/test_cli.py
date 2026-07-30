@@ -85,31 +85,73 @@ def test_cli_network_accepts_any_network_file(capsys):
     assert results["YPBBN"] != pytest.approx(0.24699534223598402, rel=1e-6)
 
 
-def test_cli_network_rejects_unknown_name():
-    """An unknown --network name surfaces PRIMATConfig's ValueError."""
+def test_cli_network_rejects_unknown_name(capsys):
+    """An unknown --network name is a *user* error, not a crash.
+
+    PRIMATConfig's ValueError must reach the user as the C CLI reports it --
+    one "error: ..." line on stderr and exit code 2 (primat-c/src/cli.c) --
+    rather than as a Python traceback, which reads as an internal failure.
+    """
+    assert main(["--network", "no_such_network"]) == 2
+    assert "error: network must be" in capsys.readouterr().err
+
+
+def test_cli_config_error_traceback_escape_hatch(monkeypatch):
+    """PRIMAT_TRACEBACK=1 restores the raw exception for debugging primat."""
+    monkeypatch.setenv("PRIMAT_TRACEBACK", "1")
     with pytest.raises(ValueError, match="network must be"):
         main(["--network", "no_such_network"])
 
 
-def test_cli_network_error_mentions_data_tree():
+def test_cli_network_error_mentions_data_tree(capsys):
     """The missing-network error should point at data/nuclear/networks."""
-    with pytest.raises(ValueError, match=r"data/nuclear/networks"):
-        main(["--network", "no_such_network"])
+    assert main(["--network", "no_such_network"]) == 2
+    assert re.search(r"data/nuclear/networks", capsys.readouterr().err)
 
 
-def test_cli_network_error_lists_overlay_candidates(tmp_path):
+def test_cli_network_error_lists_overlay_candidates(tmp_path, capsys):
     """A custom overlay should be named explicitly in the missing-network error."""
     overlay = tmp_path / "overlay"
     overlay.mkdir()
     expected = overlay / "networks" / "custom.txt"
 
-    with pytest.raises(ValueError) as excinfo:
-        main(["--set", f"user_nuclear_dir={overlay}", "--network", "custom"])
+    assert main(["--set", f"user_nuclear_dir={overlay}", "--network", "custom"]) == 2
     # The error quotes each searched path with repr(), which doubles
     # backslashes on Windows ('C:\\a' -> "'C:\\\\a'"); collapse them so the
     # substring check is separator-portable (no-op on POSIX forward slashes).
-    message = str(excinfo.value).replace("\\\\", "\\")
+    message = capsys.readouterr().err.replace("\\\\", "\\")
     assert str(expected) in message
+
+
+def test_cli_rejects_non_positive_mc():
+    """--mc 0 / --mc -5 must be argparse errors, not a "value +/- 0" report.
+
+    A negative count used to underflow the C sampler's size_t buffer size and
+    abort the process with "out of memory (1.8e19 bytes)", while the Python
+    backend silently reported every observable with a zero sigma.
+    """
+    for bad in ("0", "-5"):
+        with pytest.raises(SystemExit) as excinfo:
+            main(["--mc", bad])
+        assert excinfo.value.code == 2
+
+
+def test_cli_json_with_time_evolution_is_serialisable(capsys, tmp_path):
+    """--json alongside --output_time_evolution must still print valid JSON.
+
+    Both backends attach a non-serialisable EvolutionResult under
+    results["evolution"]; the JSON writer drops it (the series has its own TSV)
+    instead of dying with "Object of type EvolutionResult is not JSON
+    serializable".
+    """
+    assert main(["--json", "--output_time_evolution",
+                 "--output_file", str(tmp_path / "evo.tsv")]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert "evolution" not in payload
+    assert payload["DoH"] > 0
+    # The omission is announced rather than silent.
+    assert "time-evolution" in captured.err
 
 
 def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):

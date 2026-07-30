@@ -1,7 +1,9 @@
 """Tests for PRIMATConfig: defaults, overrides, derived quantities, nuclide data."""
+import os
 import warnings
 import pytest
-from primat.config import PRIMATConfig, DEFAULT_PARAMS, PARAM_GROUPS
+from primat.config import (PRIMATConfig, DEFAULT_PARAMS, PARAM_GROUPS,
+                            _default_params_comments)
 
 
 def test_param_groups_covers_every_default_params_key_exactly_once():
@@ -258,9 +260,103 @@ def test_strict_params_is_a_default_param():
     assert DEFAULT_PARAMS["strict_params"] is False
 
 
+def test_strict_params_raises_on_unmatched_rate_variation():
+    """strict_params=True upgrades the p_<rxn>/delta_<rxn> typo warning to a
+    ValueError too.
+
+    GOAL: a mistyped reaction name is the archetypal silent no-op strict mode
+    exists to catch -- reaction names are long and underscore-heavy, and the
+    run otherwise proceeds with that rate unvaried.
+    """
+    with pytest.raises(ValueError) as exc:
+        PRIMATConfig({"p_n_p__d_gg": 1.0, "strict_params": True})
+    assert "p_n_p__d_gg" in str(exc.value)
+    assert "strict_params=True" in str(exc.value)
+
+
+def test_cross_field_ranges_rejected():
+    """Inconsistent *pairs* of parameters are rejected at construction.
+
+    GOAL: each of these passes the per-key range checks yet leaves the solver
+    with an impossible request, and each used to surface only as an opaque
+    "step size underflowed" from inside the MT integration (or, for the MC cap,
+    silently pinned every sampled rate to `cap`).
+    """
+    cases = [
+        ({"rate_grid_T9_min": 10.0, "rate_grid_T9_max": 1e-3}, "rate_grid_T9_min"),
+        ({"T_end_MeV": 100.0}, "T_end_MeV"),                  # > T_start_cosmo_MeV = 40
+        ({"mc_rate_rescale_cap": 0.5}, "mc_rate_rescale_cap"),
+    ]
+    for params, expected in cases:
+        with pytest.raises(ValueError) as exc:
+            PRIMATConfig(params)
+        assert expected in str(exc.value)
+    # A cap of exactly 1 ("no variation") and None ("no cap") stay legal.
+    assert PRIMATConfig({"mc_rate_rescale_cap": 1.0}).mc_rate_rescale_cap == 1.0
+    assert PRIMATConfig({"mc_rate_rescale_cap": None}).mc_rate_rescale_cap is None
+
+
+def test_data_dir_validated_before_nuclides_are_read(tmp_path):
+    """A bad data_dir is reported as such, not as a missing nuclides.csv.
+
+    GOAL: data_dir is consumed by _load_nuclide_data during __init__, so the
+    check has to run *before* it -- otherwise the user sees a bare
+    FileNotFoundError on '<data_dir>/csv/nuclides.csv' naming neither the
+    parameter nor what the directory should contain.
+    """
+    with pytest.raises(ValueError, match="not an existing directory"):
+        PRIMATConfig({"data_dir": str(tmp_path / "nope")})
+
+    # Exists, but is not a data tree: equally wrong for a *full takeover*.
+    with pytest.raises(ValueError) as exc:
+        PRIMATConfig({"data_dir": str(tmp_path)})
+    assert "does not look like a primat data tree" in str(exc.value)
+    assert "csv/" in str(exc.value) and "nuclear/" in str(exc.value)
+
+
+def test_cache_dir_expands_tilde_like_the_c_backend(monkeypatch, tmp_path):
+    """cache_dir is a path parameter: '~' must expand on the Python side too.
+
+    GOAL: primat-c's cpr_is_path_field expands cache_dir, so a config with
+    cache_dir='~/primat-cache' would otherwise have the two backends writing
+    their caches to different places (a literal './~/primat-cache' on the
+    Python side) and silently stop sharing them.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # Windows equivalent
+    cfg = PRIMATConfig({"cache_dir": os.path.join("~", "primat-cache")})
+    assert cfg.cache_dir == str(tmp_path / "primat-cache")
+
+
+def test_every_default_param_has_a_one_line_description():
+    """`primat --list-params` must describe every parameter.
+
+    GOAL: --set is deliberately hidden from --help, which makes --list-params
+    the documented way to discover parameters; a key printed as a bare
+    "name = value" is undocumented as far as a CLI user is concerned. The
+    description comes from config.py's own comments (trailing, else the first
+    prose line of the comment block above the key), so this also enforces that
+    a newly added parameter is commented at all.
+    """
+    comments = _default_params_comments()
+    undocumented = sorted(k for k in DEFAULT_PARAMS if not comments.get(k))
+    assert not undocumented, (
+        "DEFAULT_PARAMS keys with no description for --list-params: "
+        f"{undocumented}. Add a trailing '# ...' comment on the key's own line "
+        "(or a comment block immediately above it) in primat/config.py."
+    )
+
+
 def test_config_dynamic_rate_attrs():
     """Dynamic ``p_*`` and ``delta_*`` attrs round-trip through the backing dicts."""
     cfg = PRIMATConfig()
+
+    # The backing dicts themselves start with those very prefixes, so
+    # assigning them must NOT be read as a variation of a reaction named
+    # "rxn" (which would die in float(dict)).
+    cfg.p_rxn = dict(cfg.p_rxn)
+    cfg.delta_rxn = dict(cfg.delta_rxn)
+    assert isinstance(cfg.p_rxn, dict) and isinstance(cfg.delta_rxn, dict)
 
     # p_<reaction> attribute routes to cfg.p_rxn dict
     cfg.p_n_p__d_g = 0.5

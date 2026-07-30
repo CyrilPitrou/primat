@@ -39,6 +39,7 @@ import json
 import os
 import sys
 import time
+import warnings
 
 from . import PRIMAT, __version__
 from .credits import cli_credits_text
@@ -70,6 +71,38 @@ def _parse_set_value(raw: str):
         return ast.literal_eval(raw)
     except (ValueError, SyntaxError):
         return raw
+
+
+def _inspect_config(params: dict) -> PRIMATConfig:
+    """Build a ``PRIMATConfig`` purely so the CLI can read back resolved values
+    for its own bookkeeping (which MC outputs were requested, and the filename
+    stem to write them under).
+
+    Construction *warnings* are suppressed here, because the run itself
+    (``run_bbn``/``run_mc``) validates the very same dict and emits them
+    exactly once -- echoing them from this second construction reported a
+    single typo twice. Errors are **not** suppressed: an invalid configuration
+    still raises from here, which is deliberate, since it then surfaces before
+    any solving starts.
+
+    Parameters
+    ----------
+    params : dict
+        The ``PRIMATConfig`` overrides assembled from the command line.
+
+    Returns
+    -------
+    PRIMATConfig
+        The resolved configuration, for read-only inspection.
+
+    Example
+    -------
+        >>> _inspect_config({"output_mc_samples": True}).output_mc_file_prefix
+        'results/output_mc'
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return PRIMATConfig(params)
 
 
 # The four main BBN products whose joint MC uncertainty the CLI prints as
@@ -378,10 +411,11 @@ def _build_parser():
 def main(argv=None):
     """Entry point for the ``primat`` console script.
 
-    Parses command-line arguments into a ``PRIMATConfig`` ``params`` dict,
-    runs ``PRIMAT(params).primat_results()``, and prints either a short
-    human-readable summary (default) or the full results dict as JSON
-    (``--json``).
+    Parses command-line arguments into a ``PRIMATConfig`` ``params`` dict, runs
+    it through ``primat.backend.run_bbn`` (or ``run_mc`` with ``--mc``), which
+    dispatches to the C or pure-Python backend per ``--backend``, and prints
+    either a short human-readable summary (default) or the full results dict as
+    JSON (``--json``).
 
     Parameters
     ----------
@@ -393,19 +427,71 @@ def main(argv=None):
     Returns
     -------
     int
-        Process exit code, always ``0`` on success (argparse itself exits
-        with code 2 on a bad argument).
+        Process exit code: ``0`` on success, ``2`` when the requested
+        configuration is invalid (a bad ``--network`` name, an out-of-range
+        value, ...), in which case a one-line ``error: <message>`` goes to
+        stderr instead of a traceback -- matching the C CLI's behaviour
+        (``primat-c/src/cli.c``). argparse itself also exits with code 2 on a
+        malformed argument.
 
     Example
     -------
         $ primat --Omegabh2 0.02242 --network large --amax 8
         Neff       = 3.04397730
-        YP (BBN)   = 0.24691900
+        YP (BBN)   = 0.24700086
+        D/H        = 2.4365908e-05
         ...
     """
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    # --mc is a sample count: reject 0/negative here rather than letting the
+    # backend fail (or, worse, report every observable as "value +/- 0").
+    if args.mc is not None and args.mc < 1:
+        parser.error(f"--mc must be >= 1 (got {args.mc}); a sigma needs at "
+                      "least 2 samples.")
+
+    try:
+        return _dispatch(args, parser)
+    except (ValueError, TypeError, RuntimeError) as exc:
+        # A rejected configuration (unknown --network name, out-of-range value,
+        # inconsistent flag combination) or a failed integration is user-facing
+        # input/run feedback, not a crash: print it the way the C CLI does
+        # ('error: %s' + non-zero exit, primat-c/src/cli.c) instead of dumping a
+        # traceback that reads as an internal error. PRIMATConfig's messages are
+        # written to stand alone, so nothing is lost. Set PRIMAT_TRACEBACK=1 to
+        # get the full traceback back when debugging primat itself -- the one
+        # case where the stack, not the message, is the information wanted.
+        if os.environ.get("PRIMAT_TRACEBACK"):
+            raise
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _dispatch(args, parser):
+    """Execute the parsed command: the ``--credits``/``--list-params``/
+    ``--cache-info``/``--cache-clear`` short-circuits, otherwise one BBN (or
+    ``--mc``) run plus its printed summary and output files.
+
+    Split out of :func:`main` so that every configuration error raised anywhere
+    below is funnelled through one ``except`` clause there (see its comment) --
+    the alternative being a ``try`` around each of the four ``PRIMATConfig``
+    constructions and the two backend calls.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        The parsed arguments from :func:`_build_parser`.
+    parser : argparse.ArgumentParser
+        Kept for ``parser.error`` on malformed ``--set KEY=VALUE`` entries,
+        which must exit 2 with argparse's own usage message rather than being
+        reported as a config error.
+
+    Returns
+    -------
+    int
+        ``0`` on success.
+    """
     if args.credits:
         print(cli_credits_text())
         return 0
@@ -469,6 +555,11 @@ def main(argv=None):
         if params.get(key) is not None:
             print(_rates_overlay_notice(key, params[key]), file=sys.stderr)
 
+    # One config for the CLI's own bookkeeping: which MC outputs were asked
+    # for, and where to write them. Built once, before the run, so a rejected
+    # configuration is reported before any solving starts.
+    cfg_cli = _inspect_config(params)
+
     start_time = time.time()
     if args.mc is not None:
         # run_mc already computes the central (nominal) solve internally;
@@ -486,11 +577,10 @@ def main(argv=None):
         # below (mc_uncertainty/run_mc is what produces the MCResult they are
         # dumped from); without --mc there is no MCResult, so any of these
         # flags being set is silently a no-op unless we flag it here.
-        cfg_check = PRIMATConfig(params)
         requested = [name for name, enabled in (
-            ("output_mc_samples", cfg_check.output_mc_samples),
-            ("output_mc_covariance", cfg_check.output_mc_covariance),
-            ("output_mc_correlation", cfg_check.output_mc_correlation),
+            ("output_mc_samples", cfg_cli.output_mc_samples),
+            ("output_mc_covariance", cfg_cli.output_mc_covariance),
+            ("output_mc_correlation", cfg_cli.output_mc_correlation),
         ) if enabled]
         if requested:
             # Plain stderr print (matching _rates_overlay_notice above and
@@ -507,13 +597,25 @@ def main(argv=None):
 
     if args.json:
         out = dict(results)
+        # results["evolution"] is an EvolutionResult of numpy arrays (both
+        # backends attach it whenever output_time_evolution=True) and is not
+        # JSON-serialisable -- `primat --json --output_time_evolution` used to
+        # die with "Object of type EvolutionResult is not JSON serializable".
+        # The time series has its own dedicated TSV writer (--output_file), so
+        # it is dropped from the JSON payload rather than inlined: a 500-point
+        # x ~60-nuclide table would swamp the handful of observables this
+        # output exists to carry.
+        evolution = out.pop("evolution", None)
+        if evolution is not None:
+            print("note: --json omits the time-evolution series; it is written "
+                  "to the --output_file TSV instead.", file=sys.stderr)
         if mc is not None:
             out["mc"] = {q: {"central": mc[q].central, "mean": mc[q].mean,
                               "std": mc[q].std, "values": list(mc[q].values)}
                          for q in mc.quantity_names()}
         print(json.dumps(out, indent=2))
     else:
-        T_end_MeV = params.get("T_end_MeV", 1e-3)
+        T_end_MeV = params.get("T_end_MeV", DEFAULT_PARAMS["T_end_MeV"])
         sep = "─" * 52
         header = f"PRIMAT results at T = {T_end_MeV:g} MeV"
         print(sep)
@@ -554,12 +656,11 @@ def main(argv=None):
         # All three MC files share one filename stem (output_mc_file_prefix),
         # each gated by its own boolean, and are written verbatim from the same
         # dump_mc_* helpers the GUI uses (backend-agnostic MCResult).
-        cfg_check = PRIMATConfig(params)
-        prefix = cfg_check.output_mc_file_prefix
+        prefix = cfg_cli.output_mc_file_prefix
         for enabled, suffix, writer, label in (
-            (cfg_check.output_mc_samples,     "_samples.tsv",     dump_mc_samples,     "samples"),
-            (cfg_check.output_mc_covariance,  "_covariance.tsv",  dump_mc_covariance,  "covariance"),
-            (cfg_check.output_mc_correlation, "_correlation.tsv", dump_mc_correlation, "correlation"),
+            (cfg_cli.output_mc_samples,     "_samples.tsv",     dump_mc_samples,     "samples"),
+            (cfg_cli.output_mc_covariance,  "_covariance.tsv",  dump_mc_covariance,  "covariance"),
+            (cfg_cli.output_mc_correlation, "_correlation.tsv", dump_mc_correlation, "correlation"),
         ):
             if not enabled:
                 continue

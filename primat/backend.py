@@ -67,10 +67,13 @@ resolution" section) *are* supported on both backends: ``data_dir`` fully
 replaces the shipped data tree; ``user_nuclear_dir`` is an additive overlay
 for nuclear networks and rate tables.  They are ordinary ``params`` dict keys
 applied generically via ``cpr_config_set_by_name`` on the C side, so no
-special-casing is needed here — except that ``data_dir`` must also be
+special-casing is needed here — except that ``data_dir`` must *also* be
 forwarded as the ``data_dir`` positional argument to ``_c_ext.run_bbn``/
-``_c_ext.run_mc`` (the C extension's ``cpr_config_init_defaults`` takes the
-data folder there rather than via ``cpr_config_set_by_name``).
+``_c_ext.run_mc``, because the C extension's ``cpr_config_init_defaults``
+loads ``csv/nuclides.csv`` from that argument before any ``params`` key is
+applied. :func:`_c_data_dir` takes it from the *validated* config rather than
+from the raw dict, so a ``~``-prefixed path reaches C already expanded (the
+Python side expands it via ``config._PATH_PARAMS``).
 
 :func:`run_mc` is the MC counterpart of :func:`run_bbn`: it dispatches between
 ``primat._primat_c``'s ``run_mc`` (wrapping ``primat-c/src/mc.c``'s threaded
@@ -95,6 +98,7 @@ backend switch. ``custom_network`` is supported on both backends, same as
 """
 from __future__ import annotations
 
+import numbers
 import os
 import sys
 from typing import Any, TYPE_CHECKING
@@ -125,8 +129,9 @@ def _log_backend(func_name: str, used: str, reason: str, log_backend: bool) -> N
 # remember to ask for every ratio by name. Mirrors the GUI's
 # primat.gui.panels._RATIO_FORMAT keys, which is where this set was
 # originally curated; some entries (Li6oLi7, YCNO) only exist for networks
-# that track Li6/CNO and are silently dropped when unavailable -- see
-# _default_mc_quantities and _c_mc below.
+# that track Li6/CNO and are silently dropped when unavailable -- each
+# backend filters them against its own central solve (mc_uncertainty for
+# Python, _c_mc's probe run_bbn below for C).
 _DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "He4oH", "DoH", "He3oH",
                            "He3oHe4", "Li7oH", "Li6oLi7", "YCNO")
 
@@ -230,6 +235,125 @@ def _tabulate_extra_rho(extra_rho: list, cfg) -> tuple[list[float], list[float]]
     return T_grid.tolist(), total.tolist()
 
 
+def _c_data_dir(cfg) -> str:
+    """Return the data root to hand the C extension as its positional
+    ``data_dir`` argument: the run's own ``data_dir`` when set, else the
+    package-shipped tree.
+
+    Taken from the *validated* :class:`primat.config.PRIMATConfig` rather than
+    from the raw ``params`` dict so the value is already ``~``-expanded (see
+    ``config._PATH_PARAMS``); handing C the raw ``"~/mydata"`` would have it
+    look for a literal ``./~/mydata`` tree.
+
+    Args:
+        cfg: the PRIMATConfig built for this call.
+
+    Returns:
+        str: the data root for this run -- an existing directory carrying at
+        least ``csv/`` and ``nuclear/`` (validated by
+        ``PRIMATConfig._validate_dir_field``), normally also ``NEVO/`` and the
+        regenerable ``cache_plasma_weak/`` caches.
+
+    Example:
+        >>> _c_data_dir(PRIMATConfig({}))          # doctest: +SKIP
+        '/.../site-packages/primat/data'
+    """
+    return cfg.data_dir or _C_DATA_DIR
+
+
+def _c_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Return ``params`` without the keys ``PRIMATConfig`` has already reported
+    as unknown, for handoff to the C extension.
+
+    ``cpr_config_set_by_name`` rejects any name it does not recognise, and the
+    wrapper turns that into a ``ValueError`` -- so a plain typo
+    (``{"Omegab2h": 0.022}``) *raised* on the C path while the Python path
+    warned "did you mean 'Omegabh2'?" and ran with the default cosmology. That
+    contradicts ``strict_params``, whose documented default (``False``) is
+    "warn and ignore"; with ``strict_params=True``, ``PRIMATConfig`` has
+    already raised before we get here, so filtering can never hide a strict
+    error.
+
+    Only keys unknown to *both* sides are dropped: anything in
+    ``DEFAULT_PARAMS`` (or a ``p_<rxn>``/``delta_<rxn>`` variation) is still
+    forwarded, so a key Python accepts but the C field table lacks stays a hard
+    error rather than being silently ignored -- that asymmetry is a parity bug
+    worth failing on, and is exactly how the missing ``data_dir`` case was
+    caught.
+
+    Args:
+        params: the numpy-unwrapped PRIMATConfig overrides for this run.
+
+    Returns:
+        dict: ``params`` itself when nothing needs dropping (the common path),
+        otherwise a filtered copy.
+
+    Example:
+        >>> _c_params({"network": "small", "Omegab2h": 0.022})
+        {'network': 'small'}
+    """
+    from .config import DEFAULT_PARAMS
+    known = [k for k in params
+             if k in DEFAULT_PARAMS or k.startswith(("p_", "delta_"))]
+    if len(known) == len(params):
+        return params
+    return {k: params[k] for k in known}
+
+
+def _validate_params(params: dict[str, Any]):
+    """Build the throwaway :class:`primat.config.PRIMATConfig` that validates
+    ``params`` identically for both backends, returning
+    ``(cfg, warnings_list)``.
+
+    Every request is type/range/choice-checked here (an unknown ``--network``
+    name, ``Omegabh2="0.022"``, a ``p_<rxn>`` typo, ...) so a bad request fails
+    the same way whether or not the C extension ends up servicing it — the
+    resulting ``cfg`` is discarded on the C path, which re-derives its own
+    ``CPRConfig`` from the same dict.
+
+    Warnings raised during that construction (unknown keys, unmatched
+    ``p_<rxn>``/``delta_<rxn>`` names) are *captured* rather than emitted,
+    because the Python backend builds a second ``PRIMATConfig`` inside
+    ``PRIMAT.__init__`` and would emit each of them a second time — one typo
+    reading as two problems. The caller re-emits them via
+    :func:`_reemit_warnings` on the C path only, where no second construction
+    happens.
+
+    Args:
+        params: dict of PRIMATConfig overrides (already numpy-unwrapped).
+
+    Returns:
+        ``(cfg, caught)``: the validated config, and the list of
+        :class:`warnings.WarningMessage` recorded while building it.
+
+    Example:
+        >>> cfg, caught = _validate_params({"network": "small"})
+        >>> caught
+        []
+    """
+    import warnings
+    from .config import PRIMATConfig
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        cfg = PRIMATConfig(params)
+    return cfg, list(caught)
+
+
+def _reemit_warnings(caught: list) -> None:
+    """Re-emit warnings captured by :func:`_validate_params`, preserving each
+    one's category and message.
+
+    Called on the C path only: nothing else will construct a
+    ``PRIMATConfig`` there, so without this a mistyped parameter key would be
+    validated and then silently swallowed. ``stacklevel=3`` attributes the
+    warning to the caller's ``run_bbn``/``run_mc`` call rather than to this
+    helper (``warn`` -> ``_reemit_warnings`` -> ``run_bbn`` -> user).
+    """
+    import warnings
+    for w in caught:
+        warnings.warn(w.message, w.category, stacklevel=3)
+
+
 def _unwrap_numpy_params(params: dict[str, Any]) -> dict[str, Any]:
     """Return ``params`` with every numpy scalar value replaced by its plain
     Python equivalent (``np.int64(80) -> 80``), leaving everything else
@@ -296,11 +420,13 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
             the C backend is unavailable or the request uses a C-unsupported
             feature.
         extra_rho, custom_network, background: forwarded to ``PRIMAT.__init__``
-            verbatim. ``extra_rho``/``background`` are Python-only (see module
-            docstring), so any non-``None`` value forces the Python backend
-            regardless of ``force_backend`` (except ``force_backend="c"``,
-            which raises instead). ``custom_network`` is supported on both
-            backends and never forces a fallback.
+            verbatim. ``background`` is the one Python-only extension point
+            (see module docstring), so a non-``None`` value forces the Python
+            backend regardless of ``force_backend`` — except
+            ``force_backend="c"``, which raises instead. ``extra_rho`` and
+            ``custom_network`` are supported on both backends and never force
+            a fallback (``extra_rho`` crosses to C as a tabulated
+            ``(Tg[], rho[])`` handoff, see :func:`_tabulate_extra_rho`).
         log_backend: bool, default False. Print which backend actually ran
             and why (module docstring); also triggered by setting the
             ``PRIMAT_BACKEND_LOG`` environment variable.
@@ -326,13 +452,10 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
 
     params = _unwrap_numpy_params(params or {})
 
-    # Validate params the same way regardless of backend (PRIMATConfig's
-    # __init__ does all the checking -- e.g. an unknown --network name --
-    # so a bad request raises the same ValueError whether or not the C
-    # backend ends up being used; the resulting cfg itself is discarded for
-    # the "c" path, which re-derives its own CPRConfig from params instead).
-    from .config import PRIMATConfig
-    cfg = PRIMATConfig(params)
+    # Validate params the same way regardless of backend; construction
+    # warnings are held back and re-emitted only on the C path (see
+    # _validate_params / _reemit_warnings).
+    cfg, caught = _validate_params(params)
     if progress is None:
         progress = cfg.show_progress
 
@@ -372,8 +495,8 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
                 "no C-side equivalent)."
             )
         _log_backend("run_bbn", "C", "force_backend='c'", log_backend)
-        _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
-        return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network,
+        _reemit_warnings(caught)
+        return _assemble_c_result(_c_ext.run_bbn(_c_params(params), _c_data_dir(cfg), custom_network,
                                                    show_progress=int(progress),
                                                    **_c_extra_rho_kwargs()))
 
@@ -381,8 +504,8 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
     # falling back to Python for anything it cannot express.
     if HAS_C_BACKEND and not python_only_feature:
         _log_backend("run_bbn", "C", "auto, no C-unsupported feature requested", log_backend)
-        _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
-        return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network,
+        _reemit_warnings(caught)
+        return _assemble_c_result(_c_ext.run_bbn(_c_params(params), _c_data_dir(cfg), custom_network,
                                                    show_progress=int(progress),
                                                    **_c_extra_rho_kwargs()))
     reason = ("auto fallback: background= requested"
@@ -417,22 +540,6 @@ def _assemble_c_result(result: dict[str, Any]) -> dict[str, Any]:
                if rates else None),
     )
     return result
-
-
-def _default_mc_quantities(params: dict[str, Any] | None) -> list[str]:
-    """Every tracked nuclide's final-Y name plus the standard observables.
-
-    Resolved from one ordinary :func:`run_bbn` call (cheap relative to an
-    ``num_mc``-sample MC run) rather than re-deriving the network's nuclide
-    list from scratch, so this always matches exactly what the chosen
-    ``network``/``amax``/``custom_network`` would track -- no duplicated
-    network-introspection logic between here and ``NuclearNetwork``/
-    ``cpr_nuclear_network``.
-    """
-    central = run_bbn(params)
-    names = list(central["Y_final"].keys())
-    names += [q for q in _DEFAULT_MC_OBSERVABLES if q in central]
-    return names
 
 
 def _assemble_c_mc_result(raw: dict[str, Any], quantities: list[str], seed: int | None,
@@ -486,12 +593,15 @@ def run_mc(num_mc: int, quantities: str | list[str] | None = None,
     Python's).
 
     Args:
-        num_mc: int. Number of MC samples.
+        num_mc: int. Number of MC samples; must be >= 1. Note that a sigma
+            needs at least two samples, so ``num_mc=1`` legitimately reports
+            ``std == 0``.
         quantities: str or list of str, optional. A result-dict key
             (``'YPBBN'``, ``'DoH'``, ...) or nuclide name, or a list of
             either. ``None`` (default) uses every tracked nuclide's final Y
-            plus the full ``_DEFAULT_MC_OBSERVABLES`` set (see
-            :func:`_default_mc_quantities`). Regardless of what is passed
+            plus the full ``_DEFAULT_MC_OBSERVABLES`` set, as resolved by
+            whichever backend runs (``mc_uncertainty``'s central solve for
+            Python, ``_c_mc``'s probe solve for C). Regardless of what is passed
             here, the returned ``MCResult`` *always* additionally contains
             every tracked nuclide and every ``_DEFAULT_MC_OBSERVABLES`` entry
             this network/custom_network actually produces -- at no extra
@@ -533,14 +643,32 @@ def run_mc(num_mc: int, quantities: str | list[str] | None = None,
         raise ValueError(f"force_backend must be one of None/'auto'/'c'/'python', "
                           f"got {force_backend!r}")
 
+    # num_mc must be a positive count, checked here so BOTH backends reject the
+    # same input: the C sampler allocates num_mc doubles per quantity, so a
+    # negative value used to underflow size_t and abort the process with a
+    # "primat: out of memory (18446744073709551576 bytes)" from mc.c, while the
+    # Python path silently produced an empty sample set reported as
+    # "value +/- 0". (cpr_mc_uncertainty now rejects it too, for callers that
+    # reach the C API without passing through here.)
+    if not isinstance(num_mc, numbers.Integral) or isinstance(num_mc, bool):
+        raise TypeError(f"run_mc: num_mc must be an int, got {num_mc!r} of type "
+                         f"{type(num_mc).__name__}.")
+    if num_mc < 1:
+        raise ValueError(f"run_mc: num_mc must be >= 1, got {num_mc}. (A sigma "
+                          "needs at least 2 samples; num_mc=1 reports std=0.)")
+
     # Unwrap numpy scalars before anything else, exactly as run_bbn does, so an
     # MC scan driven by numpy arrays behaves identically on both backends and
     # the `prev` reuse-guard compares plain-Python params dicts (a np.float64
     # would compare equal to its float, but an np.int64 key would not survive
     # the C hand-off at all -- see _unwrap_numpy_params).
     params = _unwrap_numpy_params(params or {})
-    from .config import PRIMATConfig
-    cfg = PRIMATConfig(params)  # validate params the same way regardless of backend
+    # Validate params identically for both backends; construction warnings are
+    # held back and re-emitted only on the C path, exactly as in run_bbn --
+    # the Python path's own mc_uncertainty builds a PRIMATConfig and a PRIMAT
+    # in this same process (main.py's _mc_rate_keys / central solve), which
+    # emit them there.
+    cfg, caught = _validate_params(params)
     if progress is None:
         progress = cfg.show_progress
 
@@ -566,13 +694,7 @@ def run_mc(num_mc: int, quantities: str | list[str] | None = None,
                                progress=progress)
 
     def _c_mc():
-        # One ordinary (non-MC) solve to learn the nuclide list and which
-        # optional derived observables (Li6oLi7/YCNO/Neff/...) this
-        # network/config actually produces -- same role as
-        # _default_mc_quantities's `central` for the Python backend's
-        # quantities=None path, but needed here unconditionally since the
-        # default-observable merge below always applies, not just when
-        # quantities was omitted.
+        _reemit_warnings(caught)
         # Probe solve: discovers which nuclides and optional observables
         # (Li6oLi7, YCNO, …) this network/config actually produces, so we
         # can build a complete quantities_with_nuclides list to pass to
@@ -602,8 +724,7 @@ def run_mc(num_mc: int, quantities: str | list[str] | None = None,
         else:
             prev_centrals = None
             prev_values = None
-        _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
-        raw = _c_ext.run_mc(params, _data_dir, num_mc, quantities_with_nuclides, seed, n_jobs,
+        raw = _c_ext.run_mc(_c_params(params), _c_data_dir(cfg), num_mc, quantities_with_nuclides, seed, n_jobs,
                              custom_network, prev_centrals, prev_values,
                              progress=int(progress))
         return _assemble_c_mc_result(raw, quantities_with_nuclides, seed, base_params, custom_network)

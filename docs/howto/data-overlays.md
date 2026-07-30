@@ -18,8 +18,14 @@ from primat.backend import run_bbn
 result = run_bbn({"data_dir": "/path/to/my_data_tree"})
 ```
 
-On the C CLI, the equivalent is the `--data_dir` flag or the
-`CPRIMAT_DATA_DIR` environment variable.
+The example above works on either backend: `data_dir` is an ordinary `params`
+key, which `primat.backend` additionally hands to the C extension as its data
+root (the C side loads `csv/nuclides.csv` before any parameter is applied, so it
+needs the directory up front).
+
+On the C CLI, the equivalent is the `--data_dir` flag, the
+`CPRIMAT_DATA_DIR` environment variable, or a `data_dir = …` line in an
+`--ini` file.
 
 ## `user_nuclear_dir` — additive overlay
 
@@ -51,7 +57,11 @@ have their own separate additive overlay, `cache_dir` — see
 ## Common ground
 
 - Both fields default to `None` and are eagerly validated as existing
-  directories at construction time.
+  directories at construction time. Because it is a *takeover*, `data_dir` is
+  additionally checked for the `csv/` and `nuclear/` subdirectories — before
+  `nuclides.csv` is read from it, so a typo'd path is reported as a bad
+  `data_dir` rather than as a missing CSV. A leading `~` is expanded on both
+  backends.
 - `user_nuclear_dir` is not part of the n↔p weak-rate fingerprint machinery
   (`_WEAK_RATE_BG_FIELDS`/`_THERMAL_BG_FIELDS`) since it only affects
   network/rate-table resolution, not anything those fingerprints cover.

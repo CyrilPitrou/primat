@@ -394,29 +394,44 @@ static char *cpr_expanduser_path(const char *path)
     return out;
 }
 
+/* Assign cfg->data_dir, expanding a leading "~" and warning on truncation.
+ *
+ * cfg->data_dir is a fixed CPR_DATA_DIR_LEN buffer (not a malloc'd char*,
+ * unlike user_nuclear_dir/cache_dir), so an absurdly long
+ * --data_dir/CPRIMAT_DATA_DIR value must be truncated, not overflowed.
+ * strncpy alone does not guarantee NUL-termination when the source is >= the
+ * copy length, so we terminate explicitly rather than relying on any prior
+ * memset; the warning is unconditional (not gated by cfg->verbose, unlike
+ * cpr_log) since every subsequent rates lookup under a truncated data_dir
+ * would otherwise fail with a confusing "file not found" pointing at a
+ * mangled path.
+ *
+ * Shared by cpr_config_init_defaults (the --data_dir / CPRIMAT_DATA_DIR /
+ * Python-extension argument) and cpr_config_set_by_name's "data_dir" case (an
+ * INI key or a params-dict entry), so every path normalises identically --
+ * including the "~" expansion the Python side applies via _PATH_PARAMS. */
+static void cpr_config_assign_data_dir(CPRConfig *cfg, const char *data_dir)
+{
+    char *expanded = cpr_expanduser_path(data_dir);
+    const char *src = expanded ? expanded : data_dir;   /* OOM -> use as-is */
+    strncpy(cfg->data_dir, src, sizeof(cfg->data_dir) - 1);
+    cfg->data_dir[sizeof(cfg->data_dir) - 1] = '\0';
+    if (strlen(src) >= sizeof(cfg->data_dir)) {
+        fprintf(stderr,
+                "warning: data_dir path (%zu bytes) exceeds the %zu-byte "
+                "internal limit and was truncated to %.60s...; rates lookups "
+                "will very likely fail. Use a shorter data_dir path.\n",
+                strlen(src), sizeof(cfg->data_dir) - 1, cfg->data_dir);
+    }
+    free(expanded);
+}
+
 int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg)
 {
     memset(cfg, 0, sizeof(*cfg));
     cpr_constants_init();
 
-    /* cfg->data_dir is a fixed CPR_DATA_DIR_LEN buffer (not a malloc'd
-     * char*, unlike user_nuclear_dir/cache_dir), so an absurdly long
-     * --data_dir/CPRIMAT_DATA_DIR value must be truncated, not overflowed.
-     * strncpy alone does not guarantee NUL-termination when the source is
-     * >= the copy length, so terminate explicitly rather than relying on
-     * the memset above always running first; warn unconditionally (not
-     * gated by cfg->verbose, unlike cpr_log) since every subsequent rates
-     * lookup under a truncated data_dir will otherwise fail with a
-     * confusing "file not found" pointing at a mangled path. */
-    strncpy(cfg->data_dir, data_dir, sizeof(cfg->data_dir) - 1);
-    cfg->data_dir[sizeof(cfg->data_dir) - 1] = '\0';
-    if (strlen(data_dir) >= sizeof(cfg->data_dir)) {
-        fprintf(stderr,
-                "warning: data_dir path (%zu bytes) exceeds the %zu-byte "
-                "internal limit and was truncated to %.60s...; rates lookups "
-                "will very likely fail. Use a shorter data_dir path.\n",
-                strlen(data_dir), sizeof(cfg->data_dir) - 1, cfg->data_dir);
-    }
+    cpr_config_assign_data_dir(cfg, data_dir);
 
     cfg->verbose = 0;
     cfg->show_progress = 1;
@@ -748,6 +763,39 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
         cpr_config_set_GN(cfg, d);
         return 0;
     }
+    /* data_dir is routed here rather than through FIELD_TABLE because it is a
+     * fixed char[] buffer, and F_STRING's handler free()s and strdup()s a
+     * char* -- which would corrupt it. It must still round-trip like every
+     * other key: primat/backend.py forwards the whole params dict to the
+     * extension (data_dir included, on top of the positional argument), and
+     * primat-c/examples/run_basic.ini advertises `data_dir` as a settable INI
+     * key. Rejecting it here used to abort the Python C-backend call outright
+     * and made the INI key a warn-and-ignore no-op.
+     *
+     * None means "keep the current root" (the Python default, where None
+     * selects the shipped primat/data/ tree). Because the nuclide table was
+     * already loaded from the previous root by cpr_config_init_defaults, a
+     * *changed* root must reload it -- otherwise an INI-supplied data_dir
+     * would silently keep the shipped nuclides.csv. */
+    if (strcmp(name, "data_dir") == 0) {
+        if (value.type == CPR_NONE)
+            return 0;
+        if (value.type != CPR_STRING) {
+            *errmsg = strdup("data_dir expects a string or None");
+            return 1;
+        }
+        char previous[CPR_DATA_DIR_LEN];
+        snprintf(previous, sizeof(previous), "%s", cfg->data_dir);
+        cpr_config_assign_data_dir(cfg, value.v.s);
+        if (strcmp(previous, cfg->data_dir) != 0) {
+            free(cfg->nuclides.items);
+            cfg->nuclides.items = NULL;
+            cfg->nuclides.n = 0;
+            if (load_nuclides(cfg, errmsg))
+                return 1;
+        }
+        return 0;
+    }
 
     for (size_t i = 0; i < FIELD_TABLE_N; i++) {
         if (strcmp(FIELD_TABLE[i].name, name) != 0)
@@ -849,25 +897,39 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
 int cpr_config_validate(CPRConfig *cfg, char **errmsg)
 {
     /* custom_background: force instantaneous decoupling / no spectral
-     * distortions, mirroring PyPRConfig.__init__ (warnings.warn there
-     * becomes a silent forcing here; CPRIMAT's CLI layer can print a note
-     * if it cares -- the physics invariant is what matters at this layer). */
+     * distortions, mirroring PRIMATConfig.__init__. The forcing is reported on
+     * stderr, as the Python side reports it with warnings.warn: silently
+     * overriding two flags the user explicitly set leaves them believing the
+     * run included non-instantaneous decoupling / spectral distortions when it
+     * did not. Printed unconditionally (not via cpr_log, which is gated on
+     * cfg->verbose) for the same reason the Python warning is not gated. */
     if (cfg->custom_background != NULL) {
         if (cfg->external_scale_factor) {
             *errmsg = strdup("custom_background and external_scale_factor are mutually exclusive");
             return 1;
         }
+        if (cfg->incomplete_decoupling || cfg->spectral_distortions) {
+            fprintf(stderr,
+                    "warning: custom_background: forcing %s%s%s "
+                    "(custom-background mode uses instantaneous-decoupling "
+                    "weak rates; spectral distortions are not supported).\n",
+                    cfg->incomplete_decoupling ? "incomplete_decoupling=False" : "",
+                    (cfg->incomplete_decoupling && cfg->spectral_distortions) ? ", " : "",
+                    cfg->spectral_distortions ? "spectral_distortions=False" : "");
+        }
         cfg->incomplete_decoupling = 0;
         cfg->spectral_distortions = 0;
     }
 
-    /* NOTE: the network-file-existence check (PyPRConfig.__init__'s
+    /* NOTE: the network-file-existence check (PRIMATConfig.__init__'s
      * `network must be 'small' or name an existing file...`) and the
      * p_<rxn>/delta_<rxn> typo check against the configured network's
-     * reaction list both require network_data.c (Phase 4, not yet ported)
-     * to enumerate valid reaction names -- deferred to
-     * cpr_network_validate() once that module exists, called from
-     * cprimat_run() after this function. */
+     * reaction list both need network_data.c to enumerate valid reaction
+     * names, so they are not performed here. Callers reaching the C solver
+     * through primat/backend.py get both checks anyway (it builds a
+     * PRIMATConfig from the same params dict first); the standalone
+     * primat-c CLI instead reports a missing network later, when the list is
+     * opened ("error: cannot open network list '<path>'"). */
 
     if (cfg->amax != -1 && cfg->amax < 1) {
         *errmsg = strdup("amax must be None (-1) or a positive integer");
@@ -914,9 +976,14 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     CPR_REQUIRE(cfg->rate_grid_T9_max > 0,
                 "rate_grid_T9_max=%.6g is out of range: must be > 0", cfg->rate_grid_T9_max);
     /* mc_rate_rescale_cap: 0.0 is the "no cap" sentinel (Python None); any
-     * positive value is the cap. A negative cap is meaningless. */
-    CPR_REQUIRE(cfg->mc_rate_rescale_cap >= 0,
-                "mc_rate_rescale_cap=%.6g is out of range: must be > 0 or None", cfg->mc_rate_rescale_cap);
+     * value >= 1 is the cap. Below 1 the clamp bounds [1/cap, cap] *cross*
+     * (cap = 0.5 -> [2, 0.5]), which silently pins every sampled rate factor
+     * to cap instead of capping the variation -- see network_data.c's
+     * rate-variation clamp and _validate_ranges in primat/config.py. */
+    CPR_REQUIRE(cfg->mc_rate_rescale_cap == 0.0 || cfg->mc_rate_rescale_cap >= 1.0,
+                "mc_rate_rescale_cap=%.6g is out of range: must be >= 1 or None "
+                "(it clamps the MC rate factor to [1/cap, cap], whose bounds "
+                "cross below 1)", cfg->mc_rate_rescale_cap);
     /* non-negative doubles (a 1-sigma width may legitimately be 0) */
     CPR_REQUIRE(cfg->std_tau_n >= 0,
                 "std_tau_n=%.6g is out of range: must be >= 0", cfg->std_tau_n);
@@ -941,6 +1008,29 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     CPR_REQUIRE(cfg->decay_n_points >= 1,
                 "decay_n_points=%d is out of range: must be a positive integer (>= 1)", cfg->decay_n_points);
 #undef CPR_REQUIRE
+
+    /* Cross-field consistency, mirroring _validate_ranges in
+     * primat/config.py: constraints that involve two parameters at once, each
+     * of which otherwise surfaces only as an opaque "cpr_ode_bdf: step size
+     * underflowed below machine precision" from deep inside the MT era. */
+    if (cfg->rate_grid_T9_min >= cfg->rate_grid_T9_max) {
+        *errmsg = malloc(224);
+        snprintf(*errmsg, 224,
+                 "rate_grid_T9_min=%.6g must be < rate_grid_T9_max=%.6g: they "
+                 "bound the log-spaced master T9 grid every nuclear rate table "
+                 "is resampled onto, which must be increasing",
+                 cfg->rate_grid_T9_min, cfg->rate_grid_T9_max);
+        return 1;
+    }
+    if (cfg->T_end_MeV >= cfg->T_start_cosmo_MeV) {
+        *errmsg = malloc(224);
+        snprintf(*errmsg, 224,
+                 "T_end_MeV=%.6g must be < T_start_cosmo_MeV=%.6g: the "
+                 "background and the nuclear network are integrated from "
+                 "T_start_cosmo_MeV down to T_end_MeV",
+                 cfg->T_end_MeV, cfg->T_start_cosmo_MeV);
+        return 1;
+    }
 
     /* fEDE is the EDE fraction of the total energy density at its peak;
      * background.c has (1 - fEDE) in the denominator, so fEDE >= 1 diverges. */

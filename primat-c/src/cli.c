@@ -679,6 +679,10 @@ int cpr_cli_main(int argc, char **argv)
     int cache_info = 0, cache_clear = 0, credits = 0, version = 0;
     int do_json = 0;
     int mc_n = 0, mc_seed = 0;
+    /* mc_n == 0 also means "no --mc at all", so a separate flag is needed to
+     * tell an omitted --mc from an explicit "--mc 0" (which is an error, as in
+     * cli.py: a sigma needs at least 2 samples). */
+    int mc_given = 0;
 
     /* --data_dir, --user_nuclear_dir and --ini must be known before
      * cpr_config_init_defaults runs (the first picks the data directory;
@@ -705,12 +709,23 @@ int cpr_cli_main(int argc, char **argv)
             do_json = 1;
         } else if (strcmp(argv[i], "--mc") == 0 && i + 1 < argc) {
             mc_n = atoi(argv[++i]);
+            mc_given = 1;
         } else if (strcmp(argv[i], "--mc-seed") == 0 && i + 1 < argc) {
             mc_seed = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             usage(argv[0]);
             return 0;
         }
+    }
+
+    /* Reject a non-positive explicit --mc before any setup: the sampler sizes
+     * its buffers from num_mc, so a negative count used to abort the process in
+     * CPR_XMALLOC with an "out of memory (1.8e19 bytes)" message naming neither
+     * the flag nor the mistake. Mirrors cli.py's parser.error. */
+    if (mc_given && mc_n < 1) {
+        fprintf(stderr, "error: --mc must be >= 1 (got %d); a sigma needs at "
+                        "least 2 samples.\n", mc_n);
+        return 2;
     }
 
     if (version) {

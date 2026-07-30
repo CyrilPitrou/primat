@@ -62,7 +62,7 @@ DEFAULT_PARAMS: dict = {
     # NOTE: there is deliberately no mu-type (chemical-potential) spectral
     # distortion -- a neutrino chemical potential is not a spectral distortion;
     # use munuOverTnu instead (it shifts the weak rates AND the energy density).
-    "analytic_distortions":       False,
+    "analytic_distortions":       False, # False (default): read the distortion from the tabulated NEVO spectrum (requires incomplete_decoupling=True); True: use the analytic y_SZ/y_gray shapes (requires incomplete_decoupling=False).
     "y_SZ":                       0., # Amplitude of the y-type (Sunyaev-Zel'dovich-like, Compton) distortion; see neutrino_history.AnalyticDistortion.
     "y_gray":                     0., # Amplitude of the gray-type (gray-body temperature-rescaling) distortion: delta_f(y) = -fd(y) + fd(y/(1+y_gray))/(1+y_gray)**3.
     # ENERGY density shifts linearly, integral{y^3 delta_f dy} = y_gray * 7*pi**4/120 exactly -- a distinct, independent third distortion shape.
@@ -126,7 +126,7 @@ DEFAULT_PARAMS: dict = {
     "GN":                         6.6743e-11,   # Newton's constant, SI units [m^3 kg^-1 s^-2]
 
     # ---- background thermodynamics ----------------------------------------
-    "T_start_cosmo_MeV":          40.0,
+    "T_start_cosmo_MeV":          40.0, # photon temperature at which the background integration starts [MeV]; must be > T_end_MeV. 40 MeV is well before any BBN-relevant weak or nuclear process (T_weak = 1 MeV), so the initial condition is pure radiation domination.
     "T_end_MeV":                  1.e-3,  # end temperature for nuclear integration [MeV]; default 0.001 MeV ≈ 11.6 MK
     "sampling_temperature_per_decade": 600,  # points per decade of T for the background a(T)/t(T) grid
 
@@ -213,11 +213,11 @@ DEFAULT_PARAMS: dict = {
     # nuclear_network.NuclearNetwork._write_time_evolution.
     "output_time_evolution":      False,
     "output_rates_time_evolution": False, #whether to append per-reaction forward-rate columns (<reaction>_frwrd, e.g. n_p__d_g_frwrd) to the time-evolution output, after the Y_<nuclide> block. One column per reaction in the active LT network (~12 for small/small_parthenope, 68 for large+amax=8, ~429 for full large). Only useful to inspect the rate evolution; keep False otherwise to save disk space. Both backends emit the identical columns.
-    "output_n_points":            500,
-    "output_file":                "results/output_tables.tsv",
+    "output_n_points":            500, # number of time samples written to the time-evolution output (log-spaced over the integration range)
+    "output_file":                "results/output_tables.tsv", # destination of the time-evolution TSV; None still fills results["evolution"] in memory but writes nothing to disk
     # Two-column dump (nuclide name, final mass-fraction abundance Y) at the end of BBN.
     "output_final_result":        False,
-    "output_final_file":          "results/output_final.dat",
+    "output_final_file":          "results/output_final.dat", # destination of that two-column final-abundance dump
 
     # Writes a separate TSV (cfg.output_background_file) with the cosmological
     # background's own time evolution (T, t, and -- if available -- a, H,
@@ -225,7 +225,7 @@ DEFAULT_PARAMS: dict = {
     # plasma/neutrino/extra/total energy densities); see
     # background.Background.write_time_evolution.
     "output_background_evolution": False,
-    "output_background_file":     "results/output_background.tsv",
+    "output_background_file":     "results/output_background.tsv", # destination of the background time-evolution TSV
 
     # Monte-Carlo output files (backend.run_mc/main.mc_uncertainty only; a
     # plain solve() never writes them). All three share one filename stem set
@@ -245,9 +245,9 @@ DEFAULT_PARAMS: dict = {
     # created on demand). E.g. prefix "results/output_mc" writes
     # results/output_mc_samples.tsv etc.
     "output_mc_samples":           False,
-    "output_mc_covariance":        False,
-    "output_mc_correlation":       False,
-    "output_mc_file_prefix":       "results/output_mc",
+    "output_mc_covariance":        False, # write the (n_q, n_q) sample covariance matrix (ddof=1) to <output_mc_file_prefix>_covariance.tsv
+    "output_mc_correlation":       False, # write the matching correlation matrix to <output_mc_file_prefix>_correlation.tsv
+    "output_mc_file_prefix":       "results/output_mc", # shared filename stem of the three MC outputs above (its directory is created on demand)
 
 
     # ---- nuclear network --------------------------------------------------
@@ -308,7 +308,7 @@ DEFAULT_PARAMS: dict = {
     "Omegabh2":                   0.02242,   # baryon density Omega_b h^2 = 0.02242 +/- 0.00014 (Planck 2018 + BAO, author decision 2026-07-08)
     "Omegach2":                   0.11933,  # cold dark matter density parameter Omega_c h^2 (Planck 2018)
     "h":                          0.6766,   # reduced Hubble constant h = H_0 / (100 km/s/Mpc) (Planck 2018)
-    "DeltaNeff":                  0.,
+    "DeltaNeff":                  0., # extra relativistic degrees of freedom beyond the three SM neutrinos, in units of one neutrino species: adds DeltaNeff * rho_nu(one flavour) to the Friedmann equation and shifts Neff by the same amount (0 = Standard Model).
     "munuOverTnu":                0., # Reduced chemical potential xi = mu/T of neutrinos (the COMMON default for all flavours, nu_e, nu_mu, nu_tau; antineutrinos carry -xi).
     # A genuine chemical potential: it shifts the n<->p weak rates (FD_nu3 in the
     # rate integrands) AND raises the neutrino energy density / Neff by
@@ -340,7 +340,7 @@ DEFAULT_PARAMS: dict = {
     "t_decay_end":                3.156e16,  # DT era duration [s] (default: 1 Gyr = 3.156e16 s)
     "decay_n_points":             200,        # log-spaced output points in the DT era
     "output_decay_evolution":     False,      # write TSV of DT-era abundance time evolution
-    "output_decay_file":          "results/output_decay_evolution.tsv",
+    "output_decay_file":          "results/output_decay_evolution.tsv", # destination of that DT-era TSV
 
     # ---- Early Dark Energy ------------------------------------------------
     "fEDE":                       0.,     # EDE fraction at peak; 0 = disabled
@@ -431,7 +431,11 @@ PARAM_GROUPS: dict = {
 # String-valued config keys that represent filesystem paths.
 # These are normalized with os.path.expanduser() so CLI users can pass
 # quoted "~/" prefixes through --set and still get the expected home-dir
-# expansion.
+# expansion.  Must stay in step with primat-c/src/config.c's
+# cpr_is_path_field(): a key expanded on one side but not the other makes the
+# two backends read/write different directories from one config (cache_dir was
+# missing here while C expanded it, so the same config sent the two backends'
+# caches to different directories).
 _PATH_PARAMS = {
     "nevo_file",
     "nevo_spectral_file",
@@ -439,6 +443,7 @@ _PATH_PARAMS = {
     "custom_background",
     "data_dir",
     "user_nuclear_dir",
+    "cache_dir",
     "output_file",
     "output_final_file",
     "output_background_file",
@@ -523,24 +528,79 @@ def _overlay_candidates(base: str, relpath: str) -> list[str]:
     candidates.append(os.path.join(base, relpath))
     return candidates
 
-def _default_params_comments():
-    """Parse this file's own source to extract each ``DEFAULT_PARAMS`` key's
-    one-line trailing comment (CLI discoverability: ``primat
-    --list-params`` uses this to show users what every parameter means
-    without duplicating the explanation in a second place that could drift
-    out of sync).
+def _is_decorative_comment(text: str) -> bool:
+    """True if a comment line is a section rule/heading rather than prose.
 
-    Only the ``# ...`` text on the *same source line* as the key's value is
-    captured -- many entries above continue their explanation on following
-    (uncommented-key) lines, but those are prose for a human reading the
-    dict, not a "one-line" description, so they are intentionally not
-    concatenated here.
+    ``DEFAULT_PARAMS`` is divided by decorative separators
+    (``# ---- Output options ----------``,
+    ``##################### caching/saving options``, bare ``# -----`` rules).
+    Those describe a whole *group* of keys, so they must never be picked up as
+    the description of whichever key happens to follow them -- see
+    :func:`_default_params_comments`'s block fallback.
+
+    Parameters
+    ----------
+    text : str
+        One raw source line, already stripped of surrounding whitespace but
+        *with* its leading ``#`` intact (the ``#####`` runs are only
+        recognisable before stripping).
+
+    Returns
+    -------
+    bool
+        True for separators/headings, False for ordinary explanatory prose.
+
+    Example
+    -------
+        >>> _is_decorative_comment("# ---- Output options ----")
+        True
+        >>> _is_decorative_comment("# Newton's constant, SI units")
+        False
+    """
+    if text.startswith("####"):
+        return True
+    body = text.lstrip("#").strip()
+    if not body:
+        return True                      # a bare "#" spacer line
+    if body.startswith("----") or body.startswith("===="):
+        return True                      # "# ---- Section name ----"
+    return not body.strip("-=# ")        # a pure rule, e.g. "# --------"
+
+
+def _default_params_comments():
+    """Parse this file's own source to extract a one-line description of every
+    ``DEFAULT_PARAMS`` key (CLI discoverability: ``primat --list-params`` uses
+    this to show users what every parameter means without duplicating the
+    explanation in a second place that could drift out of sync).
+
+    Two sources, in order of preference:
+
+    1. The ``# ...`` text on the *same source line* as the key's value.
+    2. Failing that, the **first sentence of the contiguous comment block
+       immediately above the key**, with decorative section rules/headings
+       skipped (:func:`_is_decorative_comment`).  A dozen keys are documented
+       that way -- ``network``, ``amax``, ``atol_large_LT``, the ``output_*``
+       group, the ``decay_*`` group -- and used to print with no description at
+       all, even though ``--list-params`` is the documented way to discover
+       parameters (``--set`` being hidden from ``--help``).
+
+    Only the block's first *sentence* is taken, not the whole block: the rest is
+    multi-paragraph prose for a human reading the dict, not a one-liner (a full
+    explanation belongs in the source, which is where a curious user is
+    pointed).
 
     Returns
     -------
     dict
-        Maps each ``DEFAULT_PARAMS`` key to its trailing comment string
-        (``""`` for keys with no trailing comment on their own line).
+        Maps each ``DEFAULT_PARAMS`` key to its one-line description
+        (``""`` only if the key has neither a trailing comment nor a
+        preceding comment block -- ``test_config.py`` asserts that never
+        happens).
+
+    Example
+    -------
+        >>> _default_params_comments()["network"]     # doctest: +SKIP
+        'Network selector.  "small" is the built-in ORDER_SMALL network.'
     """
     import ast
     import tokenize
@@ -575,10 +635,60 @@ def _default_params_comments():
             if tok.type == tokenize.COMMENT:
                 line_comments[tok.start[0]] = tok.string.lstrip("#").strip()
 
+    # Raw source lines (1-based indexing below, to match ast line numbers), so
+    # the block fallback can tell a comment-ONLY line from a trailing comment.
+    src_lines = source.splitlines()
+
+    def _preceding_block_summary(lineno: int) -> str:
+        """First sentence of the contiguous comment block ending just above
+        source line ``lineno`` (1-based), or ``""`` if there is none.
+
+        The block's lines are joined before cutting, so the result is a whole
+        sentence rather than however much of it fitted on the first physical
+        line ("Writes a TSV (cfg.output_file) with the time evolution of T, t,
+        and of" was the pre-join behaviour).
+        """
+        block = []
+        i = lineno - 1                       # 1-based line above the key
+        while i >= 1:
+            stripped = src_lines[i - 1].strip()
+            if not stripped.startswith("#"):
+                break
+            block.append(stripped)
+            i -= 1
+        block.reverse()                      # top-to-bottom reading order
+        prose = [raw.lstrip("#").strip() for raw in block
+                 if not _is_decorative_comment(raw)]
+        if not prose:
+            return ""
+        text = " ".join(prose)
+        # Cut at the first sentence end. A ". " inside an identifier or an
+        # abbreviation ("cfg.output_file", "e.g.") would truncate absurdly
+        # early, so only accept a boundary once enough text has accumulated to
+        # be a plausible sentence -- and require the next character to start a
+        # new one (whitespace, then a capital or a quote/paren).
+        _MIN_SENTENCE = 50      # chars; shorter "sentences" are abbreviations
+        for match in re.finditer(r"\.(\s+|$)", text):
+            end = match.start() + 1
+            if end < _MIN_SENTENCE:
+                continue
+            rest = text[match.end():match.end() + 1]
+            if rest and not (rest.isupper() or rest in "\"'(*`"):
+                continue        # e.g. "... at 1e-3. see below" -> keep going
+            return text[:end]
+        # No sentence end at all (a bullet-style block): keep it to one line.
+        _MAX_LEN = 200
+        if len(text) <= _MAX_LEN:
+            return text
+        return text[:text.rfind(" ", 0, _MAX_LEN)] + " ..."
+
     comments = {}
     for key_node, value_node in zip(dict_node.keys, dict_node.values):
         key = ast.literal_eval(key_node)
-        comments[key] = line_comments.get(value_node.end_lineno, "")
+        text = line_comments.get(value_node.end_lineno, "")
+        if not text:
+            text = _preceding_block_summary(key_node.lineno)
+        comments[key] = text
     return comments
 
 
@@ -1062,11 +1172,14 @@ class PRIMATConfig:
         self._validate_fEDE()
         self._validate_custom_background()
         self._validate_data_dirs()
+        # amax before _setup_rate_variation_defaults, which compares
+        # reaction_category(...) > self.amax and so must not see an invalid one.
+        self._validate_amax()
+        self._validate_ranges()
         self._validate_network()
         valid_rxns = self._setup_rate_variation_defaults()
         self._warn_unknown_rate_variations(user_keys, valid_rxns)
         self._detect_optional_libraries()
-        self._validate_amax()
         self._validate_nevo_files()
         self._validate_physics_flag_combos()
 
@@ -1079,9 +1192,11 @@ class PRIMATConfig:
 
         Bypasses ``__setattr__`` for the initial dict setup to avoid
         interference before the base dicts (``p_rxn``/``delta_rxn``) even
-        exist. ``data_dir`` is applied before ``_load_nuclide_data`` so
-        ``nuclides.csv`` is read from the user-supplied root when one is
-        provided.
+        exist. ``data_dir`` is applied -- and *validated* -- before
+        ``_load_nuclide_data`` so ``nuclides.csv`` is read from the
+        user-supplied root when one is provided, and so a typo'd root is
+        reported as such instead of as a bare ``FileNotFoundError`` on
+        ``<data_dir>/csv/nuclides.csv``.
         """
         for key, value in DEFAULT_PARAMS.items():
             # Deep copy dictionaries to avoid shared state between instances
@@ -1090,11 +1205,6 @@ class PRIMATConfig:
             else:
                 object.__setattr__(self, key, value)
 
-        if params and "data_dir" in params:
-            object.__setattr__(self, "data_dir", _expanduser_path(params["data_dir"]))
-
-        self._load_nuclide_data()
-
         # Initialize nuclear rate variation dicts as empty for now.  They are
         # populated with the configured network's reactions *after* user
         # overrides are applied (self.network may itself be one of those
@@ -1102,7 +1212,15 @@ class PRIMATConfig:
         # actually requested by the caller -- see _setup_rate_variation_defaults.
         object.__setattr__(self, "p_rxn", {})
         object.__setattr__(self, "delta_rxn", {})
+        # Created before the data_dir check below, which appends to it.
         object.__setattr__(self, "_init_messages", [])
+
+        if params and "data_dir" in params:
+            _validate_param_value("data_dir", params["data_dir"])
+            object.__setattr__(self, "data_dir", _expanduser_path(params["data_dir"]))
+            self._validate_dir_field("data_dir")
+
+        self._load_nuclide_data()
 
     def _apply_user_overrides(self, params: dict | None) -> set:
         """Apply caller-supplied ``params`` on top of the defaults.
@@ -1244,18 +1362,132 @@ class PRIMATConfig:
                     stacklevel=2,
                 )
 
-    def _validate_data_dirs(self):
-        """data_dir/user_nuclear_dir: eagerly validate (mirrors the
-        nevo_file pattern in :meth:`_validate_nevo_files`) so a typo'd
-        override path fails fast at construction time rather than surfacing
-        as a confusing "network not found" later.
+    def _validate_dir_field(self, field: str):
+        """Eagerly validate one directory-valued override and record its
+        startup notice.
+
+        Parameters
+        ----------
+        field : str
+            ``"data_dir"`` (full-takeover data root) or ``"user_nuclear_dir"``
+            (additive nuclear overlay).  ``None`` (the default for both) is a
+            no-op.
+
+        Raises
+        ------
+        ValueError
+            If the path is not an existing directory, or -- for ``data_dir``,
+            which *replaces* the shipped tree -- if it exists but is not a data
+            tree at all (no ``csv/``, no ``nuclear/``).  The structural check
+            matters because ``data_dir`` is consumed a few lines later by
+            ``_load_nuclide_data``: without it the user sees a bare
+            ``FileNotFoundError: <data_dir>/csv/nuclides.csv`` naming neither
+            the parameter nor what the directory was supposed to contain.
+            ``NEVO/`` and ``cache_plasma_weak/`` are deliberately *not*
+            required: the former is unused when ``incomplete_decoupling=False``
+            and its own resolver reports a clear "not found", and the latter
+            holds only regenerable caches (a missing one costs recompute time,
+            not correctness).
+
+        Example
+        -------
+            >>> cfg._validate_dir_field("data_dir")   # doctest: +SKIP
+            ValueError: data_dir='/tmp' exists but does not look like a primat
+            data tree: missing subdirectories csv/, nuclear/ ...
         """
-        for _field in ("data_dir", "user_nuclear_dir"):
-            _value = getattr(self, _field)
-            if _value is not None and not os.path.isdir(_value):
-                raise ValueError(f"{_field}={_value!r} is not an existing directory")
-            if _value is not None:
-                self._init_messages.append(_rates_overlay_notice(_field, _value))
+        value = getattr(self, field)
+        if value is None:
+            return
+        if not os.path.isdir(value):
+            raise ValueError(f"{field}={value!r} is not an existing directory")
+        if field == "data_dir":
+            missing = [sub for sub in ("csv", "nuclear")
+                       if not os.path.isdir(os.path.join(value, sub))]
+            if missing:
+                raise ValueError(
+                    f"data_dir={value!r} exists but does not look like a primat "
+                    f"data tree: missing subdirectories "
+                    f"{', '.join(sub + '/' for sub in missing)}. A data_dir "
+                    "replaces the shipped primat/data/ tree entirely and must "
+                    "carry csv/ (nuclides.csv, reactions_large.csv, "
+                    "detailed_balance.csv) and nuclear/ (networks/, tables/), "
+                    "plus NEVO/ unless incomplete_decoupling=False and "
+                    "cache_plasma_weak/{weak,plasma}/ for the regenerable "
+                    "caches. Use user_nuclear_dir for an additive overlay "
+                    "instead of a full takeover."
+                )
+        self._init_messages.append(_rates_overlay_notice(field, value))
+
+    def _validate_data_dirs(self):
+        """Eagerly validate ``user_nuclear_dir`` (mirrors the ``nevo_file``
+        pattern in :meth:`_validate_nevo_files`) so a typo'd override path
+        fails fast at construction time rather than surfacing as a confusing
+        "network not found" later.
+
+        ``data_dir`` is *not* handled here: it is needed -- and therefore
+        checked -- much earlier, in
+        :meth:`_init_defaults_and_nuclide_data`, before ``nuclides.csv`` is
+        read from it.  ``cache_dir`` is deliberately unvalidated: it is a
+        write target created on demand (see its ``DEFAULT_PARAMS`` entry), so
+        a not-yet-existing directory is a normal, supported input.
+        """
+        self._validate_dir_field("user_nuclear_dir")
+
+    def _validate_ranges(self):
+        """Cross-field numeric consistency checks -- the constraints that
+        involve *two* parameters and so cannot live in the per-key
+        :data:`_PARAM_RANGE` table.
+
+        Each of these is accepted by the per-key checks yet leaves the solver
+        with an impossible request, and each used to surface far downstream as
+        an opaque integrator failure (or, worse, silently):
+
+        - ``rate_grid_T9_min >= rate_grid_T9_max`` -- ``np.logspace`` then
+          builds a *descending* master T9 grid, breaking ``fill_buffer``'s
+          single ``searchsorted`` path; both backends die with a "step size
+          underflowed"/"required step size is less than spacing between
+          numbers" message from the MT era, naming the ODE solver rather than
+          the two grid parameters.
+        - ``T_end_MeV >= T_start_cosmo_MeV`` -- the background is integrated
+          from ``T_start_cosmo_MeV`` *down* to ``T_end_MeV``, so an inverted
+          pair asks for a zero-or-negative-length temperature range.
+        - ``mc_rate_rescale_cap < 1`` -- the cap is applied as a clamp to
+          ``[1/cap, cap]`` (``network_data.py``'s ``_apply_rate_variation``),
+          whose bounds *cross* below 1: with ``cap = 0.5`` every sampled rate
+          factor is pinned to 0.5, i.e. every MC sample divides every rate by
+          two.  A cap of exactly 1 means "no variation at all", which is
+          allowed (and ``None`` disables the cap).
+
+        Mirrored in ``primat-c/src/config.c``'s ``cpr_config_validate`` per
+        CLAUDE.md's parity mandate.
+
+        Example
+        -------
+            >>> PRIMATConfig({"rate_grid_T9_min": 10., "rate_grid_T9_max": 1e-3})
+            Traceback (most recent call last):
+            ValueError: rate_grid_T9_min=10.0 must be < rate_grid_T9_max=0.001 ...
+        """
+        if self.rate_grid_T9_min >= self.rate_grid_T9_max:
+            raise ValueError(
+                f"rate_grid_T9_min={self.rate_grid_T9_min!r} must be < "
+                f"rate_grid_T9_max={self.rate_grid_T9_max!r}: they bound the "
+                "log-spaced master T9 grid every nuclear rate table is "
+                "resampled onto, which must be increasing."
+            )
+        if self.T_end_MeV >= self.T_start_cosmo_MeV:
+            raise ValueError(
+                f"T_end_MeV={self.T_end_MeV!r} must be < "
+                f"T_start_cosmo_MeV={self.T_start_cosmo_MeV!r}: the background "
+                "and the nuclear network are integrated from T_start_cosmo_MeV "
+                "down to T_end_MeV."
+            )
+        if self.mc_rate_rescale_cap is not None and self.mc_rate_rescale_cap < 1.:
+            raise ValueError(
+                f"mc_rate_rescale_cap={self.mc_rate_rescale_cap!r} must be >= 1 "
+                "(or None to disable the cap): it clamps the MC rate-variation "
+                "factor to [1/cap, cap], whose bounds cross below 1 -- a cap "
+                "of 0.5 would pin every sampled rate to half its median."
+            )
 
     def _validate_network(self):
         """Check that a non-``"small"`` ``network`` name resolves to an
@@ -1316,20 +1548,31 @@ class PRIMATConfig:
         (possibly bogus) key into self.p_rxn/self.delta_rxn -- so we must
         check against ``valid_rxns`` (from :meth:`_setup_rate_variation_defaults`),
         not against those dicts.
+
+        ``strict_params`` applies here too, exactly as it does to unknown
+        ``DEFAULT_PARAMS`` keys in :meth:`_report_unknown_keys`: a mistyped
+        reaction name (``p_n_p__d_gg``) is the *archetypal* silent no-op that
+        strict mode exists to catch -- reaction names are long and
+        underscore-heavy, so they are likelier to be mistyped than a config
+        key, and the run otherwise proceeds with that rate unvaried. All bad
+        keys are reported in one message rather than one exception per key.
         """
-        for key in user_keys:
-            if key.startswith('p_') and key[2:] not in valid_rxns:
-                warnings.warn(
-                    f"PRIMATConfig: {key!r} does not match any reaction in "
-                    f"network {self.network!r}; it has no effect on the run.",
-                    stacklevel=2,
-                )
-            elif key.startswith('delta_') and key[6:] not in valid_rxns:
-                warnings.warn(
-                    f"PRIMATConfig: {key!r} does not match any reaction in "
-                    f"network {self.network!r}; it has no effect on the run.",
-                    stacklevel=2,
-                )
+        unmatched = sorted(
+            key for key in user_keys
+            if (key.startswith('p_') and key[2:] not in valid_rxns)
+            or (key.startswith('delta_') and key[6:] not in valid_rxns)
+        )
+        if not unmatched:
+            return
+        plural = "s" if len(unmatched) > 1 else ""
+        msg = (f"PRIMATConfig: rate-variation key{plural} "
+               f"{', '.join(repr(k) for k in unmatched)} "
+               f"do{'' if plural else 'es'} not match any reaction in network "
+               f"{self.network!r}; {'they have' if plural else 'it has'} no "
+               "effect on the run.")
+        if self.strict_params:
+            raise ValueError(msg + " [strict_params=True]")
+        warnings.warn(msg, stacklevel=2)
 
     def _detect_optional_libraries(self):
         """Detect optional libraries (numba) for flags not explicitly set by
@@ -1523,7 +1766,14 @@ class PRIMATConfig:
 
     def __setattr__(self, name: str, value):
         """Dynamic routing for nuclear rate variations p_* and delta_*."""
-        if name.startswith("p_"):
+        # The two backing dicts themselves start with those very prefixes, so
+        # they must be assigned as plain attributes -- otherwise
+        # `cfg.p_rxn = {...}` (e.g. round-tripping a saved dict) would be read
+        # as a variation of a reaction literally named "rxn" and die in
+        # float(dict).
+        if name in ("p_rxn", "delta_rxn"):
+            object.__setattr__(self, name, value)
+        elif name.startswith("p_"):
             object.__getattribute__(self, 'p_rxn')[name[2:]] = float(value)
         elif name.startswith("delta_"):
             object.__getattribute__(self, 'delta_rxn')[name[6:]] = float(value)

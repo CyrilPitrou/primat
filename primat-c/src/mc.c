@@ -231,6 +231,21 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
     memset(out, 0, sizeof(*out));
     g_cpr_mc_cancel = 0; /* fresh run: ignore any stale cancel request */
 
+    /* num_mc is a count: the per-quantity sample buffers below are sized
+     * (size_t)num_mc, so a negative value underflows to ~1.8e19 and aborts the
+     * process in CPR_XMALLOC ("out of memory (18446744073709551576 bytes)")
+     * instead of reporting a bad argument. Rejected here rather than only in
+     * the callers so every entry point -- the CLI, the Python extension, and a
+     * direct libprimat-c user -- gets the same diagnosis. (primat/backend.py's
+     * run_mc raises the equivalent ValueError before this is reached.) */
+    if (num_mc < 1) {
+        *errmsg = malloc(128);
+        snprintf(*errmsg, 128,
+                 "num_mc=%d is out of range: must be >= 1 (a sigma needs at "
+                 "least 2 samples)", num_mc);
+        return 1;
+    }
+
     /* Reuse guard: n_prev_eff samples (capped at num_mc, mirroring
      * mc_uncertainty's `min(len(prev), num_mc)`) are taken verbatim from
      * prev_values/prev_centrals instead of recomputing the central value or

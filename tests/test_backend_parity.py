@@ -505,6 +505,80 @@ def test_run_bbn_c_backend_honors_nuclear_overlay(tmp_path):
     assert r_c["YPBBN"] == pytest.approx(r_py["YPBBN"], abs=1e-3)
 
 
+@requires_c_backend
+def test_run_bbn_c_backend_accepts_data_dir(tmp_path):
+    """A `data_dir` params key must run on BOTH backends and agree.
+
+    GOAL: data_dir is documented (CLAUDE.md, "Rates directory resolution") as
+    supported on both backends, but it is the one key that is *not* in
+    primat-c's FIELD_TABLE -- cfg->data_dir is a fixed buffer set by
+    cpr_config_init_defaults. backend.py forwards the whole params dict on top
+    of the positional data_dir argument, so before cpr_config_set_by_name
+    learned the key, ANY run carrying data_dir died with
+    "ValueError: unknown parameter key: data_dir" -- i.e. `primat --data_dir X`
+    was broken on the default backend. Nothing pinned it because no test ever
+    passed a real data_dir through run_bbn.
+
+    A symlink to the shipped tree is used rather than a copy: this exercises the
+    plumbing (both backends resolving every table under a caller-supplied root),
+    not a different data set, so the two must agree to the usual cross-backend
+    tolerance.
+    """
+    from primat.config import PRIMATConfig
+    shipped = PRIMATConfig()._pkg_data_dir
+    root = tmp_path / "mydata"
+    root.symlink_to(shipped, target_is_directory=True)
+
+    params = {"network": "small", "data_dir": str(root)}
+    r_c = run_bbn(params, force_backend="c")
+    r_py = run_bbn(params, force_backend="python")
+    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=5e-5)
+    # ... and identical to the same run against the shipped tree.
+    assert r_c["DoH"] == pytest.approx(run_bbn({"network": "small"})["DoH"], rel=5e-5)
+
+
+@requires_c_backend
+def test_unknown_params_key_is_warn_and_ignore_on_both_backends(recwarn):
+    """A typo'd params key warns and is ignored on BOTH backends.
+
+    GOAL: strict_params' documented default (False) is "warn and ignore", but
+    cpr_config_set_by_name rejects every name it does not know, so the wrapper
+    turned a plain typo into a hard ValueError on the C path while the Python
+    path warned "did you mean 'Omegabh2'?" and ran. backend._c_params now drops
+    the keys PRIMATConfig already flagged (and only those, so a key Python
+    accepts but the C field table lacks stays a loud parity error).
+    """
+    for backend in ("c", "python"):
+        recwarn.clear()
+        result = run_bbn({"network": "small", "Omegab2h": 0.022},
+                          force_backend=backend)
+        messages = [str(w.message) for w in recwarn]
+        assert any("Omegab2h" in m for m in messages), backend
+        # Warned exactly once -- one typo must not read as two problems.
+        assert sum("Omegab2h" in m for m in messages) == 1, messages
+        # ... and the run used the default cosmology, i.e. the key was ignored.
+        assert result["DoH"] == pytest.approx(
+            run_bbn({"network": "small"}, force_backend=backend)["DoH"], rel=1e-9)
+
+
+@requires_c_backend
+def test_run_mc_rejects_non_positive_num_mc():
+    """num_mc must be a positive count on both backends.
+
+    GOAL: the C sampler sizes its per-quantity buffers as (size_t)num_mc, so a
+    negative value underflowed to ~1.8e19 and aborted the process in
+    CPR_XMALLOC, while the Python path silently returned zero samples reported
+    as "value +/- 0". run_mc now rejects it before either backend is chosen.
+    """
+    from primat.backend import run_mc
+    for backend in ("c", "python"):
+        for bad in (0, -5):
+            with pytest.raises(ValueError, match="num_mc must be >= 1"):
+                run_mc(bad, ["DoH"], force_backend=backend)
+    with pytest.raises(TypeError, match="num_mc must be an int"):
+        run_mc(2.5, ["DoH"])
+
+
 def test_run_bbn_auto_prefers_c_backend_for_nuclear_overlay(tmp_path, monkeypatch):
     """'auto' dispatches to the C backend for a user_nuclear_dir request
     too, now that both backends support the overlay -- only
