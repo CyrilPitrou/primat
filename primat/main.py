@@ -1097,7 +1097,8 @@ def mc_uncertainty(num_mc: int, quantity: str | list[str] | None,
 
     Each MC sample draws all active nuclear rate offsets p_* independently from
     N(0,1), plus the neutron lifetime ``tau_n ~ N(cfg.tau_n, cfg.std_tau_n)``
-    (used when ``cfg.tau_n_flag=True``, the default), and runs a full primat
+    (which only reaches the weak-rate normalisation when
+    ``cfg.tau_n_normalization=True``, the default), and runs a full primat
     solve.  By default all reactions in the selected network are varied.
 
     Parameters
@@ -1153,14 +1154,17 @@ def mc_uncertainty(num_mc: int, quantity: str | list[str] | None,
     custom_network : dict, optional
         "Customise Reactions" override, forwarded to every ``PRIMAT`` instance
         built here (see :class:`PRIMAT`'s docstring for the
-        ``{"removed": [...], "replaced": {...}}`` schema).  Reactions listed
-        under ``"removed"`` are also excluded from the set of varied rate
-        offsets (``rate_keys``) below, since they no longer exist in the
-        network; reactions listed under ``"replaced"`` stay in ``rate_keys``
-        and are varied using the *replacement* table's own error column
-        (``UpdateNuclearRates`` builds ``expsigma`` from it), so a custom
-        rate's uncertainty is honoured automatically.  ``None`` (default)
-        uses the standard, uncustomised network.
+        ``{"removed": [...], "replaced": {...}, "added": {...}}`` schema).
+        Reactions listed under ``"removed"`` are excluded from the set of
+        varied rate offsets (``rate_keys``) below, since they no longer exist
+        in the network; reactions listed under ``"replaced"`` stay in
+        ``rate_keys`` and are varied using the *replacement* table's own error
+        column (``UpdateNuclearRates`` builds ``expsigma`` from it), so a
+        custom rate's uncertainty is honoured automatically; reactions listed
+        under ``"added"`` are appended to ``rate_keys`` and varied the same
+        way, since they are genuinely integrated (see
+        :func:`_mc_resolve_rate_keys`).  ``None`` (default) uses the standard,
+        uncustomised network.
     progress : bool, optional
         When truthy, print a running ``N/total (XX%)`` counter to stderr as
         samples complete, so the user can track advancement during long MC
@@ -1245,10 +1249,29 @@ def _mc_resolve_rate_keys(base_params: dict[str, Any],
     """Rate offsets to vary: all thermonuclear reactions in the selected network.
 
     Constructs a temporary config just to resolve the working directory and
-    selected network filename correctly, then strips any reaction dropped by
-    ``custom_network["removed"]`` (mirrors the filter
-    ``UpdateNuclearRates.__init__`` applies to ``cfg.network``'s reaction
-    list, since those reactions no longer exist in the network).
+    selected network filename correctly, then applies the same two
+    ``custom_network`` adjustments ``UpdateNuclearRates.__init__`` applies to
+    ``cfg.network``'s reaction list, so the varied set matches the set of
+    reactions actually integrated:
+
+    * ``custom_network["removed"]`` reactions are stripped (they no longer
+      exist in the network, so a ``p_<rxn>`` for them would be inert);
+    * ``custom_network["added"]`` reactions are appended -- in the same
+      trailing position as ``UpdateNuclearRates``'s
+      ``self._selected_names += added_names`` -- because a brand-new GUI-added
+      reaction IS integrated and must have its rate uncertainty propagated
+      like any other.  Appending (rather than interleaving) keeps every
+      non-custom run's RNG stream, and hence its sample values, unchanged.
+      This is also what the C sampler does, by iterating the *solved* network
+      (``primat-c/src/mc.c``'s ``run_one_sample``): without the append the two
+      backends would propagate different uncertainty sets for the same custom
+      network.
+
+    Note that for an ``amax``-restricted network the reaction *file* lists more
+    reactions than the solved network carries (e.g. 428 vs 67 for
+    ``large``+``amax=8``), so some returned keys are inert -- ``getattr(cfg,
+    "p_<unused>")`` is harmless and every *live* reaction is still covered, so
+    this only costs a few wasted ``standard_normal`` draws per sample.
 
     Returns the list of ``p_<reaction>`` parameter names to vary.
     """
@@ -1265,6 +1288,13 @@ def _mc_resolve_rate_keys(base_params: dict[str, Any],
         bare_name = parts[0]
         if bare_name not in removed:
             bare_reactions.append(bare_name)
+
+    # Brand-new reactions supplied by custom_network["added"], appended in the
+    # same order UpdateNuclearRates appends them to the selected reaction list.
+    if custom_network:
+        for name in custom_network.get("added", {}):
+            if name not in removed and name not in bare_reactions:
+                bare_reactions.append(name)
 
     return [f'p_{rxn}' for rxn in bare_reactions]
 
@@ -1299,11 +1329,19 @@ def _mc_resolve_centrals(reuse, prev, prev_all_keys, quantities, explicit_quanti
         prev_samples = np.column_stack([prev[q].values for q in quantities])
         n_prev = min(prev_samples.shape[0], num_mc)
         prev_samples = prev_samples[:n_prev]
-        # Nuclides: reuse from prev if available
+        # Nuclides: reuse from prev if available.  The [:n_prev] slice is
+        # essential and must match the quantity block's above: when num_mc is
+        # SMALLER than len(prev) (the documented "truncate, solve nothing"
+        # path), an untruncated nuclide block would leave the returned
+        # MCResult with two different sample counts -- every nuclide's
+        # mean/std silently computed over len(prev) samples while the
+        # requested quantities report num_mc, and samples_array()/cov()/
+        # corr()/dump_mc_samples() raising ValueError on the ragged columns.
         nuclide_names = [q for q in prev_all_keys if q not in quantities]
         nuclide_centrals = [prev[q].central for q in nuclide_names] if nuclide_names else []
-        prev_nuclide_samples = (np.column_stack([prev[q].values for q in nuclide_names])
-                                if nuclide_names else np.empty((n_prev, 0)))
+        prev_nuclide_samples = (
+            np.column_stack([prev[q].values for q in nuclide_names])[:n_prev]
+            if nuclide_names else np.empty((n_prev, 0)))
     else:
         # Central value (all p_* = 0).
         central_inst = PRIMAT(params=base_params, custom_network=custom_network)
@@ -1380,7 +1418,22 @@ def _mc_assemble_result(quantities, centrals, qty_samples, nuclide_names,
                         custom_network):
     """Build the :class:`MCResult` dict-like object from the (possibly
     reused+new-concatenated) quantity and nuclide sample matrices.
+
+    Both matrices must carry the *same* number of rows (one row per MC
+    sample): a ragged pair would give the nuclides a different sample count
+    from the requested quantities, i.e. mean/std computed over the wrong set
+    and a ValueError out of every aggregate accessor
+    (:meth:`MCResult.samples_array`/:meth:`~MCResult.cov`/
+    :meth:`~MCResult.corr`, hence also ``backend.dump_mc_samples``).  This
+    once happened for real when a shrinking ``prev`` reuse truncated only the
+    quantity block, so the invariant is asserted here rather than trusted.
     """
+    if (nuclide_names and qty_samples.shape[0] != nucl_samples.shape[0]):
+        raise AssertionError(
+            "MC sample block mismatch: "
+            f"{qty_samples.shape[0]} quantity rows vs "
+            f"{nucl_samples.shape[0]} nuclide rows (must be equal)."
+        )
     result_dict = {
         q: MCQuantityResult(centrals[j], qty_samples[:, j])
         for j, q in enumerate(quantities)

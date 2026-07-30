@@ -37,12 +37,48 @@ import warnings
 import numpy as np
 
 
+def _json_scalar(obj):
+    """``json.dumps(default=...)`` hook: unwrap a numpy scalar to its Python
+    equivalent, and let anything else raise as before.
+
+    A config value can perfectly well arrive as a numpy scalar -- a parameter
+    scan built with ``np.arange``/``np.linspace``, or an external driver such as
+    the Cobaya wrapper handing over an element of a sampled array.  ``np.float64``
+    happened to survive ``json.dumps`` (it subclasses ``float``) while
+    ``np.int64``/``np.float32``/``np.bool_`` did not, so an ``np.int64`` for e.g.
+    ``sampling_nTOp_per_decade`` aborted the whole run with an opaque
+    ``TypeError: Object of type int64 is not JSON serializable`` raised from deep
+    inside the weak-rate cache.
+
+    ``.item()`` yields the exact Python scalar (``np.int64(80) -> 80``), whose
+    canonical JSON is byte-identical to what a plain ``80`` produces -- so
+    hardening this is hash-preserving: no existing cache file is invalidated.
+    """
+    if isinstance(obj, np.generic):
+        return obj.item()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+def _canonical_json(fingerprint: dict) -> str:
+    """Canonical JSON of a fingerprint dict: ``sort_keys=True``, no padding
+    whitespace, numpy scalars unwrapped (:func:`_json_scalar`).
+
+    Single source of truth for both the hashed blob (:func:`fingerprint_hash`)
+    and the human-readable ``# fingerprint:`` header line
+    (:func:`write_cache_with_fingerprint`), so the two can never disagree.
+    """
+    return json.dumps(fingerprint, sort_keys=True, separators=(",", ":"),
+                      default=_json_scalar)
+
+
 def fingerprint_hash(fingerprint: dict) -> str:
     """Return the sha256 hash (first 16 hex digits) of a fingerprint dict.
 
     The dict is serialised to canonical JSON first (``sort_keys=True`` and no
     extra whitespace) so that the hash depends only on the *values*, not on
-    the order in which the caller happened to build the dict.
+    the order in which the caller happened to build the dict.  Numpy scalars
+    are unwrapped to their Python equivalents on the way (see
+    :func:`_json_scalar`), so ``np.int64(80)`` and ``80`` hash identically.
 
     Args:
         fingerprint: dict of config values that determine a cache file's
@@ -51,8 +87,7 @@ def fingerprint_hash(fingerprint: dict) -> str:
     Returns:
         16-hex-character hash string, e.g. ``"a3f9c1b2e4d5f607"``.
     """
-    blob = json.dumps(fingerprint, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(_canonical_json(fingerprint).encode("utf-8")).hexdigest()[:16]
 
 
 def read_cache_fingerprint_hash(path: str):
@@ -90,7 +125,8 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
     """Write a ``np.savetxt`` cache file with a fingerprint header.
 
     Args:
-        path: output file path; parent directory must already exist.
+        path: output file path; any missing parent directory is created on
+            demand (a bare filename writes into the current working directory).
         fingerprint: dict to hash and embed verbatim as JSON (see
             :func:`fingerprint_hash`).
         columns: sequence of equal-length 1-D arrays, written column-wise
@@ -129,7 +165,7 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
         ...     [T_all, frwrd], col_header="T[K] rate[1/s]")
     """
     fp_hash = fingerprint_hash(fingerprint)
-    fp_json = json.dumps(fingerprint, sort_keys=True, separators=(",", ":"))
+    fp_json = _canonical_json(fingerprint)
     header_lines = []
     if col_header:
         header_lines.append(col_header)
@@ -144,7 +180,14 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
     # guarded: a read-only install must degrade to a warning, never a crash.
     tmp_path = f"{path}.tmp.{os.getpid()}"
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # dirname is "" for a bare filename (a cache written into the current
+        # working directory); os.makedirs("") raises FileNotFoundError, which
+        # the except below would have turned into a spurious "could not write
+        # cache" for a perfectly writable target -- so only create a parent
+        # directory when there is one to create.
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         np.savetxt(tmp_path, np.column_stack(columns), header="\n".join(header_lines))
         os.replace(tmp_path, path)
     except OSError as e:
@@ -213,7 +256,10 @@ def resolve_cache_file(cfg, subdir: str, filename: str) -> str:
 # PRIMATConfig fingerprint run with spectral_distortions/incomplete_decoupling
 # etc. drops another nTOp_<hash>.txt / nTOp_thermal_<hash>.txt file under the
 # weak/ subdir of the cache tree; these are regenerable on demand (a fresh run
-# just recomputes and re-caches them), so it is always safe to delete them.
+# just recomputes and re-caches them), so it is always safe to delete them --
+# including the copies that ship with the package, which are a precomputed
+# convenience rather than irreplaceable data (see clear_weak_cache for what a
+# recompute does and does not reproduce).
 # ---------------------------------------------------------------------------
 
 def weak_cache_dir(cfg) -> str:    # write dir; used by the CLI cleanup helpers
@@ -249,19 +295,35 @@ def list_weak_cache_files(cfg):
 def clear_weak_cache(cfg) -> int:
     """Delete every cached ``nTOp_*.txt`` file. Returns the count removed.
 
-    The cache is purely an optimisation (every entry is reproducible from
-    ``cfg`` by recomputing), so removing all of it is always safe -- the
-    next run simply pays the one-time recompute cost again per
-    configuration touched.
+    The cache is purely an optimisation -- every entry is reproducible from
+    ``cfg`` by recomputing -- so clearing all of it is safe: the next run
+    simply pays the one-time recompute cost again per configuration touched.
+    That includes the copies shipped with the package, which are a
+    precomputed convenience, not irreplaceable data:
+
+    * a non-thermal ``nTOp_<hash>.txt`` recomputes deterministically (measured
+      agreement with the shipped file: 9.4e-11 relative, i.e. below the
+      ~1e-6 adaptive-step jitter the default ``numerical_precision=1e-7``
+      already leaves in the observables);
+    * a thermal ``nTOp_thermal_<hash>.txt`` is a vegas Monte-Carlo estimate, so
+      the recompute agrees only to its own MC noise -- and costs minutes. Without
+      vegas installed the recompute still succeeds, falling back to
+      ``scipy.integrate.dblquad`` with a warning (see
+      ``weak_rates.corrections``), so no install is left unable to regenerate.
+
+    Cost, not correctness, is therefore the only thing a user forfeits here.
+
+    Example:
+        >>> n = clear_weak_cache(cfg)
+        >>> print(f"removed {n} cache file(s)")
     """
-    paths = list_weak_cache_files(cfg)
     removed = 0
-    for path in paths:
+    for path in list_weak_cache_files(cfg):
         try:
             os.remove(path)
             removed += 1
         except OSError:
-            # A shipped cache on a read-only install cannot be removed; skip it
-            # rather than crash the --cache-clear command.
+            # A read-only install cannot be pruned; skip the file rather than
+            # crash the --cache-clear command.
             pass
     return removed

@@ -12,6 +12,55 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **Additive sensitivity rows are now genuine elasticities** (`d ln O / d ln p`,
+  the meaning of every other row and of the table as a whole). An additive
+  target such as `DeltaNeff` was divided by the *multiplicative* rows'
+  `2 ln(1+rel_step)`, so its cell scaled with a `rel_step` that plays no part in
+  an absolute ±step perturbation — inflating it ~100x at the documented
+  `step=1.0`, `rel_step=0.01` setting. `SensTarget` gains `ref`: the fiducial of
+  the physical parameter the offset displaces (`ref="Neff"` reads the run's own
+  central value), making the row `∂ln O/∂ln N_eff`. `Y_P` vs `N_eff` now reads
+  `+0.1647` (was `+5.4994`), D/H `+0.4104` (was `+13.6513`) — the textbook
+  `Y_P ∝ N_eff^0.16`, `D/H ∝ N_eff^0.41`. Without `ref` the fallback is the
+  linear `2*step`, documented as per-unit and not comparable with other rows.
+  `notebooks/Sensitivity.ipynb` and the *How-to → Sensitivity tables* page were
+  updated and the notebook re-executed.
+- **`primat --cache-info`/`--cache-clear` honour `--data_dir` and
+  `--set cache_dir=…`** on the Python CLI, which previously always inspected and
+  cleared the *default* data tree whatever the user pointed at (the C CLI
+  already honoured `--data_dir` for both commands). `--cache-clear` still clears
+  every cached file; both help texts now name the regeneration cost.
+- **A test no longer overwrites a shipped weak-rate cache.**
+  `test_recomputed_rates_match_cached` set `weak_rate_cache=False` but left
+  `save_nTOp` at its default `True`, so it wrote its freshly integrated rates
+  over the git-tracked `nTOp_<hash>.txt` for that fingerprint. The recompute
+  differs by only ~1e-10, but the default `numerical_precision=1e-7` leaves ~1e-6
+  of adaptive-step jitter in the observables, so merely running the test suite
+  shifted the repo's validation reference (YP 0.24700086 → 0.24700060) while
+  every pinned tolerance still passed.
+- **Monte-Carlo `prev` reuse no longer corrupts a shrinking request.** When
+  `num_mc < len(prev)`, only the requested quantities' samples were truncated
+  while every nuclide kept all `len(prev)` rows, so per-nuclide `mean`/`std`
+  were silently computed over the wrong sample count and
+  `MCResult.samples_array()`/`cov()`/`corr()` (hence `dump_mc_samples`) raised
+  `ValueError`. The C backend was already correct; this was a Python-only
+  parity bug.
+- **Monte-Carlo now varies reactions added through `custom_network["added"]`.**
+  The varied set was derived from the network *file*, which cannot list a
+  brand-new reaction, so a GUI-added reaction was integrated but never sampled —
+  while the C backend, which iterates the solved network, did sample it.
+- Numpy scalars (`np.int64`, `np.float32`, `np.bool_`) are accepted as parameter
+  values on both backends; previously they aborted the Python backend with an
+  opaque `TypeError: Object of type int64 is not JSON serializable` from the
+  weak-rate cache fingerprint, and the C backend with a type error from the
+  extension wrapper. Hash-preserving, so no cache file is invalidated.
+- The C backend prints `[init-c] Initialisation complete in X s` and quotes the
+  `network` name in its options recap, restoring line-for-line diffability of
+  the two backends' verbose headers.
+- `cache_utils.write_cache_with_fingerprint` can write a cache path with no
+  directory component (`os.makedirs("")` used to raise, turning a perfectly
+  writable target into a "could not write cache" warning — including for the
+  form shown in its own docstring example).
 - **QED plasma-pressure tables are now read with the same interpolant they are
   written with** (both backends). `Plasma._load_tables` documents three
   interchangeable modes (load from file / compute analytically / recompute),

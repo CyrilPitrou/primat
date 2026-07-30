@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>       /* clock() for the "Initialisation complete" timing */
 
 /* Mirrors main.py's _banner(): no version number resolution dance needed
  * here (CPRIMAT_VERSION is a compile-time macro, see config.h's top
@@ -44,7 +45,10 @@ static void print_options_recap(const CPRConfig *cfg)
     else snprintf(amax_buf, sizeof(amax_buf), "%d", cfg->amax);
 
     cpr_log(cfg, "opts", "backend              = c");
-    cpr_log(cfg, "opts", "network              = %s (amax=%s)", cfg->network, amax_buf);
+    /* Quoted, matching Python's f"{cfg.network!r}" (main.py's _options_recap):
+     * the recap is meant to be diffable line-for-line between backends, so the
+     * one string-valued line must be formatted the same way on both sides. */
+    cpr_log(cfg, "opts", "network              = '%s' (amax=%s)", cfg->network, amax_buf);
     cpr_log(cfg, "opts", "numerical_precision  = %.3g", cfg->numerical_precision);
     cpr_log(cfg, "opts", "radiative_corrections    = %s", cfg->radiative_corrections ? "True" : "False");
     cpr_log(cfg, "opts", "finite_mass_corrections  = %s", cfg->finite_mass_corrections ? "True" : "False");
@@ -255,6 +259,11 @@ static void print_reactions(const CPRNetworkDef *lt)
 int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
                   CPRResults *results, char **errmsg)
 {
+    /* Wall clock for the "[init-c] Initialisation complete in X s" line below,
+     * mirroring main.py's self._t0 / PRIMAT.__init__ final print. Started here
+     * (right after the banner, before any table loading) so both backends
+     * time the same span: plasma tables + nuclear rates + background. */
+    clock_t t_init0 = clock();
     if (cfg->verbose) {
         print_banner();
         print_options_recap(cfg);
@@ -305,6 +314,12 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
         cpr_plasma_free(&pl);
         return 1;
     }
+
+    /* Twin of main.py:304's "[init-py] Initialisation complete in X s": the
+     * last header line before any solving starts, so a verbose run of either
+     * backend reports the same stage. */
+    cpr_log(cfg, "init", "Initialisation complete in %.1f s",
+             (double)(clock() - t_init0) / CLOCKS_PER_SEC);
 
     CPRNuclearNetwork nn;
     if (cpr_nuclear_network_solve(&nn, cfg, &nr, &bg, errmsg)) {

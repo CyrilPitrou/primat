@@ -10,9 +10,12 @@ papers routinely ask for a *sensitivity table*
 
     S(O, p) \\equiv \\frac{\\partial \\ln O}{\\partial \\ln p},
 
-the dimensionless "if parameter :math:`p` rises by 1 %, observable :math:`O`
-rises by :math:`S` %". :func:`sensitivity_table` computes the whole matrix by
-symmetric finite-differencing full BBN solves and returns a
+the dimensionless *elasticity*: :math:`S = 1` means a 1 % variation of
+:math:`p` shows up as a 1 % variation of :math:`O`, :math:`S = -0.2` means a
+1 % rise in :math:`p` lowers :math:`O` by 0.2 %. **Every** row of the table is
+that same ``d ln O / d ln p``, whatever the parameter's flavour — that is what
+makes the rows comparable with one another. :func:`sensitivity_table` computes
+the whole matrix by symmetric finite-differencing full BBN solves and returns a
 :class:`SensitivityTable` dataclass with ``to_markdown()`` / ``to_dataframe()``
 views ready to paste into a paper or notebook.
 
@@ -41,11 +44,18 @@ the :class:`SensTarget` helper (a plain string is auto-classified):
 * **Multiplicative physical parameters** with a non-zero fiducial value
   (``tau_n``, ``GN``, ``Omegabh2``, ...): scaled by ``(1 ± δ)`` about their
   effective value, giving :math:`\\partial\\ln O/\\partial\\ln p` directly.
-* **Additive parameters** whose fiducial value is zero, so a multiplicative
+* **Additive parameters** whose own fiducial value is zero, so a multiplicative
   step is degenerate (``DeltaNeff`` at its SM value 0): varied by an absolute
-  ``±step`` about the base value. The denominator is user-controlled (default
-  ``2 ln(1+rel_step)``) because the "natural" normalisation of an additive knob
-  is a modelling choice, not a mathematical given.
+  ``±step``. Such a knob is normally an *offset* on a physical parameter that is
+  perfectly non-zero — ``DeltaNeff`` displaces
+  :math:`N_{\\rm eff} = N_{\\rm eff}^{\\rm SM} + \\Delta N_{\\rm eff}`, fiducial
+  :math:`\\simeq 3.044` — so name that parameter's fiducial with ``ref`` and the
+  row comes out as :math:`\\partial\\ln O/\\partial\\ln N_{\\rm eff}`, the same
+  elasticity as every other row (``ref="Neff"`` reads the run's own central
+  value). Without ``ref`` the fallback denominator is the linear separation
+  ``2*step``, giving :math:`\\partial\\ln O/\\partial p` *per unit of* ``p`` —
+  useful, but not an elasticity and therefore not comparable with the other
+  rows, since there is no :math:`\\ln p` at :math:`p = 0`.
 
 Example
 -------
@@ -57,14 +67,28 @@ Example
 ...         "n_p__d_g",                       # a nuclear rate  (auto -> rate)
 ...         "tau_n",                          # neutron lifetime (auto -> mult.)
 ...         "Omegabh2",                       # baryon density   (auto -> mult.)
-...         SensTarget("DeltaNeff", kind="additive", step=1.0),
+...         # d ln O / d ln Neff: an absolute +-0.1 step on the DeltaNeff
+...         # offset, normalised by the run's own central Neff (~3.044).
+...         SensTarget("DeltaNeff", kind="additive", step=0.1, ref="Neff",
+...                    label=r"$N_{\\rm eff}$"),
 ...     ],
 ... )
 >>> print(tab.to_markdown())          # doctest: +SKIP
 | Parameter | $Y_P$ | D/H |
 | --- | --- | --- |
-| n_p__d_g  | +0.024 | +0.207 |
-| ...
+| n_p__d_g | +0.0045 | -0.2024 |
+| tau_n | +0.7355 | +0.4230 |
+| Omegabh2 | +0.0391 | -1.6501 |
+| $N_{\\rm eff}$ | +0.1647 | +0.4104 |
+
+(Actual output of the default backend; the last digit or two move with the
+backend and the solver tolerances.) Read every row the same way — the last one
+as "1 % more radiation density, measured as :math:`N_{\\rm eff}`, gives 0.16 %
+more helium and 0.41 % more deuterium". The familiar
+:math:`{\\rm D/H} \\propto (\\Omega_b h^2)^{-1.6}` scaling is the ``Omegabh2``
+row. A step of ``0.1`` rather than ``1.0`` keeps the last row a derivative:
+``step=1.0`` is a :math:`\\pm 33\\,\\%` excursion in :math:`N_{\\rm eff}`, whose
+secant (``+0.1666`` / ``+0.4135``) differs from the tangent by ~1 %.
 """
 
 from __future__ import annotations
@@ -112,15 +136,32 @@ class SensTarget:
         step: for ``kind="additive"`` only, the absolute half-step (e.g.
             ``1.0`` for ``DeltaNeff``). Ignored otherwise; defaults to
             ``rel_step`` when ``None``.
-        denom: override the finite-difference denominator. ``None`` (default)
-            uses ``2 ln(1+rel_step)``, which makes ``rate``/``param`` rows exact
-            logarithmic derivatives. Handy for additive rows where you want a
-            different normalisation.
+        ref: for ``kind="additive"`` only — the fiducial value of the *physical*
+            parameter the additive step displaces, which turns the row into a
+            true elasticity ``dln O/dln(that parameter)``, directly comparable
+            with every other row. ``DeltaNeff`` displaces
+            ``Neff = Neff_SM + DeltaNeff``, so ``ref="Neff"`` (a string naming a
+            key of the central solve's result dict, read from *this* run rather
+            than a hard-coded 3.044) or ``ref=3.044`` (an explicit number) both
+            give ``dln O/dln Neff``. ``None`` (default) falls back to the
+            per-unit form below. Setting it on a non-additive target raises,
+            since those already differentiate about their own fiducial.
+        denom: override the finite-difference denominator outright. ``None``
+            (default) uses ``2 ln(1+rel_step)`` for ``rate``/``param`` rows and,
+            for ``additive`` rows, ``2*step/ref`` when ``ref`` is given, else
+            ``2*step`` — which makes the row a semi-logarithmic ``dln O/dp``
+            *per unit of p*, NOT an elasticity (there is no ``ln p`` at p = 0)
+            and therefore not comparable with the other rows. Prefer ``ref``
+            over a hand-computed ``denom``.
 
     Example:
         >>> SensTarget("Omegabh2", label=r"$\\Omega_b h^2$")
         SensTarget(param='Omegabh2', ...)
-        >>> SensTarget("DeltaNeff", kind="additive", step=1.0)   # per unit ΔNeff
+        >>> # dln O / dln Neff -- the form to prefer for DeltaNeff
+        >>> SensTarget("DeltaNeff", kind="additive", step=0.1, ref="Neff")
+        SensTarget(param='DeltaNeff', ...)
+        >>> # dln O / dDeltaNeff, per unit: not an elasticity, not comparable
+        >>> SensTarget("DeltaNeff", kind="additive", step=1.0)
         SensTarget(param='DeltaNeff', ...)
     """
 
@@ -129,23 +170,32 @@ class SensTarget:
     kind: str = "auto"
     step: float | None = None
     denom: float | None = None
+    ref: float | str | None = None
 
     def display_label(self) -> str:
         """Row label to print — the explicit ``label`` or the parameter name."""
         return self.label if self.label is not None else self.param
 
-    def resolve(self, cfg: Any, rel_step: float) -> tuple[dict, dict, float]:
+    def resolve(self, cfg: Any, rel_step: float,
+                central: dict | None = None) -> tuple[dict, dict, float]:
         """Return ``(plus_params, minus_params, denom)`` for this target.
 
         ``cfg`` is the *effective* :class:`~primat.config.PRIMATConfig` built
         from the caller's ``params`` (so fiducial values honour user overrides,
         e.g. a non-default ``tau_n``). ``rel_step`` is the fractional step
-        :math:`\\delta`. The two returned dicts are merged onto the base params
-        for the ``+`` and ``-`` runs; ``denom`` divides ``ln O+ - ln O-``.
+        :math:`\\delta`. ``central`` is the shared central solve's result dict,
+        needed only to resolve a string :attr:`ref` (e.g. ``ref="Neff"`` reads
+        this run's own central ``Neff``). The two returned dicts are merged onto
+        the base params for the ``+`` and ``-`` runs; ``denom`` divides
+        ``ln O+ - ln O-``.
 
         Raises:
             ValueError: for a multiplicative target whose fiducial value is 0
-                (a proportional step can never move it), or an unknown ``kind``.
+                (a proportional step can never move it), an unknown ``kind``,
+                a non-positive ``ref`` (there is no ``ln p`` to take), or a
+                ``ref`` on a non-additive target (where it would be a silent
+                no-op -- the other kinds already have their own fiducial).
+            KeyError: for a string ``ref`` naming no key of ``central``.
         """
         d = rel_step
         # Default log-derivative denominator: the two runs sit at
@@ -157,6 +207,14 @@ class SensTarget:
             # A reaction name lives in the config's per-reaction rate table;
             # anything else is treated as a scalar physical parameter.
             kind = "rate" if self.param in cfg.p_rxn else "param"
+
+        if self.ref is not None and kind != "additive":
+            raise ValueError(
+                f"ref={self.ref!r} is only meaningful for kind='additive' "
+                f"(target {self.param!r} resolved to kind={kind!r}, which is "
+                "already differentiated about its own non-zero fiducial); drop "
+                "ref, or pass kind='additive' explicitly."
+            )
 
         if kind == "rate":
             # primat's deterministic rate-rescaling knob: with
@@ -182,20 +240,73 @@ class SensTarget:
             return plus, minus, (self.denom if self.denom is not None else default_denom)
 
         if kind == "additive":
-            # Absolute step about the base value (used for knobs whose fiducial
-            # is 0, e.g. DeltaNeff). The denominator defaults to the same
-            # log-derivative normalisation so an additive row is directly
-            # comparable to the multiplicative ones at the chosen rel_step.
+            # Absolute step about the base value, for knobs whose own fiducial
+            # is 0 so that p*(1±delta) cannot move them (DeltaNeff).
             s = self.step if self.step is not None else d
             base = float(getattr(cfg, self.param))
             plus = {self.param: base + s}
             minus = {self.param: base - s}
-            return plus, minus, (self.denom if self.denom is not None else default_denom)
+            if self.denom is not None:
+                return plus, minus, self.denom
+            # Denominator = the two runs' separation in the space we are
+            # differentiating against.
+            #
+            # With `ref`: the knob is an OFFSET on a physical parameter P whose
+            # fiducial is ref (e.g. Neff = Neff_SM + DeltaNeff, ref ~ 3.044), so
+            # the runs sit at ln P = ln(ref) ± ... and the separation is
+            # d ln P = 2*step/ref. The cell is then dln(O)/dln(P) -- the SAME
+            # dimensionless elasticity as every other row ("+1 means 1 % in P
+            # gives 1 % in O"), which is the documented meaning of the whole
+            # table. This is the recommended form for an additive knob.
+            #
+            # Without `ref`: fall back to the linear separation 2*step, giving
+            # dln(O)/dp per unit of p. Not an elasticity (there is no ln p at
+            # p = 0), so such a row is NOT comparable with the others -- hence
+            # the strong preference for ref.
+            #
+            # Either way the denominator must NOT be the multiplicative rows'
+            # 2 ln(1+rel_step): rel_step plays no part in an absolute ±step
+            # perturbation, and using it made the reported number scale with a
+            # parameter that changes nothing (at DeltaNeff/step=1.0/rel_step=0.01
+            # it inflated the cell by 1/ln(1.01) ~ 100.5).
+            if self.ref is None:
+                return plus, minus, 2.0 * s
+            ref = self._resolve_ref(central)
+            return plus, minus, 2.0 * s / ref
 
         raise ValueError(
             f"unknown SensTarget kind {self.kind!r}; expected one of "
             f"'auto', 'rate', 'param', 'additive'"
         )
+
+    def _resolve_ref(self, central: dict | None) -> float:
+        """Numeric value of :attr:`ref`: itself when a float, else the named key
+        of the central solve's result dict (``ref="Neff"`` -> this run's own
+        central ``Neff``, so the elasticity is taken about the actual fiducial
+        rather than a hard-coded 3.044).
+
+        Raises:
+            KeyError: a string ref naming no result key (or no central solve
+                available, which cannot happen through
+                :func:`sensitivity_table`).
+            ValueError: a non-positive ref, whose logarithm does not exist.
+        """
+        if isinstance(self.ref, str):
+            if central is None or self.ref not in central:
+                available = sorted(central) if central else []
+                raise KeyError(
+                    f"ref={self.ref!r} names no key of the central result dict "
+                    f"(available: {available}); pass a number instead."
+                )
+            ref = float(central[self.ref])
+        else:
+            ref = float(self.ref)
+        if ref <= 0.0:
+            raise ValueError(
+                f"ref must be strictly positive to take d ln(ref) (got {ref!r} "
+                f"for target {self.param!r})."
+            )
+        return ref
 
 
 @dataclass
@@ -203,8 +314,15 @@ class SensitivityTable:
     """Result of :func:`sensitivity_table`: a (targets × observables) matrix.
 
     Holds the logarithmic-sensitivity matrix plus enough context to render it.
-    ``values[i, j]`` is :math:`\\partial \\ln O_j / \\partial \\ln p_i` (or the
-    additive analogue for additive targets).
+    ``values[i, j]`` is the dimensionless elasticity
+    :math:`\\partial \\ln O_j / \\partial \\ln p_i` — "1 % in :math:`p_i` gives
+    that many % in :math:`O_j`" — for ``rate`` and ``param`` rows, and for
+    ``additive`` rows given a ``ref`` (where the logarithm is taken of the
+    physical parameter the offset displaces, e.g. :math:`N_{\\rm eff}` for
+    ``DeltaNeff``). The one exception is an ``additive`` row *without* ``ref``:
+    that cell is :math:`\\partial \\ln O_j / \\partial p_i` per unit of
+    :math:`p_i`, which is not an elasticity and must not be ranked against the
+    others — see :class:`SensTarget`.
 
     Attributes:
         row_labels: display label of each varied parameter (table rows).
@@ -291,7 +409,11 @@ def sensitivity_table(
     fiducial point (``p(1±δ)`` for multiplicative targets, ``±delta`` for rate
     targets, ``base±step`` for additive targets) and forms the symmetric
     finite-difference logarithmic derivative
-    :math:`\\partial\\ln O/\\partial\\ln p`. A single *shared* central solve at
+    :math:`\\partial\\ln O/\\partial\\ln p` — including for additive targets
+    carrying a ``ref``, whose logarithm is taken of the physical parameter the
+    offset displaces; only a ``ref``-less additive row is instead
+    :math:`\\partial\\ln O/\\partial p` per unit of ``p`` (see
+    :class:`SensTarget`). A single *shared* central solve at
     the fiducial parameters is run once and stored in the result for reference
     (the symmetric estimate itself uses only the two bracketing runs).
 
@@ -310,7 +432,8 @@ def sensitivity_table(
         targets: parameters to vary. Each item is either a plain string
             (auto-classified into a rate or multiplicative parameter — see
             :class:`SensTarget`) or an explicit :class:`SensTarget` for full
-            control (additive knobs, custom labels, custom denominators).
+            control (additive knobs and their ``ref``, custom labels, custom
+            denominators).
         rel_step: fractional finite-difference step :math:`\\delta`
             (default 0.01 = 1 %). Small enough for ~4-digit accuracy, large
             enough to stay clear of solver round-off.
@@ -378,7 +501,10 @@ def sensitivity_table(
     row_labels: list[str] = []
     for i, t in enumerate(norm_targets):
         row_labels.append(t.display_label())
-        plus_over, minus_over, denom = t.resolve(cfg, rel_step)
+        # r0 is passed so a string `ref` (e.g. SensTarget(..., ref="Neff"))
+        # resolves against THIS run's central observables rather than a
+        # hard-coded fiducial.
+        plus_over, minus_over, denom = t.resolve(cfg, rel_step, central=r0)
         rp = _solve(plus_over)
         rm = _solve(minus_over)
         for j, o in enumerate(observables):

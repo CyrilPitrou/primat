@@ -49,7 +49,7 @@ Each entry of `targets` is either a bare string (auto-classified) or an explicit
 |---------|------------------|----------------|
 | **Nuclear rate** (`n_p__d_g`, `d_p__He3_g`, …) | `rescale_nuclear_rates=True` + `delta_<rxn>=±δ`, i.e. `rate = median·(1±δ)` | bare string, or `SensTarget("n_p__d_g")` |
 | **Multiplicative parameter** (`tau_n`, `GN`, `Omegabh2`, …) | scaled by `(1±δ)` about its fiducial value | bare string, or `SensTarget("tau_n", label=r"$\tau_n$")` |
-| **Additive parameter** (`DeltaNeff`, fiducial 0) | varied by an absolute `±step` about the base value | `SensTarget("DeltaNeff", kind="additive", step=1.0)` |
+| **Additive parameter** (`DeltaNeff`, fiducial 0) | varied by an absolute `±step` about the base value, normalised by the `ref` parameter it offsets | `SensTarget("DeltaNeff", kind="additive", step=0.1, ref="Neff")` |
 
 A bare string is auto-classified: it becomes a **rate** target if it names a
 reaction in the config's rate table, otherwise a **multiplicative** target.
@@ -57,6 +57,31 @@ Because a proportional step `p·(1±δ)` can never move a parameter whose fiduci
 value is 0, `DeltaNeff` (its Standard-Model value is 0) must be given as an
 explicit `additive` target — otherwise `sensitivity_table` raises a `ValueError`
 telling you exactly that.
+
+### Keeping an additive row an elasticity: `ref`
+
+Every cell of the table means the same thing — $\partial\ln O/\partial\ln p$,
+"a 1 % variation of $p$ appears as this many % of $O$" — and that is what makes
+the rows comparable. An additive knob has no $\ln p$ to differentiate against at
+$p = 0$, but it is normally just an *offset* on a parameter that does:
+$N_{\rm eff} = N_{\rm eff}^{\rm SM} + \Delta N_{\rm eff}$. Name that parameter's
+fiducial with `ref` and the row is $\partial\ln O/\partial\ln N_{\rm eff}$ like
+any other:
+
+```python
+SensTarget("DeltaNeff", kind="additive", step=0.1, ref="Neff",
+           label=r"$N_{\rm eff}$")
+```
+
+`ref` accepts either a string naming a key of the result dict — read from *this*
+run's central solve, so you are not hard-coding 3.044 — or an explicit number.
+Keep `step` small (0.1, not 1.0): `step=1.0` is a ±33 % excursion in
+$N_{\rm eff}$, whose secant differs from the derivative by about 1 %.
+
+Omitting `ref` is allowed and falls back to dividing by the linear separation
+`2·step`, giving $\partial\ln O/\partial p$ **per unit** of $p$. That is a
+different quantity — not an elasticity — so such a row must not be ranked
+against the others; say so in the caption if you publish one.
 
 ### Why the `delta_<rxn>` mechanism for rates?
 
@@ -79,8 +104,8 @@ tab = sensitivity_table(
     targets=[
         SensTarget("n_p__d_g", label=r"p+n→d+γ"),
         SensTarget("tau_n",    label=r"$\tau_n$"),
-        SensTarget("DeltaNeff", label=r"$\Delta N_{\rm eff}$",
-                   kind="additive", step=1.0),   # per unit ΔNeff
+        SensTarget("DeltaNeff", label=r"$N_{\rm eff}$",
+                   kind="additive", step=0.1, ref="Neff"),  # dlnO/dlnNeff
     ],
 )
 ```

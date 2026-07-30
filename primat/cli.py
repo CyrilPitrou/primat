@@ -359,7 +359,9 @@ def _build_parser():
         "--cache-clear", action="store_true",
         help="Delete every cached n<->p weak-rate file and exit, without "
              "running a solve. The cache is always safely regenerable: a "
-             "later run just pays the one-time recompute cost again.",
+             "later run just pays the one-time recompute cost again "
+             "(seconds per configuration for the plain rates, minutes for the "
+             "thermal ones).",
     )
     # Generic escape hatch: lets any PRIMATConfig key (including p_<reaction>/
     # delta_<reaction>) be set from the CLI without a dedicated flag.
@@ -413,7 +415,23 @@ def main(argv=None):
         return 0
 
     if args.cache_info or args.cache_clear:
-        cfg = PRIMATConfig({})
+        # Locate the cache tree the way an actual run would: --data_dir moves
+        # the whole data tree and `--set cache_dir=...` redirects the writable
+        # cache overlay, so both must reach PRIMATConfig here -- otherwise
+        # these two commands silently inspect/clear the default tree instead of
+        # the one the user pointed at. The C CLI already honours --data_dir for
+        # the same two commands (cli.c's list_or_clear_weak_cache), so an empty
+        # dict here was also a backend divergence.
+        cache_params = {}
+        if args.data_dir is not None:
+            cache_params["data_dir"] = args.data_dir
+        for entry in args.set_params:
+            if "=" not in entry:
+                parser.error(f"--set {entry!r}: expected KEY=VALUE")
+            key, _, raw_value = entry.partition("=")
+            if key in ("data_dir", "cache_dir", "user_nuclear_dir"):
+                cache_params[key] = _parse_set_value(raw_value)
+        cfg = PRIMATConfig(cache_params)
         if args.cache_clear:
             n = clear_weak_cache(cfg)
             print(f"Removed {n} cached weak-rate file(s) from {weak_cache_dir(cfg)}/.")

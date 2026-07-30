@@ -230,6 +230,50 @@ def _tabulate_extra_rho(extra_rho: list, cfg) -> tuple[list[float], list[float]]
     return T_grid.tolist(), total.tolist()
 
 
+def _unwrap_numpy_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Return ``params`` with every numpy scalar value replaced by its plain
+    Python equivalent (``np.int64(80) -> 80``), leaving everything else
+    untouched.
+
+    Why both backends need this, at the dispatch boundary rather than in
+    ``PRIMATConfig``: numpy scalars arrive naturally from a parameter scan
+    (``for n in np.arange(40, 200, 20): run_bbn({"sampling_nTOp_per_decade": n})``)
+    or from an external driver such as the Cobaya wrapper indexing a sampled
+    array, and *neither* backend used to accept all of them. ``np.float64``
+    passed (it subclasses ``float``) but ``np.int64``/``np.float32``/
+    ``np.bool_`` failed -- the C path with a clear
+    ``TypeError: unsupported parameter value type numpy.int64`` from the
+    extension wrapper, the Python path with an opaque
+    ``TypeError: Object of type int64 is not JSON serializable`` raised from
+    inside the weak-rate cache fingerprint. Unwrapping here fixes both at once
+    and keeps their accepted input identical, which is the point: a config a
+    user can run on one backend must run on the other.
+
+    Value-preserving and therefore fingerprint-preserving: ``.item()`` returns
+    the exact same number, so no cache file is invalidated (see
+    ``cache_utils._json_scalar``, the defensive second layer for callers that
+    bypass this function by using ``PRIMAT(params=...)`` directly).
+
+    Args:
+        params: dict of PRIMATConfig overrides, possibly holding numpy scalars.
+
+    Returns:
+        dict: a new dict when anything was unwrapped, otherwise ``params``
+        itself (so the common path allocates nothing).
+
+    Example:
+        >>> import numpy as np
+        >>> _unwrap_numpy_params({"amax": np.int64(8)})
+        {'amax': 8}
+    """
+    import numpy as np   # lazy, matching _tabulate_extra_rho's convention
+
+    if not any(isinstance(v, np.generic) for v in params.values()):
+        return params
+    return {k: (v.item() if isinstance(v, np.generic) else v)
+            for k, v in params.items()}
+
+
 def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = None,
             extra_rho: list | None = None, custom_network: dict[str, Any] | None = None,
             background=None, log_backend: bool = False,
@@ -280,7 +324,7 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
         raise ValueError(f"force_backend must be one of None/'auto'/'c'/'python', "
                           f"got {force_backend!r}")
 
-    params = params or {}
+    params = _unwrap_numpy_params(params or {})
 
     # Validate params the same way regardless of backend (PRIMATConfig's
     # __init__ does all the checking -- e.g. an unknown --network name --
@@ -489,7 +533,12 @@ def run_mc(num_mc: int, quantities: str | list[str] | None = None,
         raise ValueError(f"force_backend must be one of None/'auto'/'c'/'python', "
                           f"got {force_backend!r}")
 
-    params = params or {}
+    # Unwrap numpy scalars before anything else, exactly as run_bbn does, so an
+    # MC scan driven by numpy arrays behaves identically on both backends and
+    # the `prev` reuse-guard compares plain-Python params dicts (a np.float64
+    # would compare equal to its float, but an np.int64 key would not survive
+    # the C hand-off at all -- see _unwrap_numpy_params).
+    params = _unwrap_numpy_params(params or {})
     from .config import PRIMATConfig
     cfg = PRIMATConfig(params)  # validate params the same way regardless of backend
     if progress is None:

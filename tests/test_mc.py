@@ -271,6 +271,30 @@ def test_extend_truncates_when_fewer_requested():
     np.testing.assert_array_equal(big["YPBBN"].values[:4], small["YPBBN"].values)
 
 
+def test_truncating_reuse_truncates_nuclides_too():
+    """GOAL: a truncating ``prev`` reuse must truncate EVERY column, not just
+    the explicitly requested quantities.
+
+    The nuclide block (always merged in, see _DEFAULT_MC_OBSERVABLES) used to
+    keep all len(prev) rows while the quantity block was cut to num_mc, which
+    (a) reported each nuclide's mean/std over the wrong sample count and
+    (b) made samples_array()/cov()/corr() -- hence dump_mc_samples -- raise
+    ValueError on the ragged columns. The C path (backend.run_mc) always
+    truncated uniformly, so this was also a backend-parity bug."""
+    big   = mc_uncertainty(6, "YPBBN", params=_BASE, seed=0)
+    small = mc_uncertainty(4, "YPBBN", params=_BASE, seed=0, prev=big)
+
+    # Every column -- observables AND nuclides -- carries exactly num_mc rows.
+    assert {len(small[q].values) for q in small} == {4}
+    np.testing.assert_array_equal(big["He4"].values[:4], small["He4"].values)
+    # The aggregate accessors must work, not raise.
+    assert small.samples_array().shape[0] == 4
+    assert small.cov().shape[0] == small.samples_array().shape[1]
+    # ... and the per-nuclide sigma must be the 4-sample one, not big's.
+    assert small["He4"].std == pytest.approx(
+        float(np.std(big["He4"].values[:4], ddof=1)), rel=1e-12)
+
+
 def test_prev_ignored_when_seed_differs():
     """An incompatible ``prev`` (different seed) is silently ignored, giving a
     full recompute at the requested seed rather than reusing stale samples."""
@@ -405,6 +429,39 @@ def test_replaced_table_std_via_public_api():
         custom_network={"replaced": {"d_d__He3_n": bigerr_table}})
 
     assert replaced["DoH"].std > default["DoH"].std
+
+
+def test_added_reaction_is_varied():
+    """GOAL: a brand-new reaction from custom_network["added"] must have its
+    rate uncertainty propagated, like every other reaction in the network.
+
+    ``_mc_resolve_rate_keys`` derives the varied set from the network *file*,
+    which by construction cannot list an added reaction -- so added reactions
+    used to be integrated but never varied, while the C sampler
+    (primat-c/src/mc.c, which iterates the solved network) did vary them: the
+    two backends propagated different uncertainty sets for the same custom
+    network. Cheap check: no solve, just the key resolution + the solved
+    network's reaction list."""
+    from primat import PRIMAT
+    from primat.main import _mc_resolve_rate_keys
+
+    T9, rate, _err = np.loadtxt(
+        os.path.join(_TABLES_DIR, "d_d__He3_n_primat.txt"), unpack=True)
+    added_name = "t_t__He4_n_n"
+    custom = {"added": {added_name: _table_text(T9, rate,
+                                                np.full_like(rate, 1.2))}}
+    params = {"network": "small", "verbose": False, "debug": False}
+
+    keys = _mc_resolve_rate_keys(params, custom)
+    solved = PRIMAT(params=params, custom_network=custom).nucl._lt_net.names[1:]
+
+    assert added_name in solved, "added reaction should reach the solved network"
+    assert f"p_{added_name}" in keys
+    # Appended last, mirroring UpdateNuclearRates' `_selected_names +=
+    # added_names`, so a run without custom_network keeps its RNG stream (and
+    # therefore its sample values) unchanged.
+    assert keys[-1] == f"p_{added_name}"
+    assert keys[:-1] == _mc_resolve_rate_keys(params, None)
 
 
 def test_prev_ignored_when_custom_network_differs():

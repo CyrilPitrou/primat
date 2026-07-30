@@ -173,3 +173,47 @@ def test_shipped_data_uses_cache_plasma_weak_layout():
     assert os.path.isdir(os.path.join(data, "cache_plasma_weak", "plasma"))
     assert not os.path.exists(os.path.join(data, "weak"))
     assert not os.path.exists(os.path.join(data, "plasma"))
+
+
+# --- numpy scalars in a fingerprint (must not abort a run, must not change
+# --- any existing hash) ---
+
+def test_fingerprint_hash_accepts_numpy_scalars():
+    """GOAL: a numpy scalar config value must hash, not crash.
+
+    Numpy scalars arrive naturally from a parameter scan built with
+    np.arange/np.linspace, or from an external driver (the Cobaya wrapper)
+    indexing a sampled array. np.float64 always worked because it subclasses
+    float, but np.int64/np.float32/np.bool_ raised
+    "TypeError: Object of type int64 is not JSON serializable" from deep inside
+    the weak-rate cache, aborting the whole run.
+    """
+    for value, plain in ((np.int64(80), 80),
+                         (np.float64(0.5), 0.5),
+                         (np.bool_(True), True)):
+        # Hash-preserving: unwrapping must not invalidate any cache file that a
+        # plain-Python value already produced.
+        assert fingerprint_hash({"x": value}) == fingerprint_hash({"x": plain})
+
+
+def test_fingerprint_hash_still_rejects_unserialisable():
+    """Only numpy scalars are unwrapped; a genuinely unserialisable value must
+    still raise rather than hash to something arbitrary (a silently-wrong
+    fingerprint would be far worse than a crash)."""
+    with pytest.raises(TypeError):
+        fingerprint_hash({"x": object()})
+
+
+def test_write_accepts_bare_filename(tmp_path, monkeypatch):
+    """GOAL: a cache path with no directory part must be writable.
+
+    os.makedirs("") raises FileNotFoundError, which the writer's `except
+    OSError` turned into a spurious "could not write cache" warning for a
+    perfectly writable target -- including for the form used in
+    write_cache_with_fingerprint's own docstring example.
+    """
+    monkeypatch.chdir(tmp_path)
+    fp = {"format_version": 1}
+    assert write_cache_with_fingerprint(
+        "nTOp_frwrd.txt", fp, [np.array([1., 2.]), np.array([3., 4.])])
+    assert read_cache_fingerprint_hash("nTOp_frwrd.txt") == fingerprint_hash(fp)

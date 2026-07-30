@@ -82,23 +82,100 @@ def test_rate_target_matches_delta_mechanism():
     assert tab.values[0, 0] == pytest.approx(expect, rel=1e-12)
 
 
-def test_additive_target_matches_manual():
-    """An additive knob (DeltaNeff, fiducial 0) varies by ±step, not ±p*step."""
-    step = 1.0
+def test_additive_target_with_ref_is_an_elasticity():
+    """GOAL: every row of a sensitivity table means the same thing --
+    d ln O / d ln p, "a 1 % variation of p gives S % of O".
+
+    An additive knob cannot be differentiated against its own logarithm (ln 0),
+    but DeltaNeff is only an OFFSET on a parameter with a perfectly good
+    fiducial: Neff = Neff_SM + DeltaNeff. ``ref="Neff"`` normalises by the
+    run's own central Neff, so the row becomes dln(O)/dln(Neff) and can be read
+    and ranked exactly like the tau_n or Omegabh2 rows.
+    """
+    step = 0.1
+    r0 = run_bbn({**BASE, "verbose": False})
     rp = run_bbn({**BASE, "DeltaNeff": +step, "verbose": False})
     rm = run_bbn({**BASE, "DeltaNeff": -step, "verbose": False})
-    denom = 2 * math.log1p(DELTA)
-    expect = _log_sens(rp["YPBBN"], rm["YPBBN"], denom)
+    # d ln Neff = 2*step / Neff_central.
+    expect = _log_sens(rp["YPBBN"], rm["YPBBN"], 2 * step / r0["Neff"])
 
     tab = sensitivity_table(
-        BASE,
-        observables=["YPBBN"],
-        targets=[SensTarget("DeltaNeff", kind="additive", step=step)],
+        BASE, observables=["YPBBN"],
+        targets=[SensTarget("DeltaNeff", kind="additive", step=step,
+                            ref="Neff")],
     )
     assert tab.values[0, 0] == pytest.approx(expect, rel=1e-12)
     # Extra relativistic species speed up expansion -> earlier freeze-out ->
     # more neutrons -> larger YP.
     assert tab.values[0, 0] > 0
+    # The textbook elasticity YP ~ Neff^0.16 (0.1647 here) -- a physical,
+    # rankable number, unlike the ~5.5 an earlier rel_step-based denominator
+    # produced from the very same two solves.
+    assert 0.15 < tab.values[0, 0] < 0.18
+    # An explicit numeric ref must agree with the string form.
+    tab_num = sensitivity_table(
+        BASE, observables=["YPBBN"],
+        targets=[SensTarget("DeltaNeff", kind="additive", step=step,
+                            ref=r0["Neff"])],
+    )
+    assert tab_num.values[0, 0] == pytest.approx(tab.values[0, 0], rel=1e-12)
+
+
+def test_additive_target_without_ref_is_per_unit():
+    """Without ``ref`` an additive row falls back to its linear separation
+    2*step, i.e. dln(O)/dp per unit of p -- documented as NOT an elasticity.
+    Pinned so the fallback stays predictable, and to show the two forms differ
+    by exactly the reference value."""
+    step = 0.1
+    r0 = run_bbn({**BASE, "verbose": False})
+    rp = run_bbn({**BASE, "DeltaNeff": +step, "verbose": False})
+    rm = run_bbn({**BASE, "DeltaNeff": -step, "verbose": False})
+    expect = _log_sens(rp["YPBBN"], rm["YPBBN"], 2 * step)
+
+    tab = sensitivity_table(
+        BASE, observables=["YPBBN"],
+        targets=[SensTarget("DeltaNeff", kind="additive", step=step)])
+    assert tab.values[0, 0] == pytest.approx(expect, rel=1e-12)
+    # per-unit x Neff == elasticity.
+    tab_ref = sensitivity_table(
+        BASE, observables=["YPBBN"],
+        targets=[SensTarget("DeltaNeff", kind="additive", step=step,
+                            ref="Neff")])
+    assert tab_ref.values[0, 0] == pytest.approx(
+        tab.values[0, 0] * r0["Neff"], rel=1e-12)
+
+
+def test_ref_on_non_additive_target_raises():
+    """``ref`` on a rate/param target would be a silent no-op (those already
+    differentiate about their own non-zero fiducial), so it must raise."""
+    with pytest.raises(ValueError, match="only meaningful for kind='additive'"):
+        sensitivity_table(BASE, observables=["YPBBN"],
+                          targets=[SensTarget("tau_n", ref=880.0)])
+
+
+def test_string_ref_naming_no_observable_raises():
+    """A typo'd string ref must name the available keys rather than silently
+    picking some other normalisation."""
+    with pytest.raises(KeyError, match="names no key"):
+        sensitivity_table(BASE, observables=["YPBBN"],
+                          targets=[SensTarget("DeltaNeff", kind="additive",
+                                              step=0.1, ref="Nefff")])
+
+
+def test_additive_target_is_independent_of_rel_step():
+    """An additive row must not move when rel_step changes: rel_step governs
+    the multiplicative rows' step size and has nothing to do with an absolute
+    ±step perturbation. This is the regression guard for the normalisation bug
+    described in test_additive_target_with_ref_is_an_elasticity -- checked for
+    both additive forms, with and without ``ref``."""
+    for target in (SensTarget("DeltaNeff", kind="additive", step=0.1,
+                              ref="Neff"),
+                   SensTarget("DeltaNeff", kind="additive", step=0.1)):
+        a = sensitivity_table(BASE, observables=["YPBBN"], targets=[target],
+                              rel_step=0.01)
+        b = sensitivity_table(BASE, observables=["YPBBN"], targets=[target],
+                              rel_step=0.05)
+        assert a.values[0, 0] == pytest.approx(b.values[0, 0], rel=1e-12)
 
 
 def test_zero_fiducial_multiplicative_raises():

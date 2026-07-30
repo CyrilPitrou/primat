@@ -652,7 +652,18 @@ def test_recomputed_rates_match_cached():
     from primat.config import PRIMATConfig
 
     r_cached = PRIMAT({"network": "small"})                        # loads rates/weak/*.txt
-    r_fresh  = PRIMAT({"network": "small", "weak_rate_cache": False})  # forces ComputeWeakRates
+    # save_nTOp/save_nTOp_thermal=False keeps this test READ-ONLY, exactly as
+    # the two tests above do. weak_rate_cache=False only bypasses the *load*;
+    # with save_nTOp left at its default True the freshly integrated rates are
+    # written back over the shipped, git-tracked nTOp_<hash>.txt for this very
+    # fingerprint. That recompute differs from the committed file only at
+    # ~1e-10 relative, but the default numerical_precision=1e-7 leaves about
+    # 1e-6 of adaptive-step jitter in the observables, so overwriting it moved
+    # the repo's validation reference (YP 0.24700086 -> 0.24700060) purely as a
+    # side effect of running the test suite -- silently, since every pinned
+    # tolerance (YP +-1e-5, D/H +-3e-9) still passed.
+    r_fresh  = PRIMAT({"network": "small", "weak_rate_cache": False,
+                       "save_nTOp": False, "save_nTOp_thermal": False})
 
     MeV_to_K = PRIMATConfig().MeV_to_Kelvin
     for T_MeV in [0.5, 1.0, 3.0, 10.0]:
