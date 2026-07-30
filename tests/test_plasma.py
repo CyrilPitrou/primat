@@ -182,11 +182,23 @@ def test_c_backend_plasma_with_cache():
 @requires_c_backend
 @pytest.mark.slow
 @pytest.mark.backend
-def test_c_backend_plasma_recompute():
-    """C backend can recompute electron-thermo cache when forced."""
-    result = run_bbn({"network": "small", "recompute_electron_thermo": True}, 
+def test_c_backend_plasma_recompute(tmp_path):
+    """C backend can recompute electron-thermo cache when forced.
+
+    The recompute is redirected to a throwaway ``cache_dir``: with the default
+    (unset) cache_dir it would *overwrite the shipped, git-tracked*
+    cache_plasma_weak/plasma/electron_thermo_cache.txt, leaving the working tree
+    dirty — and, worse, replacing the Python-written table with the C-written
+    one, which differs by up to ~1e-4 relative in rho_e/p_e while carrying the
+    identical fingerprint. Both backends read that one file, so whichever ran
+    last silently changed the other's plasma input. Reads still fall back to the
+    shipped copies, so nothing else is recomputed here.
+    """
+    result = run_bbn({"network": "small", "recompute_electron_thermo": True,
+                      "cache_dir": str(tmp_path)},
                     force_backend="c")
-    
+
+
     # Verify we got reasonable results
     assert np.isfinite(result["YPBBN"])
     assert np.isfinite(result["DoH"])
