@@ -209,7 +209,9 @@ def _dPa(T, alpha=_ALPHA_FS, me=_ME_MEV):
     alpha : float, optional
         Fine-structure constant (default: 1/137.035999084).
     me : float, optional
-        Electron mass [MeV] (default: 0.5109989461).
+        Electron mass [MeV] (default: ``_ME_MEV`` = 0.51099895, CODATA 2018,
+        kept equal to ``primat.constants.CONST.me`` by hand -- see the
+        module-level note above).
 
     Returns
     -------
@@ -282,6 +284,14 @@ def _dPb(T, alpha=_ALPHA_FS, me=_ME_MEV, epsrel=1e-4):
     standard primat QED tables (which only store δP_a + δP_{e3}).
     It is provided here for completeness.  Computing it is expensive
     (~10–60 s per temperature point at low precision).
+
+    **Deliberately Python-only.**  ``primat-c/src/qed_pressure.c`` has no
+    counterpart to this function, and needs none: ``include_dPb`` defaults to
+    False, so δP_b never reaches the shipped tables nor any solve path, and
+    the two backends stay in parity without it.  This is an intentional
+    asymmetry, not a porting omission -- if δP_b is ever switched on by
+    default it must be ported (see CLAUDE.md, "Keeping primat-c and primat in
+    sync").
 
     Parameters
     ----------
@@ -358,7 +368,9 @@ def compute_qed_pressure_tables(T_min=1e-3, T_max=1e2, n_pts=500,
     alpha : float
         Fine-structure constant (default: CODATA 2018 value).
     me : float
-        Electron mass [MeV] (default: 0.5109989461).
+        Electron mass [MeV] (default: ``_ME_MEV`` = 0.51099895, CODATA 2018,
+        kept equal to ``primat.constants.CONST.me`` by hand -- see the
+        module-level note above).
     include_dPb : bool
         If True, also compute the expensive O(e⁴) two-loop term δP_b
         (adds ~10–60 s per temperature point; default False).

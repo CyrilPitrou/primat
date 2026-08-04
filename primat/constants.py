@@ -121,10 +121,14 @@ class Constants:
     # value to 3.044 quoted from the more recent re-evaluations of the
     # Mangano/Miele 3.046 result). Used wherever the *standard*-physics value
     # of N_eff is needed as an input (rather than the value primat itself
-    # solves for via the NEVO non-instantaneous-decoupling table), e.g. the
-    # radiation-density sanity check in
-    # ``StandardBackground._replace_LCDM_with_exact`` and the EDE-era
-    # radiation normalisation in ``StandardBackground._setup_EDE``.
+    # solves for via the NEVO non-instantaneous-decoupling table). Its only
+    # numerical use is the EDE-era radiation normalisation in
+    # ``StandardBackground._setup_EDE`` (mirrored by ``setup_ede`` in
+    # primat-c/src/background.c); elsewhere it appears only as the reference
+    # point of the reported ``Neff = Neff_SM + DeltaNeff`` relation.
+    # (This comment also used to cite a "radiation-density sanity check in
+    # StandardBackground._replace_LCDM_with_exact" -- that method performed no
+    # such check, never read Neff_SM, and has since been removed outright.)
     Neff_SM:   float = 3.044
 
     # ------------------------------------------------------------------

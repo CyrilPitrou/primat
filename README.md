@@ -304,6 +304,28 @@ there is no recompute penalty for the configurations that ship pre-cached). A
 cache-write failure is never fatal in any case: the run completes with the
 correct in-memory values and prints a warning pointing at `cache_dir`.
 
+**Working from a git checkout (`cache_dir` again).** With `cache_dir` unset,
+recomputed caches are written back *into the package tree* — which, in a
+checkout, is the version-controlled `primat/data/` directory. Two consequences
+worth knowing about:
+
+- A run whose fingerprint misses the shipped caches leaves your working tree
+  dirty: `git status` will show a modified file under
+  `primat/data/cache_plasma_weak/` that you never edited.
+- The two cache families behave differently on a miss. Weak-rate files carry
+  the fingerprint hash *in the filename*, so configurations coexist peacefully.
+  The plasma electron-thermo cache is a single fixed filename
+  (`electron_thermo_cache.txt`) with the fingerprint only in its *header*, so
+  each configuration overwrites the previous one. Alternating between two
+  configurations that disagree on any of `n_electron_table` or
+  `T_start_cosmo_MeV` therefore makes them evict each other, and both pay the
+  recompute every time.
+
+Neither affects the correctness of any result — the fingerprint check means a
+mismatched cache is never *used*, only rebuilt. But if you run primat from a
+checkout with anything other than the default configuration, set `cache_dir` to
+a scratch directory and both problems go away.
+
 **Typical workflow for a high-precision study:**
 ```python
 from primat.backend import run_bbn

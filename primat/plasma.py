@@ -68,7 +68,21 @@ from .cache_utils import (fingerprint_hash, read_cache_fingerprint_hash,
 
 # Bump on any change to the electron-thermo cache's numerical content or
 # layout (see Plasma._build_electron_tables).
-ELECTRON_THERMO_FORMAT_VERSION = 1
+#
+# v2: the four _*_exact quadratures switched from an absolute tolerance
+# (epsabs=1e-12) to a purely relative one (epsabs=0, epsrel=1e-12). At the
+# grid's low-T edge, x = me/Tgamma = 30, the integrals are of order
+# e^-30 ~ 9e-14 -- SMALLER than the old epsabs -- so quad stopped on its very
+# first estimate and the tabulated values there carried no significant digits.
+# Harmless in itself (rho_e/rho_gamma <= 5e-7 in that region, and everything
+# below Tmin = me/30 is hard-zeroed before the interpolant is consulted), but
+# it also meant the Python- and C-written tables disagreed by ~1e-4 on
+# rho_e/p_e while sharing one fingerprint, so whichever backend last recomputed
+# silently became the other's plasma input. Only the tail moves; every row
+# above ~0.05 MeV is unchanged to ~1e-10. Mirrored by
+# ELECTRON_THERMO_FORMAT_VERSION in primat-c/src/plasma.c and by that file's
+# two-pass elec_integrate.
+ELECTRON_THERMO_FORMAT_VERSION = 2
 
 __all__ = [
     'Plasma',
@@ -661,7 +675,7 @@ class Plasma:
         if Tg < me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
         r = quad(self._rho_e_int_impl, me / Tg, 100., args=(Tg, me),
-                 epsabs=1e-12, epsrel=1e-12)[0]
+                 epsabs=0., epsrel=1e-12)[0]
         # Prefactor: g/(2π²) Tg⁴ with g=4 for e⁺+e⁻.
         return 4. / (2 * np.pi**2) * Tg**4 * r
 
@@ -671,7 +685,7 @@ class Plasma:
         if Tg < me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
         r = quad(self._drho_e_dT_impl, me / Tg, 100., args=(Tg, me),
-                 epsabs=1e-12, epsrel=1e-12)[0]
+                 epsabs=0., epsrel=1e-12)[0]
         # Prefactor: g/(2π²) Tg³ × (1/4) = g/(8π²) Tg³; combined with the
         # extra E in the integrand this gives dρ/dT.
         return 1. / (2 * np.pi**2) * Tg**3 * r
@@ -682,7 +696,7 @@ class Plasma:
         if Tg < me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
         r = quad(self._p_e_int_impl, me / Tg, 100., args=(Tg, me),
-                 epsabs=1e-12, epsrel=1e-12)[0]
+                 epsabs=0., epsrel=1e-12)[0]
         # Prefactor: g/(6π²) Tg⁴ with g=4.
         return 4. / (6 * np.pi**2) * Tg**4 * r
 
@@ -692,7 +706,7 @@ class Plasma:
         if Tg < me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
         r = quad(self._dp_e_dT_impl, me / Tg, 100., args=(Tg, me),
-                 epsabs=1e-12, epsrel=1e-12)[0]
+                 epsabs=0., epsrel=1e-12)[0]
         return 1. / (6 * np.pi**2) * Tg**3 * r
 
     def _build_electron_tables(self, cfg):

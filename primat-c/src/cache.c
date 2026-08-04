@@ -314,7 +314,18 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
      * define the dFDneu the spectral-distortion term integrates. */
     out[n++] = (CPRFPField){"nevo_grid_file", ps(cfg->nevo_grid_file)};
     out[n++] = (CPRFPField){"nevo_file_prefix", ps(cfg->nevo_file_prefix)};
-    return n; /* 18 entries; sampling_nTOp_per_decade/radiative_corrections/
+    /* custom_background mode takes the Tg grid behind the T_nu(T_gamma)
+     * interpolant from the table file's OWN T range (cpr_bg_init_custom), not
+     * from T_start_cosmo_MeV/T_end_MeV -- so nothing above distinguishes one
+     * custom table from another, and two different backgrounds shared a single
+     * cached nTOp table. Keyed on the path, as nevo_file is. Emitted only when
+     * set, so a run without custom_background hashes byte-identically to
+     * before and keeps hitting the shipped caches (same conditional trick as
+     * munuOverTnu). Mirrors weak_rates/cache.py's _weak_rate_fingerprint. */
+    if (cfg->custom_background && cfg->custom_background[0] != '\0')
+        out[n++] = (CPRFPField){"custom_background", ps(cfg->custom_background)};
+    return n; /* 18 entries, +1 iff custom_background is set;
+                 sampling_nTOp_per_decade/radiative_corrections/
                  finite_mass_corrections each appear once here already
                  (the Python dict's apparent "duplicate" assignment from
                  looping over _WEAK_RATE_BG_FIELDS after the literal dict

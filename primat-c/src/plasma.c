@@ -26,7 +26,11 @@
  * sbar_pl = sbar_g + 2*(7/8)*sbar_g = (11/4) * 4pi^2/45 = 11 pi^2/45. */
 #define SIGMA_INF (11.0 * M_PI * M_PI / 45.0)
 
-#define ELECTRON_THERMO_FORMAT_VERSION 1
+/* v2: the e+- quadratures moved from an absolute to a relative tolerance
+ * (elec_integrate's two-pass scheme below), which changes the tabulated
+ * values at the grid's low-T edge. Must stay equal to plasma.py's
+ * ELECTRON_THERMO_FORMAT_VERSION -- the two backends share one cache file. */
+#define ELECTRON_THERMO_FORMAT_VERSION 2
 
 double cpr_rho_g(double Tg)    { return 2.0 * (M_PI * M_PI / 30.0) * pow(Tg, 4.0); }
 double cpr_drho_g_dT(double Tg) { return 4.0 * cpr_rho_g(Tg) / Tg; }
@@ -235,8 +239,16 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     for (int k = 0; k < 3; k++) {
         CPRCubicSpline spl;
         if (cpr_cubic_spline_fit_notaknot(loaded[k]->x, loaded[k]->y,
-                                          loaded[k]->n, &spl, errmsg))
+                                          loaded[k]->n, &spl, errmsg)) {
+            /* Release every target before bailing: those with index < k are
+             * already converted splines, those with index >= k still hold the
+             * raw x/y pair allocated above. cpr_interp1d_free dispatches on
+             * each one's own is_spline flag, so a single loop covers both
+             * cases (it also zeroes them, so the caller's cleanup is a
+             * no-op rather than a double free). */
+            for (int j = 0; j < 3; j++) cpr_interp1d_free(loaded[j]);
             return 1;
+        }
         free(loaded[k]->x);
         free(loaded[k]->y);
         loaded[k]->x = NULL;
@@ -291,23 +303,51 @@ static double elec_quad_wrapper(double E, void *ctx)
 static const double ELEC_OFFSETS[] = { 0.0, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0 };
 #define N_ELEC_OFFSETS (sizeof(ELEC_OFFSETS) / sizeof(ELEC_OFFSETS[0]))
 
-static double elec_integrate(ElecIntegrand fn, double x, double upper)
+/* One segmented sweep at a given ABSOLUTE per-segment tolerance. */
+static double elec_integrate_at_tol(ElecCtx *ctx, double x, double upper, double seg_tol)
 {
-    ElecCtx ctx = { fn, x };
     double total = 0.0;
     double prev = x;
-    double seg_tol = 1e-12 / (double)N_ELEC_OFFSETS;
     for (size_t i = 1; i < N_ELEC_OFFSETS; i++) {
         double next = x + ELEC_OFFSETS[i];
         if (next >= upper) { next = upper; }
         if (next > prev)
-            total += cpr_quad_adaptive(elec_quad_wrapper, &ctx, prev, next, seg_tol, 30, NULL);
+            total += cpr_quad_adaptive(elec_quad_wrapper, ctx, prev, next, seg_tol, 30, NULL);
         prev = next;
         if (prev >= upper) break;
     }
     if (prev < upper)
-        total += cpr_quad_adaptive(elec_quad_wrapper, &ctx, prev, upper, seg_tol, 30, NULL);
+        total += cpr_quad_adaptive(elec_quad_wrapper, ctx, prev, upper, seg_tol, 30, NULL);
     return total;
+}
+
+/* Relative accuracy target, matching plasma.py's quad(epsabs=0, epsrel=1e-12). */
+#define ELEC_QUAD_EPSREL 1e-12
+
+/* Two-pass so the tolerance is RELATIVE to the integral's own magnitude.
+ *
+ * cpr_quad_adaptive's `tol` is absolute (it is compared against
+ * |refined - whole|), so this used to pass a fixed 1e-12/N_SEGMENTS. At the
+ * electron-thermo grid's low-T edge (x = me/Tgamma = 30) the integrals are of
+ * order e^-30 ~ 9e-14 -- smaller than that tolerance -- so every segment was
+ * accepted at its first Simpson estimate and the result had no significant
+ * digits. Python had the identical defect (epsabs=1e-12), which is why the two
+ * backends' tables disagreed by ~1e-4 on rho_e/p_e down there despite sharing
+ * one fingerprint.
+ *
+ * Pass 1 gets the magnitude at a cheap loose tolerance; pass 2 redoes the
+ * sweep at epsrel * |I_est|, floored at DBL_MIN-ish so a genuinely zero
+ * integral cannot ask for an unreachable absolute accuracy. See
+ * ELECTRON_THERMO_FORMAT_VERSION (bumped to 2 in both backends). */
+static double elec_integrate(ElecIntegrand fn, double x, double upper)
+{
+    ElecCtx ctx = { fn, x };
+    double est = elec_integrate_at_tol(&ctx, x, upper, 1e-9 / (double)N_ELEC_OFFSETS);
+    double scale = fabs(est);
+    if (!(scale > 0.0)) return est;   /* exactly 0 (or NaN): nothing to refine */
+    double seg_tol = ELEC_QUAD_EPSREL * scale / (double)N_ELEC_OFFSETS;
+    if (seg_tol < 1e-300) seg_tol = 1e-300;
+    return elec_integrate_at_tol(&ctx, x, upper, seg_tol);
 }
 
 static double rho_e_exact(double Tg)
@@ -377,9 +417,20 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
                       || cpr_cubic_spline_fit_notaknot(tab.cols[0], tab.cols[4], tab.n_rows, &pl->dp_e_dT_tab, errmsg);
                 cpr_table_free(&tab);
                 free(fp_hash);
-                if (rc == 0)
+                if (rc == 0) {
                     cpr_log(cfg, "init", "Electron-thermo tables loaded from cache (%d points).",
                              cfg->n_electron_table);
+                } else {
+                    /* The || chain short-circuits, so an unknown prefix of the
+                     * four fits succeeded and holds allocations. Free all four:
+                     * pl was memset to 0 by cpr_plasma_init, so the not-yet-
+                     * fitted ones are all-NULL and cpr_cubic_spline_free is a
+                     * no-op on them. */
+                    cpr_cubic_spline_free(&pl->rho_e_tab);
+                    cpr_cubic_spline_free(&pl->p_e_tab);
+                    cpr_cubic_spline_free(&pl->drho_e_dT_tab);
+                    cpr_cubic_spline_free(&pl->dp_e_dT_tab);
+                }
                 return rc;
             }
             /* Fall through to recompute if the cache file turned out to

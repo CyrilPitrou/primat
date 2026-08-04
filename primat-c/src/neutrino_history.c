@@ -10,11 +10,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Mirrors os.path.isabs, which neutrino_history.py's resolve_nevo_path uses
+ * to make the same decision: a leading separator on POSIX, plus the
+ * drive-qualified and root-relative forms on Windows ("C:\x", "C:/x", "\x").
+ * Testing only fname[0] == '/' treated "C:\tables\my.csv" as relative and
+ * joined it onto <data_dir>/NEVO/, so the two backends resolved one config to
+ * different files. */
+static int path_is_absolute(const char *p)
+{
+    if (p[0] == '/' || p[0] == '\\') return 1;
+    if (p[0] != '\0' && p[1] == ':'
+        && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z'))
+        && (p[2] == '/' || p[2] == '\\'))
+        return 1;
+    return 0;
+}
+
 void cpr_resolve_nevo_path(const CPRConfig *cfg, const char *override,
                             const char *default_filename, char *out, size_t out_size)
 {
     const char *fname = override ? override : default_filename;
-    if (fname[0] == '/') {
+    if (path_is_absolute(fname)) {
         snprintf(out, out_size, "%s", fname);
     } else {
         snprintf(out, out_size, "%s/NEVO/%s", cfg->data_dir, fname);
@@ -22,15 +38,24 @@ void cpr_resolve_nevo_path(const CPRConfig *cfg, const char *override,
 }
 
 /* Index i such that asc[i] <= xq <= asc[i+1] (clamped to [0, n-2]); caller
- * has already checked xq is within [asc[0], asc[n-1]]. Plain linear scan:
- * every table here has at most a few hundred rows, called O(1) times per
- * weak-rate/background evaluation, so this is not a hot loop worth a
- * binary search. */
+ * has already checked xq is within [asc[0], asc[n-1]].
+ *
+ * Binary, not the linear scan this used to be. The old comment justified the
+ * scan with "called O(1) times per weak-rate/background evaluation", which is
+ * true of the thermo tables but not of the one caller that matters:
+ * df_2d_lookup brackets logxNEVO_asc -- the ~600-row NEVO spectral table --
+ * once per *integrand* evaluation of the spectral-distortion weak-rate term,
+ * i.e. across a whole quadrature grid, so the scan ran up to ~600 iterations
+ * per call. Same result, log(n) instead of n. */
 static size_t bracket(const double *asc, size_t n, double xq)
 {
-    size_t i = 0;
-    while (i + 2 < n && asc[i + 1] < xq) i++;
-    return i;
+    if (n < 2) return 0;   /* degenerate; callers guarantee n >= 1 only */
+    size_t lo = 0, hi = n - 2;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (asc[mid + 1] < xq) lo = mid + 1; else hi = mid;
+    }
+    return lo;
 }
 
 static double interp_asc(const double *x_asc, const double *y_asc, size_t n, double xq, CPRExtrapMode mode)
@@ -51,8 +76,27 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
              cfg->QED_corrections ? "" : "_NoQED");
     cpr_resolve_nevo_path(cfg, cfg->nevo_file, default_file, path, sizeof(path));
 
+    /* Width auto-detected (n_cols_hint == 0) rather than pinned to 7. Only
+     * the first six columns are ever read below (x, z, the three
+     * T_nu/T_com ratios, and N); the shipped NEVOPRIMAT*_col_1_7.csv carries
+     * a seventh column that neither backend consumes. A 6-column table is
+     * therefore just as valid, which is what PRIMATConfig._validate_nevo_files
+     * accepts ("expected 6 or 7") and what neutrino_history.py reads via
+     * usecols=range(6). Pinning the hint to 7 made the C backend -- the
+     * force_backend="auto" default -- abort on a file the config validator
+     * and the Python backend both accept. */
     CPRTable tab;
-    if (cpr_table_read(path, 7, &tab, errmsg)) return 1;
+    if (cpr_table_read(path, 0, &tab, errmsg)) return 1;
+    if (tab.n_cols < 6) {
+        char buf[CPR_PATH_BUF_LEN2 + 128];
+        snprintf(buf, sizeof(buf),
+                 "%s: NEVO thermo table has %zu columns; expected at least 6 "
+                 "(x, z, T_nue/T_com, T_numu/T_com, T_nutau/T_com, N)",
+                 path, tab.n_cols);
+        *errmsg = strdup(buf);
+        cpr_table_free(&tab);
+        return 1;
+    }
 
     size_t n = tab.n_rows;
     double *x      = tab.cols[0];
@@ -131,8 +175,18 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
     cpr_resolve_nevo_path(cfg, cfg->nevo_spectral_file, default_full, full_path, sizeof(full_path));
     cpr_resolve_nevo_path(cfg, cfg->nevo_grid_file, "NEVOGrid.csv", grid_path, sizeof(grid_path));
 
+    /* Width auto-detected here too (was pinned to the shipped tables' 86).
+     * The layout is 6 thermo columns followed by N spectral columns, one per
+     * y-node of nevo_grid_file -- N = 80 in the shipped pair, but
+     * PRIMATConfig._validate_nevo_files accepts any N >= 1 provided the grid
+     * has exactly N nodes, and neutrino_history.py slices [:, 6:] to match.
+     * Hard-coding 86 both rejected those tables and, worse, left the
+     * cols[6 + j] loop below unbounded: with a grid file longer than the
+     * spectral table is wide, j ran past full_tab.cols's last entry. The
+     * ny == n_cols - 6 check below now closes that on every path, including
+     * the standalone C CLI, which never runs PRIMATConfig's validation. */
     CPRTable full_tab, grid_tab;
-    if (cpr_table_read(full_path, 86, &full_tab, errmsg)) return 1;
+    if (cpr_table_read(full_path, 0, &full_tab, errmsg)) return 1;
     if (cpr_table_read(grid_path, 1, &grid_tab, errmsg)) { cpr_table_free(&full_tab); return 1; }
 
     size_t nr = full_tab.n_rows;
@@ -142,6 +196,28 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
          * spectral or grid table (header line but no data rows) would
          * otherwise read past a malloc(0) allocation. */
         *errmsg = strdup("cpr_resolve_nevo_path: NEVO spectral/grid table has no data rows");
+        cpr_table_free(&full_tab); cpr_table_free(&grid_tab);
+        return 1;
+    }
+    if (full_tab.n_cols <= 6) {
+        char buf[CPR_PATH_BUF_LEN2 + 160];
+        snprintf(buf, sizeof(buf),
+                 "%s: NEVO spectral table has %zu columns; expected 6 thermo "
+                 "columns plus at least one spectral column (86 total in the "
+                 "shipped tables: 6 thermo + 80 spectral)",
+                 full_path, full_tab.n_cols);
+        *errmsg = strdup(buf);
+        cpr_table_free(&full_tab); cpr_table_free(&grid_tab);
+        return 1;
+    }
+    if (ny != full_tab.n_cols - 6) {
+        char buf[2 * CPR_PATH_BUF_LEN2 + 192];
+        snprintf(buf, sizeof(buf),
+                 "%s: NEVO y-grid has %zu nodes; expected %zu to match the "
+                 "spectral table %s's %zu spectral columns",
+                 grid_path, ny, full_tab.n_cols - 6, full_path,
+                 full_tab.n_cols - 6);
+        *errmsg = strdup(buf);
         cpr_table_free(&full_tab); cpr_table_free(&grid_tab);
         return 1;
     }

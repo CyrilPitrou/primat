@@ -12,6 +12,52 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **Custom NEVO tables of non-shipped width now work on the C backend.** A
+  6-column `nevo_file`, and a `nevo_spectral_file` of any width other than the
+  shipped 86, passed `PRIMATConfig`'s validation and ran on the Python backend
+  but aborted on the C one (`expected 7 columns, found 6`) — i.e. on the
+  `force_backend="auto"` default. Both NEVO readers now take the width from the
+  file. The same hard-coded 86 also left an out-of-bounds read when a
+  `nevo_grid_file` declared more y-nodes than the spectral table had columns;
+  that combination is now rejected with a clear message on every path,
+  including the standalone `primat-c` CLI, which does not run `PRIMATConfig`.
+- **e± thermodynamic tables are now accurate at the low-temperature edge of
+  their grid.** Both backends integrated to an *absolute* tolerance (1e-12)
+  that exceeded the integrand's own magnitude there (~e⁻³⁰ ≈ 9e-14), so the
+  tabulated values carried no significant digits below T ≈ 0.024 MeV and the
+  Python- and C-written tables disagreed by ~1e-4 while sharing one fingerprint
+  — whichever backend last recomputed silently became the other's plasma input.
+  Both now use a relative tolerance and agree to ~1e-11 across the whole grid.
+  `ELECTRON_THERMO_FORMAT_VERSION` is bumped to 2, so any existing
+  `electron_thermo_cache.txt` is rebuilt automatically on first use. Observable
+  impact is nil: the affected region has ρ_e/ρ_γ ≤ 5e-7 and sits at or below
+  the hard-zero cutoff.
+- **The ΛCDM term no longer enters the background solve through a
+  radiation-domination approximation.** `ρ_CDM` was evaluated with
+  `a ≈ T0CMB/T_γ`, anchored at today, and swapped for the exact `a(T)` only
+  *after* both background ODEs had run. That anchor is wrong in the BBN era by
+  the e⁺e⁻ reheating factor cubed — 2.73× at 10 MeV, 2.69× at 1 MeV, exact only
+  below ~0.01 MeV — biasing H by ~2e-7 and diverging needlessly from the C
+  backend, which always had the exact `a`. `a(T)` is now published as soon as
+  the entropy ODE has produced it, before anything evaluates the Hubble rate;
+  the approximation and its swap step are gone. D/H moves by 6e-13 against a
+  ±3e-9 regression tolerance.
+- **`custom_background` runs sample their T grid logarithmically.** The grid was
+  sized per *decade* but laid out linearly, so for a table spanning the usual
+  40 MeV → 0.001 MeV window only 6 of its 2761 points fell below 1e9 K (1161
+  when log-spaced). That grid sets the node spacing of the T_ν(T_γ) interpolant
+  every n↔p rate integrand reads; the interpolation error it caused reached
+  1.2e-4 on the p→n rate and is now ~280× smaller. **If you have run
+  `custom_background` before and kept a `cache_dir`, delete its cached
+  `nTOp_*.txt` files once** — the fingerprint cannot see a grid-layout change,
+  so a stale table would otherwise be reused.
+- **Two different `custom_background` tables no longer share one cached rate
+  table.** In that mode the T grid comes from the supplied table's own range,
+  not from `T_start_cosmo_MeV`/`T_end_MeV`, so nothing in the weak-rate
+  fingerprint distinguished one custom background from another. It is now keyed
+  on the table path (as `nevo_file` already was), emitted only when set — runs
+  without `custom_background` hash exactly as before and keep hitting the
+  shipped caches.
 - **Additive sensitivity rows are now genuine elasticities** (`d ln O / d ln p`,
   the meaning of every other row and of the table as a whole). An additive
   target such as `DeltaNeff` was divided by the *multiplicative* rows'

@@ -134,8 +134,11 @@ typedef struct {
  * history, the a(T)/t(a) ODE solutions, derived relic-neutrino Omegas, and
  * the n<->p weak rates -- mirrors StandardBackground.__init__'s call
  * sequence (_setup_LCDM, _setup_EDE, _setup_background_and_cosmo,
- * _setup_derived_cosmo, _setup_weak_rates; _replace_LCDM_with_exact has no
- * separate step here, see background.c). `plasma` must already be
+ * _setup_derived_cosmo, _setup_weak_rates). Python used to carry an extra
+ * _replace_LCDM_with_exact step, swapping a radiation-domination
+ * approximation for rho_CDM out after the background solve; it has been
+ * removed there in favour of publishing a(T) mid-solve, which is what this
+ * port always did (cpr_bg_Hubble takes `a` explicitly). `plasma` must already be
  * initialised (cpr_plasma_init) and must outlive `bg`. Returns 0 on
  * success (caller must cpr_background_free the result), nonzero with
  * *errmsg set (caller frees) on failure. */

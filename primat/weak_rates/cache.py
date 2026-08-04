@@ -269,5 +269,20 @@ def _weak_rate_fingerprint(cfg):
     # mirrors this (cpr_weak_rate_fingerprint, cache.c). ξ_μ/ξ_τ are omitted:
     # they gravitate only and do not touch the weak rates.
     fp["munuOverTnu"] = cfg.xi_nu_e
+    # custom_background mode takes the Tg grid behind the T_nu(T_gamma)
+    # interpolant from the *table file's own* T range (CustomBackground.
+    # _setup_neutrino_history), NOT from T_start_cosmo_MeV/T_end_MeV -- so none
+    # of the range/density fields above distinguish one custom table from
+    # another, and two different custom backgrounds silently shared a single
+    # cached nTOp table. Keyed on the path here, exactly as nevo_file is (an
+    # in-place edit of the same path is still not caught -- same caveat as
+    # there).
+    #
+    # Added CONDITIONALLY so a run without custom_background hashes exactly as
+    # before and keeps hitting the shipped data/cache_plasma_weak/weak/ caches
+    # -- the same trick as munuOverTnu above. Mirrored in C by
+    # cpr_weak_rate_fingerprint (cache.c).
+    if getattr(cfg, "custom_background", None) is not None:
+        fp["custom_background"] = cfg.custom_background
     return fp
 

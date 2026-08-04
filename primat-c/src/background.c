@@ -969,9 +969,16 @@ int cpr_bg_init_custom(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasma 
     bg->n_bg = (size_t)n_T_pts;
     bg->Tg_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
     bg->Tnue_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    /* LOG-spaced, matching background.py's _setup_neutrino_history and the
+     * per-decade helper that sized it just above. This was a linear layout
+     * (T_lo + frac*(T_hi - T_lo)), which over a multi-decade custom table
+     * starved the low-T end of the T_nu(T_gamma) interpolant every n<->p rate
+     * integrand reads -- 6 of 2761 points below 1e9 K for the standard
+     * 40 MeV -> 0.001 MeV window, against 1161 when log-spaced. */
+    double logT_lo = log10(T_lo), logT_hi = log10(T_hi);
     for (size_t i = 0; i < bg->n_bg; i++) {
         double frac = (bg->n_bg == 1) ? 0.0 : (double)i / (double)(bg->n_bg - 1);
-        bg->Tg_vec[i] = T_lo + frac * (T_hi - T_lo);
+        bg->Tg_vec[i] = pow(10.0, logT_lo + frac * (logT_hi - logT_lo));
         bg->Tnue_vec[i] = cpr_nu_Tnue_of_Tg(&bg->nh, bg->Tg_vec[i]);
     }
 

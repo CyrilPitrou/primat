@@ -386,7 +386,6 @@ class StandardBackground(Background):
         self._setup_background_and_cosmo()
         if cfg.verbose:
             print(f"[bg-py] Background a(T), t(T) ready in {time.time()-_t_bg0:.2f} s")
-        self._replace_LCDM_with_exact()   # swap CDM approx → exact a_of_T
         self._setup_derived_cosmo()
         self._setup_weak_rates()
 
@@ -418,12 +417,16 @@ class StandardBackground(Background):
 
             ρ_CDM(Tg) = Ω_c h² · ρ_{crit,100} / a(Tg)³
 
-        where ``a(Tg)`` is not yet known at call time (it is built later by
-        ``_setup_background_and_cosmo``).  We therefore store the *comoving*
-        CDM density amplitude ``rhocdm_a3 = Ω_c h² · ρ_{crit,100}`` and wrap
-        it in a closure that calls ``self.a_of_T(Tg)`` at evaluation time, once
-        ``a(T)`` has been set.  (``self.a_of_T`` will raise ``NotImplementedError``
-        if called before ``_setup_background_and_cosmo``, so the closure is safe.)
+        where ``a(Tg)`` is not yet known at call time.  We therefore store the
+        *comoving* CDM density amplitude ``rhocdm_a3 = Ω_c h² · ρ_{crit,100}``
+        and wrap it in a closure that calls ``self.a_of_T(Tg)`` at evaluation
+        time.  ``_setup_background_and_cosmo`` publishes ``self.a_of_T`` at the
+        end of its step 2 (the entropy ODE, which is itself ``a``-independent),
+        which is strictly before step 3's time integration -- the first thing
+        to evaluate ``extra_rho`` at all.  The closure is therefore always
+        called with the exact ``a(T)``; evaluating it any earlier raises
+        ``NotImplementedError`` from the base ``a_of_T`` stub rather than
+        silently substituting an approximation.
 
             ρ_Λ = (h² − Ω_b h² − Ω_c h²) · ρ_{crit,100}
 
@@ -452,13 +455,12 @@ class StandardBackground(Background):
         """
         cfg = self.cfg
 
-        # Omegach2/h always exist (DEFAULT_PARAMS); an explicit None disables
-        # this CDM/Lambda contribution (negligible during standard BBN, so
-        # skipping is equivalent to keeping it zero).
+        # Omegach2/h always exist and are always floats: PRIMATConfig type-
+        # validates both (an explicit None raises "expected float"), so there
+        # is no "None disables this contribution" case to handle. The C port
+        # notes the same thing at background.c's setup_lcdm.
         Omegach2 = cfg.Omegach2
         h        = cfg.h
-        if Omegach2 is None or h is None:
-            return
 
         # ρ_{crit,100} [MeV^4]: critical density at H = 100 km/s/Mpc.
         # cfg.rhocOverh2 = 3/(8π G_N) × H_{100}², so rhocrit100 = cfg.rhocOverh2.
@@ -470,35 +472,29 @@ class StandardBackground(Background):
         #       = Ω_c h² × ρ_{crit,100}.
         rhocdm_a3 = Omegach2 * rhocrit100   # [MeV^4]
 
-        # Reference scale factor a_ref and temperature T_ref used to anchor
-        # the a ∝ 1/T radiation-domination approximation for rho_CDM.
-        # We use T_ref = T0CMB (today, a=1) as the anchor, so:
-        #   a(T) ≈ T0CMB_MeV / T   (radiation domination)
-        # This is exact at high T (BBN era) and is a good approximation for
-        # the Hubble equation there (CDM is negligible anyway).  After a_of_T
-        # is established (by _setup_background_and_cosmo), the CDM callable
-        # is replaced with the exact form via _replace_LCDM_with_exact.
-        T0CMB_MeV = cfg.T0CMB / cfg.MeV_to_Kelvin   # CMB temperature today [MeV]
-        # Radiation-domination approximation: a(T) ≈ T0CMB_MeV / T
-        # valid at T ≫ T_eq (matter-radiation equality, T_eq ≈ 0.8 eV = 8e-7 MeV)
-        # so perfectly accurate for all BBN temperatures (T ≥ 0.001 MeV).
-
-        def rho_CDM_approx(Tg):
-            """CDM energy density [MeV^4] using the radiation-domination a(T) ≈ T0CMB/T.
-
-            ρ_CDM ∝ a^{-3} ∝ T^3 (radiation domination, accurate for T > T_eq).
-            Used in the Hubble ODE bootstrap (before the exact a(T) is known);
-            the contribution is negligible at BBN temperatures regardless.
-            """
-            a_approx = T0CMB_MeV / Tg
-            return rhocdm_a3 / a_approx**3
-
         def rho_CDM(Tg):
-            """CDM energy density [MeV^4] using the exact a(T) from StandardBackground.
+            """CDM energy density [MeV^4] from the exact a(T) [MeV^4].
 
-            After _setup_background_and_cosmo has built self.a_of_T, this
-            replaces rho_CDM_approx for all evaluations (e.g. background output
-            columns).  During the Hubble ODE solve the approximation is used.
+            Evaluates ρ_CDM = rhocdm_a3 / a(Tγ)³ using ``self.a_of_T``, which
+            ``_setup_background_and_cosmo`` publishes as soon as step 2 has
+            solved the entropy ODE -- before anything calls :meth:`Hubble`.
+            Calling this earlier raises ``NotImplementedError`` from the base
+            ``a_of_T`` stub, which is the intended loud failure.
+
+            This used to be preceded by a ``rho_CDM_approx`` bootstrap that
+            anchored ``a ≈ T0CMB_MeV / Tγ`` at today (a = 1, T = T0CMB) and was
+            swapped out only *after* the background solve, so both ODEs ran on
+            the approximation. That anchor is wrong in the BBN era by the e⁺e⁻
+            reheating factor: a(T)·T is not constant across annihilation, it
+            rises by (11/4)^{1/3}, so ``(a_approx/a_exact)³`` was 2.73 at
+            Tγ = 10 MeV and 2.69 at 1 MeV, falling to 1.000 only below
+            ~0.01 MeV. (The old comment justified it via matter-radiation
+            equality, T ≫ T_eq -- the wrong mechanism, and one that made the
+            approximation look best exactly where it was worst.) With
+            ρ_CDM/ρ_γ ≈ 1.1e-6 at 1 MeV the 2.7× error biased ρ_tot by ~4e-7
+            and H by ~2e-7 -- below the ±3e-9 D/H pin, but a needless
+            divergence from primat-c, whose cpr_bg_Hubble always had the exact
+            ``a`` available (it carries x = ln(a·T) in the ODE state).
             """
             a = self.a_of_T(Tg)
             return rhocdm_a3 / a**3
@@ -521,30 +517,15 @@ class StandardBackground(Background):
             """Cosmological constant energy density [MeV^4] (T-independent)."""
             return rholambda
 
-        # Append the radiation-domination approximation for CDM first (used
-        # during the Hubble ODE bootstrap in _setup_background_and_cosmo).
-        # After a_of_T is established, _replace_LCDM_with_exact replaces the
-        # approximation with the exact callable that reads self.a_of_T.
-        self.extra_rho.append(rho_CDM_approx)
+        # Both are appended in their final form -- no bootstrap/swap step any
+        # more (see rho_CDM's docstring). Nothing between here and the point
+        # where _setup_background_and_cosmo publishes self.a_of_T evaluates
+        # extra_rho: _setup_EDE only reads rho_g, step 1 builds the neutrino
+        # history from tables/spl, and step 2's entropy ODE is a-independent
+        # (it is pure spl/N_NEVO, never Hubble). The first extra_rho consumer
+        # is the t(a) integration in step 3-4, by which time a_of_T is set.
+        self.extra_rho.append(rho_CDM)
         self.extra_rho.append(rho_Lambda)
-        # Store the exact CDM callable and its index for post-setup replacement.
-        self._lcdm_cdm_idx    = len(self.extra_rho) - 2   # index of rho_CDM_approx
-        self._lcdm_cdm_exact  = rho_CDM
-
-    def _replace_LCDM_with_exact(self):
-        """Replace the CDM radiation-domination approximation with the exact form.
-
-        Called after ``_setup_background_and_cosmo`` has established
-        ``self.a_of_T``.  Swaps the bootstrap CDM callable in
-        ``self.extra_rho`` (which used ``a ≈ T0CMB/T`` radiation-domination)
-        with the exact ``rho_CDM = rhocdm_a3 / self.a_of_T(T)^3``.
-
-        The replacement is a no-op when ``_setup_LCDM`` was not called (e.g.
-        when ``Omegach2``/``h`` are absent from the config).
-        """
-        if not hasattr(self, "_lcdm_cdm_idx"):
-            return
-        self.extra_rho[self._lcdm_cdm_idx] = self._lcdm_cdm_exact
 
     # ======================================================================
     # Early Dark Energy setup
@@ -691,6 +672,15 @@ class StandardBackground(Background):
 
         # Step 2 - Build a(T)
         a_of_T, T_sol, n_T_pts = self._build_a_of_T(nh, N_NEVO_of_Tg, Tend, Tstartcosmo)
+
+        # Publish a(T) as soon as it exists. _setup_LCDM's rho_CDM closure
+        # reads self.a_of_T, and steps 3-4 below are the first thing to
+        # evaluate it (through Hubble); doing this here rather than in step 5
+        # is what lets the CDM term be exact inside the time integration
+        # instead of running on a radiation-domination approximation that is
+        # 2.7x off in the BBN era -- see rho_CDM's docstring. Step 5 re-assigns
+        # the same object, harmlessly.
+        self.a_of_T = a_of_T
 
         # Steps 3-4 - Invert a(T) -> T(a), then integrate dt/d(ln a) = 1/H(a)
         T_of_a, sol_t = self._invert_and_integrate_time(
@@ -1324,11 +1314,24 @@ class CustomBackground(Background):
         self._Tnumu_of_Tg  = nh.Tnumu_of_Tg
         self._Tnutau_of_Tg = nh.Tnutau_of_Tg
 
-        # Tg grid spanning the table's temperature range (low → high).
+        # Tg grid spanning the table's temperature range (low → high),
+        # LOG-spaced -- as everywhere else in primat, and as the sizing helper
+        # already assumes: n_points_per_decade returns
+        # round(per_decade * log10(T_hi/T_lo)), a count of points *per decade*,
+        # which only describes the grid if the points are laid out
+        # logarithmically. This was a linear np.linspace, which over a table
+        # spanning several decades starved the low-T end: for the standard
+        # 40 MeV -> 0.001 MeV window (4.6 decades) it put 6 of its 2761 points
+        # below 1e9 K, where log spacing puts 1161. That grid sets the node
+        # spacing of the LINEAR T_nu(T_gamma) interpolant every n<->p rate
+        # integrand reads -- the very quantity sampling_temperature_per_decade
+        # is a weak-rate fingerprint field for (see weak_rates/cache.py's
+        # _WEAK_RATE_BG_FIELDS: coarsening it moves the rates by ~1e-3).
+        # Mirrored in primat-c/src/background.c's cpr_bg_init_custom.
         T_lo = float(np.min(self._T_by_t))
         T_hi = float(np.max(self._T_by_t))
         n_T_pts = primat_weak_rates.n_points_per_decade(cfg.sampling_temperature_per_decade, T_lo, T_hi)
-        self.Tg_vec   = np.linspace(T_lo, T_hi, n_T_pts)
+        self.Tg_vec   = np.logspace(np.log10(T_lo), np.log10(T_hi), n_T_pts)
         self.Tnue_vec = self._Tnue_of_Tg(self.Tg_vec)
 
     # ======================================================================
