@@ -1,6 +1,6 @@
 /* table_io.h -- generic reader for the whitespace/comma-separated numeric
  * tables used throughout data/ (per-reaction rate tables, NEVO CSVs, QED
- * tables, electron_thermo_cache.txt). All of these share the same shape:
+ * tables, electron_thermo_<hash>.txt). All of these share the same shape:
  * zero or more '#'-prefixed header/comment lines, then one row of N
  * numbers per data line, columns separated by whitespace and/or commas
  * (commas appear in the NEVO files, whitespace in the rate/QED tables).

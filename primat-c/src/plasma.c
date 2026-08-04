@@ -32,6 +32,19 @@
  * ELECTRON_THERMO_FORMAT_VERSION -- the two backends share one cache file. */
 #define ELECTRON_THERMO_FORMAT_VERSION 2
 
+/* Fixed (T_min [MeV], T_max [MeV], n_pts) of the QED plasma-pressure
+ * correction tables. Unlike the electron-thermo grid, whose upper edge tracks
+ * cfg->T_start_cosmo_MeV, this one is deliberately constant (see the
+ * extrapolation-domain warning above for why it is not rescaled). Named here
+ * because the values must be used twice and the two uses MUST agree: they are
+ * both an input to cpr_qed_compute_tables and fields of the fingerprint
+ * (cpr_qed_fingerprint) deciding whether a cached table describes the grid we
+ * are about to build. Must stay equal to plasma.py's _QED_TABLE_GRID -- the
+ * two backends share one cache file. */
+#define QED_T_MIN 1e-3
+#define QED_T_MAX 1e2
+#define QED_N_PTS ((size_t)500)
+
 double cpr_rho_g(double Tg)    { return 2.0 * (M_PI * M_PI / 30.0) * pow(Tg, 4.0); }
 double cpr_drho_g_dT(double Tg) { return 4.0 * cpr_rho_g(Tg) / Tg; }
 double cpr_rho_nu(double Tnu)  { return 2.0 * (7.0 / 8.0) * (M_PI * M_PI / 30.0) * pow(Tnu, 4.0); }
@@ -117,28 +130,71 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     cpr_config_resolve_cache_file(cfg, "plasma", "QED_dP_intdT.txt", dp_file_leg, sizeof(dp_file_leg));
     cpr_config_resolve_cache_file(cfg, "plasma", "QED_d2P_intdT2.txt", d2p_file_leg, sizeof(d2p_file_leg));
 
-    int split_present  = file_exists(e2_file) && file_exists(e3_file);
+    /* --- Fingerprint gate on the current two-file format ------------------
+     * The tables are a function of alpha and me (through the integrands) and
+     * of the grid; cpr_qed_fingerprint records both, keyed on the whole
+     * constants struct via cpr_constants_hash. QED_T_MIN/QED_T_MAX/QED_N_PTS
+     * are shared with the cpr_qed_compute_tables call below so the hash always
+     * describes the grid actually built. Mirrors plasma.py's _load_tables. */
+    CPRFPField qed_fields[5];
+    size_t n_qed_fp = cpr_qed_fingerprint(QED_T_MIN, QED_T_MAX, QED_N_PTS, qed_fields);
+    char *qed_fp_hash = cpr_fingerprint_hash(qed_fields, n_qed_fp);
+
+    int split_on_disk = file_exists(e2_file) && file_exists(e3_file);
+    int split_valid = 0;
+    if (split_on_disk) {
+        char *h2 = cpr_cache_read_fingerprint_hash(e2_file);
+        char *h3 = cpr_cache_read_fingerprint_hash(e3_file);
+        split_valid = (h2 && h3 && strcmp(h2, qed_fp_hash) == 0
+                              && strcmp(h3, qed_fp_hash) == 0);
+        free(h2);
+        free(h3);
+    }
+    /* A current-format pair whose header does not match (different constants,
+     * different grid, or no header at all) is STALE: rebuild and overwrite
+     * rather than use it -- and rather than falling back to one of the
+     * superseded layouts below, which would be staler still. Same policy as
+     * the electron-thermo cache. */
+    int split_stale = split_on_disk && !split_valid;
+
+    /* The superseded layouts (single 7-column QED_tables.txt, and the older
+     * 3-file trio) predate fingerprinting and can never carry a matching
+     * header. They stay readable so an old cached checkout still starts, but
+     * only when no current-format pair exists at all. */
     int old_present    = file_exists(old_file);
     int legacy_present = file_exists(p_file_leg) && file_exists(dp_file_leg)
                          && file_exists(d2p_file_leg);
-    int files_present  = split_present || old_present || legacy_present;
+    int split_present  = split_valid;
+    int files_present  = split_valid
+                         || (!split_stale && (old_present || legacy_present));
     int recompute = cfg->recompute_qed_corrections;
+    free(qed_fp_hash);
 
     if (recompute || !files_present) {
         /* Analytic path: compute on a fresh 500-point grid (~0.3 s) and
          * build not-a-knot cubic-spline interpolants directly from the
          * computed arrays -- smoother than the linear interpolation used
          * when loading from a file (mirrors Python's choice exactly). */
+        /* Saved when the user asked for a recompute, and also when an existing
+         * current-format pair was found stale -- overwriting a mismatched
+         * cache is the whole point of having fingerprinted it. A plain "files
+         * not found" still computes WITHOUT writing, the documented
+         * fresh-checkout behaviour. Mirrors plasma.py. */
+        int save = recompute || split_stale;
         cpr_log(cfg, "init", "Computing QED plasma-pressure tables (%s)...",
-                 recompute ? "recompute requested" : "files not found");
+                 recompute ? "recompute requested"
+                           : split_stale ? "cached tables stale (fingerprint mismatch)"
+                                         : "files not found");
         CPRQEDTables t;
-        if (cpr_qed_compute_tables(1e-3, 1e2, 500, g_const.alphaem, g_const.me, &t, errmsg))
+        if (cpr_qed_compute_tables(QED_T_MIN, QED_T_MAX, QED_N_PTS,
+                                    g_const.alphaem, g_const.me, &t, errmsg))
             return 1;
-        if (recompute) {
+        if (save) {
             /* Non-fatal on a read-only install: the freshly computed
              * tables below are valid, only the disk cache is skipped -- warn
              * and point the user at the cache_dir remedy, do NOT abort. */
-            if (cpr_qed_save_tables(&t, plasma_wdir, errmsg)) {
+            if (cpr_qed_save_tables(&t, plasma_wdir,
+                                     QED_T_MIN, QED_T_MAX, QED_N_PTS, errmsg)) {
                 cpr_log(cfg, "plasma",
                         "could not write cache to %s: results are unaffected, "
                         "but the next run will recompute. Set the cache_dir "
@@ -389,21 +445,37 @@ static double dp_e_dT_exact(double Tg)
 
 static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
 {
-    /* Overlay read (cache_dir first, else shipped copy); write to the writable
-     * base's plasma/ subdir (cache_dir if set, else the package tree). */
-    char cache_read[CPR_PATH_BUF_LEN2];
-    cpr_config_resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt",
-                                  cache_read, sizeof(cache_read));
-
     double Tmin = g_const.me / ELEC_THERMO_LOWT_RATIO;
     double Tmax = fmax(cfg->T_start_cosmo_MeV, 100.0) * 1.5;
     size_t npts = (size_t)cfg->n_electron_table;
 
-    CPRFPField fields[3];
+    CPRFPField fields[4];
     fields[0] = (CPRFPField){ "format_version", { CPR_INT, { .i = ELECTRON_THERMO_FORMAT_VERSION } } };
     fields[1] = (CPRFPField){ "n_electron_table", { CPR_INT, { .i = cfg->n_electron_table } } };
     fields[2] = (CPRFPField){ "T_start_cosmo_MeV", { CPR_DOUBLE, { .d = cfg->T_start_cosmo_MeV } } };
-    char *fp_hash = cpr_fingerprint_hash(fields, 3);
+    /* Physical constants: the e+- integrands and the grid's lower edge
+     * (Tmin = me/30 above) are functions of the electron mass, so editing `me`
+     * changes every row. Mirrors _build_electron_tables in plasma.py; the
+     * pointer is cpr_constants_hash's process-lifetime static buffer. */
+    fields[3] = (CPRFPField){ "constants_hash", { CPR_STRING, { .s = cpr_constants_hash() } } };
+    char *fp_hash = cpr_fingerprint_hash(fields, 4);
+
+    /* The hash goes in the FILENAME, not just the header, mirroring the weak
+     * tree's nTOp_<hash>.txt (and plasma.py's _build_electron_tables). With a
+     * single fixed name two configurations could not coexist: each run whose
+     * fingerprint differed from the file on disk overwrote it, leaving the
+     * git-tracked shipped copy modified and making every alternation pay the
+     * rebuild. There is deliberately no fallback to the old fixed
+     * "electron_thermo_cache.txt" name -- a miss costs one table rebuild,
+     * cheaper than carrying compatibility code. */
+    char cache_name[64];
+    snprintf(cache_name, sizeof(cache_name), "electron_thermo_%s.txt", fp_hash);
+
+    /* Overlay read (cache_dir first, else shipped copy); write to the writable
+     * base's plasma/ subdir (cache_dir if set, else the package tree). */
+    char cache_read[CPR_PATH_BUF_LEN2];
+    cpr_config_resolve_cache_file(cfg, "plasma", cache_name,
+                                  cache_read, sizeof(cache_read));
 
     if (!cfg->recompute_electron_thermo) {
         char *cached_hash = cpr_cache_read_fingerprint_hash(cache_read);
@@ -471,14 +543,14 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
         char cache_wdir[CPR_PATH_BUF_LEN];
         cpr_config_cache_write_dir(cfg, "plasma", cache_wdir, sizeof(cache_wdir));
         char cache_write[CPR_PATH_BUF_LEN2];
-        snprintf(cache_write, sizeof(cache_write), "%s/electron_thermo_cache.txt", cache_wdir);
+        snprintf(cache_write, sizeof(cache_write), "%s/%s", cache_wdir, cache_name);
         /* Create the dir tree on demand (a fresh cache_dir has no plasma/). */
         char mkdir_cmd[CPR_PATH_BUF_LEN2];
         snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", cache_wdir);
         for (char *p = mkdir_cmd + 1; *p; p++) {
             if (*p == '/') { *p = '\0'; mkdir(mkdir_cmd, 0755); *p = '/'; }
         }
-        if (cpr_cache_write(cache_write, fields, 3, "grid rho_e p_e drho_e_dT dp_e_dT",
+        if (cpr_cache_write(cache_write, fields, 4, "grid rho_e p_e drho_e_dT dp_e_dT",
                              columns, 5, npts, NULL) != 0) {
             cpr_log(cfg, "plasma",
                     "could not write cache to %s: results are unaffected, but "

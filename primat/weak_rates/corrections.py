@@ -918,6 +918,84 @@ def _L_SD_FMNoCCR(ctx, T_arr, sgnq, dFDneu_moments):
 _T_CCRTH_MIN = 10**8.2  # [K]
 
 
+# ---------------------------------------------------------------------------
+# Deterministic vegas seeding
+# ---------------------------------------------------------------------------
+# vegas is a Monte-Carlo integrator, so an unseeded run gives a slightly
+# different answer every time. Left unseeded, a Python CCRTh recompute did not
+# even reproduce *itself*: two consecutive recomputes of the same configuration
+# wrote different numbers under the same fingerprint hash, so the cache's
+# central promise -- "the hash identifies the contents" -- held only up to MC
+# noise, and nothing downstream could tell a genuine physics change from a
+# reshuffled random stream.
+#
+# The C backend already solved this (th_vegas_seed, primat-c/src/weak_rates.c):
+# it derives a seed from the raw bits of the temperature, the direction sgnq,
+# and a small integer `tag` distinguishing the four VEGAS call sites, then
+# scrambles them with the 64-bit golden-ratio constant. The scheme is mirrored
+# here bit-for-bit rather than replaced with something Pythonic, so the two
+# backends' seeding stories stay one story: same inputs, same tags, same
+# mixing constant.
+#
+# What this does and does NOT buy:
+#   * Each backend now reproduces ITSELF exactly for a given configuration.
+#   * The two backends still do NOT produce identical samples -- numpy's PCG64
+#     and primat-c's xoshiro256** are different generators, and matching them
+#     would mean porting one RNG into the other. Cross-backend CCRTh agreement
+#     therefore remains an MC-noise-level statement, which is exactly why
+#     tests/test_cache_parity.py compares the thermal cache's filename but not
+#     its columns.
+
+# 2^64 / phi, the standard 64-bit golden-ratio odd multiplier used to avalanche
+# the packed (temperature, direction, call-site) bits. Same constant as
+# th_vegas_seed's 0x9E3779B97F4A7C15 in primat-c/src/weak_rates.c.
+_VEGAS_SEED_MIX = 0x9E3779B97F4A7C15
+_UINT64_MASK = (1 << 64) - 1
+
+# Call-site tags, matching the C side's literals exactly so the two
+# implementations remain readable side by side (weak_rates.c passes
+# `is_brems ? 2 : 1` for the two bremsstrahlung integrals, then 3 and 4 for
+# _L_Thermal_2_3's negative and positive e1me2 halves).
+_VEGAS_TAG_TRUE_PHOTON = 1
+_VEGAS_TAG_DIFF_BREMS = 2
+_VEGAS_TAG_C23_NEG = 3
+_VEGAS_TAG_C23_POS = 4
+
+
+def _vegas_rng(T, sgnq, tag):
+    """Return a seeded uniform-random generator for one vegas sub-integral.
+
+    Mirrors ``th_vegas_seed`` in ``primat-c/src/weak_rates.c``: the seed is the
+    IEEE-754 bit pattern of the temperature, XORed with a bit for the direction
+    and the call-site ``tag``, multiplied by the 64-bit golden-ratio constant.
+    Distinct tags matter because the four call sites would otherwise draw the
+    same sample sequence at a given (T, sgnq), correlating sub-terms that
+    should be independent.
+
+    Args:
+        T: float, photon temperature [K] -- the grid point being integrated.
+            Its raw bits are the main entropy source, so every grid point gets
+            its own stream while remaining reproducible run to run.
+        sgnq: float, +-1, the n->p / p->n direction.
+        tag: int, one of the ``_VEGAS_TAG_*`` constants identifying which of
+            the four vegas call sites is asking.
+
+    Returns:
+        callable ``f(size) -> ndarray`` of uniform [0, 1) deviates, in the
+        shape vegas's ``ran_array_generator`` hook expects.
+
+    Example:
+        >>> f = _vegas_rng(1e10, +1.0, _VEGAS_TAG_TRUE_PHOTON)
+        >>> f((2, 2)).shape
+        (2, 2)
+    """
+    import struct
+    bits = struct.unpack("<Q", struct.pack("<d", float(T)))[0]
+    sgn_bit = 1 if sgnq > 0.0 else 0
+    seed = ((bits ^ (sgn_bit << 1) ^ (tag << 2)) * _VEGAS_SEED_MIX) & _UINT64_MASK
+    return np.random.default_rng(seed).random
+
+
 class _ThermalIntegOpts:
     """Bundles the Monte-Carlo (vegas) vs. deterministic (scipy.dblquad)
     integration choice and its parameters, shared by the L_CCRTh sub-term
@@ -1164,7 +1242,11 @@ def _L_ThermalTruePhoton(ctx, T, sgnq, opts):
 
     if opts.use_vegas:
         import vegas
-        integ = vegas.Integrator([[1.001, E_max], [0.001, k_max]])
+        # Seeded per (T, sgnq, call site) so a recompute reproduces itself --
+        # see _vegas_rng and the note above it.
+        integ = vegas.Integrator(
+            [[1.001, E_max], [0.001, k_max]],
+            ran_array_generator=_vegas_rng(T, sgnq, _VEGAS_TAG_TRUE_PHOTON))
         @vegas.batchintegrand
         def f_batch(xv):
             E_val, k_val = np.transpose(xv)
@@ -1195,7 +1277,11 @@ def _L_ThermalDiffBremsstrahlung(ctx, T, sgnq, opts):
 
     if opts.use_vegas:
         import vegas
-        integ = vegas.Integrator([[1.001, E_max], [0.001, k_max]])
+        # Distinct tag from _L_ThermalTruePhoton's, so these two integrals do
+        # not draw the same sample sequence at the same (T, sgnq).
+        integ = vegas.Integrator(
+            [[1.001, E_max], [0.001, k_max]],
+            ran_array_generator=_vegas_rng(T, sgnq, _VEGAS_TAG_DIFF_BREMS))
         @vegas.batchintegrand
         def f_batch(xv):
             E_val, k_val = np.transpose(xv)
@@ -1247,7 +1333,12 @@ def _L_Thermal_2_3(ctx, T, sgnq, opts):
                 2.   + max(np.abs(min_e1me2), np.abs(max_e1me2))]
         if opts.use_vegas:
             import vegas
-            integ = vegas.Integrator([lims, [min_e1me2, max_e1me2]])
+            # The two e1me2 halves get their own tags (3 and 4, as in
+            # weak_rates.c), so the negative and positive regions are
+            # independent draws rather than the same stream twice.
+            tag = _VEGAS_TAG_C23_NEG if min_e1me2 < 0 else _VEGAS_TAG_C23_POS
+            integ = vegas.Integrator([lims, [min_e1me2, max_e1me2]],
+                                     ran_array_generator=_vegas_rng(T, sgnq, tag))
             @vegas.batchintegrand
             def f_batch(xv):
                 e1pe2, e1me2 = np.transpose(xv)

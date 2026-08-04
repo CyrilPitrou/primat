@@ -1049,7 +1049,15 @@ static double th_c2de1de2(const RateCtx *ctx, double e1, double e2, double x,
  * call sites below (TruePhoton/DiffBremsstrahlung/Thermal_2_3's two
  * halves) so they don't all draw the same sample sequence at a given
  * (T_K, sgnq). Re-running the same configuration therefore always
- * reproduces the same CCRTh table -- unlike Python's unseeded vegas. */
+ * reproduces the same CCRTh table.
+ *
+ * Python mirrors this scheme bit-for-bit in weak_rates/corrections.py
+ * (_vegas_rng: same packed bits, same tags 1-4, same golden-ratio
+ * multiplier), so both backends now reproduce THEMSELVES exactly. They still
+ * do not reproduce EACH OTHER: the generators differ (xoshiro256** here,
+ * numpy's PCG64 there), so cross-backend CCRTh agreement stays an
+ * MC-noise-level statement -- which is why tests/test_cache_parity.py pins the
+ * thermal cache's filename but deliberately not its columns. */
 static uint64_t th_vegas_seed(double T_K, double sgnq, uint64_t tag)
 {
     uint64_t bits;
@@ -1314,7 +1322,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
      * compute from scratch via L_CCRTh_compute (Phase 3b). ---- */
     wr->has_thermal = 0;
     if (cfg->thermal_corrections) {
-        CPRFPField th_fields[12];   /* cpr_thermal_fingerprint fills 8 */
+        CPRFPField th_fields[12];   /* cpr_thermal_fingerprint fills 9 */
         size_t n_th_fp = cpr_thermal_fingerprint(cfg, th_fields);
         char *th_hash = cpr_fingerprint_hash(th_fields, n_th_fp);
         char th_fname[512];

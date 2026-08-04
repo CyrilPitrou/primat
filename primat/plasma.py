@@ -62,7 +62,8 @@ import numpy as np
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, CubicSpline
 
-from .cache_utils import (fingerprint_hash, read_cache_fingerprint_hash,
+from .cache_utils import (constants_hash, fingerprint_hash,
+                           read_cache_fingerprint_hash,
                            write_cache_with_fingerprint,
                            resolve_cache_file, cache_write_dir)
 
@@ -83,6 +84,17 @@ from .cache_utils import (fingerprint_hash, read_cache_fingerprint_hash,
 # ELECTRON_THERMO_FORMAT_VERSION in primat-c/src/plasma.c and by that file's
 # two-pass elec_integrate.
 ELECTRON_THERMO_FORMAT_VERSION = 2
+
+# Fixed (T_min [MeV], T_max [MeV], n_pts) of the QED plasma-pressure correction
+# tables. Unlike the electron-thermo grid, whose upper edge tracks
+# cfg.T_start_cosmo_MeV, this one is deliberately constant (see the
+# extrapolation-domain note in Plasma._load_tables for why it is not rescaled).
+# Named once here because the value has to be used twice and the two uses MUST
+# agree: it is both an input to compute_qed_pressure_tables and a field of the
+# fingerprint (qed_pressure.qed_fingerprint) that decides whether a cached
+# table describes the grid we are about to build. Mirrored by QED_T_MIN /
+# QED_T_MAX / QED_N_PTS in primat-c/src/plasma.c.
+_QED_TABLE_GRID = (1e-3, 1e2, 500)
 
 __all__ = [
     'Plasma',
@@ -455,21 +467,33 @@ class Plasma:
 
         Three modes (controlled by ``cfg.recompute_qed_corrections``):
 
-        **File mode** (default, ``recompute_qed_corrections=False``, files present):
+        **File mode** (default, ``recompute_qed_corrections=False``, a
+        *fingerprint-matching* pair present):
             Loads ``cache_plasma_weak/plasma/QED_pressure_correction_e2.txt`` and
             ``QED_pressure_correction_e3.txt``: two 4-column files, each with columns
             T [MeV], δP [MeV^4], d(δP)/dT [MeV^3], d²(δP)/dT² [MeV^2] — one
             for δP_a [O(e²)], one for δP_{e3} [O(e³)].  The two files' values
             (and derivatives) are summed to give the total correction.
-            (Backward compat: if the two-file pair is absent, falls back to
-            the older single 7-column ``QED_tables.txt``, then to the even
+            Both headers must carry the fingerprint of the current constants
+            and grid (:func:`primat.qed_pressure.qed_fingerprint`).
+            (Backward compat: if no two-file pair is on disk at all, falls back
+            to the older single 7-column ``QED_tables.txt``, then to the even
             older legacy ``QED_P_int.txt`` / ``QED_dP_intdT.txt`` /
-            ``QED_d2P_intdT2.txt`` trio, in that order.)
+            ``QED_d2P_intdT2.txt`` trio, in that order.  Those layouts predate
+            fingerprinting, so they are used only in the absence of a
+            current-format pair — never in preference to rebuilding a stale one.)
 
-        **Analytic fallback** (``recompute_qed_corrections=False``, files absent):
+        **Analytic fallback** (``recompute_qed_corrections=False``, no files at all):
             Calls :func:`primat.qed_pressure.compute_qed_pressure_tables`
             to evaluate the QED corrections analytically (~0.3 s) without
             writing any files.  Useful on a fresh checkout.
+
+        **Stale-cache rebuild** (``recompute_qed_corrections=False``, a
+        current-format pair present but its fingerprint mismatched):
+            Recomputes analytically *and overwrites* the two files, so the
+            cache re-converges on the current constants/grid instead of being
+            reported stale on every subsequent run.  Same policy as the
+            electron-thermo cache in :meth:`_build_electron_tables`.
 
         **Recompute mode** (``recompute_qed_corrections=True``):
             Always computes analytically and overwrites the two
@@ -479,14 +503,18 @@ class Plasma:
             copy for subsequent runs.  Use this after changing physical
             constants or to regenerate after deleting the files.
 
-        All three modes build the *same* not-a-knot cubic interpolant
+        All modes build the *same* not-a-knot cubic interpolant
         (:func:`_qed_spline`), so they are numerically interchangeable: whether
-        the tables happen to be on disk cannot shift the answer.  **Caveat**:
-        the files carry no fingerprint header (unlike the electron-thermo cache
-        in :meth:`_build_electron_tables`), so a table generated with a
-        different ``alpha``/``me`` or different T bounds is loaded silently.
-        Delete the files or set ``recompute_qed_corrections=True`` after
-        changing :mod:`primat.qed_pressure`'s constants.
+        the tables happen to be on disk cannot shift the answer.
+
+        The α and mₑ used are ``cfg.alphaem`` and ``cfg.me``, passed explicitly
+        to :func:`~primat.qed_pressure.compute_qed_pressure_tables` (matching
+        what ``plasma.c`` has always passed from ``g_const``), so the solver has
+        one source of truth for them; :mod:`primat.qed_pressure`'s module-level
+        ``_ALPHA_FS``/``_ME_MEV`` are now only a standalone-use default.  Both
+        constants are covered by the files' fingerprint header, so a table
+        generated with different values is detected and rebuilt rather than
+        loaded silently — which is what it used to do.
 
         The QED pressure decomposition follows PRIMAT-Main.m:
           - δP_a [O(e²)]:  leading one-loop correction (dPa in PRIMAT)
@@ -546,22 +574,67 @@ class Plasma:
         dp_file_leg   = resolve_cache_file(cfg, "plasma", "QED_dP_intdT.txt")
         d2p_file_leg  = resolve_cache_file(cfg, "plasma", "QED_d2P_intdT2.txt")
 
-        split_present  = os.path.exists(e2_file) and os.path.exists(e3_file)
+        # --- Fingerprint gate on the current two-file format ---------------
+        # The tables are a function of alpha and me (through the integrands)
+        # and of the grid; qed_fingerprint records both, keyed on the whole
+        # constants struct via constants_hash. _QED_TABLE_GRID is shared with
+        # the compute_qed_pressure_tables call below so the hash always
+        # describes the grid actually built.
+        # Imported here rather than at module scope: qed_pressure imports
+        # cache_utils, and the recompute branch below already imports it
+        # lazily for the same reason (keeping the module's import graph flat).
+        from .qed_pressure import qed_fingerprint
+        fp_hash    = fingerprint_hash(qed_fingerprint(*_QED_TABLE_GRID))
+        split_on_disk = os.path.exists(e2_file) and os.path.exists(e3_file)
+        split_valid   = (split_on_disk
+                         and read_cache_fingerprint_hash(e2_file) == fp_hash
+                         and read_cache_fingerprint_hash(e3_file) == fp_hash)
+        # A current-format pair whose header does not match (different
+        # constants, different grid, or no header at all) is STALE: it must be
+        # rebuilt and overwritten rather than quietly used -- and rather than
+        # silently falling back to one of the superseded layouts below, which
+        # would be even more stale. This is the same policy the electron-thermo
+        # cache already applies.
+        split_stale = split_on_disk and not split_valid
+
+        # The two superseded layouts (single 7-column QED_tables.txt, and the
+        # older 3-file trio) predate fingerprinting entirely, so they can never
+        # carry a matching header. They stay readable, so an old cached checkout
+        # still starts without a rebuild, but they only get a look in when no
+        # current-format pair exists at all. read_cache_fingerprint_hash
+        # reports None for a header-less file rather than raising, which is
+        # what makes "unknown fingerprint" a miss and not a crash.
         old_present    = os.path.exists(old_file)
         legacy_present = (os.path.exists(p_file_leg) and os.path.exists(dp_file_leg)
                           and os.path.exists(d2p_file_leg))
-        files_present  = split_present or old_present or legacy_present
+        split_present  = split_valid
+        files_present  = (split_valid
+                          or (not split_stale and (old_present or legacy_present)))
         recompute = cfg.recompute_qed_corrections
 
         if recompute or not files_present:
-            # Compute analytically (~0.3 s).  In recompute mode, also save file.
+            # Compute analytically (~0.3 s). The tables are saved when the user
+            # asked for a recompute, and also when an existing current-format
+            # pair was found stale -- overwriting a mismatched cache is the
+            # whole point of having fingerprinted it. A plain "files not found"
+            # still computes WITHOUT writing, which is the documented
+            # fresh-checkout behaviour (see this method's docstring).
             from .qed_pressure import compute_qed_pressure_tables, save_qed_tables
+            save = recompute or split_stale
             if cfg.verbose:
-                reason = "recompute requested" if recompute else "files not found"
+                reason = ("recompute requested" if recompute
+                          else "cached tables stale (fingerprint mismatch)" if split_stale
+                          else "files not found")
                 print(f"[init]  Computing QED plasma-pressure tables ({reason})…")
+            # alpha/me come from cfg, matching what plasma.c has always passed
+            # from g_const: qed_pressure's module-level _ALPHA_FS/_ME_MEV are a
+            # standalone-use default only, so the solver has a single source of
+            # truth for both constants.
+            T_min, T_max, n_pts = _QED_TABLE_GRID
             tables = compute_qed_pressure_tables(
-                T_min=1e-3, T_max=1e2, n_pts=500, verbose=False)
-            if recompute:
+                T_min=T_min, T_max=T_max, n_pts=n_pts,
+                alpha=cfg.alphaem, me=cfg.me, verbose=False)
+            if save:
                 # Write to the writable cache base (cache_dir if set, else the
                 # package's cache_plasma_weak/plasma/). A read-only install must
                 # degrade to a warning that names the cache_dir remedy, never a
@@ -718,30 +791,37 @@ class Plasma:
         grid reproduces the exact integrals to a few parts in 1e6 over the
         active temperature range, well within BBN tolerances.
 
-        The computed arrays are stored in ``data/cache_plasma_weak/plasma/electron_thermo_cache.txt``
-        (one row per temperature, columns: T ρ_e p_e dρ_e/dT dp_e/dT) so that
-        subsequent runs load from disk instead of repeating the ~8000 quad
-        calls (~0.7 s).  The file carries a fingerprint header (see
-        cache_utils) recording ``n_electron_table`` and
-        ``T_start_cosmo_MeV`` -- the two config entries that determine the grid
-        -- so a stale cache (e.g. left over from a run with a different
-        ``n_electron_table``) is detected and rebuilt automatically.  Set
-        ``cfg.recompute_electron_thermo = True`` to force a fresh computation
-        regardless of the fingerprint.  Whenever the table is recomputed
-        (fingerprint mismatch, missing file, or ``recompute_electron_thermo``)
-        it is written back to ``data/cache_plasma_weak/plasma/electron_thermo_cache.txt`` with
-        the current fingerprint, so the cache is always self-consistent with
-        the configuration that last ran.
+        The computed arrays are stored in
+        ``data/cache_plasma_weak/plasma/electron_thermo_<hash>.txt`` (one row
+        per temperature, columns: T ρ_e p_e dρ_e/dT dp_e/dT) so that subsequent
+        runs load from disk instead of repeating the ~8000 quad calls (~0.7 s).
+
+        ``<hash>`` is the fingerprint of the three config entries that
+        determine the grid -- ``n_electron_table``, ``T_start_cosmo_MeV`` --
+        together with ``constants_hash`` (the electron mass sets both the
+        integrands and the grid's lower edge; see
+        :func:`primat.cache_utils.constants_hash`).  Carrying it in the
+        *filename* rather than only in the header is what lets configurations
+        coexist: one run with ``T_start_cosmo_MeV=40`` and another with
+        ``100`` keep two separate files instead of overwriting each other's,
+        which previously left the git-tracked shipped copy modified after any
+        run that differed from it and forced a rebuild on every alternation.
+        The header still carries the same fingerprint, and is still checked --
+        cheap insurance against a hand-edited or truncated file.
+
+        Set ``cfg.recompute_electron_thermo = True`` to force a fresh
+        computation regardless of the fingerprint.  Whenever the table is
+        recomputed (fingerprint miss or ``recompute_electron_thermo``) it is
+        written to the file named by the *current* fingerprint, so a cache file
+        is always self-consistent with the configuration that produced it.
+
+        Orphaned hashes accumulate under ``plasma/`` the same way they do under
+        ``weak/``; ``primat --cache-info`` / ``--cache-clear`` cover both trees
+        (:func:`primat.cache_utils.list_cache_files`).
 
         Sets ``self._rho_e_tab``, ``self._p_e_tab``, ``self._drho_e_dT_tab``,
         ``self._dp_e_dT_tab``.
         """
-        # Overlay read (cache_dir first, else shipped copy); write to the
-        # writable base's plasma/ subdir (cache_dir if set, else package tree).
-        cache_read  = resolve_cache_file(cfg, "plasma", "electron_thermo_cache.txt")
-        cache_write = os.path.join(cache_write_dir(cfg, "plasma"),
-                                   "electron_thermo_cache.txt")
-
         # --- Extrapolation domain --------------------------------------
         # Unlike the QED pressure-correction table (_load_tables),
         # this grid's upper edge Tmax is derived from cfg.T_start_cosmo_MeV
@@ -764,10 +844,40 @@ class Plasma:
 
         fp = {"format_version":  ELECTRON_THERMO_FORMAT_VERSION,
               "n_electron_table": cfg.n_electron_table,
-              "T_start_cosmo_MeV": cfg.T_start_cosmo_MeV}
+              "T_start_cosmo_MeV": cfg.T_start_cosmo_MeV,
+              # Physical constants. The e± integrands and the grid's own lower
+              # edge (Tmin = me/30 above) are functions of the electron mass, so
+              # editing `me` changes every row of this table; before this field
+              # existed, the stale table was reloaded silently. The hash covers
+              # the whole constants struct rather than me alone -- see
+              # cache_utils.constants_hash for why that over-coverage is the
+              # deliberately safe side of the trade. Mirrored by
+              # build_electron_tables in primat-c/src/plasma.c.
+              "constants_hash": constants_hash()}
         fp_hash = fingerprint_hash(fp)
 
-        # Try loading from disk cache first (skips ~0.7 s of quad calls).
+        # The hash goes in the FILENAME, not just the header, mirroring the
+        # weak tree's nTOp_<hash>.txt. With a single fixed name, two
+        # configurations could not coexist: each run whose fingerprint differed
+        # from the file on disk overwrote it, so a test suite (or simply a user
+        # comparing two T_start_cosmo_MeV values) left the git-tracked shipped
+        # copy modified and made every alternation pay the ~0.7 s rebuild.
+        # Hash-named files just accumulate instead -- and `primat --cache-info`
+        # / `--cache-clear` now cover plasma/ so they can be pruned.
+        #
+        # There is deliberately NO fallback to the old fixed `electron_thermo_
+        # cache.txt` name: a miss costs ~0.7 s of quad calls, which is cheaper
+        # than carrying compatibility code for a file that any run regenerates.
+        cache_name  = f"electron_thermo_{fp_hash}.txt"
+        # Overlay read (cache_dir first, else shipped copy); write to the
+        # writable base's plasma/ subdir (cache_dir if set, else package tree).
+        cache_read  = resolve_cache_file(cfg, "plasma", cache_name)
+        cache_write = os.path.join(cache_write_dir(cfg, "plasma"), cache_name)
+
+        # Try loading from disk cache first (skips ~0.7 s of quad calls). The
+        # header check is now redundant with the filename for a file this code
+        # wrote, but it is kept as the cheap guard against a hand-edited or
+        # truncated file being trusted on the strength of its name alone.
         if (not cfg.recompute_electron_thermo
                 and read_cache_fingerprint_hash(cache_read) == fp_hash):
             try:

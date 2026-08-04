@@ -29,12 +29,16 @@ unparsable one) is reported as having an unknown fingerprint -- the caller
 decides whether that counts as a cache hit or a miss.
 """
 
+import dataclasses
+import functools
 import hashlib
 import json
 import os
 import warnings
 
 import numpy as np
+
+from .constants import CONST
 
 
 def _json_scalar(obj):
@@ -90,6 +94,67 @@ def fingerprint_hash(fingerprint: dict) -> str:
     return hashlib.sha256(_canonical_json(fingerprint).encode("utf-8")).hexdigest()[:16]
 
 
+@functools.lru_cache(maxsize=1)
+def constants_hash() -> str:
+    """Return the 16-hex-digit hash of the *entire* physical-constants struct.
+
+    Every fingerprinted cache in primat is a function not only of the run-time
+    configuration but also of the frozen physical constants in
+    :mod:`primat.constants` -- the n<->p weak rates read m_e, alpha, m_n, m_p,
+    g_A, V_ud, the proton charge radius, the anomalous magnetic moments and
+    G_F; the e+- thermodynamic tables read m_e; the QED plasma-pressure tables
+    read m_e and alpha.  None of those constants used to appear in any
+    fingerprint, so editing one of them (say m_e in ``constants.py``) silently
+    reloaded rates computed with the *old* value: a wrong answer with no
+    warning anywhere.  This helper is the single field that closes that hole,
+    and it is added to all four fingerprints (weak rate, CCRTh thermal,
+    electron thermo, QED pressure).
+
+    Why one broad hash of *all* 26 fields rather than a curated per-cache list
+    of the constants each one actually consumes:
+
+    * The two failure modes are not symmetric.  **Over**-invalidation merely
+      costs a recompute -- every one of these caches is regenerable from
+      ``cfg`` by construction (see :func:`clear_cache`).
+      **Under**-invalidation returns a silently wrong number.  When in doubt,
+      invalidate.
+    * A curated list is exactly the kind of thing that goes stale: a constant
+      added to :class:`primat.constants.Constants` later would have to be
+      remembered and hand-added to each list.  Hashing the whole struct stays
+      correct with no maintenance.
+
+    So this deliberately over-covers: changing ``Mpc`` (a pure unit conversion
+    that cannot reach the weak-rate integrands) does rebuild the weak tables.
+    That is the intended trade, not an oversight.
+
+    Only dataclass *fields* are hashed (via :func:`dataclasses.asdict`), not
+    the ``@property``-derived quantities (``sW2``, ``MeV_to_Kelvin``, ...):
+    those are pure functions of the fields, so they add no information, and
+    excluding them keeps the hash free of any float that a C compiler might
+    contract differently from CPython.
+
+    The C backend computes the *same* hash over ``g_const``
+    (``cpr_constants_hash``, ``primat-c/src/cache.c``), field for field and in
+    the same canonical-JSON form, so both backends key a shared cache file
+    identically.  ``tests/test_cache_parity.py`` asserts that equality; if it
+    ever fails, the cause is a build flag (``-ffast-math``, FMA contraction)
+    making a derived constant such as ``hbar`` differ in its last bit between
+    the two, which is a real bug worth surfacing rather than working around.
+
+    Memoised with ``lru_cache``: ``CONST`` is a frozen module-level singleton,
+    so the hash is computed once per process (the JSON+sha256 of 26 fields is
+    cheap, but this is called on every cache lookup).
+
+    Returns:
+        16-hex-character hash string, e.g. ``"6e0c1c4c95a2b6b0"``.
+
+    Example:
+        >>> constants_hash()            # doctest: +SKIP
+        '6e0c1c4c95a2b6b0'
+    """
+    return fingerprint_hash(dataclasses.asdict(CONST))
+
+
 def read_cache_fingerprint_hash(path: str):
     """Return the fingerprint hash stored in a cache file's header, or None.
 
@@ -121,7 +186,7 @@ def read_cache_fingerprint_hash(path: str):
 
 
 def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_header: str = "",
-                                  provenance: str = None):
+                                  provenance: str = None, fmt: str = None):
     """Write a ``np.savetxt`` cache file with a fingerprint header.
 
     Args:
@@ -132,7 +197,18 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
         columns: sequence of equal-length 1-D arrays, written column-wise
             (``np.column_stack(columns)``).
         col_header: optional human-readable column-name line, written before
-            the fingerprint lines (e.g. ``"T[K] rate[1/s]"``).
+            the fingerprint lines (e.g. ``"T[K] rate[1/s]"``). May be several
+            lines separated by ``"\\n"`` -- ``np.savetxt`` prefixes each with
+            ``"# "`` -- which is how the QED pressure tables keep their
+            three-line physics provenance block above the fingerprint.
+        fmt: optional ``np.savetxt`` format string. ``None`` (default) uses
+            numpy's own default (``"%.18e"``), which is what every cache
+            written from scratch here uses. It is overridden only by the QED
+            pressure tables, whose shipped files predate this fingerprinting
+            and were written with ``"%.6E"``: passing that format lets them
+            gain a fingerprint header with their data rows *byte-identical*,
+            so adding the header is provably a header-only change (see
+            :func:`primat.qed_pressure.save_qed_tables`).
         provenance: optional human-readable string recording which backend
             and algorithm computed this file (e.g.
             ``"backend=python algorithm=vegas"``), written as its own
@@ -188,7 +264,9 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
         parent = os.path.dirname(path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        np.savetxt(tmp_path, np.column_stack(columns), header="\n".join(header_lines))
+        savetxt_kw = {} if fmt is None else {"fmt": fmt}
+        np.savetxt(tmp_path, np.column_stack(columns), header="\n".join(header_lines),
+                   **savetxt_kw)
         os.replace(tmp_path, path)
     except OSError as e:
         # Best-effort cleanup of a partial temp file (ignore if it too fails).
@@ -251,16 +329,33 @@ def resolve_cache_file(cfg, subdir: str, filename: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Writable weak-rate cache directory: inspection / cleanup (`primat
-# --cache-info` / `--cache-clear`). Every new
-# PRIMATConfig fingerprint run with spectral_distortions/incomplete_decoupling
-# etc. drops another nTOp_<hash>.txt / nTOp_thermal_<hash>.txt file under the
-# weak/ subdir of the cache tree; these are regenerable on demand (a fresh run
-# just recomputes and re-caches them), so it is always safe to delete them --
-# including the copies that ship with the package, which are a precomputed
-# convenience rather than irreplaceable data (see clear_weak_cache for what a
-# recompute does and does not reproduce).
+# Writable cache directories: inspection / cleanup (`primat --cache-info` /
+# `--cache-clear`). Every new PRIMATConfig fingerprint run with
+# spectral_distortions/incomplete_decoupling etc. drops another
+# nTOp_<hash>.txt / nTOp_thermal_<hash>.txt file under the weak/ subdir, AND --
+# since the electron-thermo cache became hash-named too -- another
+# electron_thermo_<hash>.txt under plasma/. Both trees are therefore swept.
+#
+# Everything these helpers touch is regenerable on demand (a fresh run just
+# recomputes and re-caches), so it is always safe to delete -- including the
+# copies that ship with the package, which are a precomputed convenience rather
+# than irreplaceable data (see clear_cache for what a recompute does and does
+# not reproduce).
+#
+# The QED pressure tables (QED_pressure_correction_e{2,3}.txt) are deliberately
+# NOT swept: they keep fixed filenames, so unlike the two hash-named families
+# they cannot proliferate -- there is never more than one pair, and it is
+# rewritten in place when its fingerprint goes stale. Nothing accumulates,
+# so there is nothing to clean.
 # ---------------------------------------------------------------------------
+
+# Cache-file basename prefixes swept by list_cache_files/clear_cache, per
+# subdirectory of the cache tree. Prefix + ".txt" suffix, matching how each
+# family is named at its write site (weak_rates/api.py, plasma.py).
+_CACHE_PREFIXES = {
+    "weak":   ("nTOp_",),            # covers nTOp_thermal_<hash>.txt as well
+    "plasma": ("electron_thermo_",),
+}
 
 def weak_cache_dir(cfg) -> str:    # write dir; used by the CLI cleanup helpers
     """Return the ``weak/`` WRITE directory (``cache_dir`` if set, else the
@@ -274,26 +369,56 @@ def plasma_cache_dir(cfg) -> str:
     return cache_write_dir(cfg, "plasma")
 
 
-def list_weak_cache_files(cfg):
-    """Return the sorted list of ``nTOp_*.txt`` cache file paths on disk.
+def list_cache_files(cfg, subdirs=None):
+    """Return the sorted list of hash-named cache file paths on disk.
+
+    Sweeps the two families of fingerprint-named caches -- ``weak/nTOp_*.txt``
+    (which includes ``nTOp_thermal_*.txt``) and
+    ``plasma/electron_thermo_*.txt`` -- so ``--cache-info``/``--cache-clear``
+    see every file that can accumulate. The fixed-name QED pressure tables are
+    excluded by construction: see the section comment above.
 
     Iterates over the overlay bases (the ``cache_dir`` redirect, if set, and
-    the shipped package tree) so ``--cache-info``/``--cache-clear`` see every
-    reachable cache file, deduplicated by basename with the redirect winning.
+    the shipped package tree) so both are visible, deduplicated by
+    ``<subdir>/<basename>`` with the redirect winning. Keying the dedup on the
+    subdir as well as the name matters now that two subdirs are swept: two
+    unrelated caches could otherwise collide on a shared basename.
+
+    Args:
+        cfg: PRIMATConfig instance.
+        subdirs: optional iterable restricting the sweep, e.g. ``("weak",)``
+            to reproduce the historical weak-only behaviour. ``None``
+            (default) sweeps every subdir in :data:`_CACHE_PREFIXES`.
+
+    Returns:
+        list[str], sorted absolute paths.
+
+    Example:
+        >>> len(list_cache_files(cfg))                 # doctest: +SKIP
+        59
+        >>> len(list_cache_files(cfg, subdirs=("plasma",)))   # doctest: +SKIP
+        1
     """
+    wanted = _CACHE_PREFIXES if subdirs is None else {
+        s: _CACHE_PREFIXES[s] for s in subdirs}
     seen = {}
     for base in _cache_bases(cfg):
-        d = os.path.join(base, "weak")
-        if not os.path.isdir(d):
-            continue
-        for name in os.listdir(d):
-            if name.startswith("nTOp_") and name.endswith(".txt"):
-                seen.setdefault(name, os.path.join(d, name))
+        for subdir, prefixes in wanted.items():
+            d = os.path.join(base, subdir)
+            if not os.path.isdir(d):
+                continue
+            for name in os.listdir(d):
+                if name.endswith(".txt") and name.startswith(prefixes):
+                    seen.setdefault((subdir, name), os.path.join(d, name))
     return sorted(seen.values())
 
 
-def clear_weak_cache(cfg) -> int:
-    """Delete every cached ``nTOp_*.txt`` file. Returns the count removed.
+def clear_cache(cfg, subdirs=None) -> int:
+    """Delete every hash-named cache file. Returns the count removed.
+
+    Covers both families swept by :func:`list_cache_files`: the n<->p
+    weak-rate tables under ``weak/`` and the e± thermodynamic tables under
+    ``plasma/``.
 
     The cache is purely an optimisation -- every entry is reproducible from
     ``cfg`` by recomputing -- so clearing all of it is safe: the next run
@@ -305,6 +430,8 @@ def clear_weak_cache(cfg) -> int:
       agreement with the shipped file: 9.4e-11 relative, i.e. below the
       ~1e-6 adaptive-step jitter the default ``numerical_precision=1e-7``
       already leaves in the observables);
+    * an ``electron_thermo_<hash>.txt`` recomputes deterministically too, in
+      ~0.7 s of quad calls;
     * a thermal ``nTOp_thermal_<hash>.txt`` is a vegas Monte-Carlo estimate, so
       the recompute agrees only to its own MC noise -- and costs minutes. Without
       vegas installed the recompute still succeeds, falling back to
@@ -313,12 +440,20 @@ def clear_weak_cache(cfg) -> int:
 
     Cost, not correctness, is therefore the only thing a user forfeits here.
 
+    Args:
+        cfg: PRIMATConfig instance.
+        subdirs: optional iterable restricting the sweep (see
+            :func:`list_cache_files`).
+
+    Returns:
+        int, number of files actually removed.
+
     Example:
-        >>> n = clear_weak_cache(cfg)
+        >>> n = clear_cache(cfg)
         >>> print(f"removed {n} cache file(s)")
     """
     removed = 0
-    for path in list_weak_cache_files(cfg):
+    for path in list_cache_files(cfg, subdirs=subdirs):
         try:
             os.remove(path)
             removed += 1

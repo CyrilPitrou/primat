@@ -9,20 +9,31 @@
  *     print(fingerprint_hash(_weak_rate_fingerprint(cfg)))
  *     print(fingerprint_hash(_thermal_fingerprint(cfg)))
  *   "
- * -> ca8641b916d081a2
- * -> 769a94a8780de8a7
+ * -> b8cdcc18d4677cc5
+ * -> c7da75afa7c0bf3b
  * (default PyPRConfig(): incomplete_decoupling/QED_corrections/
  * spectral_distortions/radiative_corrections/finite_mass_corrections all
  * True, analytic_distortions False, every numeric default unchanged.)
  *
- * Both hashes moved at WEAK_RATE_FORMAT_VERSION 4 (was 2218248995f018af /
- * 0eccbdd5dbb5dd93 at v1): the version constant was bumped to pay off the
- * documented-but-never-applied v2/v3 content changes, the thermal
- * fingerprint gained munuOverTnu, and the weak-rate fingerprint gained
- * nevo_grid_file and sampling_temperature_per_decade. See
- * weak_rates/cache.py's changelog. The shipped tables under
- * primat/data/cache_plasma_weak/weak/ were re-keyed to match, so the
- * round-trip check below still finds the default file.
+ * History of these two pins:
+ *   v1 -> 2218248995f018af / 0eccbdd5dbb5dd93
+ *   v4 -> ca8641b916d081a2 / 769a94a8780de8a7   (version bump paying off the
+ *         documented-but-never-applied v2/v3 content changes; thermal gained
+ *         munuOverTnu, weak-rate gained nevo_grid_file and
+ *         sampling_temperature_per_decade)
+ *   v5 -> b8cdcc18d4677cc5 / c7da75afa7c0bf3b   (both fingerprints gained
+ *         constants_hash, so that editing a physical constant invalidates the
+ *         caches computed with the old value -- see weak_rates/cache.py's
+ *         changelog and cache_utils.constants_hash)
+ * The shipped tables under primat/data/cache_plasma_weak/weak/ were re-keyed
+ * to match at each bump, so the round-trip check below still finds the
+ * default file.
+ *
+ * Note what these pins are FOR: they are literal transcriptions of Python's
+ * output, so they catch a C-side serialisation drift (key order, float repr,
+ * a field added on one side only) that a self-consistent C-only test could
+ * not. tests/test_cache_parity.py checks the same equivalence from the other
+ * direction, on live files rather than constants.
  */
 #include "cache.h"
 #include "config.h"
@@ -57,7 +68,7 @@ int main(void)
     char *wjson = cpr_fingerprint_json(wfields, nw);
     char *whash = cpr_sha256_hex16(wjson);
     printf("weak json: %s\n", wjson);
-    expect_str_eq("weak_rate_fingerprint hash", whash, "ca8641b916d081a2");
+    expect_str_eq("weak_rate_fingerprint hash", whash, "b8cdcc18d4677cc5");
     free(wjson);
     free(whash);
 
@@ -66,25 +77,25 @@ int main(void)
     char *tjson = cpr_fingerprint_json(tfields, nt);
     char *thash = cpr_sha256_hex16(tjson);
     printf("thermal json: %s\n", tjson);
-    expect_str_eq("thermal_fingerprint hash", thash, "769a94a8780de8a7");
+    expect_str_eq("thermal_fingerprint hash", thash, "c7da75afa7c0bf3b");
     free(tjson);
     free(thash);
 
     /* Round-trip: read back the hash header of an existing Python-written
      * cache file and confirm cpr_cache_read_fingerprint_hash parses it.
-     * Uses the default-config hash (ca8641b916d081a2, also relied on by
+     * Uses the default-config hash (b8cdcc18d4677cc5, also relied on by
      * test_weak_rates.c) rather than a one-off file, since that one is
      * load-bearing for another test and so less likely to silently
      * disappear from a future "refresh shipped weak-rate caches"-style
      * regeneration on the Python side. */
     char *read_hash = cpr_cache_read_fingerprint_hash(
-        "../primat/data/cache_plasma_weak/weak/nTOp_ca8641b916d081a2.txt");
+        "../primat/data/cache_plasma_weak/weak/nTOp_b8cdcc18d4677cc5.txt");
     if (!read_hash) {
         printf("FAIL reading existing cache file header\n");
         failures++;
     } else {
         expect_str_eq("read existing cache file's own hash header",
-                       read_hash, "ca8641b916d081a2");
+                       read_hash, "b8cdcc18d4677cc5");
         free(read_hash);
     }
 
@@ -98,7 +109,7 @@ int main(void)
         failures++;
     } else {
         char *rt_hash = cpr_cache_read_fingerprint_hash(out_path);
-        expect_str_eq("write-then-read-back hash", rt_hash, "ca8641b916d081a2");
+        expect_str_eq("write-then-read-back hash", rt_hash, "b8cdcc18d4677cc5");
         free(rt_hash);
     }
 
