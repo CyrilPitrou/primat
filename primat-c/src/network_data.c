@@ -817,15 +817,27 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     }
 
     /* ---- 1. Resolve the bare reaction-name list + table-file map. ---- */
-    char bare_names[CPR_MAX_REACTIONS][64];
-    char table_files[CPR_MAX_REACTIONS][128];
+    /* Heap, not stack. As automatics these four matrices put a 219,296-byte
+     * frame on cpr_load_network (measured with -fstack-usage), against the
+     * 512 KiB default stack that mc.c's pthread workers get -- and three of
+     * the error paths below tell the reader to "raise CPR_MAX_REACTIONS",
+     * which at 2000 would overflow every MC worker while the single-threaded
+     * CLI kept working. Heap-allocating decouples the two. */
+    char (*bare_names)[64] = CPR_XMALLOC(CPR_MAX_REACTIONS * sizeof(*bare_names));
+    char (*table_files)[128] = CPR_XMALLOC(CPR_MAX_REACTIONS * sizeof(*table_files));
+    char (*filtered)[64] = CPR_XMALLOC(CPR_MAX_REACTIONS * sizeof(*filtered));
+    char (*selected)[64] = CPR_XMALLOC(CPR_MAX_REACTIONS * sizeof(*selected));
+    /* All four freed together on every exit below; allocated up front (rather
+     * than at first use) so one macro covers every return path. */
+#define CPR_LN_FREE_SCRATCH() \
+    do { free(bare_names); free(table_files); free(filtered); free(selected); } while (0)
     size_t n_bare = 0;
     CPRNetworkList file_list = {0};
     int have_file_list = 0;
     if (reaction_names) {
         if (n_reaction_names > CPR_MAX_REACTIONS) {
             *errmsg = strdup("cpr_load_network: too many reactions (raise CPR_MAX_REACTIONS)");
-            return 1;
+            CPR_LN_FREE_SCRATCH(); return 1;
         }
         for (size_t i = 0; i < n_reaction_names; i++) {
             /* Mirrors _parse_network_entries: an entry may itself carry a
@@ -850,12 +862,12 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
         char relpath[300];
         snprintf(relpath, sizeof(relpath), "nuclear/networks/%s.txt", cfg->network);
         cpr_config_resolve_rates_path(cfg, relpath, path, sizeof(path));
-        if (cpr_load_network_list(path, &file_list, errmsg)) return 1;
+        if (cpr_load_network_list(path, &file_list, errmsg)) { CPR_LN_FREE_SCRATCH(); return 1; }
         have_file_list = 1;
         if (file_list.n > CPR_MAX_REACTIONS) {
             *errmsg = strdup("cpr_load_network: too many reactions (raise CPR_MAX_REACTIONS)");
             cpr_network_list_free(&file_list);
-            return 1;
+            CPR_LN_FREE_SCRATCH(); return 1;
         }
         for (size_t i = 0; i < file_list.n; i++) {
             snprintf(bare_names[n_bare], 64, "%s", file_list.entries[i].name);
@@ -899,11 +911,11 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     char rxn_path[4300];
     snprintf(rxn_path, sizeof(rxn_path), "%s/reactions_large.csv", base_dir);
     CPRReactionTable rxn_map;
-    if (cpr_load_reactions_large(rxn_path, &rxn_map, errmsg)) return 1;
+    if (cpr_load_reactions_large(rxn_path, &rxn_map, errmsg)) { CPR_LN_FREE_SCRATCH(); return 1; }
     char db_path[4300];
     snprintf(db_path, sizeof(db_path), "%s/detailed_balance.csv", base_dir);
     CPRDetailedBalanceTable db;
-    if (cpr_load_detailed_balance(db_path, &db, errmsg)) { cpr_reaction_table_free(&rxn_map); return 1; }
+    if (cpr_load_detailed_balance(db_path, &db, errmsg)) { cpr_reaction_table_free(&rxn_map); CPR_LN_FREE_SCRATCH(); return 1; }
 
     /* ---- 2b. Inject custom->tables' "added" reactions into rxn_map/db, then
      * append any not already selected to bare_names -- both must happen
@@ -913,7 +925,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
      * load_network). ---- */
     if (inject_custom_reactions(custom, &rxn_map, &db, cfg, errmsg)) {
         cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
-        return 1;
+        CPR_LN_FREE_SCRATCH(); return 1;
     }
     if (custom) {
         for (size_t t = 0; t < custom->n_tables; t++) {
@@ -925,7 +937,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
             if (n_bare >= CPR_MAX_REACTIONS) {
                 *errmsg = strdup("cpr_load_network: too many reactions (raise CPR_MAX_REACTIONS)");
                 cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
-                return 1;
+                CPR_LN_FREE_SCRATCH(); return 1;
             }
             snprintf(bare_names[n_bare], 64, "%s", name);
             table_files[n_bare][0] = '\0'; /* unused: custom_find_table always wins in step 9 */
@@ -934,7 +946,6 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     }
 
     /* ---- 3. amax filter (any positive cfg->amax; -1 = None/disabled). ---- */
-    char filtered[CPR_MAX_REACTIONS][64];
     size_t n_filtered = 0;
     for (size_t i = 0; i < n_bare; i++) {
         if (cfg->amax < 0) { snprintf(filtered[n_filtered++], 64, "%s", bare_names[i]); continue; }
@@ -944,7 +955,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
             snprintf(buf, sizeof(buf), "reaction '%s' is not present in reactions_large.csv", bare_names[i]);
             *errmsg = strdup(buf);
             cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
-            return 1;
+            CPR_LN_FREE_SCRATCH(); return 1;
         }
         CPRSideCounts react, prod; long ldz;
         side_counts(e->reactants, &react, &ldz);
@@ -962,7 +973,6 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     }
 
     /* ---- 4. Era selection. ---- */
-    char selected[CPR_MAX_REACTIONS][64];
     size_t n_selected = 0;
     if (is_mt) {
         /* Intersect with the fixed historical MT order, for every network
@@ -1013,7 +1023,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
             *errmsg = strdup(buf);
             free(react_sides); free(prod_sides); free(net_lepton_dZ); free(is_weak); free(sel_table_file);
             cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
-            return 1;
+            CPR_LN_FREE_SCRATCH(); return 1;
         }
         long ldz_r, ldz_p;
         side_counts(e->reactants, &react_sides[i], &ldz_r);
@@ -1170,7 +1180,16 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                 load_fail = 1; break;
             }
             for (size_t g = 0; g < n_grid; g++) { fwd_row[g] = de->rate_s_inv; err_row[g] = de->uncertainty; }
-            snprintf(out->sources[ridx], sizeof(*out->sources), "%s", de->ref[0] ? de->ref : "?");
+            /* Same provenance text Python builds (network_data.py's decay
+             * branch): the rate itself is the physically meaningful number to
+             * show for a row that has no per-T9 rate table to point at, so
+             * record rate/half-life/reference rather than the bare reference.
+             * This field is user-visible (GUI reaction table, provenance
+             * dumps), so a bare ref made the same run read differently
+             * depending on which backend served it. */
+            snprintf(out->sources[ridx], sizeof(*out->sources),
+                     "%.6e s^-1  (T1/2=%.4g s, %s)",
+                     de->rate_s_inv, de->halflife_s, de->ref[0] ? de->ref : "?");
         } else {
             char table_path[4500];
             char table_relpath[600];
@@ -1209,6 +1228,17 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                                                              &a, &b, &g, &dberr) == 0 && g < 0.0) {
                 abg_row[0] = a; abg_row[1] = b; abg_row[2] = g;
             } else {
+                /* Name the offending decay rather than falling back silently:
+                 * substituting an irreversible-decay default for missing
+                 * nuclide data is exactly the kind of plausible-but-wrong
+                 * number that should be visible. Mirrors the UserWarning in
+                 * network_data.py's decay_reverse_rates branch. (g >= 0 means
+                 * Q <= 0, an endothermic decay, which is unphysical -- also
+                 * worth surfacing rather than swallowing.) */
+                fprintf(stderr,
+                        "[warn] decay '%s': no detailed-balance reverse rate (%s); "
+                        "treated as irreversible (abg = 0).\n",
+                        sel_name, dberr ? dberr : "endothermic Q <= 0");
                 free(dberr);
                 abg_row[0] = abg_row[1] = abg_row[2] = 0.0;
             }
@@ -1224,13 +1254,11 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     if (load_fail) {
         if (load_errbuf[0] && !*errmsg) *errmsg = strdup(load_errbuf);
         cpr_network_def_free(out);
-        return 1;
+        CPR_LN_FREE_SCRATCH(); return 1;
     }
 
     /* ---- 10. Nuclear QED rescale, reverse-rate cap. ---- */
     if (cfg->nuclear_qed_corrections) {
-        double factor[CPR_MAX_REACTIONS]; /* reused per-reaction; sized for grid below */
-        (void)factor;
         double *fac = CPR_XMALLOC(n_grid * sizeof(double));
         for (size_t i = 0; i < n_selected; i++) {
             if (qed_nuclear_rescale(selected[i], out->grid, n_grid, fac)) {
@@ -1248,9 +1276,11 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
 
     out->buf = CPR_XMALLOC(2 * n_reac * sizeof(double));
     out->cache_valid = 0;
-    return 0;
+    CPR_LN_FREE_SCRATCH(); return 0;
 }
 
+
+#undef CPR_LN_FREE_SCRATCH
 void cpr_network_def_free(CPRNetworkDef *net)
 {
     free(net->species); free(net->N); free(net->Z);
@@ -1323,9 +1353,13 @@ const double *cpr_network_fill_buffer(CPRNetworkDef *net, double T_t_K,
     const double *g = net->grid;
     size_t n_grid = net->n_grid;
     /* searchsorted(g, T9) - 1, clamped to [0, n_grid-2] (mirrors fill_buffer's
-     * own clamp exactly) -- equivalently "the segment i such that
-     * g[i] <= T9 <= g[i+1]", clamped the same way at the table edges, which
-     * is exactly cpr_find_segment's contract (see spline.h). BDF integration
+     * own clamp exactly) -- i.e. "the segment i such that g[i] <= T9 <= g[i+1]",
+     * clamped the same way at the table edges, which is cpr_find_segment's
+     * contract (see spline.h). The two disagree by one segment when T9 lands
+     * EXACTLY on an interior node (Python takes [k-1, k] with w = 1, this
+     * takes [k, k+1] with w = 0); both evaluate to fwd[k] exactly, so the
+     * interpolated value is identical -- but the index itself is not, so do
+     * not rely on the two being interchangeable for anything else. BDF integration
      * calls this millions of times per solve at a T9 that decreases
      * smoothly, so the hinted cpr_find_segment_monotone (net->grid_hint,
      * persistent per-CPRNetworkDef state, see its declaration) turns the

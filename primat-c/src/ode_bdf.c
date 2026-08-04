@@ -98,7 +98,7 @@ static void compute_R(int order, double factor, double *R)
  * <- (R.U)^T . D[:order+1], U = compute_R(order, 1.0)). D is a flat
  * row-major array with fixed row stride `n` (MAX_ORDER_CAP+3 rows
  * allocated by the caller; only rows 0..order are touched here). */
-static void change_D(double *D, size_t n, int order, double factor)
+static void change_D(double *D, size_t n, int order, double factor, double *tmp)
 {
     int m = order + 1;
     double R[(MAX_ORDER_CAP + 1) * (MAX_ORDER_CAP + 1)];
@@ -115,7 +115,9 @@ static void change_D(double *D, size_t n, int order, double factor)
     /* newD[i] = sum_k RU[k][i] * oldD[k] (i.e. RU^T applied); buffer the
      * new rows before overwriting, since every new row reads every old
      * row. */
-    double *tmp = CPR_XMALLOC((size_t)m * n * sizeof(double));
+    /* `tmp` is caller-owned scratch of at least (MAX_ORDER_CAP+1)*n doubles:
+     * change_D runs on every step-size or order change, O(10^4-10^5) times per
+     * LT solve, and used to malloc/free this buffer each time. */
     for (int i = 0; i < m; i++)
         for (size_t c = 0; c < n; c++) {
             double s = 0.0;
@@ -123,7 +125,6 @@ static void change_D(double *D, size_t n, int order, double factor)
             tmp[(size_t)i * n + c] = s;
         }
     memcpy(D, tmp, (size_t)m * n * sizeof(double));
-    free(tmp);
 }
 
 /* Forward-difference Jacobian fallback (used when the caller has no
@@ -225,7 +226,7 @@ static int solve_bdf_system(CPRODEFunc f, void *ctx, double t_new, const double 
                               double c, const double *psi, const double *LU, const size_t *piv,
                               const double *scale, double tol, size_t n,
                               double *y_out, double *d_out, int *n_iter_out,
-                              double *fwork, double *dy)
+                              double *fwork, double *dy, int max_iter)
 {
     memcpy(y_out, y_predict, n * sizeof(double));
     memset(d_out, 0, n * sizeof(double));
@@ -233,7 +234,7 @@ static int solve_bdf_system(CPRODEFunc f, void *ctx, double t_new, const double 
     int converged = 0;
     int iters = 0;
 
-    for (int k = 0; k < NEWTON_MAXITER; k++) {
+    for (int k = 0; k < max_iter; k++) {
         iters = k + 1;
         if (f(t_new, y_out, fwork, ctx)) return 1;
         int all_finite = 1;
@@ -248,7 +249,7 @@ static int solve_bdf_system(CPRODEFunc f, void *ctx, double t_new, const double 
         if (dy_norm_old >= 0.0) rate = dy_norm / dy_norm_old;
 
         if (rate >= 0.0 && (rate >= 1.0 ||
-              pow(rate, (double)(NEWTON_MAXITER - k)) / (1.0 - rate) * dy_norm > tol))
+              pow(rate, (double)(max_iter - k)) / (1.0 - rate) * dy_norm > tol))
             break;
 
         for (size_t i = 0; i < n; i++) { y_out[i] += dy[i]; d_out[i] += dy[i]; }
@@ -270,6 +271,14 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
     int max_order = opts.max_order;
     if (max_order < 1) max_order = 1;
     if (max_order > MAX_ORDER_CAP) max_order = MAX_ORDER_CAP;
+
+    /* opts.max_newton_iter was previously declared, defaulted and documented
+     * but never read -- solve_bdf_system hard-coded NEWTON_MAXITER in its loop
+     * bound, its rate-extrapolation exponent and the `safety` factor, so a
+     * caller setting the field got no effect and no diagnostic. Honour it now;
+     * <= 0 keeps scipy's NEWTON_MAXITER, and at the default the behaviour is
+     * bit-identical to before. */
+    int newton_maxiter = (opts.max_newton_iter > 0) ? opts.max_newton_iter : NEWTON_MAXITER;
 
     int dir = (t1 >= t0) ? 1 : -1;
     double span = fabs(t1 - t0);
@@ -309,6 +318,13 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
     double *J = CPR_XMALLOC(n * n * sizeof(double));
     double *Jnewton = CPR_XMALLOC(n * n * sizeof(double));
     size_t *piv = CPR_XMALLOC(n * sizeof(size_t));
+    /* Scratch owned for the whole solve rather than re-allocated per use:
+     * change_D's Nordsieck buffer, and the three vectors the finite-difference
+     * Jacobian fallback needs on each Newton retry. */
+    double *dtmp = CPR_XMALLOC((size_t)(MAX_ORDER_CAP + 1) * n * sizeof(double));
+    double *fd_ytmp = CPR_XMALLOC(n * sizeof(double));
+    double *fd_f1 = CPR_XMALLOC(n * sizeof(double));
+    double *fd_f0 = CPR_XMALLOC(n * sizeof(double));
     int lu_valid = 0; /* mirrors scipy's `self.LU is None` */
 
     /* Initial Jacobian, computed once up front (mirrors scipy's
@@ -318,18 +334,16 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
             *errmsg = strdup("cpr_ode_bdf: jac() failed at t0");
             free(D); free(f0); free(scratch_y1); free(scratch_f1);
             free(J); free(Jnewton); free(piv);
+            free(dtmp); free(fd_ytmp); free(fd_f1); free(fd_f0);
             return 1;
         }
     } else {
-        double *ytmp = CPR_XMALLOC(n * sizeof(double));
-        double *f1tmp = CPR_XMALLOC(n * sizeof(double));
-        double *f0tmp = CPR_XMALLOC(n * sizeof(double));
-        int jrc = finite_diff_jac(f, ctx, t0, y, n, f0tmp, J, ytmp, f1tmp);
-        free(ytmp); free(f1tmp); free(f0tmp);
+        int jrc = finite_diff_jac(f, ctx, t0, y, n, fd_f0, J, fd_ytmp, fd_f1);
         if (jrc) {
             *errmsg = strdup("cpr_ode_bdf: f() failed during initial finite-diff Jacobian");
             free(D); free(f0); free(scratch_y1); free(scratch_f1);
             free(J); free(Jnewton); free(piv);
+            free(dtmp); free(fd_ytmp); free(fd_f1); free(fd_f0);
             return 1;
         }
     }
@@ -362,12 +376,12 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
         double min_step_fp = 10.0 * fabs(nextafter(t, (dir > 0) ? INFINITY : -INFINITY) - t);
         double max_step = (opts.h_max > 0.0) ? opts.h_max : INFINITY;
         if (h_abs > max_step) {
-            change_D(D, n, order, max_step / h_abs);
+            change_D(D, n, order, max_step / h_abs, dtmp);
             h_abs = max_step;
             n_equal_steps = 0;
             lu_valid = 0;
         } else if (h_abs < min_step_fp) {
-            change_D(D, n, order, min_step_fp / h_abs);
+            change_D(D, n, order, min_step_fp / h_abs, dtmp);
             h_abs = min_step_fp;
             n_equal_steps = 0;
             lu_valid = 0;
@@ -396,7 +410,7 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
             double t_new = t + hh;
             if (dir * (t_new - t1) > 0.0) {
                 t_new = t1;
-                change_D(D, n, order, fabs(t_new - t) / h_abs);
+                change_D(D, n, order, fabs(t_new - t) / h_abs, dtmp);
                 n_equal_steps = 0;
                 lu_valid = 0;
             }
@@ -433,7 +447,8 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
                     lu_valid = 1;
                 }
                 int src = solve_bdf_system(f, ctx, t_new, y_predict, cc, psi, Jnewton, piv,
-                                             scale, newton_tol, n, y_new, d, &n_iter, fwork, dywork);
+                                             scale, newton_tol, n, y_new, d, &n_iter, fwork,
+                                             dywork, newton_maxiter);
                 if (src == 1) { *errmsg = strdup("cpr_ode_bdf: f() failed"); rc = 1; goto done; }
                 converged = (src == 0);
                 if (!converged) {
@@ -443,11 +458,8 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
                             *errmsg = strdup("cpr_ode_bdf: jac() failed"); rc = 1; goto done;
                         }
                     } else {
-                        double *ytmp = CPR_XMALLOC(n * sizeof(double));
-                        double *f1tmp = CPR_XMALLOC(n * sizeof(double));
-                        double *f0tmp = CPR_XMALLOC(n * sizeof(double));
-                        int jrc = finite_diff_jac(f, ctx, t_new, y_predict, n, f0tmp, J, ytmp, f1tmp);
-                        free(ytmp); free(f1tmp); free(f0tmp);
+                        int jrc = finite_diff_jac(f, ctx, t_new, y_predict, n,
+                                                   fd_f0, J, fd_ytmp, fd_f1);
                         if (jrc) {
                             *errmsg = strdup("cpr_ode_bdf: f() failed during finite-diff Jacobian");
                             rc = 1; goto done;
@@ -462,14 +474,15 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
 
             if (!converged) {
                 double factor = 0.5;
-                change_D(D, n, order, factor);
+                change_D(D, n, order, factor, dtmp);
                 h_abs *= factor;
                 n_equal_steps = 0;
                 lu_valid = 0;
                 continue;
             }
 
-            double safety = 0.9 * (2.0 * NEWTON_MAXITER + 1.0) / (2.0 * NEWTON_MAXITER + (double)n_iter);
+            double safety = 0.9 * (2.0 * newton_maxiter + 1.0)
+                            / (2.0 * newton_maxiter + (double)n_iter);
 
             for (size_t i = 0; i < n; i++) scale[i] = opts.atol + opts.rtol * fabs(y_new[i]);
             for (size_t i = 0; i < n; i++) error[i] = co.error_const[order] * d[i];
@@ -477,7 +490,7 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
 
             if (err_norm > 1.0) {
                 double factor = fmax(MIN_FACTOR, safety * pow(err_norm, -1.0 / (double)(order + 1)));
-                change_D(D, n, order, factor);
+                change_D(D, n, order, factor, dtmp);
                 h_abs *= factor;
                 n_equal_steps = 0;
                 /* LU intentionally left as-is: Newton convergence was fine, only the
@@ -543,7 +556,7 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
             if (order > max_order) order = max_order;
 
             double factor = fmin(MAX_FACTOR, safety * factors[best_idx]);
-            change_D(D, n, order, factor);
+            change_D(D, n, order, factor, dtmp);
             h_abs *= factor;
             n_equal_steps = 0;
             lu_valid = 0;
@@ -555,5 +568,6 @@ done:
     free(J); free(Jnewton); free(piv);
     free(y_predict); free(psi); free(scale); free(y_new); free(d);
     free(fwork); free(dywork); free(error);
+    free(dtmp); free(fd_ytmp); free(fd_f1); free(fd_f0);
     return rc;
 }

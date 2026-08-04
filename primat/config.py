@@ -759,6 +759,12 @@ _PARAM_TYPESPEC = {
 # _validate_amax) with bespoke messages, so they are intentionally absent here.
 _POSITIVE = (lambda v: v > 0, "must be > 0")
 _POSITIVE_INT = (lambda v: v >= 1, "must be a positive integer (>= 1)")
+# A master rate grid needs at least one interval to interpolate on: a
+# single point makes _fill_buffer_core divide by zero (and the C backend
+# read past the end of a one-element array). The not-a-knot >= 4 rule
+# applies to a source rate table, not to this grid.
+_AT_LEAST_TWO = (lambda v: v >= 2,
+                 "must be >= 2 (a one-point grid has no interval to interpolate on)")
 _NON_NEGATIVE = (lambda v: v >= 0, "must be >= 0")
 _PARAM_RANGE = {
     # ---- strictly positive floats (a physical scale, tolerance, or time) ----
@@ -785,7 +791,7 @@ _PARAM_RANGE = {
     "vegas_n_eval":                      _POSITIVE_INT,
     "vegas_n_itn":                       _POSITIVE_INT,
     "output_n_points":                   _POSITIVE_INT,
-    "rate_grid_npts":                    _POSITIVE_INT,
+    "rate_grid_npts":                    _AT_LEAST_TWO,
     "decay_n_points":                    _POSITIVE_INT,
     # ---- non-negative (a 1-sigma width may legitimately be 0) ---------------
     "std_tau_n":           _NON_NEGATIVE,

@@ -1680,20 +1680,38 @@ def _select_era_reactions(era, cfg, bare_names):
 
     Args:
         era: "MT" or "LT" (case-insensitive).
-        cfg: PRIMATConfig instance (only ``cfg.network`` is read).
+        cfg: PRIMATConfig instance (unused; kept so the signature stays stable
+            for callers -- ``cfg.network`` was read only by the ``ORDER_SMALL``
+            special case removed below).
         bare_names: list[str], amax-filtered bare reaction names.
 
     Returns:
         (era, selected): era upper-cased; selected is the era-restricted list
-        of bare names, in the fixed ORDER_SMALL/ORDER_MT order for "MT", or
-        ``bare_names`` unchanged for "LT".
+        of bare names, in the fixed ORDER_MT order for "MT", or ``bare_names``
+        unchanged for "LT".
     """
     era = era.upper()
-    if era == "MT" and cfg.network == "small":
-        allowed = set(bare_names)
-        selected = [name for name in ORDER_SMALL
-                    if name not in _WEAK_NTOP_NAMES and name in allowed]
-    elif era == "MT":
+    if era == "MT":
+        # Intersect with ORDER_MT for *every* network, including "small".
+        #
+        # This used to special-case cfg.network == "small" to intersect with
+        # ORDER_SMALL instead. For the shipped small.txt the two are identical
+        # (its twelve thermonuclear reactions are exactly ORDER_SMALL[1:], a
+        # prefix subsequence of ORDER_MT, so the intersection preserves the
+        # same relative order) -- but they diverge as soon as a custom network
+        # built on "small" adds one of the five reactions in
+        # ORDER_MT \ ORDER_SMALL (Be7_d__a_a_p, Be7_n__a_a, Li6_p__Be7_g,
+        # Li7_p__a_a_g, d_a__Li6_g). The special case then dropped such a
+        # reaction from the MT era while the C backend, which has always
+        # intersected against ORDER_MT unconditionally, kept it: the GUI
+        # "Create custom network" path adding d_a__Li6_g integrated MT with 8
+        # nuclides on Python against 9 on C, for a 1.0e-06 YPBBN divergence.
+        #
+        # Dropping the special case is the principled resolution: a reaction
+        # the user explicitly added, and which IS an MT-era reaction, belongs
+        # in the MT era. Verified to leave the default small run bit-identical.
+        # Keep in lockstep with cpr_load_network's era selection in
+        # primat-c/src/network_data.c.
         allowed = set(bare_names)
         selected = [name for name in ORDER_MT
                     if name not in _WEAK_NTOP_NAMES and name in allowed]

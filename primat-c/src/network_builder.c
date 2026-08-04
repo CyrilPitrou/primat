@@ -259,10 +259,18 @@ int cpr_check_conservation(const CPRCompiledNetwork *cn, const long *N, const lo
         } else {
             bad = (dN != 0 || dZ_nuc != 0);
         }
-        if (bad && n_bad < 5) {
+        if (bad && n_bad < 5 && off < sizeof(buf)) {
+            /* snprintf returns the length it WOULD have written, so adding it
+             * unclamped can push `off` past the buffer -- after which
+             * `buf + off` is out of range and `sizeof(buf) - off` underflows
+             * to a huge size_t. Bounded in practice (5 entries x ~30 chars
+             * against 2048) but the arithmetic should not rely on that. */
             int n = snprintf(buf + off, sizeof(buf) - off,
                               "%s(%zu: dN=%ld, dZ=%ld)", n_bad ? ", " : "", i, dN, dZ_nuc);
-            if (n > 0) off += (size_t)n;
+            if (n > 0) {
+                off += (size_t)n;
+                if (off >= sizeof(buf)) off = sizeof(buf) - 1;
+            }
         }
         if (bad) n_bad++;
     }

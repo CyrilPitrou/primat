@@ -267,6 +267,21 @@ class NuclearNetwork:
         Yn_i = Yn_i_func(cfg.T_start)
         Yp_i = 1. - Yn_i
         _t_ht0 = time.time()
+        # HT integrator: LSODA here, Dormand-Prince RK45 in the C backend
+        # (primat-c/src/nuclear_network.c). A KNOWN, accepted divergence --
+        # recorded on both sides so it is not "fixed" by accident.
+        #
+        # Same rtol (cfg.numerical_precision) and atol (1e-10) on both, and the
+        # era is n <-> p only. Measured: switching this call to RK45 moves
+        # YPBBN by ~5e-07 relative, i.e. the method choice accounts for
+        # essentially all of the cross-backend YP gap -- but neither method is
+        # more accurate. Sweeping numerical_precision from 1e-6 to 1e-10 with
+        # LSODA, RK45 and BDF in turn has all three converging to the same
+        # YPBBN (spread 1.6e-07 relative at rtol=1e-9), comfortably inside what
+        # the default rtol=1e-7 actually delivers. Aligning both backends on
+        # BDF was tried and did not improve cross-backend agreement (YP parity
+        # degraded 5.2e-07 -> 1.1e-06 at default tolerance), because the
+        # residual is dominated by the MT/LT solves, not by this era.
         sol_HT = solve_ivp(Y_prime_HT, [t_start, t_weak], [Yn_i, Yp_i],
                            method='LSODA', rtol=cfg.numerical_precision, atol=1e-10)
         _check_solver(sol_HT, "HT",

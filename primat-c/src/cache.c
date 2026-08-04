@@ -174,10 +174,17 @@ static void format_python_float(double v, char *buf, size_t bufsize)
 
 static void json_escape_append(char **buf, size_t *cap, size_t *len, const char *s)
 {
-    size_t need = *len + strlen(s) * 2 + 4;
+    /* 6 bytes per input byte, not 2: a control character below 0x20 other than
+     * \n / \t expands to the six-byte \u00xx form, so the old *2 reserve
+     * could be overrun by a string of them. Unreachable with today's inputs
+     * (fingerprint keys are identifiers, values are file paths) but the bound
+     * should not depend on that. CPR_XREALLOC rather than bare realloc so an
+     * OOM aborts with a diagnostic instead of leaking the old block and then
+     * dereferencing NULL. */
+    size_t need = *len + strlen(s) * 6 + 4;
     if (need > *cap) {
         *cap = need * 2;
-        *buf = realloc(*buf, *cap);
+        *buf = CPR_XREALLOC(*buf, *cap);
     }
     (*buf)[(*len)++] = '"';
     for (const char *p = s; *p; p++) {

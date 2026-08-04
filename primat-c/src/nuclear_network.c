@@ -244,6 +244,26 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     CPRRecorder rec_ht; recorder_init(&rec_ht, 2);
     recorder_push(&rec_ht, t_start, Y_ht);
     HTCtx ht_ctx = { background };
+    /* HT integrator: Dormand-Prince RK45 here, LSODA on the Python side
+     * (nuclear_network.py's _solve_HT). This is a KNOWN, accepted divergence,
+     * not an oversight -- recorded here so it is not "fixed" by accident.
+     *
+     * Both run at the same rtol (cfg->numerical_precision) and atol (1e-10),
+     * and the era is n <-> p only. Measured on the default config: swapping
+     * Python's HT to RK45 moves YPBBN by ~5e-07 relative, i.e. the method
+     * choice accounts for essentially all of the cross-backend YP gap. But
+     * neither method is more accurate -- sweeping numerical_precision 1e-6 to
+     * 1e-10 with the HT era set to LSODA, RK45 and BDF in turn shows all three
+     * converging to the same YPBBN (spread 1.6e-07 relative at rtol=1e-9),
+     * which is well inside the accuracy the default rtol=1e-7 delivers.
+     *
+     * Aligning them was tried (both on BDF with the exact analytic 2x2
+     * Jacobian, the HT system being linear in Y) and did NOT improve
+     * cross-backend agreement: YP parity got worse at the default tolerance
+     * (5.2e-07 -> 1.1e-06) while D/H improved only ~1.5x, because the residual
+     * is dominated by the MT/LT BDF solves walking different step sequences,
+     * not by the HT method. Alignment therefore buys reviewability, not
+     * numbers; it is available if wanted, but is not currently applied. */
     CPRRKOpts rk_opts = cpr_ode_rk_default_opts();
     rk_opts.rtol = cfg->numerical_precision; rk_opts.atol = 1.0e-10;
     if (cfg->show_progress && !cfg->verbose) {
@@ -257,7 +277,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
         recorder_free(&rec_ht);
         return 1;
     }
-    cpr_log(cfg, "nucl", "[HT] Finished in %.2f s",
+    cpr_log(cfg, "nucl", "[HT] Finished solve_ivp in %.2f s",
              (double)(clock() - _t_ht0) / CLOCKS_PER_SEC);
     double Yn_HT_f = Y_ht[0], Yp_HT_f = Y_ht[1];
 
@@ -277,7 +297,13 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     recorder_push(&rec_mt, t_weak, Yi_MT);
     MTLTCtx mt_ctx = { background, nucl };
     CPRBDFOpts bdf_opts = cpr_ode_bdf_default_opts();
-    bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = 1.0e-16;
+    /* atol 1e-15, matching primat/nuclear_network.py's MT solve_ivp call. It
+     * read 1e-16 here, an undocumented tolerance divergence: swapping the two
+     * values on the Python side moves YPBBN 0.24699729 -> 0.24699702 and D/H
+     * 2.4358985e-05 -> 2.4358951e-05, i.e. 1.4e-06 relative, ~470x the +-3e-9
+     * same-backend D/H regression pin (the C's own BDF is far less sensitive
+     * here, ~4e-08, which is why it went unnoticed). */
+    bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = 1.0e-15;
     if (cfg->show_progress && !cfg->verbose) {
         fprintf(stderr, "  MT."); fflush(stderr);
     }
@@ -289,7 +315,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
         free(Yi_MT); recorder_free(&rec_ht); recorder_free(&rec_mt);
         return 1;
     }
-    cpr_log(cfg, "nucl", "[MT] Finished (%s network, %zu nuclides) in %.2f s",
+    cpr_log(cfg, "nucl", "[MT] Finished solve_ivp (%s network, %zu species) in %.2f s",
              cfg->network, n_mt, (double)(clock() - _t_mt0) / CLOCKS_PER_SEC);
 
     /* ------------------------------------------------------------------
@@ -329,7 +355,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
         recorder_free(&rec_ht); recorder_free(&rec_mt); recorder_free(&rec_lt);
         return 1;
     }
-    cpr_log(cfg, "nucl", "[LT] Finished (%s network, %zu nuclides) in %.2f s",
+    cpr_log(cfg, "nucl", "[LT] Finished solve_ivp (%s network, %zu species) in %.2f s",
              cfg->network, n_lt, (double)(clock() - _t_lt0) / CLOCKS_PER_SEC);
     if (cfg->show_progress && !cfg->verbose) {
         fprintf(stderr, "  done.\n"); fflush(stderr);
@@ -387,10 +413,28 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     free(Yi_MT); free(Yi_LT);
     recorder_free(&rec_ht); recorder_free(&rec_mt); recorder_free(&rec_lt);
 
-    if (cfg->output_time_evolution)
-        cpr_nuclear_network_write_time_evolution(nn, cfg->output_n_points, errmsg);
-    if (cfg->output_final_result)
-        cpr_nuclear_network_write_final_result(nn, errmsg);
+    /* Propagate write failures. These return codes used to be discarded, so a
+     * bad output_file (unwritable directory, full disk) left the run reporting
+     * success with exit status 0 and no message -- while Python raised OSError
+     * for the same input -- and leaked the strdup'd *errmsg nobody would ever
+     * read or free (confirmed by `leaks`: 96 bytes). Failing the solve matches
+     * Python and makes the caller free the message on the normal error path. */
+    /* Unlike the HT/MT/LT failure paths above, these run with `nn` already
+     * populated -- and this function's contract is that a nonzero return
+     * leaves nothing for the caller to free (mc.c and api.c both just
+     * propagate the error without calling cpr_nuclear_network_free). Release
+     * it here so failing the run does not leak the abundance/history arrays
+     * (~384 KB for the default network). */
+    if (cfg->output_time_evolution
+        && cpr_nuclear_network_write_time_evolution(nn, cfg->output_n_points, errmsg)) {
+        cpr_nuclear_network_free(nn);
+        return 1;
+    }
+    if (cfg->output_final_result
+        && cpr_nuclear_network_write_final_result(nn, errmsg)) {
+        cpr_nuclear_network_free(nn);
+        return 1;
+    }
 
     return 0;
 }

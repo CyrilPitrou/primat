@@ -1003,8 +1003,14 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
                 "vegas_n_itn=%d is out of range: must be a positive integer (>= 1)", cfg->vegas_n_itn);
     CPR_REQUIRE(cfg->output_n_points >= 1,
                 "output_n_points=%d is out of range: must be a positive integer (>= 1)", cfg->output_n_points);
-    CPR_REQUIRE(cfg->rate_grid_npts >= 1,
-                "rate_grid_npts=%d is out of range: must be a positive integer (>= 1)", cfg->rate_grid_npts);
+    /* >= 2, not >= 1: a single-point grid leaves cpr_network_fill_buffer
+     * reading g[ii+1] past the end of a one-element array (and
+     * cpr_find_segment returning n-2 = SIZE_MAX). Python's equivalent
+     * degenerate grid divides by zero. Two points is the true minimum for
+     * the linear interpolant; the not-a-knot >= 4 rule applies to the
+     * SOURCE table, not to this master grid. */
+    CPR_REQUIRE(cfg->rate_grid_npts >= 2,
+                "rate_grid_npts=%d is out of range: must be >= 2 (a one-point grid has no interval to interpolate on)", cfg->rate_grid_npts);
     CPR_REQUIRE(cfg->decay_n_points >= 1,
                 "decay_n_points=%d is out of range: must be a positive integer (>= 1)", cfg->decay_n_points);
 #undef CPR_REQUIRE

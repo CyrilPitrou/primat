@@ -26,7 +26,14 @@
 
 #define NDIM 2
 #define NG 50           /* bins per dimension */
-#define ALPHA 1.5       /* grid-refinement damping exponent (Lepage's default) */
+/* Grid-refinement damping exponent. 1.5 is the GSL / Numerical Recipes
+ * default; Lepage's own `vegas` Python package -- the one
+ * weak_rates/corrections.py imports -- defaults to alpha=0.5 instead, so the
+ * two backends adapt their grids at different rates. That affects how fast
+ * each converges, not what it converges to, and the CCRTh caches are
+ * fingerprinted per backend; ALPHA is deliberately NOT in that fingerprint,
+ * so changing it here would silently stale the shipped tables. */
+#define ALPHA 1.5
 #define TINY 1.0e-300
 
 typedef struct {

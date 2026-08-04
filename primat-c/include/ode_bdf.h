@@ -38,11 +38,12 @@ typedef struct {
     double h_max;          /* largest step (0 disables the check) */
     int max_order;         /* 1..5, default 5 */
     int max_steps;         /* hard cap on accepted+rejected steps */
-    int max_newton_iter;   /* Newton corrector iteration cap per attempt, default 10 */
+    int max_newton_iter;   /* Newton corrector iteration cap per attempt, default 4
+                            * (scipy bdf.py's NEWTON_MAXITER). <= 0 falls back to it. */
 } CPRBDFOpts;
 
 /* Default options: rtol=1e-7, atol=1e-12, h_init=0 (auto), h_min=h_max=0
- * (unbounded), max_order=5, max_steps=200000, max_newton_iter=10. */
+ * (unbounded), max_order=5, max_steps=200000, max_newton_iter=4. */
 CPRBDFOpts cpr_ode_bdf_default_opts(void);
 
 /* Integrates dy/dt = f(t, y) from t0 to t1, in place in `y` (length n),
