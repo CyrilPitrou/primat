@@ -66,8 +66,31 @@
  * 1e-8..1e-12 safe range above) as a small additional safety margin --
  * 1e-12 was also tried but gave no further improvement in the C-vs-Python
  * D/H gap (both 1e-11 and 1e-12 plateau at ~4-5e-10 absolute, i.e. noise
- * level, not a systematic trend with this tolerance). */
-#define BG_ODE_RTOL 1.0e-11
+ * level, not a systematic trend with this tolerance).
+ *
+ * Tightened again, 1e-11 -> 1e-14, for a reason the paragraph above could not
+ * see because it only ever looked at the *abundances*: the combined ODE's
+ * second component `trel` is a RELATIVE time anchored at T_end, so |trel|
+ * grows to ~1.3e6 s at the high-temperature end of the integration -- where
+ * the physically meaningful t is only ~4.6e-4 s. ode_rk.c's error scale is
+ * atol + rtol*|y_i|, so at T_start_cosmo the controller normalises trel's
+ * error by 1.3e6 and simply does not protect the small-t region. Measured
+ * against an independent quadrature of the same integrand, t(10 MeV)-t(40 MeV)
+ * came out 2.4e-05 relative wrong at rtol=1e-11 and 4.7e-08 at 1e-14.
+ *
+ * combined_bg_rhs's "Variable choice for y[1]" comment previously argued this
+ * away ("no adverse conditioning effect ... each component is normalised by
+ * its OWN magnitude independently"). That argument addresses the wrong
+ * failure mode: the problem is not a scale shared ACROSS components, it is
+ * that trel's own magnitude is set by the far end of the integration and is
+ * therefore a poor normaliser for its own early trajectory. The clean fix is
+ * to integrate a quantity whose magnitude tracks the local t (as
+ * background.py's _integrate_time_over_lnT does, anchoring at T_start_cosmo
+ * and marching down); tightening the tolerance is the cheap equivalent and is
+ * free here -- the abundances are unchanged to all 8 reported digits, since
+ * above ~1 MeV they are weak-equilibrium-determined rather than
+ * time-integrated, and the error has decayed to 2.3e-07 by 1 MeV. */
+#define BG_ODE_RTOL 1.0e-14
 #define BG_ODE_ATOL 1.0e-11
 
 static double clamp_raw_weak_rate(double rate)
@@ -431,12 +454,15 @@ static int dtdlna_rhs(double lna, const double *y, double *ydot, void *ctx_)
  * cpr_ode_rk45 call. See setup_background_and_cosmo for where C is
  * computed and applied.
  *
- * (The raw-vs-log choice for y[1] has no adverse conditioning effect on the
- * RK45 step-size controller despite t spanning many decades: ode_rk.c's
- * error scale is per-component, scale_i = atol + rtol*|y_i|, so each
- * component is normalised by its OWN magnitude independently -- there is
- * no single shared scale across x and trel for a magnitude mismatch to
- * degrade.)
+ * (The raw-vs-log choice for y[1] DOES have an adverse conditioning effect,
+ * contrary to what this comment used to claim. Per-component error scaling
+ * (scale_i = atol + rtol*|y_i|) removes any cross-component coupling, but it
+ * does not help within trel itself: |trel| grows to ~1.3e6 s at the
+ * high-temperature end while the physical t there is ~4.6e-4 s, so relative
+ * error control is normalised by a value ~3e9 times too large exactly where
+ * accuracy is wanted. This is why BG_ODE_RTOL is 1e-14 rather than the 1e-11
+ * the abundance-only tuning above would suggest -- see its comment for the
+ * measurement and for the structural alternative.)
  * ------------------------------------------------------------------- */
 typedef struct { CPRBackground *bg; } CombinedBgCtx;
 
@@ -600,12 +626,24 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     double a_ini = cpr_bg_a_of_T(bg, Tstartcosmo);
     double a_fin = cpr_bg_a_of_T(bg, Tend); /* == a_end by construction */
 
-    bg->n_bg = bg->n_Tsol; /* same grid density for the t(a) sampling below */
-    double *lna_samp = CPR_XMALLOC(bg->n_bg * sizeof(double));
-    for (size_t i = 0; i < bg->n_bg; i++) {
-        double frac = (bg->n_bg == 1) ? 0.0 : (double)i / (double)(bg->n_bg - 1);
-        lna_samp[i] = log(a_ini) + frac * (log(a_fin) - log(a_ini));
-    }
+    /* Output grid: bg->lnT_sol itself, reversed. The background arrays used
+     * to be sampled on a uniform-in-log(a) grid (lna_samp) whose temperature
+     * was then recovered with cpr_bg_T_of_a -- the LINEAR (a, T) inverse,
+     * which carries a median relative error of 3.9e-06 at the default
+     * sampling_temperature_per_decade. That error landed directly in
+     * bg->Tg_vec, and hence in the n<->p weak-rate tables, which are tabulated
+     * on exactly this grid (see setup_weak_rates_standard).
+     *
+     * Sampling on lnT_sol instead makes Tg_vec exact by construction
+     * (Tg = exp(lnT_sol[j]), no inversion anywhere) and matches
+     * background.py's grid node for node -- Python samples on the same
+     * log-spaced temperature grid after its own Branch E port, so the two
+     * backends now tabulate the weak rates at identical temperatures.
+     *
+     * lnT_sol is T-ascending; the background arrays are contractually
+     * time-ascending, i.e. T-DESCENDING (background.h's Tg_asc comment), so
+     * the loop below walks it in reverse. */
+    bg->n_bg = bg->n_Tsol;
 
     /* t(T)/t(a): cfg->external_scale_factor still needs its own ODE here
      * (a(T) there is a closed-form algebraic function, not an ODE solution,
@@ -631,7 +669,7 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
         char *spl_err = NULL;
         if (cpr_cubic_spline_fit_notaknot(bg->a_sol_asc, bg->T_sol_asc, bg->n_Tsol,
                                            &T_of_a_smooth, &spl_err)) {
-            free(T_sol); free(lna_samp);
+            free(T_sol);
             *errmsg = spl_err;
             return 1;
         }
@@ -646,7 +684,7 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
                                 NULL, NULL, &terr);
         cpr_cubic_spline_free(&T_of_a_smooth);
         if (trc) {
-            dense_path_free(&tpath); free(T_sol); free(lna_samp);
+            dense_path_free(&tpath); free(T_sol);
             *errmsg = terr;
             return 1;
         }
@@ -679,24 +717,30 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     bg->Tnutau_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
     bg->Tnu_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
     for (size_t i = 0; i < bg->n_bg; i++) {
-        double a = exp(lna_samp[i]);
-        bg->a_vec[i] = a;
-        double Tg = cpr_bg_T_of_a(bg, a);
+        /* Reverse index: lnT_sol ascends in T, these arrays ascend in t. */
+        size_t j = bg->n_bg - 1 - i;
+        double lnT = bg->lnT_sol[j];
+        double Tg = exp(lnT);            /* exact -- no T(a) inversion */
         bg->Tg_vec[i] = Tg;
-        /* t(a): external mode reads the dedicated tpath at this lna_samp
-         * point directly (its own natural independent variable); the
-         * default mode instead reads the (shift-calibrated) trel off the
-         * combined a(T)/t(T) path at the corresponding lnT = log(Tg) (its
-         * natural independent variable) -- no extra ODE solve, just one
-         * more dense-output lookup on the path already built above, plus
-         * the constant shift computed once outside this loop. */
+
         if (have_tpath) {
+            /* external_scale_factor: a(T) is the closed-form NEVO table read,
+             * and tpath's independent variable is ln a, so convert. */
+            double a = cpr_bg_a_of_T(bg, Tg);
+            bg->a_vec[i] = a;
             double out1[1];
-            dense_path_eval(&tpath, lna_samp[i], out1);
+            dense_path_eval(&tpath, log(a), out1);
             bg->t_vec[i] = out1[0];
         } else {
+            /* Default: read BOTH components off the combined a(T)/t(T) path
+             * at this lnT -- its own natural independent variable. The scale
+             * factor comes straight from the state, a = exp(x - lnT) with
+             * x = ln(aT) (combined_bg_rhs), so it is the ODE's own solution
+             * rather than an interpolation of it; t is the shift-calibrated
+             * trel. One dense-output lookup serves both. */
             double out2[2];
-            dense_path_eval(&combined_path, log(Tg), out2);
+            dense_path_eval(&combined_path, lnT, out2);
+            bg->a_vec[i] = exp(out2[0] - lnT);
             bg->t_vec[i] = out2[1] + combined_t_shift;
         }
         bg->Tnue_vec[i] = cpr_nu_Tnue_of_Tg(&bg->nh, Tg);
@@ -709,7 +753,6 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     if (have_tpath) dense_path_free(&tpath);
     if (have_combined_path) dense_path_free(&combined_path);
     free(T_sol);
-    free(lna_samp);
 
     /* Tg_vec is time-ascending => T-descending; build the T-ascending
      * reverse for cpr_bg_t_of_T (see background.h's field comment). */
@@ -718,6 +761,20 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     for (size_t i = 0; i < bg->n_bg; i++) {
         bg->Tg_asc[i] = bg->Tg_vec[bg->n_bg - 1 - i];
         bg->t_by_Tg_asc[i] = bg->t_vec[bg->n_bg - 1 - i];
+    }
+
+    /* Log copies for the log-log query path (see background.h). Both t and T
+     * are strictly positive over the whole solved span, so no guard is
+     * needed. */
+    bg->ln_t_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->ln_Tg_vec = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->ln_Tg_asc = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    bg->ln_t_by_Tg_asc = CPR_XMALLOC(bg->n_bg * sizeof(double));
+    for (size_t i = 0; i < bg->n_bg; i++) {
+        bg->ln_t_vec[i] = log(bg->t_vec[i]);
+        bg->ln_Tg_vec[i] = log(bg->Tg_vec[i]);
+        bg->ln_Tg_asc[i] = log(bg->Tg_asc[i]);
+        bg->ln_t_by_Tg_asc[i] = log(bg->t_by_Tg_asc[i]);
     }
 
     bg->has_scale_factor = 1;
@@ -1000,6 +1057,7 @@ void cpr_background_free(CPRBackground *bg)
     if (bg->nh_owned) cpr_neutrino_history_free(&bg->nh);
     free(bg->t_vec); free(bg->a_vec); free(bg->Tg_vec); free(bg->Tnue_vec); free(bg->Tnumu_vec);
     free(bg->Tnutau_vec); free(bg->Tnu_vec); free(bg->Tg_asc); free(bg->t_by_Tg_asc);
+    free(bg->ln_t_vec); free(bg->ln_Tg_vec); free(bg->ln_Tg_asc); free(bg->ln_t_by_Tg_asc);
     free(bg->lnT_sol); free(bg->lna_sol); free(bg->a_sol_asc); free(bg->T_sol_asc);
     free(bg->t_asc); free(bg->T_by_t); free(bg->a_by_t);
     free(bg->T_asc); free(bg->t_by_T); free(bg->a_by_T);
@@ -1017,14 +1075,21 @@ double cpr_bg_T_of_t(const CPRBackground *bg, double t)
 {
     if (bg->kind == CPR_BG_CUSTOM)
         return cpr_interp_linear(bg->t_asc, bg->T_by_t, bg->n_custom, t, CPR_EXTRAP_LINEAR);
-    return cpr_interp_linear(bg->t_vec, bg->Tg_vec, bg->n_bg, t, CPR_EXTRAP_LINEAR);
+    /* Log-log: T(t) is a near power law (T ∝ t^-1/2 in radiation domination)
+     * and this runs on every nuclear-network RHS call -- see background.h's
+     * ln_* field comment and background.py's _loglog_interp1d. */
+    return exp(cpr_interp_linear(bg->ln_t_vec, bg->ln_Tg_vec, bg->n_bg,
+                                 log(t), CPR_EXTRAP_LINEAR));
 }
 
 double cpr_bg_t_of_T(const CPRBackground *bg, double T)
 {
     if (bg->kind == CPR_BG_CUSTOM)
         return cpr_interp_linear(bg->T_asc, bg->t_by_T, bg->n_custom, T, CPR_EXTRAP_LINEAR);
-    return cpr_interp_linear(bg->Tg_asc, bg->t_by_Tg_asc, bg->n_bg, T, CPR_EXTRAP_LINEAR);
+    /* Log-log, as cpr_bg_T_of_t above: t(T) ∝ T^-2 in radiation domination,
+     * so this is near-exact on the same nodes. */
+    return exp(cpr_interp_linear(bg->ln_Tg_asc, bg->ln_t_by_Tg_asc, bg->n_bg,
+                                 log(T), CPR_EXTRAP_LINEAR));
 }
 
 double cpr_bg_a_of_T(const CPRBackground *bg, double T)

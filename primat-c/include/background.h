@@ -98,6 +98,16 @@ typedef struct {
      * so cpr_bg_t_of_T keeps this reversed (T-ascending) copy instead of
      * reusing Tg_vec/t_vec directly. */
     double *Tg_asc, *t_by_Tg_asc;
+    /* Natural logs of the four arrays above, precomputed once at setup so
+     * cpr_bg_T_of_t / cpr_bg_t_of_T can interpolate in log-log space (both
+     * relations are near power laws over ~4.6 decades, so a straight line in
+     * log-log tracks them far better than one in linear space on the same
+     * nodes -- worst-case t(T) error 1.35e-05 -> 8.8e-07, typical ~1e-09).
+     * Precomputed rather than log()'d per call because cpr_bg_T_of_t runs on
+     * every nuclear-network RHS evaluation. CPR_BG_STANDARD only; the custom
+     * background takes its own branch in both query functions and leaves
+     * these NULL. Kept in lockstep with background.py's _loglog_interp1d. */
+    double *ln_t_vec, *ln_Tg_vec, *ln_Tg_asc, *ln_t_by_Tg_asc;
     int has_scale_factor;
     int has_heating_table;   /* CPR_BG_STANDARD && cfg->incomplete_decoupling */
 

@@ -841,8 +841,29 @@ def test_rates_columns_backend_parity(params, rtol):
     lo, hi = max(Tc.min(), Tpy.min()), min(Tc.max(), Tpy.max())
     mask = (Tc >= lo) & (Tc <= hi)
     order_py = np.argsort(Tpy)
+    # Per-column absolute floor, rather than one global atol.
+    #
+    # Several shipped rate tables are exactly 0 over most of the master T9 grid
+    # and switch on abruptly: a_n_p__Li6_g is 0 in 750 of its 1000 rows, its
+    # smallest *nonzero* tabulated rate being 2.2e-14. Right at that switch-on
+    # the linear interpolant straddles a hard zero, so a sub-ULP difference in
+    # the temperature each backend samples at flips the interpolated value
+    # between exactly 0 and ~2e-20. That is a threshold artefact of
+    # interpolating across an exact zero, not a rate disagreement, and no
+    # global atol expresses it well: these columns span from ~1e-20 to ~1e+8
+    # depending on the reaction.
+    #
+    # Scaling the floor to each column's own magnitude keeps the test strict
+    # where the rate matters. At 1e-12 of the column maximum the floor is
+    # ~2e-19 for a_n_p__Li6_g (absorbing the artefact) while remaining ~9
+    # orders of magnitude below that column's own smallest meaningful value,
+    # and it stays far under the rtol=5e-3 band for every large-rate column.
+    # (The previous global atol=1e-30 sat below every representable rate scale
+    # here, so it effectively demanded a purely relative comparison -- which
+    # cannot succeed across an exact zero.)
     for name in evo_c.rates:
         interp_py = interp1d(Tpy[order_py], evo_py.rates[name][order_py],
                              fill_value="extrapolate")(Tc)
+        col_atol = 1e-12 * float(np.max(np.abs(evo_c.rates[name][mask])))
         np.testing.assert_allclose(evo_c.rates[name][mask], interp_py[mask],
-                                   rtol=rtol, atol=1e-30, err_msg=name)
+                                   rtol=rtol, atol=col_atol, err_msg=name)

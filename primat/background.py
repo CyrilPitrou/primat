@@ -73,6 +73,58 @@ def _clamp_raw_weak_rate(rate):
     return np.where(rate < _WEAK_RATE_FLOOR, 0.0, rate)
 
 
+def _loglog_interp1d(x, y):
+    """Linear interpolant in (log x, log y), evaluated back in linear space.
+
+    For the background's time/temperature relations both variables are
+    strictly positive and vary as near-perfect power laws over many decades
+    (t ∝ T⁻² in radiation domination), so a straight line in log-log space
+    tracks them far better than one in linear space on the *same* nodes.
+    Measured on the default ``sampling_temperature_per_decade = 600`` grid,
+    switching ``t_of_T`` from linear to log-log cut its worst-case error from
+    1.35e-05 to 8.8e-07, and its typical error to ~1e-09 -- gains of 10³-10⁵×
+    at most temperatures. The residual peaks around 0.1-0.5 MeV, the e⁺e⁻
+    annihilation era, which is exactly where t(T) departs most from a power
+    law; nothing is lost there relative to the linear interpolant.
+
+    This matters beyond t_of_T: ``T_of_t`` is evaluated on *every* nuclear
+    network right-hand-side call, so its interpolation error enters the ODE
+    solution directly.
+
+    ``a_of_T`` already used this scheme (``np.exp(interp1d(log T))``) and was
+    correspondingly accurate; this helper simply makes that treatment shared
+    and explicit. Kept in lockstep with the C backend's log-log branch in
+    ``cpr_bg_t_of_T`` / ``cpr_bg_T_of_t``.
+
+    Args:
+        x: array-like, strictly positive, the abscissa nodes.
+        y: array-like, strictly positive, the ordinate nodes.
+
+    Returns:
+        Callable mapping x -> y, array-safe, extrapolating as a straight line
+        in log-log space (i.e. continuing the end power law, which is the
+        physically right behaviour here rather than the linear interpolant's
+        straight line in (x, y) -- see :meth:`Background.t_of_T`'s note on
+        out-of-range queries returning negative times).
+
+    Example:
+        >>> f = _loglog_interp1d([1.0, 2.0, 4.0], [1.0, 4.0, 16.0])  # y = x^2
+        >>> float(f(3.0))                                # doctest: +ELLIPSIS
+        9.0...
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    order = np.argsort(x)
+    ln_interp = interp1d(np.log(x[order]), np.log(y[order]),
+                         bounds_error=False, fill_value="extrapolate",
+                         kind='linear')
+
+    def _f(q):
+        return np.exp(ln_interp(np.log(q)))
+
+    return _f
+
+
 class Background(object):
     """Minimal interface for the cosmological background consumed by
     ``NuclearNetwork``.
@@ -671,7 +723,8 @@ class StandardBackground(Background):
             self._setup_neutrino_sector()
 
         # Step 2 - Build a(T)
-        a_of_T, T_sol, n_T_pts = self._build_a_of_T(nh, N_NEVO_of_Tg, Tend, Tstartcosmo)
+        a_of_T, T_sol, n_T_pts, dlnadlnT = self._build_a_of_T(
+            nh, N_NEVO_of_Tg, Tend, Tstartcosmo)
 
         # Publish a(T) as soon as it exists. _setup_LCDM's rho_CDM closure
         # reads self.a_of_T, and steps 3-4 below are the first thing to
@@ -682,15 +735,26 @@ class StandardBackground(Background):
         # the same object, harmlessly.
         self.a_of_T = a_of_T
 
-        # Steps 3-4 - Invert a(T) -> T(a), then integrate dt/d(ln a) = 1/H(a)
-        T_of_a, sol_t = self._invert_and_integrate_time(
-            a_of_T, T_sol, n_T_pts, Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg,
-            Tstartcosmo, Tend)
+        # Steps 3-4 - Cosmic time.
+        #
+        # Minimal mode integrates dt/d(ln T) = dlnadlnT(T)/H(T) straight over
+        # ln T (no a(T) inversion anywhere -- see _integrate_time_over_lnT for
+        # the accuracy argument and the C "Branch E" counterpart). Only
+        # external_scale_factor, which has no closed-form d(ln a)/d(ln T),
+        # still needs the historical invert-then-integrate-over-ln-a route.
+        if dlnadlnT is not None:
+            t_vec, Tg_vec, a_arr = self._integrate_time_over_lnT(
+                a_of_T, dlnadlnT, T_sol, Tnue_of_Tg, Tnumu_of_Tg,
+                Tnutau_of_Tg, Tstartcosmo)
+        else:
+            t_vec, Tg_vec, a_arr = self._invert_and_integrate_time(
+                a_of_T, T_sol, n_T_pts, Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg,
+                Tstartcosmo, Tend)
 
         # Step 5 - Sample on the common time grid; set instance attributes
         self._store_background_arrays(
-            sol_t, a_of_T, T_of_a, Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg,
-            N_NEVO_of_Tg)
+            t_vec, Tg_vec, a_arr, a_of_T, Tnue_of_Tg, Tnumu_of_Tg,
+            Tnutau_of_Tg, N_NEVO_of_Tg)
 
     def _setup_neutrino_sector(self):
         """Step 1 of :meth:`_setup_background_and_cosmo`: the neutrino-sector
@@ -735,11 +799,18 @@ class StandardBackground(Background):
 
         Returns
         -------
-        (a_of_T, T_sol, n_T_pts)
+        (a_of_T, T_sol, n_T_pts, dlnadlnT)
             ``a_of_T`` : the scale-factor callable (array-safe).
             ``T_sol``  : the temperature grid it was solved/sampled on.
             ``n_T_pts``: that grid's point count (reused by
             :meth:`_invert_and_integrate_time` for the log(a) sampling grid).
+            ``dlnadlnT``: scalar callable ``T -> d(ln a)/d(ln T_γ)``, the
+            entropy-conservation right-hand side, in *minimal* mode; ``None``
+            in ``external_scale_factor`` mode (where a(T) is an algebraic
+            table read, not an ODE solution, so no such closed form exists).
+            :meth:`_integrate_time_over_lnT` reuses it as the chain-rule
+            factor that lets t be integrated directly over ln T -- see that
+            method for why this matters.
         """
         cfg    = self.cfg
         thermo = self.plasma
@@ -780,6 +851,11 @@ class StandardBackground(Background):
 
             def a_of_T(T):
                 return K * nh.x_of_Tg(T)
+
+            # No entropy-conservation ODE in this mode, so no closed-form
+            # d(ln a)/d(ln T): the time integration falls back to the
+            # inverse-interpolation path (see _setup_background_and_cosmo).
+            dlnadlnT = None
         else:
             # --------------------------------------------------------------
             # minimal mode (default): solve the entropy-conservation ODE
@@ -790,13 +866,23 @@ class StandardBackground(Background):
             # ds/dT): this is exact and fast, so no numerical-derivative
             # fallback (numdifftools / finite differences) is needed.
             # --------------------------------------------------------------
-            def _dlnadlnT_NEVO(lnT, y):
-                T = np.exp(lnT)
+            def dlnadlnT(T):
+                """d(ln a)/d(ln T_γ) from EM entropy conservation with NEVO
+                heating: -(3 s̄ + T ds̄/dT) / (N_NEVO + 3 s̄), with s̄ = s/T³.
+
+                Scalar (not solve_ivp-shaped) so it can be reused verbatim as
+                the chain-rule factor in :meth:`_integrate_time_over_lnT`;
+                ``_dlnadlnT_NEVO`` below is the list-returning wrapper the
+                a(T) ODE needs.
+                """
                 s, ds_dT = thermo.spl_and_dspl_dT(T)
                 sb     = s / T**3
                 dsbdT  = ds_dT / T**3 - 3. * s / T**4   # d(s/T^3)/dT, chain rule
                 N = float(N_NEVO_of_Tg(T))
-                return [-(3. * sb + T * dsbdT) / (N + 3. * sb)]
+                return -(3. * sb + T * dsbdT) / (N + 3. * sb)
+
+            def _dlnadlnT_NEVO(lnT, y):
+                return [dlnadlnT(np.exp(lnT))]
 
             lna_end = np.log(a_end)
             _t_nevo_a0 = time.time()
@@ -814,17 +900,110 @@ class StandardBackground(Background):
             def a_of_T(T):
                 return np.exp(_lnalnT(np.log(T)))
 
-        return a_of_T, T_sol, n_T_pts
+        return a_of_T, T_sol, n_T_pts, dlnadlnT
+
+    def _integrate_time_over_lnT(self, a_of_T, dlnadlnT, T_sol, Tnue_of_Tg,
+                                 Tnumu_of_Tg, Tnutau_of_Tg, Tstartcosmo):
+        """Steps 3-4, *minimal* mode: integrate t directly over ln T_γ.
+
+        Why not over ln a (the historical formulation, kept in
+        :meth:`_invert_and_integrate_time` for ``external_scale_factor``):
+        integrating ``dt/d(ln a) = 1/H(T(a))`` needs ``T(a)``, i.e. the
+        *inverse* of a(T), which is only available as an interpolant over the
+        a(T) solve's nodes.  That interpolant is a **linear** ``interp1d`` in
+        (a, T) and carries a median relative error of 3.9e-06 at the default
+        ``sampling_temperature_per_decade = 600`` -- and because it sits
+        inside the ODE's right-hand side, that error caps t's accuracy no
+        matter how tight ``cfg.numerical_precision`` is.  The stored ``Tg_vec``
+        was then built by the *same* inverse interpolant, injecting it twice.
+        Measured consequence: t(T) carried ~1e-05 relative error, which
+        propagated to ~1e-06 in YP and D/H -- larger than the ODE tolerance
+        implies, and invisible under the cross-backend test tolerance.
+
+        Changing the independent variable to ln T removes the inversion
+        entirely.  By the chain rule,
+
+            dt/d(ln T) = dt/d(ln a) * d(ln a)/d(ln T) = dlnadlnT(T) / H(T)
+
+        whose right-hand side depends on T *only* -- and T is the integration
+        variable, so it is exact.  ``a`` enters only through H's CDM term, via
+        the log-log-accurate ``a_of_T`` (published by
+        :meth:`_setup_background_and_cosmo` before this runs), never through
+        an inverse lookup.  The output grid is ``T_sol`` itself, so ``Tg_vec``
+        is exact too.
+
+        This mirrors ``combined_bg_rhs`` ("Branch E") in
+        ``primat-c/src/background.c``, which integrates the same chain-rule
+        right-hand side over ``lnT``; the C co-integrates ``x = ln(aT)`` in the
+        same pass to avoid any a(T) lookup, which Python does not need because
+        step 2 has already produced an accurate ``a_of_T``.
+
+        Args:
+            a_of_T: scale-factor callable (array-safe), from step 2.
+            dlnadlnT: scalar callable ``T -> d(ln a)/d(ln T)``, from step 2.
+            T_sol: the temperature grid [MeV], ascending, from step 2.
+            Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg: flavour temperature
+                interpolants [MeV].
+            Tstartcosmo: cosmological start temperature [MeV], where the
+                radiation-domination boundary condition is applied.
+
+        Returns:
+            ``(t_vec, Tg_vec, a_arr)``: cosmic time [s] ascending, the photon
+            temperatures [MeV] it corresponds to (descending), and the scale
+            factor at those temperatures -- the three arrays
+            :meth:`_store_background_arrays` turns into the public
+            interpolants.
+        """
+        cfg = self.cfg
+
+        def Hubble_NEVO(Tg):
+            return self.Hubble(Tg, Tnue_of_Tg(Tg), Tnumu_of_Tg(Tg), Tnutau_of_Tg(Tg))
+
+        # Radiation-domination boundary condition t = 1/(2H), applied at
+        # T_start_cosmo where the universe is deep in the relativistic era.
+        # Same formula and same anchor point as the historical t(a) solve, so
+        # this reformulation changes the discretisation, not the physics.
+        t_ini = 1. / (2. * Hubble_NEVO(Tstartcosmo))
+
+        def _dtdlnT(lnT, y):
+            T = np.exp(lnT)
+            return [dlnadlnT(T) / Hubble_NEVO(T)]
+
+        # Integrate downward in temperature, from the boundary condition at
+        # T_start_cosmo to T_end, reporting on step 2's own grid reversed to
+        # descending order (t_eval must run in the integration direction).
+        lnT_desc = np.log(T_sol)[::-1]
+        _t_nevo_t0 = time.time()
+        sol_t = solve_ivp(_dtdlnT,
+                          [lnT_desc[0], lnT_desc[-1]],
+                          [t_ini],
+                          t_eval=lnT_desc,
+                          method='LSODA', rtol=cfg.numerical_precision, atol=1e-12)
+        if cfg.debug:
+            print((f"[bckg]  Finished t(T) solve in {time.time()-_t_nevo_t0:.2f} s "
+                   f"(status={sol_t.status}, nfev={sol_t.nfev})"), flush=True)
+
+        Tg_vec = np.exp(sol_t.t)          # descending T, exactly step 2's grid
+        t_vec  = sol_t.y[0].flatten()     # ascending t [s]
+        a_arr  = a_of_T(Tg_vec)
+        return t_vec, Tg_vec, a_arr
 
     def _invert_and_integrate_time(self, a_of_T, T_sol, n_T_pts, Tnue_of_Tg,
                                    Tnumu_of_Tg, Tnutau_of_Tg, Tstartcosmo, Tend):
         """Steps 3-4 of :meth:`_setup_background_and_cosmo`: invert a(T) ->
         T(a), then integrate dt/d(ln a) = 1/H(a).
 
-        Returns ``(T_of_a, sol_t)``: the T(a) interpolant and the raw
-        ``solve_ivp`` result for t(ln a) (consumed by
-        :meth:`_store_background_arrays` to build the final
-        t_vec/Tg_vec/... sampled arrays).
+        Used **only** for ``cfg.external_scale_factor=True``, where a(T) is an
+        algebraic read of the NEVO ``x`` column rather than an ODE solution,
+        so there is no closed-form ``d(ln a)/d(ln T)`` for the cheaper,
+        inversion-free route :meth:`_integrate_time_over_lnT` takes.  See that
+        method for what the ``T_of_a`` inversion below costs in accuracy
+        (~1e-05 in t(T)); the same caveat applies here, and the C backend's
+        ``dtdlna_rhs`` carries it in the same mode for the same reason.
+
+        Returns ``(t_vec, Tg_vec, a_arr)`` -- the same triple
+        :meth:`_integrate_time_over_lnT` returns, so
+        :meth:`_store_background_arrays` is agnostic to which path produced it.
         """
         cfg = self.cfg
 
@@ -860,21 +1039,26 @@ class StandardBackground(Background):
             print((f"[bckg]  Finished t(a) solve in {time.time()-_t_nevo_t0:.2f} s "
                    f"(status={sol_t.status}, nfev={sol_t.nfev})"), flush=True)
 
-        return T_of_a, sol_t
+        a_arr  = np.exp(sol_t.t)       # a values at ODE evaluation points
+        t_vec  = sol_t.y[0].flatten()  # corresponding t [s]
+        Tg_vec = T_of_a(a_arr)         # T_γ [MeV] (via the linear inverse)
+        return t_vec, Tg_vec, a_arr
 
-    def _store_background_arrays(self, sol_t, a_of_T, T_of_a, Tnue_of_Tg,
-                                  Tnumu_of_Tg, Tnutau_of_Tg, N_NEVO_of_Tg):
+    def _store_background_arrays(self, t_vec, Tg_vec, a_arr, a_of_T,
+                                  Tnue_of_Tg, Tnumu_of_Tg, Tnutau_of_Tg,
+                                  N_NEVO_of_Tg):
         """Step 5 of :meth:`_setup_background_and_cosmo`: sample onto the
         common time grid and set the public interpolant/array instance
         attributes (``t_vec``, ``Tg_vec``, ``t_of_T``, ``T_of_t``, ``a_of_T``,
         ``a_of_t``, ...) consumed by ``_setup_derived_cosmo``,
         ``_setup_weak_rates``, and the nuclear network's ``solve()``.
+
+        Takes the ``(t_vec, Tg_vec, a_arr)`` triple produced by whichever of
+        :meth:`_integrate_time_over_lnT` (minimal mode) or
+        :meth:`_invert_and_integrate_time` (``external_scale_factor``) ran,
+        so this step is identical either way.
         """
         cfg = self.cfg
-
-        a_arr  = np.exp(sol_t.t)       # a values at ODE evaluation points
-        t_vec  = sol_t.y[0].flatten()  # corresponding t [s]
-        Tg_vec = T_of_a(a_arr)         # T_γ [MeV]
 
         Tnue_vec   = Tnue_of_Tg(Tg_vec)
         Tnumu_vec  = Tnumu_of_Tg(Tg_vec)
@@ -889,14 +1073,25 @@ class StandardBackground(Background):
         self.Tnumu_vec  = Tnumu_vec
         self.Tnutau_vec = Tnutau_vec
 
-        self.t_of_T = interp1d(Tg_vec, t_vec, bounds_error=False,
-                                fill_value="extrapolate", kind='linear')
-        self.T_of_t = interp1d(t_vec, Tg_vec, bounds_error=False,
-                                fill_value="extrapolate", kind='linear')
+        # Log-log rather than linear: both relations are near power laws over
+        # ~4.6 decades, and T_of_t sits in every nuclear-network RHS call.
+        # See _loglog_interp1d for the measured gain (worst case 1.35e-05 ->
+        # 8.8e-07 on t_of_T, typical ~1e-09).
+        self.t_of_T = _loglog_interp1d(Tg_vec, t_vec)
+        self.T_of_t = _loglog_interp1d(t_vec, Tg_vec)
         self.TnuofT = interp1d(Tg_vec, Tnu_avg_vec, bounds_error=False,
                                 fill_value="extrapolate", kind='linear')
         self.a_of_T = a_of_T   # already vectorised: np.exp(interp1d(log T))
-        self.T_of_a = T_of_a
+        # Public T(a), rebuilt here from the *final* (a, T) pairs rather than
+        # taken from the time integration. In minimal mode those pairs are
+        # exact (Tg_vec is step 2's own grid, a_arr = a_of_T(Tg_vec) with the
+        # log-log a_of_T), so this inverse no longer inherits the error that
+        # the historical t(a) route injected -- see
+        # :meth:`_integrate_time_over_lnT`. Kept a linear interpolant, matching
+        # background.h's "T_of_a is always a linear interpolant" contract and
+        # the C backend's cpr_bg_T_of_a.
+        self.T_of_a = interp1d(a_arr, Tg_vec, bounds_error=False,
+                                fill_value="extrapolate", kind='linear')
         self.a_of_t = interp1d(t_vec, a_arr, bounds_error=False,
                                 fill_value=(a_arr[0], a_arr[-1]))
         self.t_of_a = interp1d(a_arr, t_vec, bounds_error=False,
