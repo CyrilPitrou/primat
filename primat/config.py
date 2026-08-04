@@ -49,7 +49,7 @@ DEFAULT_PARAMS: dict = {
     # ---- electromagnetic plasma -------------------
     "QED_corrections":            True,  # Whether to include QED interaction corrections to the EM plasma equation of state.
     "n_electron_table":           2000,  # number of log-spaced grid points for the electron-thermo (rho_e/p_e and derivatives) tables
-    "recompute_electron_thermo":  False, # If False, load cache_plasma_weak/plasma/electron_thermo_cache.txt (via the cache_dir overlay) when its fingerprint matches; otherwise (or if True) recompute and overwrite it. See plasma.Plasma._build_electron_tables.
+    "recompute_electron_thermo":  False, # If False, load cache_plasma_weak/plasma/electron_thermo_<hash>.txt (via the cache_dir overlay) when it exists; otherwise (or if True) recompute and write it. <hash> fingerprints n_electron_table, T_start_cosmo_MeV and the physical constants, so configurations coexist instead of overwriting one another. See plasma.Plasma._build_electron_tables.
     "recompute_qed_corrections":  False, # True: always compute analytically and overwrite cache_plasma_weak/plasma/QED_*.txt (via the cache_dir overlay); False: load from files if present, otherwise compute on the fly without saving
 
     # ---- spectral distortions ---------------------
@@ -855,6 +855,42 @@ def _generate_config_type_annotations() -> str:
     return "\n".join(lines)
 
 
+def _frozen_constant_message(name: str, value) -> str:
+    """Build the error text for an attempted override of a frozen constant.
+
+    Single source of the message shared by the two places that reject one:
+    :meth:`PRIMATConfig.__setattr__` (which catches the assignment as it
+    happens) and :meth:`PRIMATConfig.validate_frozen_constants` (the
+    defence-in-depth re-check at construction and at backend dispatch, which
+    also catches an ``object.__setattr__`` bypass).  See
+    ``validate_frozen_constants`` for the physics/ABI reasoning.
+
+    Parameters
+    ----------
+    name : str
+        The constant's attribute name, e.g. ``"me"`` or ``"alphaem"``.
+    value : object
+        The rejected value, quoted back to the user so the message names both
+        what was attempted and what the frozen value is.
+
+    Returns
+    -------
+    str
+        The full ``ValueError`` message.
+    """
+    return (
+        f"{name} was overridden on this PRIMATConfig ({value!r} instead of the "
+        f"frozen {getattr(CONST, name)!r}), but {name} is not a run-time "
+        "parameter: the C backend reads its own compiled-in g_const and would "
+        "ignore the override entirely, so the two backends would silently "
+        "disagree on the same run. To change this constant, edit BOTH "
+        "primat/constants.py and primat-c/src/constants.c -- constants_hash "
+        "(cache_utils) then invalidates every cache computed with the old "
+        "value. Making it a real run-time parameter is scoped in "
+        "docs/superpowers/specs/"
+        "2026-08-04-cache-parity-and-constants-fingerprint-design.md, section 6.")
+
+
 def _validate_param_value(key: str, value):
     """Type-, choice-, and range-check one user-supplied ``DEFAULT_PARAMS``
     override, raising an immediate, self-explanatory error on any mismatch.
@@ -1182,6 +1218,7 @@ class PRIMATConfig:
         self._detect_optional_libraries()
         self._validate_nevo_files()
         self._validate_physics_flag_combos()
+        self.validate_frozen_constants()
 
         # Derived cosmological quantity (depends on Omegabh2)
         self._update_derived()
@@ -1361,6 +1398,78 @@ class PRIMATConfig:
                     "weak rates; spectral distortions are not supported).",
                     stacklevel=2,
                 )
+
+    # Physical constants that are NOT run-time parameters but which a caller
+    # might plausibly try to override by poking the attribute, and whose value
+    # reaches the C backend only through primat-c's own `g_const` -- never
+    # through the config that crosses the ABI. Overriding either one is
+    # therefore honoured by most of the Python code and by *none* of the C
+    # code, which is a silent backend disagreement rather than a feature.
+    # See validate_frozen_constants for the full story and the supported route.
+    _FROZEN_CONSTANT_GUARDS = ("me", "alphaem")
+
+    def validate_frozen_constants(self):
+        """Raise if a frozen physical constant has been overridden on this config.
+
+        ``me`` and ``alphaem`` are class attributes copied from
+        :data:`primat.constants.CONST`, not ``DEFAULT_PARAMS`` keys.  Handing
+        them in as ``params={"me": ...}`` hits the unknown-key path and is
+        warned-and-ignored on both backends -- consistent, if unhelpful.  A
+        direct attribute poke is the dangerous case::
+
+            cfg = PRIMATConfig()
+            cfg.me = 0.6          # honoured by primat/, invisible to primat-c/
+
+        The Python solver reads ``cfg.me`` in the plasma integrands, the weak
+        rates and the background, so it would dutifully use 0.6; the C solver
+        reads its own process-wide ``g_const.me``, which no config can reach,
+        so it would keep using 0.51099895.  The same run would then give two
+        different answers depending only on the backend -- and, because
+        ``constants_hash`` (:func:`primat.cache_utils.constants_hash`) hashes
+        ``CONST`` rather than ``cfg``, both would agree on a cache key that
+        describes neither.  Failing loudly here is the only honest option.
+
+        Making the two genuinely user-settable is real work, deliberately left
+        out of this change: it means adding them to ``DEFAULT_PARAMS``,
+        ``PARAM_GROUPS`` and the template generator, regenerating both param
+        templates, and rewiring roughly thirty ``g_const.*`` read sites on the C
+        side -- several in functions that have no ``cfg`` in scope at all.  The
+        design note for that work is
+        ``docs/superpowers/specs/2026-08-04-cache-parity-and-constants-fingerprint-design.md``
+        (§6, "Deferred: making me/alphaem user-settable").  Until then, the
+        supported way to change a constant is to edit *both*
+        ``primat/constants.py`` and ``primat-c/src/constants.c`` -- which
+        ``constants_hash`` now detects, correctly invalidating every cache.
+
+        :meth:`__setattr__` already rejects such an assignment as it happens,
+        which is where a user normally meets this and where the traceback is
+        most useful.  This method is the defence-in-depth re-check, run at the
+        end of :meth:`__init__`: it catches the routes that bypass
+        ``__setattr__`` entirely -- a direct ``object.__setattr__``, a subclass
+        overriding a constant as a class attribute, or an unpickled config.
+        Between them the two cover every config that can reach a backend:
+        ``backend.run_bbn``/``run_mc`` build theirs here, from ``params``, so
+        it is validated at construction, and ``params={"me": ...}`` never sets
+        the attribute in the first place (it is not a ``DEFAULT_PARAMS`` key,
+        so it takes the unknown-key warn-and-ignore path on both backends).
+
+        Raises
+        ------
+        ValueError
+            If ``self.me`` or ``self.alphaem`` differs from ``CONST``'s value.
+
+        Example
+        -------
+            >>> cfg = PRIMATConfig()
+            >>> cfg.me = 0.6
+            >>> cfg.validate_frozen_constants()      # doctest: +SKIP
+            ValueError: me was overridden on this PRIMATConfig (0.6 instead of
+            the frozen 0.51099895), but me is not a run-time parameter ...
+        """
+        for name in self._FROZEN_CONSTANT_GUARDS:
+            current = getattr(self, name)
+            if current != getattr(CONST, name):
+                raise ValueError(_frozen_constant_message(name, current))
 
     def _validate_dir_field(self, field: str):
         """Eagerly validate one directory-valued override and record its
@@ -1778,6 +1887,15 @@ class PRIMATConfig:
         elif name.startswith("delta_"):
             object.__getattribute__(self, 'delta_rxn')[name[6:]] = float(value)
         else:
+            # Frozen physical constants that the C backend reads from its own
+            # compiled-in g_const and that no config can carry across the ABI:
+            # reject the assignment where it happens, so the traceback points at
+            # the offending line rather than at a later divergence between the
+            # two backends. validate_frozen_constants explains why and what the
+            # supported route is; it also re-checks at construction and at
+            # backend dispatch, covering an object.__setattr__ bypass.
+            if name in self._FROZEN_CONSTANT_GUARDS and value != getattr(CONST, name):
+                raise ValueError(_frozen_constant_message(name, value))
             if name in _PATH_PARAMS:
                 # Normalize "~" immediately so both direct assignment and
                 # --set KEY=VALUE route through the same resolved path.

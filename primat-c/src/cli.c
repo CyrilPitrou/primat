@@ -17,13 +17,19 @@
 #include <mach-o/dyld.h>
 #endif
 
-/* Matches "nTOp_*.txt" (the weak-rate cache naming convention; thermal
- * caches are "nTOp_thermal_*.txt" and match the same glob, exactly as
- * primat.cache_utils.list_weak_cache_files globs both with one pattern). */
-static int is_weak_cache_name(const char *name)
+/* Matches "<prefix>*.txt" for one of the hash-named cache families, mirroring
+ * primat.cache_utils._CACHE_PREFIXES:
+ *   weak/   "nTOp_"            (thermal caches are "nTOp_thermal_*.txt" and
+ *                               match the same prefix, as in Python)
+ *   plasma/ "electron_thermo_" (hash-named since configurations stopped
+ *                               evicting one another)
+ * The fixed-name QED pressure tables are deliberately not matched by any
+ * prefix: they cannot proliferate, so there is nothing to clean. */
+static int is_cache_name(const char *name, const char *prefix)
 {
-    return strncmp(name, "nTOp_", 5) == 0
-        && strlen(name) > 4 && strcmp(name + strlen(name) - 4, ".txt") == 0;
+    size_t plen = strlen(prefix), nlen = strlen(name);
+    return strncmp(name, prefix, plen) == 0
+        && nlen > 4 && strcmp(name + nlen - 4, ".txt") == 0;
 }
 
 static void print_credits(void)
@@ -47,12 +53,17 @@ static void print_credits(void)
           stdout);
 }
 
-static int list_or_clear_weak_cache(const CPRConfig *cfg, int clear)
+/* Counts (and optionally deletes) the hash-named cache files of ONE family:
+ * `subdir` is "weak" or "plasma", `prefix` the matching basename prefix.
+ * Mirrors primat.cache_utils.list_cache_files/clear_cache restricted to a
+ * single subdir, which is how cli.py reports the two counts separately. */
+static int list_or_clear_cache(const CPRConfig *cfg, const char *subdir,
+                                const char *prefix, int clear)
 {
-    /* Overlay-aware: the writable weak cache dir is cache_dir/weak if set,
-     * else <data_dir>/cache_plasma_weak/weak. */
+    /* Overlay-aware: the writable cache dir is cache_dir/<subdir> if set,
+     * else <data_dir>/cache_plasma_weak/<subdir>. */
     char dir_path[CPR_PATH_BUF_LEN2];
-    cpr_config_cache_write_dir(cfg, "weak", dir_path, sizeof(dir_path));
+    cpr_config_cache_write_dir(cfg, subdir, dir_path, sizeof(dir_path));
 
     DIR *d = opendir(dir_path);
     if (!d) {
@@ -62,7 +73,7 @@ static int list_or_clear_weak_cache(const CPRConfig *cfg, int clear)
     int n = 0;
     struct dirent *ent;
     while ((ent = readdir(d)) != NULL) {
-        if (!is_weak_cache_name(ent->d_name))
+        if (!is_cache_name(ent->d_name, prefix))
             continue;
         n++;
         if (clear) {
@@ -221,12 +232,15 @@ static void usage(const char *prog)
            "                        short summary.\n"
            "  --verbose             Enable internal progress messages (timings,\n"
            "                        cache hits, ...).\n"
-           "  --cache-info          Print the number of cached n<->p weak-rate files\n"
-           "                        and exit, without running a solve.\n"
-           "  --cache-clear         Delete every cached n<->p weak-rate file and exit,\n"
-           "                        without running a solve. The cache is always\n"
-           "                        safely regenerable (seconds per configuration for\n"
-           "                        the plain rates, minutes for the thermal ones).\n"
+           "  --cache-info          Print the number of cached hash-named files --\n"
+           "                        n<->p weak-rate and e+- thermodynamic -- and exit,\n"
+           "                        without running a solve.\n"
+           "  --cache-clear         Delete every cached n<->p weak-rate and e+-\n"
+           "                        thermodynamic file and exit, without running a\n"
+           "                        solve. The cache is always safely regenerable\n"
+           "                        (seconds per configuration for the plain rates and\n"
+           "                        the electron-thermo tables, minutes for the thermal\n"
+           "                        ones).\n"
            "  --ini PATH            Load parameters from an INI file (applied after\n"
            "                        defaults, before named flags and --set).\n"
            "  --data_dir PATH       Replace the entire data tree (NEVO/, nuclear/,\n"
@@ -756,13 +770,22 @@ int cpr_cli_main(int argc, char **argv)
     }
 
     if (cache_info || cache_clear) {
-        int n = list_or_clear_weak_cache(&cfg, cache_clear);
-        char wdir[CPR_PATH_BUF_LEN2];
+        /* Both hash-named families, broken down per tree so the user can see
+         * which one is accumulating -- same wording as cli.py. */
+        int n_weak = list_or_clear_cache(&cfg, "weak", "nTOp_", cache_clear);
+        int n_plasma = list_or_clear_cache(&cfg, "plasma", "electron_thermo_",
+                                            cache_clear);
+        char wdir[CPR_PATH_BUF_LEN2], pdir[CPR_PATH_BUF_LEN2];
         cpr_config_cache_write_dir(&cfg, "weak", wdir, sizeof(wdir));
+        cpr_config_cache_write_dir(&cfg, "plasma", pdir, sizeof(pdir));
         if (cache_clear)
-            printf("Removed %d cached weak-rate file(s) from %s/.\n", n, wdir);
-        else
-            printf("%d cached weak-rate file(s) in %s/.\n", n, wdir);
+            printf("Removed %d cached file(s): %d weak-rate from %s/, "
+                   "%d electron-thermo from %s/.\n",
+                   n_weak + n_plasma, n_weak, wdir, n_plasma, pdir);
+        else {
+            printf("%d cached weak-rate file(s) in %s/.\n", n_weak, wdir);
+            printf("%d cached electron-thermo file(s) in %s/.\n", n_plasma, pdir);
+        }
         cpr_config_free(&cfg);
         return 0;
     }

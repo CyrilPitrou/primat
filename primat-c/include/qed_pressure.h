@@ -31,6 +31,7 @@
 #define CPRIMAT_QED_PRESSURE_H
 
 #include <stddef.h>
+#include "cache.h"   /* CPRFPField, for cpr_qed_fingerprint below */
 
 /* Fermi-Dirac phase-space integral I01(x) [dimensionless]:
  *
@@ -99,6 +100,24 @@ int cpr_qed_compute_tables(double T_min, double T_max, size_t n_pts,
 
 void cpr_qed_tables_free(CPRQEDTables *t);
 
+/* Builds the fingerprint of the two QED pressure-correction cache files,
+ * mirroring qed_pressure.qed_fingerprint(T_min, T_max, n_pts) field for
+ * field: {format_version, constants_hash, T_min, T_max, n_pts}. `out` must
+ * have room for 5 fields; returns the number written (always 5).
+ *
+ * The tables are a function of exactly two things -- the physical constants
+ * entering the integrands (alpha, me, covered by cpr_constants_hash) and the
+ * grid they were evaluated on -- so those are what the fingerprint records.
+ * Nothing else about a run changes dP_a/dP_e3, which is also why these two
+ * files keep FIXED names rather than hash-named ones: they cannot proliferate
+ * the way nTOp_<hash>.txt does. A mismatch makes plasma.c recompute (~0.3 s)
+ * and overwrite.
+ *
+ * Field .key pointers are static literals; the constants_hash value points at
+ * cpr_constants_hash's process-lifetime static buffer. Nothing to free. */
+size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
+                            CPRFPField *out);
+
 /* Writes data/plasma/QED_pressure_correction_e2.txt and QED_pressure_correction_e3.txt: two 4-column
  * files, one per order in e, each with columns
  *   T [MeV]  dP [MeV^4]  d(dP)/dT [MeV^3]  d2(dP)/dT2 [MeV^2]
@@ -106,9 +125,15 @@ void cpr_qed_tables_free(CPRQEDTables *t);
  * [O(e^3)]) in the same %.6E whitespace-separated format Python's
  * save_qed_tables produces (plasma.c's "file mode" loader reads them back)
  * -- so a recompute-and-save cycle through this function is byte-for-byte
- * interchangeable with the Python one. `plasma_dir` is the path to
- * data/plasma/ (no trailing slash required). Returns 0 on success,
- * nonzero with *errmsg set (caller frees) on a file-write failure. */
-int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **errmsg);
+ * interchangeable with the Python one. Each file also carries the
+ * cpr_qed_fingerprint header lines, byte-identical to Python's, which is what
+ * makes the cache shared between the two backends rather than merely
+ * compatible. `T_min`/`T_max`/`n_pts` are the grid the tables were computed on
+ * and must be the same values passed to cpr_qed_compute_tables, since they are
+ * fingerprint fields. `plasma_dir` is the path to data/plasma/ (no trailing
+ * slash required). Returns 0 on success, nonzero with *errmsg set (caller
+ * frees) on a file-write failure. */
+int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir,
+                         double T_min, double T_max, size_t n_pts, char **errmsg);
 
 #endif /* CPRIMAT_QED_PRESSURE_H */

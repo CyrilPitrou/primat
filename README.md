@@ -304,27 +304,46 @@ there is no recompute penalty for the configurations that ship pre-cached). A
 cache-write failure is never fatal in any case: the run completes with the
 correct in-memory values and prints a warning pointing at `cache_dir`.
 
-**Working from a git checkout (`cache_dir` again).** With `cache_dir` unset,
-recomputed caches are written back *into the package tree* — which, in a
-checkout, is the version-controlled `primat/data/` directory. Two consequences
-worth knowing about:
+**Working from a git checkout.** With `cache_dir` unset, recomputed caches are
+written back *into the package tree* — which, in a checkout, is the
+version-controlled `primat/data/` directory. Both regenerable cache families now
+carry their fingerprint hash **in the filename**:
 
-- A run whose fingerprint misses the shipped caches leaves your working tree
-  dirty: `git status` will show a modified file under
-  `primat/data/cache_plasma_weak/` that you never edited.
-- The two cache families behave differently on a miss. Weak-rate files carry
-  the fingerprint hash *in the filename*, so configurations coexist peacefully.
-  The plasma electron-thermo cache is a single fixed filename
-  (`electron_thermo_cache.txt`) with the fingerprint only in its *header*, so
-  each configuration overwrites the previous one. Alternating between two
-  configurations that disagree on any of `n_electron_table` or
-  `T_start_cosmo_MeV` therefore makes them evict each other, and both pay the
-  recompute every time.
+- `cache_plasma_weak/weak/nTOp_<hash>.txt` (and `nTOp_thermal_<hash>.txt`)
+- `cache_plasma_weak/plasma/electron_thermo_<hash>.txt`
 
-Neither affects the correctness of any result — the fingerprint check means a
-mismatched cache is never *used*, only rebuilt. But if you run primat from a
-checkout with anything other than the default configuration, set `cache_dir` to
-a scratch directory and both problems go away.
+so configurations coexist instead of evicting one another. A run with a
+non-default `n_electron_table` or `T_start_cosmo_MeV` adds its *own* file rather
+than overwriting the shipped one, and alternating between two configurations
+costs nothing after the first run of each. Both families are `.gitignore`d for
+newly generated files, so a non-default run no longer dirties your working tree
+either. (Earlier versions gave the electron-thermo cache a single fixed
+filename with the fingerprint only in its header; that is what used to make
+configurations evict each other and leave `git status` showing a modified file
+you never edited.)
+
+The two QED plasma-pressure tables keep fixed filenames — nothing user-facing
+varies for them, so they cannot proliferate — but they now carry a fingerprint
+header too, and are rebuilt if it does not match.
+
+**What invalidates a cache.** Every fingerprint includes a `constants_hash`:
+the hash of the entire frozen physical-constants struct (`primat/constants.py`,
+mirrored by `primat-c/src/constants.c`). Editing any constant — `me`,
+`alphaem`, `gA`, `mn`, `mp`, `Vud`, the proton charge radius, the anomalous
+magnetic moments, `GF`, … — therefore invalidates every cache computed with the
+old value, on both backends at once. Before this existed, such an edit silently
+reused the stale tables. The hash covers all 26 fields rather than a per-cache
+list of the ones each table actually consumes: over-invalidating merely costs a
+recompute, whereas under-invalidating returns a wrong answer with no warning.
+
+Note that `me` and `alphaem` are *not* run-time parameters — the C backend reads
+them from its own compiled-in constants, which no config can reach — so
+attempting to override either on a `PRIMATConfig` raises rather than diverging
+silently between backends. To change one, edit both `constants.py` and
+`constants.c`; `constants_hash` then takes care of the caches.
+
+None of this affects the correctness of any result — the fingerprint check means
+a mismatched cache is never *used*, only rebuilt.
 
 **Typical workflow for a high-precision study:**
 ```python

@@ -176,7 +176,8 @@ static int write_one_qed_file(const char *path, const char *src_tag,
                                const char *col_hdr,
                                const double *T, const double *dP,
                                const double *ddP, const double *d2dP,
-                               size_t n, char **errmsg)
+                               size_t n, const char *fp_hash, const char *fp_json,
+                               char **errmsg)
 {
     FILE *fp = fopen(path, "w");
     if (!fp) {
@@ -189,17 +190,56 @@ static int write_one_qed_file(const char *path, const char *src_tag,
     fprintf(fp, "# %s\n", phys_tag);
     fprintf(fp, "# Reference: %s\n", ref_tag);
     fprintf(fp, "# %s\n", col_hdr);
+    /* Fingerprint lines last, in the same order and spelling
+     * cache_utils.write_cache_with_fingerprint emits (physics/column header
+     * block first, then the two fingerprint lines) -- so the file this writes
+     * and the file Python writes are byte-identical, and either backend's
+     * reader accepts the other's output. */
+    fprintf(fp, "# fingerprint_hash: %s\n", fp_hash);
+    fprintf(fp, "# fingerprint: %s\n", fp_json);
     for (size_t i = 0; i < n; i++)
         fprintf(fp, "%.6E %.6E %.6E %.6E\n", T[i], dP[i], ddP[i], d2dP[i]);
     fclose(fp);
     return 0;
 }
 
-int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **errmsg)
+/* QED_FORMAT_VERSION in qed_pressure.py -- see its comment for the changelog
+ * (v1: first fingerprinted generation; before it the tables carried no
+ * fingerprint at all, so one computed with a different alpha/me or a different
+ * T grid was loaded silently). */
+#define QED_FORMAT_VERSION 1
+
+size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
+                            CPRFPField *out)
+{
+    size_t n = 0;
+    out[n++] = (CPRFPField){"format_version",
+                            { CPR_INT, { .i = QED_FORMAT_VERSION } }};
+    /* Covers alpha and me -- and, deliberately, the whole constants struct;
+     * see cache_utils.constants_hash for why over-invalidating is the safe
+     * side of that trade. */
+    out[n++] = (CPRFPField){"constants_hash",
+                            { CPR_STRING, { .s = cpr_constants_hash() } }};
+    out[n++] = (CPRFPField){"T_min",  { CPR_DOUBLE, { .d = T_min } }};
+    out[n++] = (CPRFPField){"T_max",  { CPR_DOUBLE, { .d = T_max } }};
+    out[n++] = (CPRFPField){"n_pts",  { CPR_INT,    { .i = (long)n_pts } }};
+    return n; /* 5 entries */
+}
+
+int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir,
+                         double T_min, double T_max, size_t n_pts, char **errmsg)
 {
     char path_e2[1024], path_e3[1024];
     snprintf(path_e2, sizeof(path_e2), "%s/QED_pressure_correction_e2.txt", plasma_dir);
     snprintf(path_e3, sizeof(path_e3), "%s/QED_pressure_correction_e3.txt", plasma_dir);
+
+    /* Both files describe the same grid, so they share one fingerprint --
+     * they are always generated together and summed column-by-column at point
+     * of use (mirrors save_qed_tables in qed_pressure.py). */
+    CPRFPField fields[5];
+    size_t nf = cpr_qed_fingerprint(T_min, T_max, n_pts, fields);
+    char *fp_json = cpr_fingerprint_json(fields, nf);
+    char *fp_hash = cpr_sha256_hex16(fp_json);
 
     /* Create the target dir tree on demand: when redirected to a fresh
      * cache_dir the plasma/ subdir may not exist yet. */
@@ -209,21 +249,24 @@ int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **er
         if (*p == '/') { *p = '\0'; mkdir(mkdir_cmd, 0755); *p = '/'; }
     }
 
-    if (write_one_qed_file(path_e2,
+    int rc = write_one_qed_file(path_e2,
             "CPRIMAT qed_pressure.c -- QED plasma-pressure correction delta_P_a(T)",
             "delta_P_a: O(e^2), one-loop (Frenkel-Galitskii-Migdal)",
             "Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPa",
             "T [MeV]       dP_a [MeV^4]      d(dP_a)/dT [MeV^3]  d2(dP_a)/dT2 [MeV^2]",
-            t->T, t->dP_e2, t->d_dP_e2_dT, t->d2_dP_e2_dT2, t->n, errmsg))
-        return 1;
+            t->T, t->dP_e2, t->d_dP_e2_dT, t->d2_dP_e2_dT2, t->n,
+            fp_hash, fp_json, errmsg);
 
-    if (write_one_qed_file(path_e3,
+    if (rc == 0)
+        rc = write_one_qed_file(path_e3,
             "CPRIMAT qed_pressure.c -- QED plasma-pressure correction delta_P_e3(T)",
             "delta_P_e3: O(e^3), ring/plasmon (Blaizot-Zinn-Justin)",
             "Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPe3",
             "T [MeV]       dP_e3 [MeV^4]     d(dP_e3)/dT [MeV^3]  d2(dP_e3)/dT2 [MeV^2]",
-            t->T, t->dP_e3, t->d_dP_e3_dT, t->d2_dP_e3_dT2, t->n, errmsg))
-        return 1;
+            t->T, t->dP_e3, t->d_dP_e3_dT, t->d2_dP_e3_dT2, t->n,
+            fp_hash, fp_json, errmsg);
 
-    return 0;
+    free(fp_json);
+    free(fp_hash);
+    return rc;
 }

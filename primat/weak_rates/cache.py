@@ -13,7 +13,7 @@ import os
 
 import numpy as np
 
-from ..cache_utils import fingerprint_hash, resolve_cache_file
+from ..cache_utils import constants_hash, fingerprint_hash, resolve_cache_file
 
 __all__ = ['WEAK_RATE_FORMAT_VERSION', '_WEAK_RATE_BG_FIELDS', '_THERMAL_BG_FIELDS',
            'n_points_per_decade', '_thermal_fingerprint', '_weak_rate_fingerprint',
@@ -65,7 +65,23 @@ __all__ = ['WEAK_RATE_FORMAT_VERSION', '_WEAK_RATE_BG_FIELDS', '_THERMAL_BG_FIEL
 #     regression tolerance, so it cannot be treated as cache-neutral.
 # Every v1..v3 cache file is invalidated by this bump; the shipped tables were
 # re-keyed in place (same numbers, new hash-named filenames and headers).
-WEAK_RATE_FORMAT_VERSION = 4
+# v5: no *physical constant* was keyed by any fingerprint. Both tables here are
+# explicit functions of primat.constants.CONST -- the n<->p rate integrands read
+# me, alphaem, mn, mp, gA, Vud, radproton, kappa_n/p and GF, and the CCRTh
+# correction is itself O(alphaem) -- yet none of those 26 values appeared in the
+# hashed dict. Editing one of them in constants.py (or in the C mirror,
+# primat-c/src/constants.c) therefore reloaded rates computed with the OLD
+# value: not a slow run, a silently wrong answer, with the stale file still
+# advertising a matching fingerprint. v5 adds a single `constants_hash` field --
+# the hash of the whole constants struct (cache_utils.constants_hash; the C
+# backend computes the identical value via cpr_constants_hash) -- to BOTH
+# fingerprints below, so any constants edit invalidates every weak-rate and
+# thermal cache file at once. The same field is added in the same change to the
+# other two fingerprinted caches (electron thermo and, newly fingerprinted, the
+# QED pressure tables), so that one re-key covers all of them.
+# As in v4, the shipped tables were re-keyed in place: numbers untouched, only
+# the hash-named filenames and the header lines changed.
+WEAK_RATE_FORMAT_VERSION = 5
 
 # Config fields entering the weak-rate fingerprint (nTOp_<hash>.txt).
 # DeltaNeff is deliberately NOT listed: it only shifts the time-temperature
@@ -135,6 +151,44 @@ _WEAK_RATE_BG_FIELDS = [
 # run silently reused the xi_e = 0 table (and, on a cold cache, wrote its own
 # xi_e-specific numbers under the filename standard runs then load).
 #
+# PROVENANCE CAVEAT (thermal cache only). The CCRTh table is a Monte-Carlo
+# (vegas) estimate, and the shipped nTOp_thermal_<hash>.txt files were produced
+# by a Python run whose vegas was UNSEEDED. Python's vegas is now seeded
+# deterministically (weak_rates/corrections.py's _vegas_rng, mirroring
+# primat-c/src/weak_rates.c's th_vegas_seed), so from here on a Python
+# recompute reproduces *itself* exactly.
+#
+# It does not reproduce the *shipped file* exactly, and cannot: the shipped
+# numbers came from a random stream that no longer exists. So a cache hit and a
+# fresh recompute of the same configuration -- same hash, same fingerprint --
+# can differ by the MC noise floor. That is inherent to caching a Monte-Carlo
+# integral, not a defect in the fingerprint: the fingerprint's job is to say
+# "this file describes THIS configuration", which remains true.
+#
+# Measured (2026-08-04), recomputing the default shipped table
+# (nTOp_thermal_c7da75afa7c0bf3b.txt, 57 rows) with the seeded vegas:
+#
+#   * two successive recomputes are now BYTE-IDENTICAL (max column difference
+#     exactly 0, identical D/H to all digits) -- the property seeding buys;
+#   * against the shipped (unseeded) table the CCRTh term itself moves by up to
+#     3.8e-2 relative on L_nTOpCCRTh and 1.2e-2 on L_pTOnCCRTh, with medians of
+#     9.7e-4 and 3.6e-4. Those percentages look large only because they are
+#     relative to CCRTh, which is itself a ~1e-3 correction to the total n<->p
+#     rate -- the worst point is ~4e-5 of the rate;
+#   * the resulting shift in the headline observable is D/H 2.43589845e-05 ->
+#     2.43589505e-05, i.e. |dD/H| = 3.4e-11, a factor 88 inside the +-3e-9 D/H
+#     regression tolerance.
+#
+# So regenerating the shipped thermal tables is NOT required for correctness,
+# which is why this change deliberately leaves them alone: doing so would cost
+# a multi-minute vegas run per shipped configuration and churn several tracked
+# data files, to move an observable by 1% of its own regression tolerance.
+#
+# The `provenance:` header line (cache_utils.write_cache_with_fingerprint)
+# exists to record which backend and algorithm produced the numbers on disk
+# right now; it is deliberately NOT part of the hash, precisely so this
+# MC-noise difference never gates a cache hit/miss decision.
+#
 # T_end_MeV is deliberately NOT listed: the integral is clamped to exactly 0
 # below ~10**8.2 K regardless of cfg.T_end (see corrections._T_CCRTH_MIN /
 # _L_CCRTh_compute), and the cache grid is now built down to that fixed floor
@@ -200,7 +254,14 @@ def _thermal_fingerprint(cfg):
         dict, JSON-serialisable.
     """
     fp = {"format_version": WEAK_RATE_FORMAT_VERSION,
-          "sampling_nTOp_thermal_per_decade": cfg.sampling_nTOp_thermal_per_decade}
+          "sampling_nTOp_thermal_per_decade": cfg.sampling_nTOp_thermal_per_decade,
+          # Physical constants (v5). The finite-temperature radiative
+          # correction is itself O(alphaem) and its integrands carry me, so the
+          # table is a direct function of the constants struct; hashing the whole
+          # struct (cache_utils.constants_hash) rather than just those two is
+          # deliberate -- see that function's docstring for why over-invalidating
+          # is the safe side of this trade.
+          "constants_hash": constants_hash()}
     for key in _THERMAL_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     # Effective ξ_e under the same historical "munuOverTnu" key as
@@ -257,7 +318,14 @@ def _weak_rate_fingerprint(cfg):
     fp = {"format_version":          WEAK_RATE_FORMAT_VERSION,
           "sampling_nTOp_per_decade": cfg.sampling_nTOp_per_decade,
           "radiative_corrections":   cfg.radiative_corrections,
-          "finite_mass_corrections": cfg.finite_mass_corrections}
+          "finite_mass_corrections": cfg.finite_mass_corrections,
+          # Physical constants (v5). The rate integrands read me, alphaem, mn,
+          # mp, gA, Vud, radproton, kappa_n/p and GF directly, so the stored
+          # rates are a function of the constants struct; before v5 none of them
+          # was keyed, and editing one silently reused the old table. Hashing the
+          # whole struct rather than that curated list is deliberate -- see
+          # cache_utils.constants_hash.
+          "constants_hash":          constants_hash()}
     for key in _WEAK_RATE_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     # Neutrino chemical potential in the weak rates: only the electron-neutrino

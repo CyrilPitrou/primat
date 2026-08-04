@@ -84,16 +84,39 @@ import numpy as np
 from scipy.integrate import quad, dblquad
 from scipy.interpolate import CubicSpline
 
+from .cache_utils import constants_hash, write_cache_with_fingerprint
+
 # Physical constants — kept local to this module (not imported from config)
-# to allow standalone use in generate_rates/ scripts.  They must nevertheless
-# agree numerically with primat.constants.CONST, or the tables written here
-# would describe a slightly different plasma from the rest of the code; the
-# values below are kept identical to CONST.alphaem / CONST.me by hand.
+# so that generate_rates/ scripts can use it standalone, with no PRIMATConfig.
+# They are DEFAULTS ONLY: the solver no longer relies on them. primat.plasma's
+# Plasma._load_tables passes alpha=cfg.alphaem, me=cfg.me explicitly (matching
+# what plasma.c has always done with g_const), so for any actual BBN run these
+# two values are never read, and the "kept identical to CONST by hand" hazard
+# below no longer applies to solver results -- only to a direct standalone call
+# that omits the arguments.
 # (_ME_MEV read 0.5109989461, the CODATA 2014 electron mass, until it was
 # aligned with CONST.me = 0.51099895; the 8e-9 relative shift is far below any
-# BBN tolerance, but the divergence itself was a trap.)
+# BBN tolerance, but the divergence itself was a trap -- which is exactly why
+# the solver now sources both from cfg instead.)
+# The written tables additionally carry a fingerprint header keyed on
+# cache_utils.constants_hash (see _qed_fingerprint), so a table computed with
+# different constants is now detected and rebuilt rather than loaded silently.
 _ALPHA_FS = 1. / 137.035999084   # fine-structure constant (CODATA 2018) == CONST.alphaem
 _ME_MEV   = 0.51099895           # electron mass [MeV] (CODATA 2018) == CONST.me
+
+# Bump when a code change alters the *numerical content* of the two QED
+# pressure-correction tables for a fixed (T_min, T_max, n_pts) and fixed
+# constants -- a changed integrand, a different differentiation scheme, a new
+# column layout. Bumping invalidates every cached table regardless of its other
+# fingerprint fields, exactly as WEAK_RATE_FORMAT_VERSION does for the weak
+# tables. Mirrored by QED_FORMAT_VERSION in primat-c/src/qed_pressure.c.
+#
+# v1: first fingerprinted generation. Before it the two files carried no
+# fingerprint at all, so a table generated with a different alpha/me or
+# different T bounds was loaded silently -- the hazard this version closes.
+# The shipped tables were given a v1 header in place: same numbers (the write
+# format stayed "%.6E"), header lines only.
+QED_FORMAT_VERSION = 1
 
 # Low-x cutoff: for x = mₑ/T > 50 (T < mₑ/50 ≈ 10 keV) the e± are so
 # non-relativistic that δP is effectively zero (Boltzmann-suppressed).
@@ -436,6 +459,45 @@ def compute_qed_pressure_tables(T_min=1e-3, T_max=1e2, n_pts=500,
     return out
 
 
+def qed_fingerprint(T_min, T_max, n_pts):
+    """Fingerprint dict for the two QED pressure-correction cache files.
+
+    The tables are a function of exactly two things: the physical constants
+    that enter the integrands (α and mₑ, via
+    :func:`primat.cache_utils.constants_hash` -- which hashes the whole
+    constants struct, deliberately over-covering; see its docstring), and the
+    temperature grid they were evaluated on.  Everything else about a run
+    (network, baryon density, neutrino treatment, ...) leaves δP_a and δP_{e3}
+    untouched, which is also why these two files keep fixed names rather than
+    hash-named ones: nothing user-facing varies for them, so they cannot
+    proliferate the way ``nTOp_<hash>.txt`` does.
+
+    A mismatch makes the loader recompute (~0.3 s) and overwrite, exactly as
+    the electron-thermo cache already does.
+
+    Args:
+        T_min: float, lowest grid temperature [MeV].
+        T_max: float, highest grid temperature [MeV].
+        n_pts: int, number of log-spaced grid points.
+
+    Returns:
+        dict, JSON-serialisable; pass to
+        :func:`primat.cache_utils.fingerprint_hash` for the hash.  Mirrored
+        field-for-field by ``cpr_qed_fingerprint`` in
+        ``primat-c/src/qed_pressure.c``.
+
+    Example:
+        >>> from primat.cache_utils import fingerprint_hash
+        >>> fingerprint_hash(qed_fingerprint(1e-3, 1e2, 500))   # doctest: +SKIP
+        '0f3a...'
+    """
+    return {"format_version": QED_FORMAT_VERSION,
+            "constants_hash": constants_hash(),
+            "T_min": float(T_min),
+            "T_max": float(T_max),
+            "n_pts": int(n_pts)}
+
+
 def save_qed_tables(tables, plasma_dir, verbose=True):
     """Write the computed QED tables to two four-column files, one per order in e.
 
@@ -449,6 +511,16 @@ def save_qed_tables(tables, plasma_dir, verbose=True):
     given explicitly in each file's header: T in MeV, δP in MeV^4, dδP/dT
     in MeV^3, d²δP/dT² in MeV^2 (natural units ħ = c = k_B = 1).
 
+    Each file also carries a fingerprint header (:func:`qed_fingerprint`)
+    recording the format version, the physical-constants hash, and the (T_min,
+    T_max, n_pts) grid, so that :meth:`primat.plasma.Plasma._load_tables`
+    detects a table computed with different constants or a different grid and
+    rebuilds it instead of loading it silently.
+
+    The rows are written with ``fmt="%.6E"``, the format the shipped tables have
+    always used: adding the fingerprint header was therefore a header-only
+    change to those tracked files, with every data row byte-identical.
+
     Parameters
     ----------
     tables : dict
@@ -457,6 +529,14 @@ def save_qed_tables(tables, plasma_dir, verbose=True):
         Path to the ``data/plasma/`` directory.
     verbose : bool
         Print confirmation message (default True).
+
+    Raises
+    ------
+    OSError
+        Propagated from the underlying write so that callers which want to
+        degrade gracefully on a read-only install can catch it (see
+        :meth:`primat.plasma.Plasma._load_tables`, which turns it into a
+        warning naming the ``cache_dir`` remedy).
 
     Example
     -------
@@ -479,15 +559,23 @@ def save_qed_tables(tables, plasma_dir, verbose=True):
               "Reference: Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPe3\n"
               "T [MeV]       dP_e3 [MeV^4]     d(dP_e3)/dT [MeV^3]  d2(dP_e3)/dT2 [MeV^2]")
 
-    # Create the target on demand: when redirected to a fresh cache_dir
-    # the plasma/ subdir may not exist yet.
-    os.makedirs(plasma_dir, exist_ok=True)
-    np.savetxt(os.path.join(plasma_dir, "QED_pressure_correction_e2.txt"),
-               np.column_stack([T, e2, de2, d2e2]),
-               header=hdr_e2, fmt="%.6E")
-    np.savetxt(os.path.join(plasma_dir, "QED_pressure_correction_e3.txt"),
-               np.column_stack([T, e3, de3, d2e3]),
-               header=hdr_e3, fmt="%.6E")
+    # Both files describe the same grid, so they share one fingerprint: the
+    # loader checks each file's own header, and a mismatch on either rebuilds
+    # (and rewrites) both, which is correct since they are always generated
+    # together and summed column-by-column at point of use.
+    fp = qed_fingerprint(T[0], T[-1], len(T))
+
+    # write_cache_with_fingerprint creates the target on demand -- when
+    # redirected to a fresh cache_dir the plasma/ subdir may not exist yet --
+    # and emits the physics header block above the two fingerprint lines.
+    # fmt="%.6E" is the format the shipped tables were written with, kept so
+    # that gaining a fingerprint header leaves every data row byte-identical.
+    write_cache_with_fingerprint(
+        os.path.join(plasma_dir, "QED_pressure_correction_e2.txt"),
+        fp, [T, e2, de2, d2e2], col_header=hdr_e2, fmt="%.6E")
+    write_cache_with_fingerprint(
+        os.path.join(plasma_dir, "QED_pressure_correction_e3.txt"),
+        fp, [T, e3, de3, d2e3], col_header=hdr_e3, fmt="%.6E")
 
     if verbose:
         print(f"[QED]  Tables written to {plasma_dir}:")

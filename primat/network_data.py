@@ -1302,6 +1302,20 @@ def _qed_nuclear_rescale(name, T9_grid):
     >>> (f > 1.0).all()
     True
     """
+    # Third copy of alpha/me in the tree, and DELIBERATELY not replaced by
+    # cfg.alphaem/cfg.me. See network_data.c's qed_nuclear_rescale (the
+    # `qed_nuclear_rescale` static, around line 551) for the full reasoning:
+    # this factor must reproduce Python's numbers bit-for-bit on both backends,
+    # so both sides carry the same literals verbatim rather than reading a
+    # constants struct that could be edited to a different edition.
+    #
+    # Unlike primat.qed_pressure's module-level _ALPHA_FS/_ME_MEV -- which were
+    # a genuine second source of truth for the *solver* and are now bypassed,
+    # the QED pressure tables taking alpha/me from cfg (plasma.Plasma._load_tables)
+    # -- this pair feeds a rate rescale applied at load time and never written
+    # to a fingerprinted cache file, so there is nothing here for
+    # cache_utils.constants_hash to protect. Do not "fix" this duplication.
+    #
     # Fine structure constant (CODATA 2018)
     ALPHA = 1.0 / 137.035999084
     # Electron mass [MeV] (PDG)

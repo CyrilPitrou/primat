@@ -12,6 +12,47 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **Cache fingerprints now include the physical constants they were computed
+  from.** `primat.constants.CONST` has 26 fields and *none* of them appeared in
+  any fingerprint, so editing `me`, `alphaem`, `gA`, `mn`, `mp`, `Vud`,
+  `radproton`, `kappa_n/p` or `GF` silently reused cached weak rates, e±
+  thermodynamics and QED tables computed with the old value — a wrong answer
+  with no warning. All four fingerprints gain one `constants_hash` field,
+  computed identically by both backends (`cache_utils.constants_hash` /
+  `cpr_constants_hash`, verified equal: `672484f3068a1c59`). It hashes the whole
+  struct rather than a per-cache list of the constants each table consumes:
+  over-invalidating costs a recompute, under-invalidating is a wrong answer.
+  `WEAK_RATE_FORMAT_VERSION` is bumped 4 → 5 and the shipped tables were
+  re-keyed in place — renamed and re-headered, with every data row verified
+  byte-identical (max column difference exactly 0). No observable moves.
+  Overriding `me`/`alphaem` on a `PRIMATConfig` now raises instead of diverging
+  silently, since the C backend reads its own compiled-in constants.
+- **The e± thermodynamic cache carries its hash in the filename**
+  (`electron_thermo_<hash>.txt`, was a fixed `electron_thermo_cache.txt` with
+  the hash only in its header). Configurations coexist instead of evicting one
+  another, so a full test-suite run no longer leaves the shipped, git-tracked
+  copy modified, and alternating between two configurations stops paying the
+  rebuild every time. `primat --cache-info` / `--cache-clear` now cover the
+  `plasma/` tree as well as `weak/` on both backends, and newly generated
+  files are `.gitignore`d like the weak-rate ones.
+- **The QED plasma-pressure tables are fingerprinted, and take α and mₑ from the
+  config.** The two `QED_pressure_correction_e{2,3}.txt` files had no
+  fingerprint at all, so a table built with different constants or a different
+  T grid was loaded silently; they now carry a header (`format_version`,
+  `constants_hash`, `T_min`, `T_max`, `n_pts`) and are rebuilt on a mismatch.
+  The Python path also read α and mₑ from `qed_pressure`'s own module-level
+  copies rather than from `cfg` — the C path always passed `g_const` — so the
+  two backends were bound to independent sources of truth for the same
+  constant, agreeing by convention only. Both now source them from `cfg`.
+  The shipped tables gained header lines only; data rows are unchanged.
+- **Python's vegas is seeded deterministically**, mirroring the C backend's
+  existing `th_vegas_seed`. A Python CCRTh recompute previously did not
+  reproduce even itself, so the cache's promise that the hash identifies the
+  contents held only up to Monte-Carlo noise. Two successive recomputes are now
+  byte-identical. The shipped thermal tables are deliberately *not* regenerated:
+  a seeded recompute differs from them by up to 3.8e-2 on the CCRTh term itself
+  (a ~1e-3 correction to the rate), which moves D/H by 3.4e-11 — 88× inside the
+  ±3e-9 regression tolerance.
 - **Custom NEVO tables of non-shipped width now work on the C backend.** A
   6-column `nevo_file`, and a `nevo_spectral_file` of any width other than the
   shipped 86, passed `PRIMATConfig`'s validation and ran on the Python backend
@@ -183,6 +224,15 @@ in this repository is the authoritative source.
   (`python setup.py build_ext --inplace`).
 - No observable changes: with a rebuilt extension both backends reproduce the
   previous D/H, YP and Neff bit-for-bit.
+
+### Added
+- **`tests/test_cache_parity.py`** — cross-backend *cache* parity, the companion
+  to `test_backend_parity.py`. The two backends share every on-disk cache; this
+  module is what makes that safe rather than merely convenient. It asserts that
+  both emit the same cache filenames (pinning every fingerprint implementation
+  field-for-field) and that their columns agree at documented, measured
+  tolerances. Verified to detect what it claims: perturbing the C electron mass
+  by one ulp fails 7 of its 8 tests.
 
 ### Documented
 - **`Omeganurel` and `OneOverOmeganunr` are per neutrino flavour** (ν + ν̄), not

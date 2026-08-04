@@ -3,15 +3,20 @@
  * config: QED_corrections=True, n_electron_table=2000,
  * T_start_cosmo_MeV=40.0, DeltaNeff=0), run with `data_dir="../primat/data"`
  * so this test also exercises the real on-disk QED_*.txt and
- * electron_thermo_cache.txt files -- in particular, the electron-thermo
+ * electron_thermo_<hash>.txt files -- in particular, the electron-thermo
  * cache file shipped in the repo was produced by Python with exactly this
- * fingerprint (format_version=1, n_electron_table=2000,
- * T_start_cosmo_MeV=40.0), so a correct fingerprint hash port
- * (cache.c, already validated in test_cache.c) plus a correct
- * cpr_table_read of its 5 columns should make this a cache *hit*,
- * skipping computation entirely and loading byte-identical numbers --
- * the strongest possible cross-language compatibility check available
- * for this module.
+ * fingerprint (format_version=2, n_electron_table=2000,
+ * T_start_cosmo_MeV=40.0, constants_hash of the frozen constants struct), so
+ * a correct fingerprint hash port (cache.c, already validated in
+ * test_cache.c) plus a correct cpr_table_read of its 5 columns should make
+ * this a cache *hit*, skipping computation entirely and loading
+ * byte-identical numbers -- the strongest possible cross-language
+ * compatibility check available for this module.
+ *
+ * Note that the hash now lives in the FILENAME as well as the header, so a
+ * port that got the fingerprint wrong no longer silently overwrites the
+ * shipped file with its own numbers: it simply fails to find one, and the
+ * "cache hit expected" check below is what notices.
  */
 #include "plasma.h"
 #include "constants.h"

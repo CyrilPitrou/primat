@@ -2,6 +2,8 @@
 # delta_P_a: O(e^2), one-loop (Frenkel-Galitskii-Migdal)
 # Reference: Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPa
 # T [MeV]       dP_a [MeV^4]      d(dP_a)/dT [MeV^3]  d2(dP_a)/dT2 [MeV^2]
+# fingerprint_hash: a7a486a33ebd1ac8
+# fingerprint: {"T_max":100.0,"T_min":0.001,"constants_hash":"672484f3068a1c59","format_version":1,"n_pts":500}
 1.000000E-03 -0.000000E+00 -2.118569E-85 2.712601E-80
 1.023340E-03 -0.000000E+00 1.071504E-85 2.094130E-82
 1.047225E-03 -0.000000E+00 -2.168017E-85 -2.733542E-80

@@ -45,7 +45,8 @@ from . import PRIMAT, __version__
 from .credits import cli_credits_text
 from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
                       dump_mc_samples, run_bbn, run_mc)
-from .cache_utils import clear_weak_cache, list_weak_cache_files, weak_cache_dir
+from .cache_utils import (clear_cache, list_cache_files, plasma_cache_dir,
+                           weak_cache_dir)
 from .config import (DEFAULT_PARAMS, PARAM_GROUPS, PRIMATConfig,
                      _default_params_comments, _rates_overlay_notice)
 
@@ -384,17 +385,18 @@ def _build_parser():
     )
     parser.add_argument(
         "--cache-info", action="store_true",
-        help="Print the number of cached n<->p weak-rate files "
-             "(cache_plasma_weak/weak/nTOp_*.txt, or the cache_dir redirect) "
-             "and exit, without running a solve.",
+        help="Print the number of cached hash-named files -- n<->p weak-rate "
+             "(cache_plasma_weak/weak/nTOp_*.txt) and e+- thermodynamic "
+             "(cache_plasma_weak/plasma/electron_thermo_*.txt), or the "
+             "cache_dir redirect -- and exit, without running a solve.",
     )
     parser.add_argument(
         "--cache-clear", action="store_true",
-        help="Delete every cached n<->p weak-rate file and exit, without "
-             "running a solve. The cache is always safely regenerable: a "
-             "later run just pays the one-time recompute cost again "
-             "(seconds per configuration for the plain rates, minutes for the "
-             "thermal ones).",
+        help="Delete every cached n<->p weak-rate and e+- thermodynamic file "
+             "and exit, without running a solve. The cache is always safely "
+             "regenerable: a later run just pays the one-time recompute cost "
+             "again (seconds per configuration for the plain rates and the "
+             "electron-thermo tables, minutes for the thermal ones).",
     )
     # Generic escape hatch: lets any PRIMATConfig key (including p_<reaction>/
     # delta_<reaction>) be set from the CLI without a dedicated flag.
@@ -506,7 +508,7 @@ def _dispatch(args, parser):
         # cache overlay, so both must reach PRIMATConfig here -- otherwise
         # these two commands silently inspect/clear the default tree instead of
         # the one the user pointed at. The C CLI already honours --data_dir for
-        # the same two commands (cli.c's list_or_clear_weak_cache), so an empty
+        # the same two commands (cli.c's list_or_clear_cache), so an empty
         # dict here was also a backend divergence.
         cache_params = {}
         if args.data_dir is not None:
@@ -518,12 +520,22 @@ def _dispatch(args, parser):
             if key in ("data_dir", "cache_dir", "user_nuclear_dir"):
                 cache_params[key] = _parse_set_value(raw_value)
         cfg = PRIMATConfig(cache_params)
+        # Both hash-named families are reported, broken down per tree so the
+        # user can see which one is accumulating: weak/ holds the n<->p rate
+        # and CCRTh tables, plasma/ the e+- thermodynamic tables (hash-named
+        # since configurations stopped evicting one another). The fixed-name
+        # QED pressure tables are excluded -- they cannot proliferate.
+        n_weak   = len(list_cache_files(cfg, subdirs=("weak",)))
+        n_plasma = len(list_cache_files(cfg, subdirs=("plasma",)))
         if args.cache_clear:
-            n = clear_weak_cache(cfg)
-            print(f"Removed {n} cached weak-rate file(s) from {weak_cache_dir(cfg)}/.")
+            n = clear_cache(cfg)
+            print(f"Removed {n} cached file(s): {n_weak} weak-rate from "
+                  f"{weak_cache_dir(cfg)}/, {n_plasma} electron-thermo from "
+                  f"{plasma_cache_dir(cfg)}/.")
         else:
-            n = len(list_weak_cache_files(cfg))
-            print(f"{n} cached weak-rate file(s) in {weak_cache_dir(cfg)}/.")
+            print(f"{n_weak} cached weak-rate file(s) in {weak_cache_dir(cfg)}/.")
+            print(f"{n_plasma} cached electron-thermo file(s) in "
+                  f"{plasma_cache_dir(cfg)}/.")
         return 0
 
     # Only forward options the user actually set, so unset flags fall back

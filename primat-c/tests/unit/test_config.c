@@ -199,9 +199,9 @@ int main(void)
         /* A file present only in the shipped tree resolves there even before
          * cache_dir is set (overlay base = the package copy, always last). */
         cpr_config_resolve_cache_file(&cfg, "weak",
-            "nTOp_ca8641b916d081a2.txt", buf, sizeof(buf));
+            "nTOp_b8cdcc18d4677cc5.txt", buf, sizeof(buf));
         CHECK(strcmp(buf, "../primat/data/cache_plasma_weak/weak/"
-                          "nTOp_ca8641b916d081a2.txt") == 0,
+                          "nTOp_b8cdcc18d4677cc5.txt") == 0,
               "resolve_cache_file finds the shipped weak cache (default)");
 
         /* Set cache_dir: writes redirect, but the shipped file (absent under
@@ -214,9 +214,9 @@ int main(void)
         CHECK(strcmp(buf, "/tmp/primat-cache-xyz/weak") == 0,
               "cache_write_dir(weak) redirects under cache_dir");
         cpr_config_resolve_cache_file(&cfg, "weak",
-            "nTOp_ca8641b916d081a2.txt", buf, sizeof(buf));
+            "nTOp_b8cdcc18d4677cc5.txt", buf, sizeof(buf));
         CHECK(strcmp(buf, "../primat/data/cache_plasma_weak/weak/"
-                          "nTOp_ca8641b916d081a2.txt") == 0,
+                          "nTOp_b8cdcc18d4677cc5.txt") == 0,
               "resolve_cache_file falls back to the shipped weak cache when "
               "cache_dir lacks it (overlay, never shadowed)");
     }
