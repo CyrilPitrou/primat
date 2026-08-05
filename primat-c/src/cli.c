@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>          /* timespec_get() for the "--- running time ---" line */
 #include "compat_posix.h"  /* sys/stat.h + unistd.h/getcwd/mkdir, portable */
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -32,6 +33,12 @@ static int is_cache_name(const char *name, const char *prefix)
         && nlen > 4 && strcmp(name + nlen - 4, ".txt") == 0;
 }
 
+/* Byte-for-byte twin of primat.credits.cli_credits_text()
+ * (_CREDITS_CORE + _CREDITS_CLI_SUFFIX + "\n\n" + CITATION_BIBTEX), which is
+ * what `primat --credits` prints. The paragraph breaks and the closing BibTeX
+ * entry are part of that text, not decoration: users copy-paste the entry
+ * rather than hand-formatting a reference from the arXiv link. Any edit to
+ * primat/credits.py must be mirrored here. */
 static void print_credits(void)
 {
     fputs("primat is developed by Cyril Pitrou (https://www2.iap.fr/users/pitrou/) "
@@ -40,17 +47,58 @@ static void print_credits(void)
     fputs("The story started in the 1980s with BBN codes written by Elisabeth "
           "Vangioni and Alain Coc which eventually lead to 'ezbbn', a large "
           "nuclear network FORTRAN code whose nuclear rates tables were maintained "
-          "by Alain Coc. PRIMAT, initially a Mathematica code, was based on "
+          "by Alain Coc.\n",
+          stdout);
+    fputs("PRIMAT, initially a Mathematica code, was based on "
           "'ezbbn' with improved neutrino physics. It is now translated into a "
           "python code, but it also relies on a C backend to improve its "
           "performance.\n\n",
           stdout);
     fputs("For notebooks, examples and documentation, download the source code "
-          "(https://github.com/CyrilPitrou/primat).\n\n",
+          "(https://github.com/CyrilPitrou/primat).\n",
           stdout);
     fputs("Please cite the publication (https://arxiv.org/abs/1801.08023) if "
-          "you use it.\n",
+          "you use it.\n\n",
           stdout);
+    fputs("@article{Pitrou:2018cgg,\n"
+          "    author = \"Pitrou, Cyril and Coc, Alain and Uzan, Jean-Philippe and Vangioni, Elisabeth\",\n"
+          "    title = \"{Precision big bang nucleosynthesis with improved Helium-4 predictions}\",\n"
+          "    eprint = \"1801.08023\",\n"
+          "    archivePrefix = \"arXiv\",\n"
+          "    primaryClass = \"astro-ph.CO\",\n"
+          "    doi = \"10.1016/j.physrep.2018.04.005\",\n"
+          "    journal = \"Phys. Rept.\",\n"
+          "    volume = \"754\",\n"
+          "    pages = \"1--66\",\n"
+          "    year = \"2018\"\n"
+          "}\n",
+          stdout);
+}
+
+/* `--list-params`: every settable parameter with the value it currently holds
+ * (i.e. its default, since this runs before any override is applied), so a
+ * user can discover the full `--set KEY=VALUE` surface without reading
+ * config.py.
+ *
+ * Deliberately WITHOUT the one-line descriptions Python's --list-params
+ * prints: those live in config.py's inline comments, and Python parses them
+ * out of the source rather than duplicating them (_default_params_comments).
+ * Copying ~80 of them into this file would create a third place to keep in
+ * sync -- exactly what CLAUDE.md's DEFAULT_PARAMS/template mandate exists to
+ * prevent. The generated examples/run_basic.ini already carries the same
+ * descriptions for the C side, so this points there instead. */
+static void print_list_params(const CPRConfig *cfg)
+{
+    printf("# Every parameter settable via --set KEY=VALUE or an --ini file,\n"
+           "# with its default value. One-line descriptions for each are in\n"
+           "# primat-c/examples/run_basic.ini (or `primat --list-params`).\n");
+    size_t n = cpr_config_field_count();
+    for (size_t i = 0; i < n; i++) {
+        const char *name = cpr_config_field_name(i);
+        char value[CPR_PARAM_VAL_LEN];
+        if (cpr_config_format_value(cfg, name, value, sizeof(value)) == 0)
+            printf("%-32s = %s\n", name, value);
+    }
 }
 
 /* Counts (and optionally deletes) the hash-named cache files of ONE family:
@@ -107,7 +155,7 @@ static const char * const bool_flags[] = {
 
 static void usage(const char *prog)
 {
-    printf("usage: %s [-h] [--credits] [--version]\n"
+    printf("usage: %s [-h] [--credits] [--version] [--list-params]\n"
            "          [--Omegabh2 VALUE] [--DeltaNeff VALUE] [--network NAME]\n"
            "          [--amax A] [--numerical_precision RTOL] [--munuOverTnu XI]\n"
            "          [--munuOverTnu_e XI_E] [--munuOverTnu_mu XI_MU] [--munuOverTnu_tau XI_TAU]\n"
@@ -126,7 +174,7 @@ static void usage(const char *prog)
            "          [--output_mc_covariance | --no-output_mc_covariance]\n"
            "          [--output_mc_correlation | --no-output_mc_correlation]\n"
            "          [--show_progress | --no-show_progress]\n"
-           "          [--mc N] [--mc-seed SEED]\n"
+           "          [--mc N] [--mc-seed SEED] [--mc-jobs N]\n"
            "          [--json] [--verbose] [--cache-info] [--cache-clear]\n"
            "          [--ini PATH] [--data_dir PATH] [--user_nuclear_dir PATH]\n"
            "          [--set KEY=VALUE ...]\n\n"
@@ -136,6 +184,9 @@ static void usage(const char *prog)
            "  -h, --help            Show this help message and exit.\n"
            "  --credits             Print the project credits and exit.\n"
            "  --version             Print the primat-c version and exit.\n"
+           "  --list-params         Print every parameter settable via --set/--ini\n"
+           "                        with its default value, then exit. One-line\n"
+           "                        descriptions are in examples/run_basic.ini.\n"
            "  --Omegabh2 VALUE      Baryon density Omega_b h^2 (default: 0.02242).\n"
            "  --DeltaNeff VALUE     Extra relativistic degrees of freedom on top of\n"
            "                        the SM neutrino sector (default: 0).\n"
@@ -225,9 +276,13 @@ static void usage(const char *prog)
            "                        used. (default: True).\n"
            "  --mc N                Run an N-sample Monte-Carlo nuclear-rate/tau_n\n"
            "                        uncertainty propagation and print each observable\n"
-           "                        as 'value +/- sigma'. Uses all available CPU cores.\n"
+           "                        as 'value +/- sigma'. Uses all available CPU\n"
+           "                        cores unless --mc-jobs says otherwise.\n"
            "  --mc-seed SEED        Base RNG seed for --mc (default: 0); sample i\n"
            "                        uses seed+i.\n"
+           "  --mc-jobs N           Worker threads for --mc (default: -1, one per\n"
+           "                        available core). Use a small N to leave cores\n"
+           "                        free on a shared machine.\n"
            "  --json                Print the full results dict as JSON instead of a\n"
            "                        short summary.\n"
            "  --verbose             Enable internal progress messages (timings,\n"
@@ -259,10 +314,14 @@ static void usage(const char *prog)
            prog);
 }
 
+/* S_ISDIR, not `st_mode & S_IFDIR`: S_IFDIR (0040000) is a *value* within the
+ * S_IFMT field, not a standalone bit, so the bitwise test also accepts
+ * S_IFBLK (0060000) and S_IFSOCK (0140000) -- a block device or socket passed
+ * as --user_nuclear_dir would have been taken for a directory. */
 static int path_is_dir(const char *path)
 {
     struct stat st;
-    return stat(path, &st) == 0 && (st.st_mode & S_IFDIR);
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
 /* Best-effort absolute path to the running executable's own directory, so
@@ -319,39 +378,59 @@ static const char *default_data_dir(char *buf, size_t bufsize)
     return buf;
 }
 
-/* ---- Collected CLI overrides, built during the second parse pass and
- * forwarded verbatim to cpr_mc_uncertainty as base_params so MC workers
- * start from exactly the same configuration the main run used. ---- */
-#define MAX_CLI_PARAMS 256
-
-typedef struct {
-    CPRParamSet items[MAX_CLI_PARAMS];
-    size_t n;
-    /* Storage for key strings built from argv that don't point to argv
-     * directly (only --set currently needs this via the name[] buffer). */
-    char key_store[MAX_CLI_PARAMS][256];
-} CLIParams;
-
-static void cli_params_add(CLIParams *cp, const char *key, CPRParam val)
-{
-    if (cp->n >= MAX_CLI_PARAMS) return;
-    cp->items[cp->n].key   = key;
-    cp->items[cp->n].value = val;
-    cp->n++;
-}
-
-/* Apply param to cfg and record it in cp for MC reuse. */
-static void apply_param(CPRConfig *cfg, CLIParams *cp,
-                        const char *key, CPRParam val, const char *flag_label)
+/* ---- Collected CLI + ini overrides ----
+ *
+ * Every override the user supplied is recorded in one CPRParamList and
+ * forwarded verbatim to cpr_mc_uncertainty as base_params, because MC workers
+ * rebuild their CPRConfig from *defaults plus this list* (mc.c's
+ * worker_setup) rather than inheriting the main run's cfg. Anything applied to
+ * cfg but missing from the list therefore vanishes from every sample: the
+ * printed "value +/- sigma" would pair a central value from one model with a
+ * sigma from another, silently. That is why the ini file (cpr_ini_load's
+ * `collect` argument) feeds the same list, and why CPRParamList copies both
+ * key and value instead of retaining pointers into argv or into
+ * cpr_parse_literal's static scratch buffer.
+ *
+ * Apply the param to cfg and, on success, record it. A failure is fatal:
+ * returns nonzero, and the caller exits (see cpr_config_set_by_name's
+ * CPR_SET_* contract -- an unknown key is only a warning, and only while
+ * strict_params is off). */
+static int apply_param(CPRConfig *cfg, CPRParamList *cp,
+                       const char *key, CPRParam val, const char *flag_label)
 {
     char *set_err = NULL;
-    if (cpr_config_set_by_name(cfg, key, val, &set_err)) {
-        fprintf(stderr, "%s: %s\n", flag_label, set_err ? set_err : "error");
+    int rc = cpr_config_set_by_name(cfg, key, val, &set_err);
+    if (rc == CPR_SET_UNKNOWN_KEY && !cfg->strict_params) {
+        /* Warn and ignore, mirroring PRIMATConfig's strict_params=False
+         * default (and primat/backend.py's _c_params filter, which drops
+         * keys unknown to both sides before they reach the extension). */
+        fprintf(stderr, "%s: warning: %s\n", flag_label,
+                set_err ? set_err : "unknown parameter key");
         free(set_err);
-        return;
+        return 0;
     }
-    cli_params_add(cp, key, val);
+    if (rc != CPR_SET_OK) {
+        fprintf(stderr, "error: %s: %s%s\n", flag_label,
+                set_err ? set_err : "could not set key",
+                rc == CPR_SET_UNKNOWN_KEY ? " [strict_params=True]" : "");
+        free(set_err);
+        return 1;
+    }
+    free(set_err);
+    cpr_paramlist_add(cp, key, val);
+    return 0;
 }
+
+/* apply_param + "release everything and leave with status 2", the form every
+ * call site below wants (2 = usage error, as for an unrecognised argument). */
+#define APPLY_OR_FAIL(cfg, cp, key, val, label)                 \
+    do {                                                        \
+        if (apply_param((cfg), (cp), (key), (val), (label))) {  \
+            cpr_paramlist_free(cp);                             \
+            cpr_config_free(cfg);                               \
+            return 2;                                           \
+        }                                                       \
+    } while (0)
 
 /* ---- JSON output ---- */
 
@@ -366,11 +445,13 @@ static void print_json_str(const char *s)
     putchar('"');
 }
 
-static void print_json(const CPRResults *results, const CPRMCResult *mc)
+/* Emits the plain solve() result dict (no --mc): the observables, each guarded
+ * exactly as main.py guards its dict key, plus the nested per-nuclide
+ * "Y_final". `sep` is the running separator ("" before the first key, ",\n"
+ * after); the updated value is returned so the caller can continue the object. */
+static const char *print_json_results_body(const CPRResults *results,
+                                           const char *sep)
 {
-    printf("{\n");
-    const char *sep = "";
-
     if (results->has_Neff) {
         printf("%s  \"Neff\": %.10g", sep, results->Neff); sep = ",\n";
     }
@@ -404,20 +485,49 @@ static void print_json(const CPRResults *results, const CPRMCResult *mc)
         }
         printf("\n  }");
     }
+    return sep;
+}
 
-    /* Flat sigma_<name> entries alongside each quantity, mirroring the
-     * Python CLI's MCResult.to_flat_dict() (primat/main.py) -- so a caller
-     * gets both "YPBBN" and "sigma_YPBBN" as ordinary top-level keys. */
-    if (mc && mc->n > 0) {
+/* JSON payload, matching `primat --json` key-for-key.
+ *
+ * The two --mc/no---mc shapes are NOT the same dict plus extras, and the C
+ * side must follow Python's lead in both:
+ *
+ *  - without --mc, the payload is the solve()'s result dict: the observables,
+ *    plus a nested "Y_final" of every tracked nuclide;
+ *  - with --mc, cli.py replaces it wholesale with MCResult.to_flat_dict(),
+ *    which emits every MC quantity -- nuclides included -- as a FLAT
+ *    top-level key alongside its "sigma_<name>", and therefore carries no
+ *    "Y_final" (the nuclides are already top-level) and no Omeganurel /
+ *    OneOverOmeganunr (not MC quantities). Both then get the "mc" sub-dict.
+ *
+ * Emitting the no-MC shape with sigmas bolted on, as this used to, meant a
+ * script parsing `--json --mc` needed a different key list per binary. */
+static void print_json(const CPRResults *results, const CPRMCResult *mc)
+{
+    printf("{\n");
+    const char *sep = "";
+    int have_mc = (mc && mc->n > 0);
+
+    if (have_mc) {
+        /* to_flat_dict(): every quantity's central, then its sigma_<name>,
+         * in MC quantity order (observables first, then nuclides -- the order
+         * cpr_cli_main built the `quantities` array in, which mirrors
+         * backend.py's run_mc). */
         for (size_t i = 0; i < mc->n; i++) {
             const CPRMCQuantity *q = &mc->items[i];
             char sigma_name[48];
+            printf("%s  ", sep);
+            print_json_str(q->name);
+            printf(": %.10g", q->central);
+            sep = ",\n";
             snprintf(sigma_name, sizeof(sigma_name), "sigma_%s", q->name);
             printf("%s  ", sep);
             print_json_str(sigma_name);
             printf(": %.10g", q->std);
-            sep = ",\n";
         }
+    } else {
+        sep = print_json_results_body(results, sep);
     }
 
     /* MC summary (central/mean/std per quantity; not the full sample array). */
@@ -471,6 +581,40 @@ static void cli_abspath(const char *path, char *out, size_t outsize)
         snprintf(out, outsize, "%s/%s", cwd, path);
     else
         snprintf(out, outsize, "%s", path);
+}
+
+/* Wall-clock seconds, for the closing "--- running time: ... ---" line.
+ *
+ * timespec_get (C11, TIME_UTC) rather than clock(): clock() measures CPU time
+ * summed over all threads, so a --mc run on 10 cores would report roughly ten
+ * times the elapsed time. cli.py's counterpart is time.time(), i.e. wall
+ * clock, and the two numbers have to be comparable. */
+static double cli_wall_seconds(void)
+{
+    struct timespec ts;
+    if (timespec_get(&ts, TIME_UTC) != TIME_UTC)
+        return 0.0;
+    return (double)ts.tv_sec + 1e-9 * (double)ts.tv_nsec;
+}
+
+/* Startup note for a data-tree override, the twin of config.py's
+ * _rates_overlay_notice() (printed to stderr by cli.py for both keys). Same
+ * wording, same two variants, same absolute-path quoting -- a run whose rate
+ * tables come from somewhere other than the shipped tree must say so
+ * identically on either backend. */
+static void print_overlay_notice(const char *field, const char *path)
+{
+    if (!path || !path[0])
+        return;
+    char abs[CPR_PATH_BUF_LEN2];
+    cli_abspath(path, abs, sizeof(abs));
+    if (strcmp(field, "data_dir") == 0)
+        fprintf(stderr, "[init-c] data_dir full-takeover data directory override: "
+                        "entire data tree (NEVO/, nuclear/, csv/, cache_plasma_weak/) "
+                        "replaced under '%s'.\n", abs);
+    else
+        fprintf(stderr, "[init-c] user_nuclear_dir additive nuclear overlay override: "
+                        "nuclear networks and rate tables under '%s'.\n", abs);
 }
 
 /* Create the parent directory of `path` (if any), mirroring cli.py's
@@ -628,15 +772,20 @@ static void print_mc_matrices(const CPRMCResult *mc, int num_mc)
 /* ---- Plain-text report (mirrors cli.py's default output) ---- */
 
 static void print_plain(const CPRConfig *cfg, const CPRResults *results,
-                        const CPRMCResult *mc, int mc_n)
+                        const CPRMCResult *mc, int mc_n, double elapsed_s)
 {
     const char *sep = "────────────────────────────────────────────────────";
     char header[80];
     snprintf(header, sizeof(header), "PRIMAT results at T = %g MeV", cfg->T_end_MeV);
     printf("%s\n", sep);
-    int left_pad = (52 - (int)strlen(header)) / 2;
-    if (left_pad < 0) left_pad = 0;
-    printf("%*s%s\n", left_pad, "", header);
+    /* Python centres with f"{header:^52}", which pads on BOTH sides -- the
+     * trailing run of spaces is part of the line. Reproduced here (rather than
+     * left-padding only) so the two CLIs' output is byte-identical, as the
+     * output-parity mandate requires. */
+    int total_pad = 52 - (int)strlen(header);
+    if (total_pad < 0) total_pad = 0;
+    int left_pad = total_pad / 2;               /* str.center: extra space right */
+    printf("%*s%s%*s\n", left_pad, "", header, total_pad - left_pad, "");
     printf("%s\n", sep);
 
 /* Helper: if mc has this quantity, append " +/- std"; else nothing. */
@@ -680,8 +829,12 @@ static void print_plain(const CPRConfig *cfg, const CPRResults *results,
         /* Joint uncertainty of the four main products: 4x4 correlation +
          * covariance matrices (same layout as cli.py's _print_mc_matrices). */
         print_mc_matrices(mc, mc_n);
-        printf("--- Monte-Carlo: %d samples ---\n", mc_n);
     }
+    /* Closing line, matching cli.py's final print in both the plain and the
+     * --mc case. (The C CLI used to print "--- Monte-Carlo: N samples ---"
+     * here instead, and nothing at all without --mc; neither line exists on
+     * the Python side, so the two outputs could not be diffed.) */
+    printf("--- running time: %.2f seconds ---\n", elapsed_s);
 }
 
 int cpr_cli_main(int argc, char **argv)
@@ -691,8 +844,9 @@ int cpr_cli_main(int argc, char **argv)
     const char *custom_nuclear_dir = NULL;
     const char *ini_path = NULL;
     int cache_info = 0, cache_clear = 0, credits = 0, version = 0;
+    int list_params = 0;
     int do_json = 0;
-    int mc_n = 0, mc_seed = 0;
+    int mc_n = 0, mc_seed = 0, mc_jobs = -1;   /* -1 = one worker per core */
     /* mc_n == 0 also means "no --mc at all", so a separate flag is needed to
      * tell an omitted --mc from an explicit "--mc 0" (which is an error, as in
      * cli.py: a sigma needs at least 2 samples). */
@@ -704,9 +858,11 @@ int cpr_cli_main(int argc, char **argv)
      * everything else is applied in a second pass, in the same precedence
      * order as cli.py: defaults, then .ini, then named flags, then --set
      * (later wins). */
+    int data_dir_given = 0;   /* only announce an override the user asked for */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--data_dir") == 0 && i + 1 < argc) {
             data_dir = argv[++i];
+            data_dir_given = 1;
         } else if (strcmp(argv[i], "--user_nuclear_dir") == 0 && i + 1 < argc) {
             custom_nuclear_dir = argv[++i];
         } else if (strcmp(argv[i], "--ini") == 0 && i + 1 < argc) {
@@ -719,6 +875,8 @@ int cpr_cli_main(int argc, char **argv)
             credits = 1;
         } else if (strcmp(argv[i], "--version") == 0) {
             version = 1;
+        } else if (strcmp(argv[i], "--list-params") == 0) {
+            list_params = 1;
         } else if (strcmp(argv[i], "--json") == 0) {
             do_json = 1;
         } else if (strcmp(argv[i], "--mc") == 0 && i + 1 < argc) {
@@ -726,6 +884,8 @@ int cpr_cli_main(int argc, char **argv)
             mc_given = 1;
         } else if (strcmp(argv[i], "--mc-seed") == 0 && i + 1 < argc) {
             mc_seed = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--mc-jobs") == 0 && i + 1 < argc) {
+            mc_jobs = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             usage(argv[0]);
             return 0;
@@ -759,6 +919,12 @@ int cpr_cli_main(int argc, char **argv)
         return 1;
     }
 
+    if (list_params) {
+        print_list_params(&cfg);
+        cpr_config_free(&cfg);
+        return 0;
+    }
+
     if (custom_nuclear_dir) {
         if (!path_is_dir(custom_nuclear_dir)) {
             fprintf(stderr, "--user_nuclear_dir: '%s' is not a directory\n", custom_nuclear_dir);
@@ -790,23 +956,27 @@ int cpr_cli_main(int argc, char **argv)
         return 0;
     }
 
-    if (ini_path) {
-        if (cpr_ini_load(&cfg, ini_path, &err)) {
-            fprintf(stderr, "error: %s\n", err);
-            free(err);
-            cpr_config_free(&cfg);
-            return 1;
-        }
-    }
-
-    /* Collect all user-supplied overrides here; forwarded to MC workers. */
-    CLIParams cp;
+    /* Collect all user-supplied overrides here; forwarded to MC workers.
+     * Declared BEFORE the ini load so the ini's own keys land in it too --
+     * the workers rebuild from defaults + this list, so anything missing from
+     * it is silently absent from every MC sample (see apply_param's comment). */
+    CPRParamList cp;
     memset(&cp, 0, sizeof(cp));
 
     /* Record user_nuclear_dir in base_params so MC workers inherit it. */
     if (custom_nuclear_dir)
-        cli_params_add(&cp, "user_nuclear_dir",
-                       (CPRParam){CPR_STRING, .v.s = custom_nuclear_dir});
+        cpr_paramlist_add(&cp, "user_nuclear_dir",
+                          (CPRParam){CPR_STRING, .v.s = custom_nuclear_dir});
+
+    if (ini_path) {
+        if (cpr_ini_load(&cfg, ini_path, &cp, &err)) {
+            fprintf(stderr, "error: %s\n", err);
+            free(err);
+            cpr_paramlist_free(&cp);
+            cpr_config_free(&cfg);
+            return 1;
+        }
+    }
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -817,55 +987,56 @@ int cpr_cli_main(int argc, char **argv)
             || strcmp(a, "--ini") == 0) { i++; continue; }
         if (strcmp(a, "--cache-info") == 0 || strcmp(a, "--cache-clear") == 0
             || strcmp(a, "--credits") == 0 || strcmp(a, "--version") == 0
-            || strcmp(a, "--json") == 0
+            || strcmp(a, "--list-params") == 0 || strcmp(a, "--json") == 0
             || strcmp(a, "--help") == 0 || strcmp(a, "-h") == 0) continue;
-        if (strcmp(a, "--mc") == 0 || strcmp(a, "--mc-seed") == 0) { i++; continue; }
+        if (strcmp(a, "--mc") == 0 || strcmp(a, "--mc-seed") == 0
+            || strcmp(a, "--mc-jobs") == 0) { i++; continue; }
 
         /* ---- Simple scalar flags (string or numeric) ---- */
         if (strcmp(a, "--Omegabh2") == 0 && has_val) {
             CPRParam p = {CPR_DOUBLE, .v.d = atof(argv[++i])};
-            apply_param(&cfg, &cp, "Omegabh2", p, "--Omegabh2");
+            APPLY_OR_FAIL(&cfg, &cp, "Omegabh2", p, "--Omegabh2");
         } else if (strcmp(a, "--DeltaNeff") == 0 && has_val) {
             CPRParam p = cpr_parse_literal(argv[++i]);
-            apply_param(&cfg, &cp, "DeltaNeff", p, "--DeltaNeff");
+            APPLY_OR_FAIL(&cfg, &cp, "DeltaNeff", p, "--DeltaNeff");
         } else if (strcmp(a, "--network") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            apply_param(&cfg, &cp, "network", p, "--network");
+            APPLY_OR_FAIL(&cfg, &cp, "network", p, "--network");
         } else if (strcmp(a, "--amax") == 0 && has_val) {
             CPRParam p = cpr_parse_literal(argv[++i]);
-            apply_param(&cfg, &cp, "amax", p, "--amax");
+            APPLY_OR_FAIL(&cfg, &cp, "amax", p, "--amax");
         } else if (strcmp(a, "--numerical_precision") == 0 && has_val) {
             CPRParam p = cpr_parse_literal(argv[++i]);
-            apply_param(&cfg, &cp, "numerical_precision", p, "--numerical_precision");
+            APPLY_OR_FAIL(&cfg, &cp, "numerical_precision", p, "--numerical_precision");
         } else if (strcmp(a, "--munuOverTnu") == 0 && has_val) {
             CPRParam p = cpr_parse_literal(argv[++i]);
-            apply_param(&cfg, &cp, "munuOverTnu", p, "--munuOverTnu");
+            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu", p, "--munuOverTnu");
         } else if (strcmp(a, "--munuOverTnu_e") == 0 && has_val) {
             CPRParam p = cpr_parse_literal(argv[++i]);
-            apply_param(&cfg, &cp, "munuOverTnu_e", p, "--munuOverTnu_e");
+            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_e", p, "--munuOverTnu_e");
         } else if (strcmp(a, "--munuOverTnu_mu") == 0 && has_val) {
             CPRParam p = cpr_parse_literal(argv[++i]);
-            apply_param(&cfg, &cp, "munuOverTnu_mu", p, "--munuOverTnu_mu");
+            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_mu", p, "--munuOverTnu_mu");
         } else if (strcmp(a, "--munuOverTnu_tau") == 0 && has_val) {
             CPRParam p = cpr_parse_literal(argv[++i]);
-            apply_param(&cfg, &cp, "munuOverTnu_tau", p, "--munuOverTnu_tau");
+            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_tau", p, "--munuOverTnu_tau");
         } else if (strcmp(a, "--verbose") == 0) {
             CPRParam p = {CPR_BOOL, .v.b = 1};
-            apply_param(&cfg, &cp, "verbose", p, "--verbose");
+            APPLY_OR_FAIL(&cfg, &cp, "verbose", p, "--verbose");
 
         /* ---- Output file paths ---- */
         } else if (strcmp(a, "--output_file") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            apply_param(&cfg, &cp, "output_file", p, "--output_file");
+            APPLY_OR_FAIL(&cfg, &cp, "output_file", p, "--output_file");
         } else if (strcmp(a, "--output_final_file") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            apply_param(&cfg, &cp, "output_final_file", p, "--output_final_file");
+            APPLY_OR_FAIL(&cfg, &cp, "output_final_file", p, "--output_final_file");
         } else if (strcmp(a, "--output_background_file") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            apply_param(&cfg, &cp, "output_background_file", p, "--output_background_file");
+            APPLY_OR_FAIL(&cfg, &cp, "output_background_file", p, "--output_background_file");
         } else if (strcmp(a, "--output_mc_file_prefix") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            apply_param(&cfg, &cp, "output_mc_file_prefix", p, "--output_mc_file_prefix");
+            APPLY_OR_FAIL(&cfg, &cp, "output_mc_file_prefix", p, "--output_mc_file_prefix");
 
         /* ---- Boolean --flag / --no-flag pairs ---- */
         } else if (strncmp(a, "--", 2) == 0) {
@@ -877,11 +1048,11 @@ int cpr_cli_main(int argc, char **argv)
                 snprintf(neg_flag, sizeof(neg_flag), "--no-%s", bool_flags[fi]);
                 if (strcmp(a, neg_flag) == 0) {
                     CPRParam p = {CPR_BOOL, .v.b = 0};
-                    apply_param(&cfg, &cp, bool_flags[fi], p, neg_flag);
+                    APPLY_OR_FAIL(&cfg, &cp, bool_flags[fi], p, neg_flag);
                     matched = 1; break;
                 } else if (strcmp(a, pos_flag) == 0) {
                     CPRParam p = {CPR_BOOL, .v.b = 1};
-                    apply_param(&cfg, &cp, bool_flags[fi], p, pos_flag);
+                    APPLY_OR_FAIL(&cfg, &cp, bool_flags[fi], p, pos_flag);
                     matched = 1; break;
                 }
             }
@@ -892,24 +1063,35 @@ int cpr_cli_main(int argc, char **argv)
                     const char *eq = strchr(entry, '=');
                     if (!eq) {
                         fprintf(stderr, "--set %s: expected KEY=VALUE\n", entry);
+                        cpr_paramlist_free(&cp);
                         cpr_config_free(&cfg);
                         return 2;
                     }
-                    if (cp.n >= MAX_CLI_PARAMS) {
-                        fprintf(stderr, "--set: too many parameters (max %d)\n", MAX_CLI_PARAMS);
+                    /* An empty value is not a Python literal either: cli.py's
+                     * ast.literal_eval("") raises and becomes a parser.error.
+                     * Without this, `--set network=` set the network to "" and
+                     * failed much later on a nonsensical ".txt" open. */
+                    if (eq[1] == '\0') {
+                        fprintf(stderr, "--set %s: expected KEY=VALUE "
+                                        "(the value is empty)\n", entry);
+                        cpr_paramlist_free(&cp);
                         cpr_config_free(&cfg);
                         return 2;
                     }
+                    /* The key half of argv's "KEY=VALUE" is not NUL-terminated
+                     * at the '=', so it needs its own copy; cpr_paramlist_add
+                     * then copies it again into the list's own arena. */
+                    char key[CPR_PARAM_KEY_LEN];
                     size_t klen = (size_t)(eq - entry);
-                    if (klen >= sizeof(cp.key_store[0])) klen = sizeof(cp.key_store[0]) - 1;
-                    memcpy(cp.key_store[cp.n], entry, klen);
-                    cp.key_store[cp.n][klen] = '\0';
-                    const char *key = cp.key_store[cp.n];
+                    if (klen >= sizeof(key)) klen = sizeof(key) - 1;
+                    memcpy(key, entry, klen);
+                    key[klen] = '\0';
                     CPRParam p = cpr_parse_literal(eq + 1);
-                    apply_param(&cfg, &cp, key, p, entry);
+                    APPLY_OR_FAIL(&cfg, &cp, key, p, entry);
                 } else {
                     fprintf(stderr, "unrecognized argument: %s\n", a);
                     usage(argv[0]);
+                    cpr_paramlist_free(&cp);
                     cpr_config_free(&cfg);
                     return 2;
                 }
@@ -917,6 +1099,7 @@ int cpr_cli_main(int argc, char **argv)
         } else {
             fprintf(stderr, "unrecognized argument: %s\n", a);
             usage(argv[0]);
+            cpr_paramlist_free(&cp);
             cpr_config_free(&cfg);
             return 2;
         }
@@ -925,14 +1108,31 @@ int cpr_cli_main(int argc, char **argv)
     if (cpr_config_validate(&cfg, &err)) {
         fprintf(stderr, "error: %s\n", err);
         free(err);
+        cpr_paramlist_free(&cp);
         cpr_config_free(&cfg);
         return 1;
     }
+
+    /* Startup note for an overlay/takeover data directory, byte-identical to
+     * cli.py's `print(_rates_overlay_notice(key, ...), file=sys.stderr)` --
+     * a run reading rate tables from somewhere other than the shipped tree
+     * should say so, on both backends. Printed after validation so a bad path
+     * is reported as an error rather than announced as if it worked. */
+    if (custom_nuclear_dir || cfg.user_nuclear_dir)
+        print_overlay_notice("user_nuclear_dir", cfg.user_nuclear_dir);
+    if (data_dir_given)
+        print_overlay_notice("data_dir", cfg.data_dir);
+
+    /* Wall clock for the closing "--- running time: X seconds ---" line,
+     * matching cli.py's start_time (set just before the solve, so table
+     * loading counts but argument parsing does not). */
+    double t_start = cli_wall_seconds();
 
     CPRResults results;
     if (cprimat_run(&cfg, NULL, &results, &err)) {
         fprintf(stderr, "error: %s\n", err);
         free(err);
+        cpr_paramlist_free(&cp);
         cpr_config_free(&cfg);
         return 1;
     }
@@ -974,15 +1174,22 @@ int cpr_cli_main(int argc, char **argv)
         if (cpr_mc_uncertainty(mc_n, quantities, n_q,
                                data_dir,
                                cp.items, cp.n,
-                               mc_seed, -1 /* all cores */, NULL,
+                               mc_seed, mc_jobs, NULL,
                                NULL, NULL, 0, cfg.show_progress,
                                &mc_result, &err)) {
-            fprintf(stderr, "MC error: %s\n", err);
+            /* Fatal, as on the Python side: cli.py lets run_mc's exception
+             * propagate, so `primat --mc` exits non-zero. Printing the central
+             * results and exiting 0 (as this used to) tells a script the run
+             * succeeded while silently omitting every sigma it asked for. */
+            fprintf(stderr, "error: MC: %s\n", err);
             free(err);
-            /* Non-fatal: print the main result without MC. */
-        } else {
-            mc = &mc_result;
+            free(quantities);
+            cprimat_results_free(&results);
+            cpr_paramlist_free(&cp);
+            cpr_config_free(&cfg);
+            return 1;
         }
+        mc = &mc_result;
         free(quantities);
     } else {
         /* output_mc_samples/output_mc_covariance/output_mc_correlation only
@@ -1006,10 +1213,11 @@ int cpr_cli_main(int argc, char **argv)
     }
 
     /* ---- Output ---- */
+    double elapsed_s = cli_wall_seconds() - t_start;
     if (do_json) {
         print_json(&results, mc);
     } else {
-        print_plain(&cfg, &results, mc, mc_n);
+        print_plain(&cfg, &results, mc, mc_n, elapsed_s);
     }
 
     /* ---- Optional MC output files (samples / covariance / correlation) ----
@@ -1041,6 +1249,7 @@ int cpr_cli_main(int argc, char **argv)
 
     if (mc) cpr_mc_result_free(&mc_result);
     cprimat_results_free(&results);
+    cpr_paramlist_free(&cp);
     cpr_config_free(&cfg);
     return 0;
 }

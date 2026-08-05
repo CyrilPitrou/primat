@@ -440,7 +440,7 @@ class Plasma:
         self._setup_integrand_impls(cfg)
         self._build_electron_tables(cfg)
         if cfg.verbose:
-            print("[init]  QED pressure corrections tables loaded.")
+            print("[init-py] QED pressure corrections tables loaded.")
 
     # ------------------------------------------------------------------
     # Initialisation helpers
@@ -625,7 +625,7 @@ class Plasma:
                 reason = ("recompute requested" if recompute
                           else "cached tables stale (fingerprint mismatch)" if split_stale
                           else "files not found")
-                print(f"[init]  Computing QED plasma-pressure tables ({reason})…")
+                print(f"[init-py] Computing QED plasma-pressure tables ({reason})…")
             # alpha/me come from cfg, matching what plasma.c has always passed
             # from g_const: qed_pressure's module-level _ALPHA_FS/_ME_MEV are a
             # standalone-use default only, so the solver has a single source of
@@ -891,7 +891,7 @@ class Plasma:
                 self._dp_e_dT_tab   = interp1d(d[:, 0], d[:, 4], kind='cubic',
                                           bounds_error=False, fill_value="extrapolate")
                 if cfg.verbose:
-                    print(f"[init]  Electron-thermo tables loaded from cache ({cfg.n_electron_table} points).")
+                    print(f"[init-py] Electron-thermo tables loaded from cache ({cfg.n_electron_table} points).")
                 return
             except Exception as exc:
                 import warnings
@@ -934,7 +934,7 @@ class Plasma:
                 "the cache to a writable directory.")
 
         if cfg.verbose:
-            print(f"[init]  Electron-thermo tables built ({cfg.n_electron_table} points).")
+            print(f"[init-py] Electron-thermo tables built ({cfg.n_electron_table} points).")
 
     # ------------------------------------------------------------------
     # e± — public entry points (dispatch to table or exact)

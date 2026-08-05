@@ -498,8 +498,11 @@ def _rates_overlay_notice(field: str, path: str) -> str:
     else:
         label = "additive nuclear overlay"
         detail = "nuclear networks and rate tables"
+    # "[init-py] " (one space), like every other verbose tag: the C backend
+    # prints the same notice as "[init-c] ...", and the two are meant to be
+    # diffable line-for-line (see log.h's tag convention).
     return (
-        f"[init]  {field} {label} override: {detail} under "
+        f"[init-py] {field} {label} override: {detail} under "
         f"{os.path.abspath(os.path.expanduser(os.fspath(path)))!r}."
     )
 

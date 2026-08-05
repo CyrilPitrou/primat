@@ -73,6 +73,25 @@ static int py_to_cprparam(PyObject *value, CPRParam *out, char **owned)
     return 1;
 }
 
+/* dict[key] = float(v), owning the temporary correctly.
+ *
+ * PyDict_SetItemString INCREFs its value rather than stealing it, so a
+ * PyFloat_FromDouble(...) passed inline as the value argument is never
+ * released -- that leaked three floats per MC quantity per run_mc call, in a
+ * function whose whole point is being called in a loop by a scan/MCMC driver.
+ * Passing the result inline also fed a NULL back into PyDict_SetItemString on
+ * an allocation failure (which deletes the key or raises SystemError) instead
+ * of propagating the MemoryError. Returns 0, or -1 with an exception set. */
+static int dict_set_float(PyObject *dict, const char *key, double v)
+{
+    PyObject *o = PyFloat_FromDouble(v);
+    if (!o)
+        return -1;
+    int rc = PyDict_SetItemString(dict, key, o);
+    Py_DECREF(o);
+    return rc;
+}
+
 /* Builds a Python list of floats from a caller-owned double array of
  * length n. Returns NULL (with a Python exception set) on allocation
  * failure. */
@@ -292,9 +311,21 @@ static int parse_custom_table_text(const char *text, double **T9, double **rate,
 
         if (count == cap) {
             cap *= 2;
-            t9 = realloc(t9, cap * sizeof(double));
-            rt = realloc(rt, cap * sizeof(double));
-            er = realloc(er, cap * sizeof(double));
+            double *t9n = realloc(t9, cap * sizeof(double));
+            double *rtn = realloc(rt, cap * sizeof(double));
+            double *ern = realloc(er, cap * sizeof(double));
+            /* On a failed grow the ORIGINAL block is still live, so assign
+             * only what succeeded and free all three from the surviving
+             * pointers -- overwriting t9/rt/er with NULL first would leak
+             * them. */
+            if (t9n) t9 = t9n;
+            if (rtn) rt = rtn;
+            if (ern) er = ern;
+            if (!t9n || !rtn || !ern) {
+                free(t9); free(rt); free(er); free(copy);
+                PyErr_NoMemory();
+                return 1;
+            }
         }
         t9[count] = v1; rt[count] = v2; er[count] = v3;
         count++;
@@ -344,7 +375,12 @@ static int dict_to_custom_network(PyObject *custom_network, CPRCustomNetwork *ou
         PyObject *seq = PySequence_Fast(removed_obj, "custom_network['removed'] must be a sequence of str");
         if (!seq) return 1;
         Py_ssize_t n = PySequence_Fast_GET_SIZE(seq);
-        out->removed = malloc((size_t)n * sizeof(*out->removed));
+        out->removed = malloc((n > 0 ? (size_t)n : 1) * sizeof(*out->removed));
+        if (!out->removed) {
+            Py_DECREF(seq);
+            PyErr_NoMemory();
+            return 1;
+        }
         for (Py_ssize_t i = 0; i < n; i++) {
             PyObject *item = PySequence_Fast_GET_ITEM(seq, i);
             const char *s = PyUnicode_Check(item) ? PyUnicode_AsUTF8(item) : NULL;
@@ -380,7 +416,14 @@ static int dict_to_custom_network(PyObject *custom_network, CPRCustomNetwork *ou
             if (parse_custom_table_text(text, &T9, &rate, &err, &n)) {
                 free_custom_network(out); return 1;
             }
-            out->tables = realloc(out->tables, (out->n_tables + 1) * sizeof(*out->tables));
+            CPRCustomTable *grown = realloc(out->tables,
+                                            (out->n_tables + 1) * sizeof(*out->tables));
+            if (!grown) {
+                free(T9); free(rate); free(err);
+                PyErr_NoMemory();
+                free_custom_network(out); return 1;
+            }
+            out->tables = grown;
             CPRCustomTable *ct = &out->tables[out->n_tables++];
             snprintf(ct->name, sizeof(ct->name), "%s", name);
             ct->T9 = T9; ct->rate = rate; ct->err = err; ct->n = n;
@@ -500,8 +543,27 @@ static PyObject *primat_c_run_bbn(PyObject *self, PyObject *args, PyObject *kwar
         cfg.extra_rho_n = nT;
     }
 
+    /* Release the GIL for the solve itself.
+     *
+     * cprimat_run is pure C -- it touches no Python object, allocates through
+     * libc, and prints straight to stdout/stderr -- so nothing here needs the
+     * interpreter lock. Holding it across a `large`-network run (seconds to
+     * minutes) froze the whole process: no other Python thread could make
+     * progress (primat-gui runs the solve on a Streamlit script thread while
+     * its server thread keeps serving), and a Ctrl-C could not raise
+     * KeyboardInterrupt, because that only happens when the eval loop next
+     * runs -- which this thread would not do again until the call returned.
+     * With the GIL released, the signal handler runs immediately and the
+     * KeyboardInterrupt is raised as soon as the solve finishes.
+     *
+     * Interrupting the solve *mid-flight* would need a cancellation hook
+     * cprimat_run does not have; run_mc below can do it because mc.c exposes
+     * cpr_mc_request_cancel and checks it between samples. */
     CPRResults results;
-    int rc = cprimat_run(&cfg, &custom, &results, &errmsg);
+    int rc;
+    Py_BEGIN_ALLOW_THREADS
+    rc = cprimat_run(&cfg, &custom, &results, &errmsg);
+    Py_END_ALLOW_THREADS
     cpr_config_free(&cfg);
     free_custom_network(&custom);
     if (rc) {
@@ -638,8 +700,10 @@ static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwarg
         return NULL;
     PyObject *quantities_seq = PySequence_Fast(quantities_obj,
         "quantities must be a sequence of str");
-    if (!quantities_seq)
+    if (!quantities_seq) {
+        free_custom_network(&custom);   /* already parsed above */
         return NULL;
+    }
     Py_ssize_t n_q = PySequence_Fast_GET_SIZE(quantities_seq);
     const char **quantities = malloc((size_t)n_q * sizeof(char *));
     if (n_q > 0 && !quantities) {
@@ -717,7 +781,18 @@ static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwarg
             free(paramset);
             return NULL;
         }
-        prev_values = calloc((size_t)n_q, sizeof(double *));
+        prev_values = calloc(n_q > 0 ? (size_t)n_q : 1, sizeof(double *));
+        if (!prev_values) {
+            Py_DECREF(prev_values_seq);
+            free(prev_centrals);
+            free(quantities);
+            Py_DECREF(quantities_seq);
+            free_custom_network(&custom);
+            for (size_t k = 0; k < n_params; k++) free(owned[k]);
+            free(owned);
+            free(paramset);
+            return PyErr_NoMemory();
+        }
         for (Py_ssize_t i = 0; i < n_q; i++) {
             size_t n_this = 0;
             prev_values[i] = seq_to_doubles(PySequence_Fast_GET_ITEM(prev_values_seq, i), &n_this);
@@ -820,9 +895,9 @@ static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwarg
         PyObject *item = PyDict_New();
         PyObject *vals = NULL;
         if (!item
-            || PyDict_SetItemString(item, "central", PyFloat_FromDouble(out.items[i].central)) < 0
-            || PyDict_SetItemString(item, "mean", PyFloat_FromDouble(out.items[i].mean)) < 0
-            || PyDict_SetItemString(item, "std", PyFloat_FromDouble(out.items[i].std)) < 0
+            || dict_set_float(item, "central", out.items[i].central) < 0
+            || dict_set_float(item, "mean", out.items[i].mean) < 0
+            || dict_set_float(item, "std", out.items[i].std) < 0
             || !(vals = doubles_to_list(out.items[i].values, (size_t)num_mc))
             || PyDict_SetItemString(item, "values", vals) < 0
             || PyDict_SetItemString(d, out.items[i].name, item) < 0) {

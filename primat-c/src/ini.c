@@ -14,7 +14,8 @@ static char *trim(char *s)
     return s;
 }
 
-int cpr_ini_load(CPRConfig *cfg, const char *path, char **errmsg)
+int cpr_ini_load(CPRConfig *cfg, const char *path, CPRParamList *collect,
+                 char **errmsg)
 {
     FILE *f = fopen(path, "r");
     if (!f) {
@@ -57,13 +58,45 @@ int cpr_ini_load(CPRConfig *cfg, const char *path, char **errmsg)
             continue;
         }
 
+        /* An empty value is not a literal (cpr_parse_literal's closing
+         * comment): "network =" must not silently become the empty string. */
+        if (*val == '\0') {
+            char buf[CPR_PARAM_VAL_LEN];
+            snprintf(buf, sizeof(buf), "%s:%d: key '%.200s' has an empty value",
+                     path, lineno, key);
+            *errmsg = strdup(buf);
+            fclose(f);
+            return 1;
+        }
+
         CPRParam value = cpr_parse_literal(val);
         char *set_err = NULL;
-        if (cpr_config_set_by_name(cfg, key, value, &set_err)) {
+        int rc = cpr_config_set_by_name(cfg, key, value, &set_err);
+        if (rc == CPR_SET_OK) {
+            /* Retain it for the MC workers (see ini.h); cpr_paramlist_add
+             * copies both halves, so `value` pointing into cpr_parse_literal's
+             * static scratch is fine. */
+            if (collect)
+                cpr_paramlist_add(collect, key, value);
+        } else if (rc == CPR_SET_UNKNOWN_KEY && !cfg->strict_params) {
+            /* Warn and ignore -- PRIMATConfig's strict_params=False default. */
             fprintf(stderr, "%s:%d: warning: %s\n", path, lineno,
                     set_err ? set_err : "could not set key");
+        } else {
+            /* A type mismatch (always), or an unknown key under
+             * strict_params=True: both raise on the Python side, so both are
+             * fatal here. Continuing past a type mismatch is also what used to
+             * leave a freed string in the config. */
+            char buf[CPR_PARAM_VAL_LEN];
+            snprintf(buf, sizeof(buf), "%s:%d: %s%s", path, lineno,
+                     set_err ? set_err : "could not set key",
+                     rc == CPR_SET_UNKNOWN_KEY ? " [strict_params=True]" : "");
+            *errmsg = strdup(buf);
             free(set_err);
+            fclose(f);
+            return 1;
         }
+        free(set_err);
     }
 
     fclose(f);

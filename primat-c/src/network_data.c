@@ -5,6 +5,7 @@
 #include "constants.h"
 #include "spline.h"
 #include "table_io.h"
+#include "log.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -1392,6 +1393,11 @@ int cpr_nuclear_rates_init(CPRNuclearRates *nr, const CPRConfig *cfg,
                              const CPRCustomNetwork *custom, char **errmsg)
 {
     memset(nr, 0, sizeof(*nr));
+    /* Twin of UpdateNuclearRates.__init__'s "[rates-py] Building '<net>'
+     * network from text lists." (network_data.py) -- the first line of the
+     * rate-loading stage, so a verbose run of either backend reports the same
+     * sequence. Quoted like Python's f"{cfg.network!r}". */
+    cpr_log(cfg, "rates", "Building '%s' network from text lists.", cfg->network);
     if (cpr_load_network(cfg, "MT", NULL, 0, custom, &nr->mt_net, errmsg)) return 1;
     if (cpr_load_network(cfg, "LT", NULL, 0, custom, &nr->lt_net, errmsg)) {
         cpr_network_def_free(&nr->mt_net);
