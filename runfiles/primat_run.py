@@ -36,8 +36,10 @@ MyOptions = {
     "verbose":              True,
     "debug":                True,
     # save_nTOp: True is now the default; listed here explicitly for clarity.
-    # Each configuration saves to rates/weak/nTOp_<hash>.txt so different
-    # configurations coexist without overwriting each other.
+    # Each configuration saves to
+    # primat/data/cache_plasma_weak/weak/nTOp_<hash>.txt (or the cache_dir
+    # redirect) so different configurations coexist without overwriting each
+    # other -- see docs/howto/weak-rate-cache.md.
     "save_nTOp":            True,
     "Omegabh2":                  omegabh2,
     # "eta0b": computed automatically from Omegabh2

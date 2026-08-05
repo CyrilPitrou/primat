@@ -33,11 +33,14 @@ _base_opts = {
     "Omegabh2":                  omegabh2,
     "DeltaNeff":                 Nrelat,
     "numerical_precision":       1e-7,
-    # spectral_distortions: left at its PRIMATConfig default (True).
-    # nuclear_qed_corrections is turned off here (the CLAUDE.md reference
-    # table uses the True default), so these results are an internal
-    # small-vs-large(amax=8)-vs-large comparison only -- not directly
-    # comparable to the CLAUDE.md reference values.
+    # spectral_distortions and nuclear_qed_corrections are both left at their
+    # PRIMATConfig default (True); nuclear_qed_corrections is spelled out
+    # below only because it is the one flag a reader is most likely to want to
+    # flip when comparing networks. Since every flag here matches the
+    # defaults, the numbers printed for `large, amax=8` are directly
+    # comparable to tests/README.md's "Validation reference (authoritative
+    # copy)" -- at the routine tolerance, this script running at
+    # numerical_precision=1e-7 rather than the reference run's 1e-10.
     "nuclear_qed_corrections":   True
 }
 

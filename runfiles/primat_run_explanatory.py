@@ -5,8 +5,8 @@ primat_run_explanatory.py
 Minimal, heavily-commented template for a standalone BBN run. Copy this file
 and uncomment/edit whichever options you need; every option shown below is at
 its default value, so running this file unmodified reproduces the standard
-run (see CLAUDE.md's "Validation before committing" table for the expected
-YPBBN/D-H reference values).
+run (see tests/README.md's "Validation reference (authoritative copy)"
+for the expected YPBBN/D-H values and the tolerance that applies).
 
 Run from the repo root so that the shipped ``data/`` data resolve correctly:
 

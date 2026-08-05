@@ -11,8 +11,9 @@ Strategy for efficiency
 -----------------------
 For each DeltaN value the n<->p weak-rate tables are computed once (the seed run
 below uses save_nTOp=True, so the result is written to
-rates/weak/nTOp_{frwrd,bkwrd}.txt with a fingerprint header keyed on, among other
-things, DeltaNeff -- see primat.weak_rates).  All subsequent runs for that same
+primat/data/cache_plasma_weak/weak/nTOp_<hash>.txt -- one file, forward and
+backward columns together, its name a hash of the fingerprint keyed on, among
+other things, DeltaNeff; see primat.weak_rates.cache).  All subsequent runs for that same
 DeltaN have a matching fingerprint and so load the cached tables instead of
 recomputing them, meaning only the nuclear-network ODE is re-integrated.  tau_n
 variation affects only the weak-rate normalisation, which is re-evaluated for
@@ -53,10 +54,18 @@ Estimated run time: ~1–3 hours on a modern multicore machine (n_jobs=-1).
 
 import sys
 import os
+import textwrap
 import time
 import datetime
 import numpy as np
-from joblib import Parallel, delayed
+
+try:
+    from joblib import Parallel, delayed
+except ModuleNotFoundError as exc:   # joblib is an optional extra, not a core dep
+    raise SystemExit(
+        "error: this script needs joblib to parallelise the ~130k solves of the "
+        "grid; install it with `pip install \"primat[mc]\"` (or `primat[recommended]`)."
+    ) from exc
 
 # Ensure the repo root is importable when the script is run from any directory.
 
@@ -302,7 +311,8 @@ if __name__ == "__main__":
                 'Omegabh2': 0.02242,
                 'DeltaNeff': float(DeltaN),
             }
-            backend.run_bbn(_seed_params, force_backend="python")   # side-effect: saves rates/weak/*.txt
+            # side-effect: writes cache_plasma_weak/weak/nTOp_<hash>.txt
+            backend.run_bbn(_seed_params, force_backend="python")
         print(f"  [weak {time.time()-t0:.0f}s]", end='', flush=True)
 
         # ------------------------------------------------------------------
@@ -396,7 +406,13 @@ if __name__ == "__main__":
         )
 
 
-    HEADER = f"""\
+    # textwrap.dedent: the block below is indented to sit inside this `if
+    # __name__` block, but every line of it is written to the .dat verbatim.
+    # Without the dedent each comment line -- including the column-name line
+    # interpolated at the end -- carries four leading spaces while the data
+    # rows carry two, so the labels sit four characters right of their
+    # columns, in a fixed-width file whose whole point is that they line up.
+    HEADER = textwrap.dedent(f"""\
     # BBN prediction of the primordial abundances (He-4 and Deuterium) as a function of
     # 1)the baryon density $\\Omega_b h^2$ and
     # 2)the number of extra relativistic degrees of freedom $\\Delta N$
@@ -408,7 +424,7 @@ if __name__ == "__main__":
     # Details on arXiv:1801.08023 and update arXiv:2011.11320
     # Last update {year} (notably including the LUNA rate for the d(p,g)He3 reaction)
     #
-    # Neutron Decay rate $\\tau_n$ is {BASE_OPTS['tau_n']}s (+-{BASE_OPTS['std_tau_n']}s), following Particle Data Group {year}
+    # Neutron Decay rate $\\tau_n$ is {BASE_OPTS['tau_n']}s (+-{BASE_OPTS['std_tau_n']}s), the Particle Data Group world average carried in primat's DEFAULT_PARAMS (primat/config.py)
     # CMB temperature is 2.7255 K (without taking into account a possible uncertainty)
     #
     # He4 is given either as $Y^BBN_P = 4 Y_{{He4}}$ where $Y_{{He4}}$ is the ratio of He-4 number density to baryons number density.
@@ -423,7 +439,7 @@ if __name__ == "__main__":
     # Errors are computed with a Monte-Carlo method on {N_MC} samples, varying nuclear rates and tau_n.
     # See PRIMAT paper (2018) for details.
     #
-    {HEADER_LINE}"""
+    {HEADER_LINE}""")
 
     # Assemble from whatever results are available.  A partial run (some DeltaN
     # still missing because it was interrupted) still produces a valid, usable table

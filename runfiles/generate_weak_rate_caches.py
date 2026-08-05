@@ -3,10 +3,11 @@
 generate_weak_rate_caches.py
 =============================
 (Re)generates the fingerprinted n<->p weak-rate cache files
-(``rates/weak/nTOp_<hash>.txt`` / ``nTOp_thermal_<hash>.txt``) for the
-handful of flag combinations that are force-added to git (see
-``.gitignore``'s ``rates/weak/nTOp_*.txt`` pattern -- only the files this
-script produces are exempted via ``git add -f``).
+(``primat/data/cache_plasma_weak/weak/nTOp_<hash>.txt`` /
+``nTOp_thermal_<hash>.txt``) for the handful of flag combinations that are
+force-added to git (see ``.gitignore``'s
+``primat/data/cache_plasma_weak/weak/nTOp_*.txt`` pattern -- only the files
+this script produces are exempted via ``git add -f``).
 
 These are the combinations actually exercised by the bulk of the test suite
 and the example runfiles, so shipping them avoids a (potentially multi-minute,
@@ -37,7 +38,7 @@ become orphaned (they would never be hit again, so they only bloat the repo).
 
 To keep the shipped set self-consistent, this script computes the exact set
 of filenames the combos below SHOULD produce and then prunes any git-tracked
-``nTOp_*.txt`` / ``nTOp_thermal_*.txt`` file in ``rates/weak/`` that is no
+``nTOp_*.txt`` / ``nTOp_thermal_*.txt`` file in the cache directory that is no
 longer in that set (only git-tracked files, so a developer's local
 non-shipped caches are left untouched). Pruning + (re)generation together
 leave the working tree holding exactly the canonical shipped set.
@@ -45,8 +46,9 @@ leave the working tree holding exactly the canonical shipped set.
 After running, stage the result (new files force-added past .gitignore,
 deletions recorded)::
 
-    git add -f rates/weak/nTOp_*.txt rates/weak/nTOp_thermal_*.txt
-    git add -u rates/weak/                       # record pruned deletions
+    cd primat/data/cache_plasma_weak/weak
+    git add -f nTOp_*.txt     # also matches nTOp_thermal_*.txt
+    git add -u .              # record pruned deletions
 
 Cross-backend agreement check (thermal cache only): for each combo, after
 the Python (vegas) thermal table is written and shipped, this script also
@@ -76,6 +78,7 @@ if _primat_path not in sys.path:
     sys.path.insert(0, _primat_path)
 
 from primat import PRIMAT
+from primat.config import PRIMATConfig
 from primat.backend import run_bbn, HAS_C_BACKEND
 from primat.cache_utils import fingerprint_hash, weak_cache_dir
 from primat.weak_rates.cache import (_weak_rate_fingerprint,
@@ -110,10 +113,16 @@ def _expected_filenames(combos):
     expected = set()
     cache_dir = None
     for _, extra in combos:
-        # Pure inspection: never touch the cache here (weak_rate_cache=False so
-        # nothing is loaded, save_* False so nothing is written).
-        cfg = PRIMAT(params=dict(extra, verbose=False, weak_rate_cache=False,
-                               save_nTOp=False, save_nTOp_thermal=False)).cfg
+        # PRIMATConfig, not PRIMAT: both fingerprints and the cache directory
+        # are pure functions of the config, so building the solver here would
+        # buy nothing and cost a full background + n<->p rate computation
+        # (measured 7.7 s per combo, versus 0.000 s for the config alone).
+        # Worse, the flags that used to be passed to keep that construction
+        # "harmless" -- weak_rate_cache=False above all -- are precisely the
+        # ones that force the slow path: weak_rate_cache=False means "never
+        # load the cache, always recompute" (see config.py's DEFAULT_PARAMS).
+        # Verified: this route reproduces the PRIMAT(...).cfg hashes exactly.
+        cfg = PRIMATConfig(params=dict(extra, verbose=False))
         cache_dir = weak_cache_dir(cfg)
         expected.add("nTOp_" + fingerprint_hash(_weak_rate_fingerprint(cfg)) + ".txt")
         expected.add("nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
@@ -143,9 +152,12 @@ def _tracked_cache_files(cache_dir):
 
 
 def _thermal_cache_path(extra):
-    """Path to the thermal-cache file the given combo's `extra` flags map to."""
-    cfg = PRIMAT(params=dict(extra, verbose=False, weak_rate_cache=False,
-                           save_nTOp=False, save_nTOp_thermal=False)).cfg
+    """Path to the thermal-cache file the given combo's `extra` flags map to.
+
+    Config-only, for the same reason as :func:`_expected_filenames`: the
+    filename is a pure function of the fingerprint, so no solver is built.
+    """
+    cfg = PRIMATConfig(params=dict(extra, verbose=False))
     return os.path.join(weak_cache_dir(cfg),
                          "nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
 
@@ -197,8 +209,11 @@ if __name__ == "__main__":
         print(f"--- {label} ---")
         t0 = time.time()
         # PRIMAT's constructor alone is enough: it computes the n<->p weak
-        # rates (and, with the defaults below, writes them back to
-        # rates/weak/) without needing a full BBN solve.
+        # rates (and, with the flags below, writes them back to
+        # primat/data/cache_plasma_weak/weak/) without needing a full BBN
+        # solve.  This is the one place in the script that *should* pay that
+        # cost -- see _expected_filenames for why the inspection helpers must
+        # not.
         PRIMAT(params=dict(extra, verbose=False, save_nTOp=True,
                           save_nTOp_thermal=True))
         print(f"    done in {time.time() - t0:.1f} s")

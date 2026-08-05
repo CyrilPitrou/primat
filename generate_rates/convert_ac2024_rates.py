@@ -948,6 +948,15 @@ _ANALYTIC_REACTIONS = [
      'With[{T912=T9^(1/2)},( 7.19*^5*(1.+.361*T912+.502*T9)+3.34*^8/T912*Exp[-4.983/T9])*.333]'),
     ('CF88', 'O14 + n  > N14 + p ;', 3.0,
      'With[{T912=T9^(1/2)},(6.74*^7*(1.+0.658*T912+0.379*T9)*2.99 )]'),
+    # NOT A TRANSCRIPTION ERROR: `Exp[-22.61/79]` is character-for-character
+    # what PRIMAT-Main.m:2787 contains, where every sibling term divides by T9
+    # -- an upstream typo (`79` for `T9`) that turns a Boltzmann-suppressed
+    # term into the T-independent constant e^-0.286. `Exp[-12.159]` on the same
+    # line looks like the same slip. Reproduced verbatim on purpose: this table
+    # exists to regenerate PRIMAT's own rates, so "fixing" it here would make
+    # the shipped tables disagree with the reference implementation. Affects
+    # only A = 18, well inside the heavy-nuclide tail the docs already flag as
+    # approximate (`amax=8` never sees it).
     ('Wie87', 'O14 + a  > Ne18 + g ;', 3.0,
      'With[{T932=T9^(3/2)},( 1.16*^-1/T932*Exp[-11.73/T9]+3.40*^1/T932*Exp[-22.61/79]+9.10*^-3*T9^5*Exp[-12.159])]'),
     ('NACRE', 'C11 + a  > N14 + p ;', 2.0,
@@ -960,6 +969,10 @@ _ANALYTIC_REACTIONS = [
      '(1.38*^8*T9^0.053*Exp[-(55.0-54.943)/T9]* (1.+.039*Exp[-.012/T9+.217*T9])/1.478 )'),
     ('CF88', 'F18 + n > N15 + a ;', 3.0,
      'With[{T912=T9^(1/2)},( 3.14*^8*(1.-0.641*T912+0.108*T9)*2.)]'),
+    # Also verbatim from PRIMAT-Main.m (:2832): the exponent carries no 1/T9^(1/3)
+    # although the 1/T9^(2/3) prefactor is the usual non-resonant form, so this
+    # too reads like an upstream slip. Kept as-is for the same reason as the
+    # O14+a>Ne18+g entry above.
     ('Kaw91', 'C14 + d  > N15 + n ;', 3.0,
      'With[{T923=T9^(2/3)},(4.27*^13/T923*Exp[-16.939])]'),
     ('CF88', 'p + p + n > d + p ;', 3.0,
@@ -1081,9 +1094,10 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir, suffix="_pri
     written by :func:`write_reaction_file`/:func:`write_analytic_file`) is
     appended to each non-decay reaction's filename in ``large.txt``, which
     ``load_network`` (``primat/network_data.py``) always spells out
-    explicitly rather than implying -- see CLAUDE.md's "Adding a new
-    reaction" section. Decay reactions (Bm/Bp) are written bare: their rate
-    lives in the shared, unsuffixed ``decays.txt``, not a per-reaction file.
+    explicitly rather than implying -- see ``docs/howto/custom-networks.md``'s
+    "Permanently, via the source tree". Decay reactions (Bm/Bp) are written
+    bare: their rate lives in the shared, unsuffixed ``decays.txt``, not a
+    per-reaction file.
     """
     from nuclide_table import (build_nuclide_table, conservation_residual,
                                make_detailed_balance, is_decay)
@@ -1220,65 +1234,36 @@ def _validate_decay_halflives(decay_blocks, nubase_path):
         #          coded T1/2 = 4.382e+13 s (ratio = 1.001, OK)
     """
     import math
-    from nuclide_table import load_nubase_all, resolve_token
+    from nuclide_table import load_nubase_halflives, resolve_token
 
-    # NUBASE half-life fields (columns 70-78, 79-80) are text-formatted with
-    # physical units (s, m, h, d, ky, My, …). The reader load_nubase_all
-    # returns only (excess, spin), not the half-life, so we re-read the file
-    # here for the raw half-life string.  Parse column offsets from the file
-    # header: T # at col 70-78, unit at col 79-80.
-    _UNIT_TO_S = {
-        "ys": 1e-24, "zs": 1e-21, "as": 1e-18, "fs": 1e-15,
-        "ps": 1e-12, "ns": 1e-9,  "us": 1e-6,  "ms": 1e-3,
-        "s":  1.0,   "m":  60.0,  "h":  3600.0,
-        "d":  86400.0,
-        "y":  86400.0 * 365.2422,   # Julian year: 365.2422 d
-        "ky": 86400.0 * 365.2422 * 1e3,
-        "My": 86400.0 * 365.2422 * 1e6,
-        "Gy": 86400.0 * 365.2422 * 1e9,
-        "Ty": 86400.0 * 365.2422 * 1e12,
+    # Largest coded/NUBASE half-life ratio that a *branching* decay can
+    # legitimately show: the smallest branching fraction folded into
+    # _ANALYTIC_REACTIONS is Li9's 0.492, i.e. a partial half-life 1/0.492 =
+    # 2.033x the NUBASE total.  Anything beyond this margin is a wrong nuclide
+    # or a wrong unit conversion, not branching.
+    _HALFLIFE_MAX_RATIO = 2.1
+
+    # Deviations that are understood and deliberate, keyed by reaction name ->
+    # why.  Reported as NOTE rather than WARNING: a check that cries wolf on a
+    # healthy tree stops being read.  Entries here are *not* coding errors, so
+    # they must never be "fixed" by editing _ANALYTIC_REACTIONS without a
+    # deliberate decision to re-source that half-life.
+    _HALFLIFE_EXPECTED_DEVIATIONS = {
+        # PRIMAT-Main.m codes Audi 2003's 9.87 ms; NUBASE2020 re-evaluated it
+        # to 10.18 ms (+3.1%).  B15 is a trace heavy-tail nuclide (it decays to
+        # C15 far below any observable abundance), so the 3% is irrelevant to
+        # BBN -- kept at the PRIMAT value so the shipped tables stay a faithful
+        # regeneration of the reference implementation.
+        "B15__C15_Bm": "Aud03 (coded) vs NUBASE2020 re-evaluation, +3.1%; "
+                       "trace heavy-tail nuclide, deliberately kept at the "
+                       "PRIMAT value",
     }
 
-    # Build a (Z, A) -> half-life_s dict from the NUBASE file.
-    #
-    # NUBASE2020 fixed-width column layout for the half-life:
-    #   col 70-78 (0-indexed): T # (half-life value as a float string,
-    #             "stbl" for stable, "p-unst" for particle-unstable).
-    #   col 79-80: half-life unit (2 characters), e.g. "s ", "m ", "h ",
-    #             "d ", "y ", "ms", "us", "ky", "My", "Gy", ...
-    # The unit is always in columns 79-80 (0-indexed); for "ky"/"My" the
-    # 'k'/'M' prefix is at column 79 and 'y' is at column 80.
-    halflife_nubase = {}   # (Z, A) -> half-life in seconds (None for stable)
-    with open(nubase_path, encoding="latin-1") as fh:
-        for line in fh:
-            if line.startswith("#") or len(line) < 82:
-                continue
-            if line[7] != "0":  # ground states only
-                continue
-            try:
-                A = int(line[0:3])
-                Z = int(line[4:7])
-            except ValueError:
-                continue
-            t_str = line[70:78].strip().replace("#", "")
-            # Unit occupies columns 78-80 (0-indexed, 1-based: 79-81).
-            # For plain units like "s", "d", "y" the prefix slot at col 78 is
-            # a space; for "ky"/"My"/"Gy" the SI prefix sits at col 78.
-            # Always strip trailing spaces to get the 1- or 2-character unit.
-            unit  = line[78:80].strip()
-            if t_str in ("stbl", "p-unst", ""):
-                halflife_nubase[(Z, A)] = None  # stable or particle-unstable
-                continue
-            try:
-                t_val = float(t_str)
-            except ValueError:
-                halflife_nubase[(Z, A)] = None
-                continue
-            s_per_unit = _UNIT_TO_S.get(unit)
-            if s_per_unit is None:
-                halflife_nubase[(Z, A)] = None
-                continue
-            halflife_nubase[(Z, A)] = t_val * s_per_unit
+    # The (Z, A) -> half-life [s] map, read at the documented column offsets
+    # (see load_nubase_halflives, which owns that parsing and is unit-tested
+    # in tests/test_network_generation.py).  None = stable, particle-unstable,
+    # or a bare limit rather than a measurement.
+    halflife_nubase = load_nubase_halflives(nubase_path)
 
     ok = True
     for blk in decay_blocks:
@@ -1309,15 +1294,21 @@ def _validate_decay_halflives(decay_blocks, nubase_path):
         # branching fraction is folded in, so ratio > 1 is expected for those).
         ratio = coded_t12 / nubase_t12
         label = f"{blk['name']}: NUBASE T1/2 = {nubase_t12:.4g} s, coded T1/2 = {coded_t12:.4g} s (ratio = {ratio:.4g})"
-        if abs(ratio - 1.0) > 0.01 and ratio < 0.99:
+        if blk["name"] in _HALFLIFE_EXPECTED_DEVIATIONS:
+            # A deviation already understood and documented -- printed as a NOTE
+            # so it does not train the reader to ignore this check's warnings.
+            print(f"  NOTE:    {label} -- "
+                  f"{_HALFLIFE_EXPECTED_DEVIATIONS[blk['name']]}")
+        elif abs(ratio - 1.0) > 0.01 and ratio < 0.99:
             # ratio > 1 (partial half-life) is expected; ratio < 1 by > 1% is an error.
             print(f"  WARNING: {label} -- ratio < 1 by > 1%, check coded value!")
             ok = False
-        elif ratio > 2.0:
+        elif ratio > _HALFLIFE_MAX_RATIO:
             # Partial half-life is expected to be longer than NUBASE total, but
-            # by at most 1/BR_min ≈ 2× for typical branching.  Much larger
-            # ratios suggest a wrong nuclide or unit conversion.
-            print(f"  WARNING: {label} -- coded T1/2 is > 2× NUBASE total, check!")
+            # only by 1/BR.  Much larger ratios suggest a wrong nuclide or unit
+            # conversion.
+            print(f"  WARNING: {label} -- coded T1/2 is > "
+                  f"{_HALFLIFE_MAX_RATIO}× NUBASE total, check!")
             ok = False
         else:
             print(f"  OK:      {label}")
@@ -1368,45 +1359,53 @@ def _parse_args(argv):
     return p.parse_args(argv)
 
 
-def _generate_tabulated(args, grid):
-    """Stage 1: parse AC2024 and write one rate file per tabulated reaction.
-
-    Returns the parsed blocks (needed downstream for the CSV/cross-check
-    stage).  With ``--keep-source-grid``, each file is written on its own
-    native AC2024 T9 grid (~60 points) instead of the standard grid;
-    primat's ``load_network`` resamples all tables to a master grid at init,
-    so mixing grids is safe.
-    """
-    tab_blocks = parse_blocks(args.input)
-    for blk in tab_blocks:
-        blk_grid = blk["T9"] if args.keep_source_grid else grid
-        write_reaction_file(blk, blk_grid, TABDIR, args.suffix)
-    print(f"parsed {len(tab_blocks)} tabulated reactions from {args.input}")
-    return tab_blocks
-
-
-def _generate_analytic(args, grid):
-    """Stage 2: build and write one rate file per analytic reaction.
+def _analytic_entries(args):
+    """The ``(source, reac, f, forward)`` entries the analytic stage will build.
 
     By default the embedded ``_ANALYTIC_REACTIONS`` table is the source (the
     single source of truth, so the rate set is regenerable from
     ``BBNRatesAC2024.dat`` alone). ``--primat`` is a verification override:
     re-extract the same entries from ``PRIMAT-Main.m`` and check they
-    reproduce the same files. Returns the built blocks (needed downstream for
-    the collision check and the CSV stage).
+    reproduce the same files.
+
+    Returns:
+        ``(entries, source_label)`` -- the entry list and a human-readable
+        description of where it came from, for the progress message.
     """
     if args.primat:
-        entries = extract_analytic_from_primat(args.primat)
-        source = args.primat
-    else:
-        entries = _ANALYTIC_REACTIONS
-        source = "the embedded _ANALYTIC_REACTIONS table"
-    ana_blocks, skipped = build_analytic_blocks(entries)
+        return extract_analytic_from_primat(args.primat), args.primat
+    return _ANALYTIC_REACTIONS, "the embedded _ANALYTIC_REACTIONS table"
+
+
+def _generate_tabulated(args, grid, tab_blocks):
+    """Write one rate file per tabulated (AC2024) reaction.
+
+    ``tab_blocks`` comes from :func:`parse_blocks`; it is parsed by the caller
+    so the name-collision check can run before anything is written.  With
+    ``--keep-source-grid``, each file is written on its own native AC2024 T9
+    grid (~60 points) instead of the standard grid; primat's ``load_network``
+    resamples all tables to a master grid at init, so mixing grids is safe.
+    """
+    for blk in tab_blocks:
+        blk_grid = blk["T9"] if args.keep_source_grid else grid
+        write_reaction_file(blk, blk_grid, TABDIR, args.suffix)
+    print(f"parsed {len(tab_blocks)} tabulated reactions from {args.input}")
+
+
+def _generate_analytic(args, grid, ana_blocks, skipped, source):
+    """Write one rate file per analytic reaction (plus the shared decays.txt).
+
+    ``ana_blocks``/``skipped``/``source`` come from :func:`build_analytic_blocks`
+    on :func:`_analytic_entries`; as for the tabulated stage they are built by
+    the caller so the name-collision check can run before anything is written
+    (and so ``--primat`` re-extracts the Mathematica source only once).
+    """
 
     # Decay reactions (Bm/Bp on the products side) get one row each in the
-    # single decays.txt table instead of a 500-row constant-value file: their
-    # rate doesn't depend on T9, so a per-reaction table is redundant and
-    # obscures the half-life, the quantity nuclear-data references quote.
+    # single decays.txt table instead of a full-grid constant-value file (1000
+    # rows at the master grid's default rate_grid_npts): their rate doesn't
+    # depend on T9, so a per-reaction table is redundant and obscures the
+    # half-life, the quantity nuclear-data references quote.
     from nuclide_table import is_decay
     decay_blocks = [b for b in ana_blocks if is_decay(b["reactants"], b["products"])]
     other_blocks = [b for b in ana_blocks if b not in decay_blocks]
@@ -1425,7 +1424,6 @@ def _generate_analytic(args, grid):
     if skipped:
         print(f"  ({len(skipped)} analytic blocks skipped: "
               f"{[n for n, _ in skipped]})")
-    return ana_blocks
 
 
 def main(argv=None):
@@ -1439,14 +1437,22 @@ def main(argv=None):
     os.makedirs(args.datadir, exist_ok=True)
     grid = standard_grid()
 
-    # 1+2. Write the rate tables (tabulated then analytic; on a name collision
-    #      the analytic file is written last and wins, see check_name_collisions).
-    tab_blocks = _generate_tabulated(args, grid)
-    ana_blocks = _generate_analytic(args, grid)
-
-    # 3. Check <reactants>TO<products> name collisions across both sets:
-    #    same-reaction overrides are reported, distinct-reaction collisions abort.
+    # 1. Parse both sources and check <reactants>TO<products> name collisions
+    #    across them BEFORE anything is written: same-reaction overrides are
+    #    reported, distinct-reaction collisions abort.  The check has to come
+    #    first to be preventive -- run after the write stages it would raise
+    #    only once the overwrite it exists to stop had already corrupted
+    #    tables/, leaving a half-regenerated tree behind the exception.
+    tab_blocks = parse_blocks(args.input)
+    ana_entries, ana_source = _analytic_entries(args)
+    ana_blocks, ana_skipped = build_analytic_blocks(ana_entries)
     check_name_collisions(tab_blocks, ana_blocks)
+
+    # 2+3. Write the rate tables (tabulated then analytic; on a same-reaction
+    #      override the analytic file is written last and wins).
+    _generate_tabulated(args, grid, tab_blocks)
+    _generate_analytic(args, grid, ana_blocks, ana_skipped, ana_source)
+
     n_files = len({blk["name"] for blk in tab_blocks + ana_blocks})
     print(f"wrote {n_files} rate files to {TABDIR}/")
 

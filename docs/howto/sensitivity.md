@@ -117,9 +117,10 @@ shifted point. `force_backend={"auto","c","python"}` selects the solver
 
 ## Worked example notebook
 
-`notebooks/Sensitivity.ipynb` is a full demo: it builds the 12-reaction +
-4-parameter target list, calls `sensitivity_table` once, prints the tables, and
-renders the sensitivity heat-map below.
+{doc}`../tutorials/Sensitivity` (`notebooks/Sensitivity.ipynb` in the
+repository) is a full demo: it builds the 12-reaction + 4-parameter target
+list, calls `sensitivity_table` once, prints the tables, and renders them as a
+sensitivity heat-map.
 
 :::{seealso}
 - [Rate variation and Monte-Carlo uncertainty](rate-variation-mc.md) — the

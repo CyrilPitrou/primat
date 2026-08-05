@@ -49,7 +49,8 @@ don't match.
   either backend (LT-era stiffness scales with reaction count) and is
   primarily useful for including the heavy-nuclide tail, not for
   fast iteration; use `amax=8` for MC/scan workloads that only need the
-  light elements at ≲1e-4 accuracy (see `CLAUDE.md`'s per-nuclide table).
+  light elements at ≲1e-4 accuracy (see `tests/README.md`'s per-nuclide
+  abundance table).
 
 ## Cold-cache cost
 
@@ -78,19 +79,20 @@ particular check.
 
 | Knob | Default | Effect on speed |
 |------|---------|------------------|
-| `numerical_precision` | `1e-7` | `solve_ivp` `rtol` for every era; raising it (looser tolerance, e.g. `1e-5`) speeds up the LT-era solve roughly linearly in step count but degrades the `D/H`/`YPBBN` precision documented in `CLAUDE.md` — do not raise it past the point where results are no longer distinguishable from the reference-run tolerances. |
+| `numerical_precision` | `1e-7` | `solve_ivp` `rtol` for every era; raising it (looser tolerance, e.g. `1e-5`) speeds up the LT-era solve roughly linearly in step count but degrades the `D/H`/`YPBBN` precision pinned in `tests/reference_values.py` — do not raise it past the point where results are no longer distinguishable from the reference-run tolerances. |
 | `rate_grid_npts` | 1000 | Master T9 grid size every rate table is resampled onto at load time; this is a fixed one-time cost per solve (not per RHS call), so it matters more for `small`/fast networks than for `large`. |
 | `sampling_nTOp_per_decade` / `sampling_nTOp_thermal_per_decade` | see `primat/config.py` | Only affects *cold-cache* weak-rate computation time (see above); irrelevant once cached. |
 | `amax` | `None` | Filters any named network to reactions with `A <= amax` — the single biggest lever for LT-era solve time on the `large` network (see the `large` vs `large, amax=8` gap above). |
 | `n_jobs` (`run_mc`) | `-1` (all cores) | MC samples are embarrassingly parallel (independent solves); `n_jobs=1` is useful for reproducible profiling of a single sample's cost, not for a production MC run. |
 | `force_backend` | `None`/`"auto"` (prefers C) | The only `PRIMAT.__init__` feature the C backend cannot express is `background=` (a custom `Background` object) — seeing an unexpected Python-backend fallback in `log_backend=True` output usually means that is set. (`extra_rho` and `decay_era` *are* supported on the C backend.) |
 
-The high-precision reference-run settings documented in `CLAUDE.md`
-(`numerical_precision=1e-10`, `sampling_temperature_per_decade=2000`,
-`sampling_nTOp_per_decade=125`, `rate_grid_npts=4000`,
-`runfiles/primat_reference_run.py`) trade several minutes of wall time for
-the extra digits used to derive the tolerance bands in that file's
-validation table — not something to use for routine runs or MC sampling.
+The high-precision reference-run settings (`numerical_precision=1e-10`,
+`sampling_temperature_per_decade=2000`, `sampling_nTOp_per_decade=125`,
+`rate_grid_npts=4000` — all set by `runfiles/primat_reference_run.py`) trade
+several minutes of wall time for the extra digits behind the tolerance bands
+in `tests/README.md`'s "Validation reference" — not something to use for
+routine runs or MC sampling. Most of that time is the thermal (CCRTh) `vegas`
+recompute: those settings miss both shipped weak-rate caches.
 
 ## Regenerating this table
 

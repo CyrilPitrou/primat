@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-setup.py -- builds the optional primat._primat_c extension (PRIMAT.md S5.2).
+setup.py -- builds the optional primat._primat_c extension.
 
 setuptools reads project metadata from pyproject.toml; this file exists
 only to declare the compiled extension, since pyproject.toml's
@@ -102,11 +102,10 @@ class optional_build_ext(build_ext):
                   f"falling back to the pure-Python backend.")
 
 
-#setup(
-#    ext_modules=ext_modules,
-#)
-           
 setup(
     ext_modules=ext_modules,
+    # optional_build_ext, not the stock build_ext: without it a missing or
+    # broken C compiler fails `pip install primat` outright instead of
+    # degrading to the pure-Python backend.
     cmdclass={"build_ext": optional_build_ext},
 )

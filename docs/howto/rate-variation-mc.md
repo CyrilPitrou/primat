@@ -89,8 +89,14 @@ samples, not just their individual σ's. `MCResult` exposes both matrices
 mc.cov()                  # full (n_q, n_q) covariance matrix, quantity_names() order
 mc.corr()                 # full correlation matrix (unit diagonal)
 mc.cov("YPBBN", "DoH")    # scalar covariance between two named quantities
-mc.corr("YPBBN", "DoH")   # scalar correlation, e.g. ~ -0.5 (YP and D/H anti-correlate)
+mc.corr("YPBBN", "DoH")   # scalar correlation, e.g. -0.13 (mildly anti-correlated)
 ```
+
+The `YPBBN`–`DoH` correlation is *weak* because the two are set by largely
+different physics: `YPBBN` is fixed by the n/p ratio at freeze-out (τ_n, the
+weak rates) while `D/H` is fixed by the deuterium-burning reactions. The
+strongly correlated pairs are the ones sharing a burning chain — e.g.
+`DoH`–`He3oHe4` at about −0.4.
 
 A quantity identical in every sample (zero variance) gives `NaN`
 off-diagonal correlations (never a warning storm).
@@ -101,17 +107,23 @@ Add `--mc N`; the summary prints the 4×4 correlation and covariance matrices
 of the four main products (`YPBBN`, `DoH`, `He3oHe4`, `Li7oH`):
 
 ```bash
-primat --Omegabh2 0.02242 --mc 100
-# YP (BBN)   = 0.24700028 +/- 0.00003123
-# D/H        = 2.4350000e-05 +/- 1.2000000e-07
+primat --Omegabh2 0.02242 --mc 300 --mc-seed 0
+# YP (BBN)   = 0.24698590 +/- 0.00010631
+# D/H        = 2.4345885e-05 +/- 2.6358371e-07
 # ...
 # Correlation matrix (YPBBN, DoH, He3oHe4, Li7oH):
 #             YPBBN      DoH  He3oHe4    Li7oH
-#    YPBBN    1.000    0.057   -0.238   -0.161
-#      DoH    0.057    1.000   -0.811   -0.377
-#  He3oHe4   -0.238   -0.811    1.000    0.226
-#    Li7oH   -0.161   -0.377    0.226    1.000
+#    YPBBN    1.000   -0.129   -0.064    0.071
+#      DoH   -0.129    1.000   -0.421   -0.388
+#  He3oHe4   -0.064   -0.421    1.000    0.460
+#    Li7oH    0.071   -0.388    0.460    1.000
 ```
+
+Those numbers are a real run (300 samples, `seed=0`, C backend, default
+`small` network), not an illustration — but they are still a *finite* sample:
+with N = 300 each σ carries ~4 % statistical error of its own and the
+off-diagonal correlations rather more, so expect the last digits to move
+between seeds. Raise `--mc` for anything you intend to quote.
 
 `--mc-seed` sets the random seed (use the same seed to reproduce a run) and
 `--mc-jobs` the number of parallel workers. The three MC output files share

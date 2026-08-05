@@ -6,18 +6,34 @@ GUI, or permanently by adding a rate table + network entry to the source tree.
 ## Interactively, via the GUI
 
 After `pip install "primat[gui]"`, `primat-gui`'s sidebar "Nuclear reactions"
-group offers two buttons:
+group offers a single **"Manage networks"** button — the one gateway to every
+network action. The dialog it opens lists the networks built or imported this
+session (select / rename / remove), loads one from a previously exported
+`.zip`, and hands off to:
 
-- **"Create custom network"** — a popup to start from any named network,
-  toggle reactions in/out grouped by mass-number category
-  (`reaction_category`/`group_reactions_by_category`), and substitute or
-  upload an alternate rate table per reaction, or add brand-new reactions.
-- **"Import custom network"** — re-load a previously exported `.zip`.
+- **"Create new network"** — start from any named network, toggle reactions
+  in/out grouped by mass-number category
+  (`reaction_category`/`group_reactions_by_category`), substitute or upload
+  an alternate rate table per reaction, override a decay rate, or add
+  brand-new reactions.
 
-Either save the result as a `.zip` (re-importable later) or apply it and run
-BBN directly. The exported zip always contains the *reinterpolated*
-(on-grid) version of every user-supplied table, so it stays consistent with
-whatever `rate_grid_npts`/`rate_grid_T9_min`/`rate_grid_T9_max` the run used.
+That dialog's footer only *saves* the network (and offers it as a
+re-importable `.zip`); running it is left to the main "Run BBN" button, the
+same as for an imported one.
+
+### What the exported zip contains
+
+Every user-supplied table is written **verbatim — on its own original grid,
+at full `%.17e` precision** — deliberately *not* pre-resampled onto the
+master T9 grid. That is what makes a round trip bit-for-bit: `load_network`'s
+resampling then runs exactly once, on the same data the GUI's own live run
+resampled. Pre-resampling at export would round the values and extrapolate a
+coarse upload onto the wider master grid, which a re-import would then
+resample a *second* time, drifting ~1e-6 from the run being reproduced.
+
+A reaction you did **not** customise is copied verbatim from the table its
+network actually pins — `small_parthenope`'s `*_parthenope3.0.txt`, say —
+never from an assumed `<name>_primat.txt`.
 
 ## Programmatically, via `custom_network=`
 
