@@ -7,9 +7,12 @@ upstream source changes) to regenerate committed data files.
 ## Pipeline map
 
 - **`convert_ac2024_rates.py`** — the main entry point. Builds the
-  500-point log-uniform-T9 rate-table set from `BBNRatesAC2024.dat` (tabulated
+  log-uniform-T9 rate-table set from `BBNRatesAC2024.dat` (tabulated
   reactions) plus a hard-coded analytic-rate table (reactions PRIMAT evaluates
-  in closed form). Produces:
+  in closed form). The grid is single-sourced from `primat.config`'s
+  `rate_grid_{npts,T9_min,T9_max}` defaults (currently **1000** points from
+  1e-3 to 10 GK), so the generator cannot drift from the master grid the
+  solver resamples to. Produces:
   - `primat/data/nuclear/tables/*.txt` — per-reaction rate tables.
   - `primat/data/csv/*.csv` — `nuclides.csv`, `reactions_large.csv`,
     `detailed_balance.csv`.
@@ -22,7 +25,10 @@ upstream source changes) to regenerate committed data files.
 
 - **`generate_qed_tables.py`** — independent of the above. Recomputes the
   analytic QED plasma-pressure correction tables (`primat.qed_pressure`)
-  and writes them to `primat/data/plasma/`.
+  and writes them to `primat/data/cache_plasma_weak/plasma/`, fingerprint
+  header included. A fresh run reproduces the shipped tables to ~1e-6
+  relative (the last digit of the `%.6E` write format), not bit-for-bit —
+  see that script's docstring.
 
 - **`parthenope3.0_extract/`** — a separate, self-contained sub-pipeline that
   extracts the 12 primat *small-network* rates directly from the Parthenope

@@ -2,7 +2,9 @@
 """
 primat_reference_run.py
 =======================
-High-precision reference run for updating validation benchmarks in CLAUDE.md.
+High-precision reference run for updating the validation benchmarks in
+``tests/reference_values.py`` (quoted by ``tests/README.md``'s "Validation
+reference (authoritative copy)").
 
 This script is NOT intended for routine use.  It is designed to produce the
 most accurate possible primordial abundances by pushing all precision parameters
@@ -16,12 +18,19 @@ Key choices versus the standard run:
   - rate_grid_npts = 4000  (denser nuclear-rate master grid; explicit so this
     reference is decoupled from whatever PRIMATConfig's routine-run default is)
   - sampling_nTOp_per_decade = 125  (denser n<->p rate tables)
-  - These settings change the n<->p weak-rate fingerprint relative to the
-    shipped rates/weak/*.txt cache (see primat.weak_rates), so the rates
-    are automatically recomputed from scratch (not loaded from the cache).
-    The thermal corrections are loaded from the existing
-    rates/weak/{n__p,pTOn}_thermal_corrections.txt regardless (their
-    fingerprint is checked leniently since recomputing them is slow).
+  - These settings change BOTH n<->p weak-rate fingerprints relative to the
+    shipped primat/data/cache_plasma_weak/weak/ caches (see
+    primat.weak_rates.cache), so both tables are recomputed from scratch
+    rather than loaded:
+      * the non-thermal one via sampling_nTOp_per_decade and
+        T_start_cosmo_MeV (among others);
+      * the thermal (CCRTh) one via T_start_cosmo_MeV (40 -> 100) and
+        sampling_nTOp_thermal_per_decade (20 -> 25), both in
+        _THERMAL_BG_FIELDS.
+    The thermal recompute is the multi-minute vegas integration, which is
+    most of this script's run time; its result is written back under a new
+    hash (save_nTOp_thermal defaults to True), so a second reference run on
+    the same machine is much faster.
   - vegas_n_eval  = 100000, vegas_n_itn = 50  (higher-accuracy MC for
                                                radiative corrections, if used)
 
@@ -92,11 +101,14 @@ def run_network(label, network, amax=None):
     extra = {"network": network}
     if amax is not None:
         extra["amax"] = amax
-    # force_backend="python": CLAUDE.md's reference table is the source of
-    # truth this script regenerates, and there is a documented ~1.7e-8
-    # unresolved C-vs-Python D/H gap (tests/test_backend_parity.py) -- the
-    # reference values must stay pinned to the Python backend regardless of
-    # whether a compiled C extension happens to be available.
+    # force_backend="python": tests/reference_values.py is the source of truth
+    # this script regenerates, and the two backends do not agree to the
+    # precision those values are quoted at -- the residual is a genuine method
+    # difference, not noise (F7.2: the HT era integrates with LSODA on Python
+    # and RK45 in C; measured cross-backend D/H spread 5.32e-06 relative on
+    # `small`, see tests/test_backend_parity.py). The reference values must
+    # therefore stay pinned to one backend, regardless of whether a compiled C
+    # extension happens to be available.
     res = backend.run_bbn({**MyOptions, **extra}, force_backend="python")
     elapsed = time.time() - t0
     print(" ")

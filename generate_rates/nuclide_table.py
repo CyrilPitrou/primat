@@ -133,6 +133,87 @@ def load_nubase_all(nubase_path):
     return table
 
 
+# Half-life units NUBASE spells out in its 2-character unit field, in seconds.
+# The year is the Julian year (365.2422 d), matching the conversion factor
+# convert_ac2024_rates.py's coded half-lives use.
+_UNIT_TO_S = {
+    "ys": 1e-24, "zs": 1e-21, "as": 1e-18, "fs": 1e-15,
+    "ps": 1e-12, "ns": 1e-9,  "us": 1e-6,  "ms": 1e-3,
+    "s":  1.0,   "m":  60.0,  "h":  3600.0,
+    "d":  86400.0,
+    "y":  86400.0 * 365.2422,
+    "ky": 86400.0 * 365.2422 * 1e3,
+    "My": 86400.0 * 365.2422 * 1e6,
+    "Gy": 86400.0 * 365.2422 * 1e9,
+    "Ty": 86400.0 * 365.2422 * 1e12,
+}
+
+
+def load_nubase_halflives(nubase_path):
+    """Read every ground state's half-life [s] from a NUBASE2020 file.
+
+    Companion to :func:`load_nubase_all` (which returns mass excesses and
+    spins).  Used by ``convert_ac2024_rates._validate_decay_halflives`` to
+    cross-check the half-lives hard-coded in ``_ANALYTIC_REACTIONS`` against
+    the evaluation, so a copy-paste error in a decay rate is caught at
+    generation time rather than shipped.
+
+    Fixed-width layout, quoted verbatim from the format block at the top of
+    ``nubase_4.mas20.txt`` (its columns are **1-based**, so each slice below is
+    ``[start-1 : stop]``)::
+
+        70: 78   T #         f9.4   Half-life ("stbl", "p-unst", or a value)
+        79: 80   unit T        a2   Half-life unit
+
+    i.e. value = ``line[69:78]`` (nine characters), unit = ``line[78:80]``.
+    Reading the value one column late silently drops the leading digit of any
+    half-life wide enough to fill the field -- 8 ground states in the shipped
+    table are, e.g. Ne18's ``"1664.20  ms"``, which then reads as 664.20 ms.
+
+    Args:
+        nubase_path: str, path to the NUBASE2020 fixed-width text file
+            (``generate_rates/nubase_4.mas20.txt``).
+
+    Returns:
+        dict ``{(Z, A): half_life_seconds_or_None}``.  ``None`` means "no
+        usable measured half-life": stable, particle-unstable, a bare limit
+        (``">912.4 ys"`` -- a bound, not a value, so comparing a coded number
+        against it would be meaningless), or an unrecognised unit.
+
+    Example:
+        >>> t12 = load_nubase_halflives("generate_rates/nubase_4.mas20.txt")
+        >>> round(t12[(10, 18)], 4)          # Ne18 -> F18, 1664.20 ms
+        1.6642
+    """
+    halflives = {}
+    with open(nubase_path, encoding="latin-1") as fh:
+        for line in fh:
+            if line.startswith("#") or len(line) < 82:
+                continue
+            if line[7] != "0":                      # ground states only
+                continue
+            try:
+                A = int(line[0:3])
+                Z = int(line[4:7])
+            except ValueError:
+                continue
+            t_str = line[69:78].strip().replace("#", "")   # '#' = systematics
+            # For plain units ("s", "d", "y") the field's first slot is a
+            # space; for "ms"/"ky"/"My"/"Gy" the SI prefix sits there.
+            unit = line[78:80].strip()
+            if t_str in ("stbl", "p-unst", "") or t_str[0] in "<>":
+                halflives[(Z, A)] = None
+                continue
+            try:
+                t_val = float(t_str)
+            except ValueError:
+                halflives[(Z, A)] = None
+                continue
+            s_per_unit = _UNIT_TO_S.get(unit)
+            halflives[(Z, A)] = None if s_per_unit is None else t_val * s_per_unit
+    return halflives
+
+
 def build_nuclide_table(reactions, nubase_path):
     """Deduce the nuclide set from the reaction list and attach NUBASE properties.
 

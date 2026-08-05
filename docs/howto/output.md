@@ -42,25 +42,53 @@ available via the `"evolution"` key of the result dict (an
 path, a TSV file is written with the unified schema:
 
 ```text
-t_s, a, T_gamma_MeV, T_nue_MeV, T_numu_MeV, T_nutau_MeV, [Nheating],
-Y_<nuclide> (one column per tracked species),
-n_to_p_weak_rate, p_to_n_weak_rate, [nuclear rates]
+t_s  a  T_gamma_MeV  T_nue_MeV  T_numu_MeV  T_nutau_MeV
+Y_<nuclide> (one column per tracked species)
+<reaction>_frwrd  (optional trailing block)
 ```
 
+The authoritative contract for this schema — column names, order and
+semantics — is `primat.evolution`'s module docstring; both backends' writers
+conform to it, and `load_evolution` reads the header dynamically rather than
+assuming a column count.
+
+- The six leading columns are always present, in that order.
 - `output_file` defaults to `results/output_tables.tsv` (relative to the
   current directory); set it to `None` to skip the disk write entirely — the
   time-evolution data is still accessible via `result["evolution"]` either
   way, on both backends (see `primat.backend`).
-- `Nheating` is included only for `incomplete_decoupling=True` (a real NEVO
-  heating table).
-- `[abundances]` is one `Y<species>` column per nuclide of the chosen
-  network — 8 for `small`/`small_parthenope`, ~59 for `large`, fewer with an
-  `amax` cutoff.
-- `[nuclear rates]` (`output_rates_time_evolution=True`) is only available
-  for `small`/`small_parthenope` — omitted (with a printed note) for
+- The `Y_<nuclide>` block is one column per nuclide of the chosen network —
+  8 for `small`/`small_parthenope`, ~59 for `large`, fewer with an `amax`
+  cutoff.
+- The `<reaction>_frwrd` block (`output_rates_time_evolution=True`) is
+  appended after the abundances: one column per reaction in the active LT
+  network, lexicographically sorted, carrying the forward rate evaluated at
+  each row's photon temperature. It is only available for
+  `small`/`small_parthenope` — omitted (with a printed note) for
   `network="large"`.
+- `a` and the three `T_nu` columns are `NaN` when the active background has
+  no scale-factor / neutrino-sector tracking (e.g. a minimal custom
+  background).
 - `output_n_points` (default 500) controls how many interpolated rows the
   file has.
+
+## Background time-evolution output
+
+`output_background_evolution=True` writes a *separate* file — the background
+thermodynamics rather than the nuclear network — to
+`results/output_background.tsv`:
+
+```text
+T [MeV]  t [s]  a [1]  H [s^-1]  Tnue [MeV]  Tnumu [MeV]  Tnutau [MeV]
+Nheating [1]  rho_plasma [MeV^4]  rho_nu_tot [MeV^4]  rho_extra [MeV^4]
+rho_tot [MeV^4]
+```
+
+`Nheating` is the NEVO heating function (meaningful only with
+`incomplete_decoupling=True`) and `rho_extra` the summed `extra_rho`
+contribution (0 without one). This is the file to read for "what did the
+expansion history actually do", as opposed to "what did the abundances do";
+`runfiles/primat_run.py` turns both flags on.
 
 `primat.evolution` (`load_evolution`, `dump_evolution`) and `primat.plotting`
 provide tools for loading and plotting this data — see the

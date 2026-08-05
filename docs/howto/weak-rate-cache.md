@@ -45,7 +45,7 @@ occupation directly. Each exclusion is justified in a comment next to
 `_THERMAL_BG_FIELDS`; if you add a term to the thermal integrand, check
 whether it reads a config field that list does not yet cover.
 
-### Format version
+## Format version
 
 `WEAK_RATE_FORMAT_VERSION` (`primat/weak_rates/cache.py`, mirrored in
 `primat-c/src/cache.c`) is part of both fingerprints, so bumping it

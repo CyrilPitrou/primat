@@ -28,6 +28,7 @@ skip in CI, something has gone wrong with packaging, not with the generator.
 """
 import csv
 import os
+import subprocess
 import sys
 
 import pytest
@@ -324,3 +325,169 @@ def test_monotone_interpolant_does_not_ring_below_a_flat_run():
     got = interp_loglog_monotone(T9, f, dense)
     assert got.min() >= 1.0
     assert np.allclose(interp_loglog_monotone(T9, f, T9), f, rtol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# 5. The generation *commands* themselves (end-to-end)
+#
+# The tests above exercise the helper layer; these run the two scripts the way
+# the README tells a maintainer to. Both scripts write into the source tree by
+# default, which is exactly why they rot unnoticed: nothing had ever executed
+# them, so `generate_qed_tables.py` spent months writing its tables to a
+# directory (primat/rates/plasma) that had not existed since the data tree
+# moved -- creating it on demand, printing "Done.", and leaving the shipped
+# tables untouched.
+# ---------------------------------------------------------------------------
+_NUBASE = os.path.join(_GEN_DIR, "nubase_4.mas20.txt")
+_AC2024_DAT = os.path.join(_GEN_DIR, "BBNRatesAC2024.dat")
+
+_needs_nubase = pytest.mark.skipif(
+    not os.path.isfile(_NUBASE),
+    reason="generate_rates/nubase_4.mas20.txt not present",
+)
+
+
+@_needs_nubase
+def test_nubase_halflives_are_read_at_the_documented_column_offsets():
+    """GOAL: pin the fixed-width offsets of the NUBASE half-life field.
+
+    NUBASE2020's format block numbers its columns from 1 (``70: 78   T #``),
+    so the value is ``line[69:78]`` and the unit ``line[78:80]``. Slicing the
+    value one column late still parses -- it just drops the leading digit of
+    any half-life wide enough to fill the nine-character field, which is what
+    made the generator report a spurious factor-2.5 disagreement for Ne18.
+    Only a value whose field is *full* can catch that, hence Ne18 below
+    ("1664.20  ms"); the two shorter ones guard the unit column and the
+    year conversion.
+    """
+    from nuclide_table import load_nubase_halflives
+
+    t12 = load_nubase_halflives(_NUBASE)
+
+    # Ne18 -> F18: the field is full ("1664.20  ms"), so an off-by-one slice
+    # reads 664.20 ms = 0.6642 s instead.
+    assert t12[(10, 18)] == pytest.approx(1.6642, rel=1e-6)
+    # Free neutron: a plain "s"-unit value (guards the unit column).  609.8 s
+    # is NUBASE2020's half-life, i.e. ln(2) x 879.6 s -- consistent with the
+    # tau_n = 878.4 s primat carries in DEFAULT_PARAMS to within the two
+    # evaluations' spread.
+    assert t12[(0, 1)] == pytest.approx(609.8, rel=1e-3)
+    # C14: 5700 y, exercising the Julian-year conversion (365.2422 d).
+    assert t12[(6, 14)] == pytest.approx(5700 * 86400 * 365.2422, rel=1e-3)
+    # Stable nuclides carry no half-life.
+    assert t12[(1, 1)] is None and t12[(2, 4)] is None
+
+
+@_needs_nubase
+def test_nubase_halflife_limits_are_not_reported_as_measurements():
+    """GOAL: a bound (``>912.4 ys``) must not be served as a half-life.
+
+    The marker sits in the field's first column -- exactly the character the
+    old off-by-one slice discarded, silently turning limits into
+    "measurements" that a cross-check would then compare against.
+    """
+    from nuclide_table import load_nubase_halflives
+
+    assert load_nubase_halflives(_NUBASE)[(5, 20)] is None   # B20: ">912.4 ys"
+
+
+def test_generate_qed_tables_default_output_dir_is_the_shipped_one():
+    """GOAL: a plain ``generate_qed_tables.py`` run must overwrite the tables
+    the solver actually loads, not a stray directory.
+
+    The script creates its output directory on demand, so a stale default path
+    fails silently -- it writes, reports success, and changes nothing. Pinning
+    the constant against the shipped files is what makes that loud.
+    """
+    from generate_rates.generate_qed_tables import DEFAULT_PLASMA_DIR
+
+    assert os.path.isdir(DEFAULT_PLASMA_DIR), (
+        f"{DEFAULT_PLASMA_DIR} does not exist -- has the data tree moved? "
+        f"A regeneration would silently write tables nothing reads.")
+    for name in ("QED_pressure_correction_e2.txt",
+                 "QED_pressure_correction_e3.txt"):
+        assert os.path.isfile(os.path.join(DEFAULT_PLASMA_DIR, name))
+
+
+@pytest.mark.slow
+def test_generate_qed_tables_writes_fingerprinted_tables(tmp_path):
+    """GOAL: the QED regeneration command still runs end to end.
+
+    Uses a deliberately coarse grid (``--n-pts 8``): this is a "does the script
+    work" check, not a physics check -- the *content* of the QED tables is
+    pinned by ``test_qed_pressure.py`` and, cross-backend, by
+    ``test_cache_parity.py``. What could rot here is the plumbing: the
+    ``primat.qed_pressure`` entry points it calls, its argument parsing, and
+    the fingerprint header ``save_qed_tables`` writes.
+    """
+    script = os.path.join(_GEN_DIR, "generate_qed_tables.py")
+    out = tmp_path / "plasma"
+    out.mkdir()
+    result = subprocess.run(
+        [sys.executable, script, "--n-pts", "8", "--output-dir", str(out)],
+        cwd=tmp_path, capture_output=True, text=True, timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    for name in ("QED_pressure_correction_e2.txt",
+                 "QED_pressure_correction_e3.txt"):
+        text = (out / name).read_text()
+        assert "# fingerprint_hash:" in text
+        assert '"n_pts":8' in text.replace(" ", "")
+        # 8 grid rows plus the comment header.
+        assert len([l for l in text.splitlines() if not l.startswith("#")]) == 8
+
+
+@pytest.mark.slow
+@_needs_ac2024
+@_needs_nubase
+def test_convert_ac2024_regenerates_the_shipped_tables_byte_for_byte(tmp_path):
+    """GOAL: the shipped rate tables are exactly what the generator produces.
+
+    ``primat/data/nuclear/tables/`` (428 tables + decays.txt), the three CSVs
+    and ``networks/large.txt`` are all generated artifacts; nothing else checks
+    that they can be *re*generated. A drift here means the committed data no
+    longer corresponds to the script that claims to produce it -- so the next
+    maintainer who reruns the generator gets an unexplained diff and has no way
+    to tell which side is right.
+
+    The script writes to paths relative to the current directory, so running it
+    from ``tmp_path`` (with absolute input paths) regenerates a complete tree
+    there without touching the repository. ~2 s.
+    """
+    import filecmp
+
+    script = os.path.join(_GEN_DIR, "convert_ac2024_rates.py")
+    result = subprocess.run(
+        [sys.executable, script, "--input", _AC2024_DAT, "--nubase", _NUBASE],
+        cwd=tmp_path, capture_output=True, text=True, timeout=600,
+    )
+    assert result.returncode == 0, result.stderr
+    # The generator's own checks must pass too -- they are the reason a bad
+    # edit aborts instead of shipping.
+    assert "formal check OK" in result.stdout
+    assert "WARNING" not in result.stdout, result.stdout
+
+    shipped_root = os.path.abspath(os.path.join(_ROOT, "primat", "data"))
+    fresh_root = os.path.join(str(tmp_path), "primat", "data")
+
+    compared = mismatched = 0
+    for sub in (os.path.join("nuclear", "tables"),
+                os.path.join("nuclear", "networks"),
+                "csv"):
+        fresh_dir = os.path.join(fresh_root, sub)
+        for dirpath, _dirnames, filenames in os.walk(fresh_dir):
+            for fname in filenames:
+                fresh = os.path.join(dirpath, fname)
+                shipped = os.path.join(
+                    shipped_root, sub, os.path.relpath(fresh, fresh_dir))
+                assert os.path.isfile(shipped), (
+                    f"generator produced {fname}, which is not shipped")
+                compared += 1
+                if not filecmp.cmp(fresh, shipped, shallow=False):
+                    mismatched += 1
+    # 390 per-reaction tables (428 reactions less the 38 decays, which share
+    # decays.txt) + decays.txt + 3 CSVs + networks/large.txt = 395.
+    assert compared >= 390, f"only {compared} generated files found"
+    assert mismatched == 0, (
+        f"{mismatched} of {compared} regenerated files differ from the "
+        f"shipped ones -- the committed data no longer matches the generator")
