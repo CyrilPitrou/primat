@@ -58,9 +58,47 @@ typedef struct {
 /* Parses one literal token the same way primat.cli's --set escape hatch
  * does (ast.literal_eval-equivalent): try int, then float, then
  * true/false/none (case-insensitive), else fall back to the literal string
- * (quotes, if any, are stripped). `s` must outlive the returned CPRParam
- * when the result is CPR_STRING (no copy is made). */
+ * (quotes, if any, are stripped).
+ *
+ * LIFETIME (important): a CPR_STRING result points into a `static` scratch
+ * buffer inside cpr_parse_literal, NOT into `s` and NOT into fresh storage.
+ * It is therefore valid only until this function is next called on this
+ * thread -- two parses in a row alias each other. Any caller that keeps the
+ * value beyond the immediately following cpr_config_set_by_name (which
+ * strdup's its own copy) must copy it first; cpr_paramlist_add below does
+ * exactly that, and is the supported way to retain a parsed value. */
 CPRParam cpr_parse_literal(const char *s);
+
+/* ---- A retained, self-owning list of (key, value) overrides ----
+ *
+ * The MC driver re-applies the user's overrides to a *fresh* CPRConfig in
+ * every worker thread (mc.c's worker_setup), so the CLI/ini front end has to
+ * hand it the complete override set as CPRParamSet[] -- long after argv and
+ * cpr_parse_literal's static buffer have been reused. This list copies both
+ * halves of every pair into its own storage, so a retained entry can never
+ * alias argv, an ini line buffer, or the previous parse.
+ *
+ * Keys longer than CPR_PARAM_KEY_LEN-1 / string values longer than
+ * CPR_PARAM_VAL_LEN-1 are truncated (both bounds are far above any real
+ * parameter name or path). */
+#define CPR_PARAM_KEY_LEN 256
+#define CPR_PARAM_VAL_LEN 1024
+
+typedef struct {
+    CPRParamSet *items;                        /* items[i].key -> key_store[i] */
+    char (*key_store)[CPR_PARAM_KEY_LEN];
+    char (*val_store)[CPR_PARAM_VAL_LEN];      /* CPR_STRING values only */
+    size_t n, cap;
+} CPRParamList;
+
+/* Appends a copy of (key, value). Grows on demand and re-points every
+ * previously stored entry at its (possibly moved) storage, so
+ * `pl->items` stays a valid CPRParamSet array of length `pl->n` after any
+ * number of adds. */
+void cpr_paramlist_add(CPRParamList *pl, const char *key, CPRParam value);
+
+/* Releases the three backing arrays and zeroes the list. */
+void cpr_paramlist_free(CPRParamList *pl);
 
 /* Small open dictionary for p_<rxn> / delta_<rxn>, mirroring
  * PRIMATConfig.p_rxn / delta_rxn. Linear-scan array: the reaction count is
@@ -364,20 +402,48 @@ double cpr_config_get_Omegabh2(const CPRConfig *cfg);
 void cpr_config_set_GN(CPRConfig *cfg, double GN_SI);
 double cpr_config_get_GN(const CPRConfig *cfg);
 
-/* Routes one (name, value) pair into the matching typed field, exactly like
- * PyPRConfig.__setattr__: a name with prefix "p_" or "delta_" goes into
- * the corresponding CPRRxnMap (value coerced to double); any other name
- * must match a DEFAULT_PARAMS key (looked up via the internal field table
- * in config.c) or this returns nonzero (unknown key -- caller decides
- * whether that is a warning or an error; cli.c/ini.c warn, mirroring
- * Python's `warnings.warn`).
+/* cpr_config_set_by_name return codes.
  *
- * Type mismatches (e.g. a string value for a double field) also return
- * nonzero with *errmsg set (caller frees); booleans accept CPR_BOOL or
- * CPR_INT (0/1, mirroring Python's duck-typed bool/int interchangeability
- * in DEFAULT_PARAMS); numeric fields accept CPR_INT for CPR_DOUBLE (widened). */
+ * The two failure modes need different handling and must not be conflated:
+ *
+ *   CPR_SET_UNKNOWN_KEY -- the name matches no DEFAULT_PARAMS key. A typo, or
+ *       a key from a newer/older version. Python's PRIMATConfig warns and
+ *       ignores it by default (strict_params=False), so the loaders do too.
+ *   CPR_SET_BAD_VALUE   -- the key is known but the value has the wrong type
+ *       (e.g. `network = 3`). Python raises TypeError unconditionally, so this
+ *       is fatal on the C side as well: it is a malformed request, not a
+ *       forward-compatibility question, and continuing past one used to leave
+ *       the config holding a freed string.
+ *
+ * A name with prefix "p_" or "delta_" goes into the corresponding CPRRxnMap
+ * (value coerced to double). Booleans accept CPR_BOOL or CPR_INT (0/1,
+ * mirroring Python's duck-typed bool/int interchangeability in
+ * DEFAULT_PARAMS); numeric fields accept CPR_INT for CPR_DOUBLE (widened).
+ * On any failure *errmsg is set (caller frees) and the target field is left
+ * exactly as it was. */
+#define CPR_SET_OK          0
+#define CPR_SET_UNKNOWN_KEY 1
+#define CPR_SET_BAD_VALUE   2
+
 int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                             char **errmsg);
+
+/* ---- Parameter enumeration, for `cprimat --list-params` ----
+ *
+ * Walks the same internal field table cpr_config_set_by_name dispatches on
+ * (plus the three keys routed around it: Omegabh2, GN, data_dir), in
+ * DEFAULT_PARAMS order, so the listing cannot drift from what is actually
+ * settable. Indices run 0 .. cpr_config_field_count()-1.
+ *
+ * cpr_config_format_value renders the value `cfg` currently holds for `name`
+ * in the same spelling the INI/--set parser accepts back (True/False, an
+ * integer, %g for reals, a bare string, None for an unset optional), so a
+ * listed line can be pasted straight into an ini file. Returns 0 on success,
+ * nonzero if `name` is not a known parameter. */
+size_t cpr_config_field_count(void);
+const char *cpr_config_field_name(size_t index);   /* NULL past the end */
+int cpr_config_format_value(const CPRConfig *cfg, const char *name,
+                            char *out, size_t outsize);
 
 /* Validates flag-combination invariants (mirrors the `raise ValueError`
  * blocks in PyPRConfig.__init__, except the ones that require modules not

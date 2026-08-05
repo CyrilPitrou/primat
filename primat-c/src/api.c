@@ -222,22 +222,31 @@ static void print_reactions(const CPRNetworkDef *lt)
         char buf[256];
         size_t off = 0;
         const CPRStoichSide *sides[2] = { &lt->network[i].reactants, &lt->network[i].products };
+        /* snprintf returns the length it WOULD have written, so `off` must be
+         * clamped back into the buffer after every call: letting it run past
+         * sizeof(buf) makes the next `sizeof(buf) - off` underflow to a huge
+         * size_t, which removes the bound entirely (and the memcpy below would
+         * over-read). Unreachable with the shipped networks -- it needs a
+         * single equation longer than 256 chars -- but the GUI's "add a
+         * brand-new reaction" path is user-controlled. */
+#define ADVANCE(n) do { \
+        if ((n) > 0) off += (size_t)(n); \
+        if (off > sizeof(buf) - 1) off = sizeof(buf) - 1; \
+    } while (0)
         for (int side = 0; side < 2; side++) {
             const CPRStoichSide *s = sides[side];
             int first = 1;
             for (size_t k = 0; k < s->n; k++)
                 for (long m = 0; m < s->mult[k]; m++) {
-                    int n = snprintf(buf + off, sizeof(buf) - off, "%s%s",
-                                      first ? "" : " + ",
-                                      lt->species[s->species_idx[k]]);
-                    if (n > 0) off += (size_t)n;
+                    ADVANCE(snprintf(buf + off, sizeof(buf) - off, "%s%s",
+                                     first ? "" : " + ",
+                                     lt->species[s->species_idx[k]]));
                     first = 0;
                 }
-            if (side == 0) {
-                int n = snprintf(buf + off, sizeof(buf) - off, " <-> ");
-                if (n > 0) off += (size_t)n;
-            }
+            if (side == 0)
+                ADVANCE(snprintf(buf + off, sizeof(buf) - off, " <-> "));
         }
+#undef ADVANCE
         equations[i] = CPR_XMALLOC(off + 1);
         memcpy(equations[i], buf, off + 1);
         if (off > width) width = off;
@@ -338,6 +347,11 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
     if (cfg->output_background_evolution) {
         if (cpr_bg_write_time_evolution(&bg, cfg->output_background_file,
                                          cfg->output_n_points, errmsg)) {
+            /* `results` was filled by cpr_assemble_results just above, so its
+             * arrays must be released here: a caller that gets a nonzero
+             * return is told `results` is invalid and (correctly) does not
+             * free it -- cli.c and _wrapper.c both just report the error. */
+            cprimat_results_free(results);
             cpr_nuclear_network_free(&nn);
             cpr_background_free(&bg);
             cpr_nuclear_rates_free(&nr);
@@ -350,6 +364,7 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
      * changes no result-dict observable, only the decay-evolution TSV
      * (mirrors solve()'s post-LT DT block). */
     if (cpr_nuclear_network_decay_era(&nn, errmsg)) {
+        cprimat_results_free(results);   /* as above: caller won't free it */
         cpr_nuclear_network_free(&nn);
         cpr_background_free(&bg);
         cpr_nuclear_rates_free(&nr);

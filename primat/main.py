@@ -301,7 +301,7 @@ class PRIMAT:
         self.results: dict[str, Any] | None = None
 
         if cfg.verbose:
-            print(f"[init-py]  Initialisation complete in {time.time()-self._t0:.1f} s")
+            print(f"[init-py] Initialisation complete in {time.time()-self._t0:.1f} s")
 
     # ======================================================================
     # solve(): integrate nuclear network ODEs

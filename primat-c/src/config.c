@@ -74,7 +74,13 @@ CPRParam cpr_parse_literal(const char *s)
         }
     }
 
-    /* Fall back to literal (unquoted) string. */
+    /* Fall back to literal (unquoted) string. An *empty* token is not a valid
+     * literal: Python's ast.literal_eval("") raises and cli.py turns that into
+     * a parser.error, so `--set network=` must not quietly become the empty
+     * string (which then fails much later, on a nonsensical ".txt" open).
+     * CPR_NONE is not usable as the "invalid" signal (it is a legitimate
+     * value), so this is reported as an empty *string* the callers reject --
+     * see cli.c's --set handler and ini.c. */
     {
         static char buf[1024];
         size_t n = len < sizeof(buf) - 1 ? len : sizeof(buf) - 1;
@@ -84,6 +90,48 @@ CPRParam cpr_parse_literal(const char *s)
         p.v.s = buf;
         return p;
     }
+}
+
+/* ===========================================================================
+ * CPRParamList: retained, self-owning (key, value) overrides (see config.h).
+ * ===========================================================================
+ */
+void cpr_paramlist_add(CPRParamList *pl, const char *key, CPRParam value)
+{
+    if (pl->n == pl->cap) {
+        pl->cap = pl->cap ? pl->cap * 2 : 32;
+        pl->items     = CPR_XREALLOC(pl->items, pl->cap * sizeof(*pl->items));
+        pl->key_store = CPR_XREALLOC(pl->key_store, pl->cap * sizeof(*pl->key_store));
+        pl->val_store = CPR_XREALLOC(pl->val_store, pl->cap * sizeof(*pl->val_store));
+        /* realloc may have moved the two string arenas; every already-stored
+         * entry points into them, so re-point them all before returning. */
+        for (size_t i = 0; i < pl->n; i++) {
+            pl->items[i].key = pl->key_store[i];
+            if (pl->items[i].value.type == CPR_STRING)
+                pl->items[i].value.v.s = pl->val_store[i];
+        }
+    }
+    snprintf(pl->key_store[pl->n], CPR_PARAM_KEY_LEN, "%s", key);
+    pl->items[pl->n].key = pl->key_store[pl->n];
+    pl->items[pl->n].value = value;
+    if (value.type == CPR_STRING) {
+        /* Copy the string too: the caller's may be argv, an ini line buffer,
+         * or cpr_parse_literal's static scratch -- none of which survive. */
+        snprintf(pl->val_store[pl->n], CPR_PARAM_VAL_LEN, "%s", value.v.s ? value.v.s : "");
+        pl->items[pl->n].value.v.s = pl->val_store[pl->n];
+    }
+    pl->n++;
+}
+
+void cpr_paramlist_free(CPRParamList *pl)
+{
+    free(pl->items);
+    free(pl->key_store);
+    free(pl->val_store);
+    pl->items = NULL;
+    pl->key_store = NULL;
+    pl->val_store = NULL;
+    pl->n = pl->cap = 0;
 }
 
 /* ===========================================================================
@@ -314,6 +362,80 @@ static const FieldDesc FIELD_TABLE[] = {
      * FLD() entry is unsafe. */
 };
 #define FIELD_TABLE_N (sizeof(FIELD_TABLE) / sizeof(FIELD_TABLE[0]))
+
+/* The three DEFAULT_PARAMS keys cpr_config_set_by_name handles ahead of
+ * FIELD_TABLE (they need a setter, not a raw field write). Listed here so
+ * cpr_config_field_name() can enumerate the *complete* settable surface --
+ * `cprimat --list-params` omitting them would be a lie about what --set
+ * accepts. Order matches config.py's DEFAULT_PARAMS grouping. */
+static const char * const EXTRA_FIELD_NAMES[] = { "Omegabh2", "GN", "data_dir" };
+#define EXTRA_FIELD_N (sizeof(EXTRA_FIELD_NAMES) / sizeof(EXTRA_FIELD_NAMES[0]))
+
+size_t cpr_config_field_count(void) { return FIELD_TABLE_N + EXTRA_FIELD_N; }
+
+const char *cpr_config_field_name(size_t index)
+{
+    if (index < FIELD_TABLE_N)
+        return FIELD_TABLE[index].name;
+    if (index < FIELD_TABLE_N + EXTRA_FIELD_N)
+        return EXTRA_FIELD_NAMES[index - FIELD_TABLE_N];
+    return NULL;
+}
+
+int cpr_config_format_value(const CPRConfig *cfg, const char *name,
+                            char *out, size_t outsize)
+{
+    /* The three setter-routed keys first (they have no FIELD_TABLE entry). */
+    if (strcmp(name, "Omegabh2") == 0) {
+        snprintf(out, outsize, "%g", cpr_config_get_Omegabh2(cfg));
+        return 0;
+    }
+    if (strcmp(name, "GN") == 0) {
+        snprintf(out, outsize, "%g", cpr_config_get_GN(cfg));
+        return 0;
+    }
+    if (strcmp(name, "data_dir") == 0) {
+        snprintf(out, outsize, "%s", cfg->data_dir);
+        return 0;
+    }
+
+    for (size_t i = 0; i < FIELD_TABLE_N; i++) {
+        if (strcmp(FIELD_TABLE[i].name, name) != 0)
+            continue;
+        const void *field = (const char *)cfg + FIELD_TABLE[i].offset;
+        switch (FIELD_TABLE[i].kind) {
+        case F_BOOL:
+            snprintf(out, outsize, "%s", *(const int *)field ? "True" : "False");
+            return 0;
+        case F_INT:
+            snprintf(out, outsize, "%d", *(const int *)field);
+            return 0;
+        case F_INT_OR_NONE:
+            /* -1 is the "None" sentinel (see config.h's header comment). */
+            if (*(const int *)field < 0) snprintf(out, outsize, "None");
+            else snprintf(out, outsize, "%d", *(const int *)field);
+            return 0;
+        case F_DOUBLE:
+            snprintf(out, outsize, "%g", *(const double *)field);
+            return 0;
+        case F_DOUBLE_OR_NONE:
+            /* 0.0 is the "no cap" sentinel (Python None). */
+            if (*(const double *)field == 0.0) snprintf(out, outsize, "None");
+            else snprintf(out, outsize, "%g", *(const double *)field);
+            return 0;
+        case F_DOUBLE_OR_NAN:
+            /* NAN is the "inherit munuOverTnu" sentinel (Python None). */
+            if (isnan(*(const double *)field)) snprintf(out, outsize, "None");
+            else snprintf(out, outsize, "%g", *(const double *)field);
+            return 0;
+        case F_STRING:
+            snprintf(out, outsize, "%s",
+                     *(char * const *)field ? *(char * const *)field : "None");
+            return 0;
+        }
+    }
+    return 1;
+}
 
 static char *cpr_strdup(const char *s) { return s ? strdup(s) : NULL; }
 
@@ -748,20 +870,20 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                  : value.type == CPR_INT ? (double)value.v.i : NAN;
         if (isnan(d)) {
             *errmsg = strdup("Omegabh2 requires a numeric value");
-            return 1;
+            return CPR_SET_BAD_VALUE;
         }
         cpr_config_set_Omegabh2(cfg, d);
-        return 0;
+        return CPR_SET_OK;
     }
     if (strcmp(name, "GN") == 0) {
         double d = value.type == CPR_DOUBLE ? value.v.d
                  : value.type == CPR_INT ? (double)value.v.i : NAN;
         if (isnan(d)) {
             *errmsg = strdup("GN requires a numeric value");
-            return 1;
+            return CPR_SET_BAD_VALUE;
         }
         cpr_config_set_GN(cfg, d);
-        return 0;
+        return CPR_SET_OK;
     }
     /* data_dir is routed here rather than through FIELD_TABLE because it is a
      * fixed char[] buffer, and F_STRING's handler free()s and strdup()s a
@@ -779,10 +901,10 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
      * would silently keep the shipped nuclides.csv. */
     if (strcmp(name, "data_dir") == 0) {
         if (value.type == CPR_NONE)
-            return 0;
+            return CPR_SET_OK;
         if (value.type != CPR_STRING) {
             *errmsg = strdup("data_dir expects a string or None");
-            return 1;
+            return CPR_SET_BAD_VALUE;
         }
         char previous[CPR_DATA_DIR_LEN];
         snprintf(previous, sizeof(previous), "%s", cfg->data_dir);
@@ -792,9 +914,9 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             cfg->nuclides.items = NULL;
             cfg->nuclides.n = 0;
             if (load_nuclides(cfg, errmsg))
-                return 1;
+                return CPR_SET_BAD_VALUE;
         }
-        return 0;
+        return CPR_SET_OK;
     }
 
     for (size_t i = 0; i < FIELD_TABLE_N; i++) {
@@ -806,92 +928,100 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             if (value.type != CPR_BOOL && value.type != CPR_INT) {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects a bool", name);
-                return 1;
+                return CPR_SET_BAD_VALUE;
             }
             *(int *)field = value.type == CPR_BOOL ? value.v.b : (int)value.v.i;
-            return 0;
+            return CPR_SET_OK;
         case F_INT:
             if (value.type != CPR_INT && value.type != CPR_BOOL) {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects an int", name);
-                return 1;
+                return CPR_SET_BAD_VALUE;
             }
             *(int *)field = value.type == CPR_INT ? (int)value.v.i : value.v.b;
-            return 0;
+            return CPR_SET_OK;
         case F_INT_OR_NONE:
             if (value.type == CPR_NONE) {
                 *(int *)field = -1;
-                return 0;
+                return CPR_SET_OK;
             }
             if (value.type != CPR_INT) {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects an int or None", name);
-                return 1;
+                return CPR_SET_BAD_VALUE;
             }
             *(int *)field = (int)value.v.i;
-            return 0;
+            return CPR_SET_OK;
         case F_DOUBLE:
             if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;
             else if (value.type == CPR_INT) *(double *)field = (double)value.v.i;
             else {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects a number", name);
-                return 1;
+                return CPR_SET_BAD_VALUE;
             }
-            return 0;
+            return CPR_SET_OK;
         case F_DOUBLE_OR_NONE:
             /* None → 0.0 (sentinel for "no cap"); any positive number is the cap value. */
             if (value.type == CPR_NONE) {
                 *(double *)field = 0.0;
-                return 0;
+                return CPR_SET_OK;
             }
             if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;
             else if (value.type == CPR_INT) *(double *)field = (double)value.v.i;
             else {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects a number or None", name);
-                return 1;
+                return CPR_SET_BAD_VALUE;
             }
-            return 0;
+            return CPR_SET_OK;
         case F_DOUBLE_OR_NAN:
             /* None → NAN (sentinel for "inherit munuOverTnu"); any number is a
              * concrete per-flavour ξ (may be negative). */
             if (value.type == CPR_NONE) {
                 *(double *)field = NAN;
-                return 0;
+                return CPR_SET_OK;
             }
             if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;
             else if (value.type == CPR_INT) *(double *)field = (double)value.v.i;
             else {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects a number or None", name);
-                return 1;
+                return CPR_SET_BAD_VALUE;
             }
-            return 0;
-        case F_STRING:
-            free(*(char **)field);
-            if (value.type == CPR_NONE) {
-                *(char **)field = NULL;
-            } else if (value.type == CPR_STRING) {
-                *(char **)field = cpr_is_path_field(name)
+            return CPR_SET_OK;
+        case F_STRING: {
+            /* Build the replacement FIRST, and only then release the old
+             * value. The obvious ordering (free, then switch on the type)
+             * leaves the field holding a freed pointer whenever the value is
+             * not a string -- and since ini.c/cli.c used to continue past that
+             * error, the run went on to *read* it (a garbage network path) and
+             * cpr_config_free double-freed it at exit. Nothing here touches
+             * `field` until the new value is in hand. */
+            char *newval = NULL;
+            if (value.type == CPR_STRING) {
+                newval = cpr_is_path_field(name)
                     ? cpr_expanduser_path(value.v.s)
                     : strdup(value.v.s);
-                if (!*(char **)field) {
+                if (!newval) {
                     *errmsg = strdup("out of memory while copying string parameter");
-                    return 1;
+                    return CPR_SET_BAD_VALUE;
                 }
-            } else {
+            } else if (value.type != CPR_NONE) {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects a string or None", name);
-                return 1;
+                return CPR_SET_BAD_VALUE;   /* field untouched */
             }
-            return 0;
+            free(*(char **)field);
+            *(char **)field = newval;       /* NULL for CPR_NONE */
+            return CPR_SET_OK;
+        }
         }
     }
 
     *errmsg = malloc(256);
     snprintf(*errmsg, 256, "unknown parameter key: %s", name);
-    return 1;
+    return CPR_SET_UNKNOWN_KEY;
 }
 
 int cpr_config_validate(CPRConfig *cfg, char **errmsg)
@@ -934,6 +1064,27 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     if (cfg->amax != -1 && cfg->amax < 1) {
         *errmsg = strdup("amax must be None (-1) or a positive integer");
         return 1;
+    }
+
+    /* user_nuclear_dir must name an existing directory, mirroring
+     * PRIMATConfig._validate_dir_field ("user_nuclear_dir=... is not an
+     * existing directory", a ValueError). Checked HERE rather than only on
+     * cli.c's --user_nuclear_dir flag, so the same typo is caught however the
+     * key arrives -- an ini line, --set, or the Python extension's params
+     * dict. Without it the overlay silently resolves nothing and every rate
+     * table falls back to the shipped tree: plausible numbers computed from
+     * the wrong rate set, with no error anywhere.
+     * cache_dir is deliberately NOT checked (on either side): it is a write
+     * target created on demand, so "does not exist yet" is its normal state. */
+    if (cfg->user_nuclear_dir && cfg->user_nuclear_dir[0]) {
+        struct stat st;
+        if (stat(cfg->user_nuclear_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            *errmsg = malloc(CPR_PARAM_VAL_LEN);
+            snprintf(*errmsg, CPR_PARAM_VAL_LEN,
+                     "user_nuclear_dir='%.700s' is not an existing directory",
+                     cfg->user_nuclear_dir);
+            return 1;
+        }
     }
 
     /* Physical/numerical range checks, mirroring primat/config.py's

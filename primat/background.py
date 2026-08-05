@@ -1569,7 +1569,7 @@ class CustomBackground(Background):
             primat_weak_rates.RecomputeWeakRates([self.Tg_vec, self.Tnue_vec], cfg,
                                         dFDneu_func=None)
         if cfg.debug:
-            print(f"[weak]  n <--> p weak rates ready in "
+            print(f"[weak-py] n <--> p weak rates ready in "
                   f"{time.time()-_t0:.2f} s", flush=True)
 
         if cfg.tau_n_normalization:
