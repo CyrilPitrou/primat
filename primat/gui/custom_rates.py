@@ -18,10 +18,14 @@ through ``params_items``/``PRIMAT(custom_network=...)`` (see
 ``raw_table_text`` is the verbatim text of the uploaded file (2 or 3
 whitespace-separated columns: T9 [GK], rate, optional uncertainty) -- *not*
 pre-resampled -- so :func:`primat.network_data.load_network`'s
-``_resample_rate_table`` remains the single interpolation path used both at
-solve time and when previewing/exporting the "effective" (on-grid) table.
+``_resample_rate_table`` remains the single interpolation path, applied
+exactly once, both at solve time and after a zip round trip. Exports are
+verbatim-on-the-original-grid for the same reason (see
+:func:`verbatim_table_text`): resampling at export time and again at load
+would drift from the GUI's own run by ~1e-6.
 """
 import io
+import json
 import math
 import os
 import re
@@ -31,9 +35,88 @@ import numpy as np
 import streamlit as st
 
 from primat.network_data import (
-    _resample_rate_table, reaction_stoichiometry, reaction_display_name,
+    reaction_stoichiometry, reaction_display_name,
     load_reaction_names, _load_decay_table,
 )
+
+
+def sanitize_filename(title):
+    """Turn a free-text network title into a safe zip/filename stem.
+
+    Every user-visible network title (the "Create custom network" dialog's
+    free-text "Network title" field, and hence the ``networks/<stem>.txt``
+    entry of an exported zip, the download's own filename, and the
+    ``network=`` value written into a reproduction bundle's ``.py``/``.ini``)
+    goes through here, so a title containing a path separator or a space
+    cannot produce a zip whose internal path no longer matches the
+    ``network=`` name that is supposed to select it.
+
+    Lives here rather than in ``params_form`` so that ``panels`` can use it
+    without an import cycle (``params_form`` imports ``panels``).
+
+    Parameters
+    ----------
+    title : str
+        Free-text network title, possibly empty.
+
+    Returns
+    -------
+    str
+        ``title`` with every character outside ``[A-Za-z0-9_.-]`` collapsed to
+        a single underscore and stripped from both ends; ``"custom"`` when
+        nothing usable remains.
+
+    Example
+    -------
+    >>> sanitize_filename("my net/v2")
+    'my_net_v2'
+    """
+    cleaned = re.sub(r'[^A-Za-z0-9_.-]+', '_', (title or "").strip())
+    return cleaned.strip("_") or "custom"
+
+
+def decode_upload_text(raw):
+    """Decode an uploaded file's bytes as UTF-8 text, or raise ``ValueError``.
+
+    ``st.file_uploader`` accepts any file the user picks (the rate-table
+    uploaders deliberately do not restrict ``type=``, since a rate table may
+    legitimately be named ``.txt``/``.dat``/``.csv``/anything). A binary or
+    non-UTF-8 file would therefore reach a bare ``bytes.decode()`` and raise
+    ``UnicodeDecodeError``, which is *not* a ``ValueError`` and so escaped the
+    upload handlers' own error handling as a raw traceback in the GUI.
+    Funnelling every upload through here turns that into the same clean,
+    catchable ``ValueError`` every other malformed-upload case already raises.
+
+    Parameters
+    ----------
+    raw : bytes or str
+        Raw upload contents (``st.file_uploader``'s ``getvalue()``), or text
+        that is already decoded (returned unchanged).
+
+    Returns
+    -------
+    str
+
+    Raises
+    ------
+    ValueError
+        If ``raw`` is not valid UTF-8 text.
+
+    Example
+    -------
+    >>> decode_upload_text(b"1.0  2.0\\n")
+    '1.0  2.0\\n'
+    """
+    if not isinstance(raw, bytes):
+        return raw
+    try:
+        return raw.decode()
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            "this file is not UTF-8 text -- a rate table must be a plain-text "
+            "file with 2 or 3 numeric columns, not a binary file "
+            f"(decoding failed at byte {exc.start})."
+        ) from exc
 
 
 def validate_new_reaction(name, data_dir=None):
@@ -126,17 +209,30 @@ def show_rate_format_help():
     st.code(RATE_TABLE_FORMAT_EXAMPLE, language=None)
 
 
-def parse_rate_upload(fh):
+def parse_rate_upload(fh, cfg=None, warn=True):
     """Parse an uploaded rate-table file into raw ``(T9, rate, err, header)``.
 
     Parameters
     ----------
-    fh : file-like
+    fh : file-like, bytes or str
         2- or 3-column whitespace-separated text (as produced by
         ``st.file_uploader``, or a plain file object): ``T9 [GK]``, ``rate``,
         and an optional third uncertainty column.  Leading ``#``-prefixed
         lines are the uploader's own header/provenance comment, preserved
         verbatim (see ``header``) rather than discarded.
+    cfg : PRIMATConfig, optional
+        Supplies the master grid's span (``rate_grid_T9_min``/
+        ``rate_grid_T9_max``) for the coverage warning below.  Omit it (the
+        default) to fall back on the shipped defaults of 0.001-10 GK -- the
+        warning is then only advisory, so a caller with no ``cfg`` to hand
+        still gets a sensible message.
+    warn : bool
+        Whether to emit the coverage ``st.warning``.  Callers that are merely
+        *re-parsing* an already-accepted table (e.g. :func:`export_zip`
+        recovering a stored upload's arrays, which runs on every Streamlit
+        rerun) pass ``False``: the warning belongs to the moment the user
+        actually uploads the file, not to every later render that happens to
+        touch it again.
 
     Returns
     -------
@@ -145,29 +241,32 @@ def parse_rate_upload(fh):
         only 2 columns.  ``header`` is the list of the upload's own leading
         ``#``-prefixed lines (possibly empty), preserved so a re-exported zip
         carries the original provenance rather than a generic "custom upload"
-        label (see :func:`effective_table_text`).
+        label (see :func:`verbatim_table_text`).
 
     Raises
     ------
     ValueError
-        If the file does not parse as 2 or 3 numeric columns.
+        If the file is not UTF-8 text (see :func:`decode_upload_text`) or does
+        not parse as 2 or 3 numeric columns.
 
     Notes
     -----
     Emits an ``st.warning`` (not an error -- the table is still usable) if its
-    T9 range does not cover the master grid's span (``rate_grid_T9_min``..
-    ``rate_grid_T9_max``, default 0.001-10 GK): outside the upload's own range,
-    ``_resample_rate_table`` extrapolates by continuing the table's end slope
-    in log-log, which drifts from the truth the further out it goes.  (That
-    function raises its own ``UserWarning`` too; this one surfaces the problem
-    in the GUI at upload time, before a run is launched.)
+    T9 range does not cover the master grid's span: outside the upload's own
+    range, ``_resample_rate_table`` extrapolates by continuing the table's end
+    slope in log-log, which drifts from the truth the further out it goes.
+    (That function raises its own ``UserWarning`` too; this one surfaces the
+    problem in the GUI at upload time, before a run is launched.)
+
+    Example
+    -------
+    >>> T9, rate, err, header = parse_rate_upload("1.0  2.0\\n2.0  3.0\\n")
     """
     if hasattr(fh, "read"):
         text = fh.read()
     else:
         text = fh
-    if isinstance(text, bytes):
-        text = text.decode()
+    text = decode_upload_text(text)
     header = [line for line in text.splitlines() if line.startswith("#")]
     data = np.loadtxt(io.StringIO(text), unpack=True)
     if data.ndim != 2 or data.shape[0] not in (2, 3):
@@ -176,11 +275,15 @@ def parse_rate_upload(fh):
         )
     T9, rate = data[0], data[1]
     err = data[2] if data.shape[0] == 3 else np.zeros_like(rate)
-    if T9.min() > 0.001 or T9.max() < 10.0:
+    # Read the grid span off cfg rather than hard-coding it, so the warning
+    # stays truthful when rate_grid_T9_min/max are overridden.
+    T9_min = getattr(cfg, "rate_grid_T9_min", 1.0e-3)
+    T9_max = getattr(cfg, "rate_grid_T9_max", 10.0)
+    if warn and (T9.min() > T9_min or T9.max() < T9_max):
         st.warning(
             f"Uploaded table spans T9 = [{T9.min():.3g}, {T9.max():.3g}] GK, "
-            "narrower than the standard grid [0.001, 10] GK -- values outside "
-            "this range are extrapolated."
+            f"narrower than the standard grid [{T9_min:.3g}, {T9_max:.3g}] GK "
+            "-- values outside this range are extrapolated."
         )
     return T9, rate, err, header
 
@@ -228,14 +331,13 @@ def _strip_own_stamp(name, header):
 
     ``header`` (as returned by :func:`parse_rate_upload`) is read straight
     off an already-:func:`stamp_upload`-ed table -- e.g. when
-    :func:`export_zip` re-parses a stored "kept" table to recompute its
-    on-grid form -- so it starts with ``stamp_upload``'s own bookkeeping
-    lines (``"# {react} > {prod}   [{name}]   (custom rate)"`` + a
-    ``"#"*70`` fence). Passing those straight through to
-    :func:`effective_table_text` as ``source_header`` would duplicate that
-    bookkeeping underneath the new reinterpolation header it writes itself;
-    only a genuine header carried by the *original* upload (if any),
-    following that preamble, is worth preserving.
+    :func:`export_zip` re-parses a stored "kept" table to recover its arrays
+    -- so it starts with ``stamp_upload``'s own bookkeeping lines
+    (``"# {react} > {prod}   [{name}]   (custom rate)"`` + a ``"#"*70``
+    fence). Passing those straight through to :func:`verbatim_table_text` as
+    ``source_header`` would duplicate that bookkeeping underneath the new
+    header it writes itself; only a genuine header carried by the *original*
+    upload (if any), following that preamble, is worth preserving.
 
     Parameters
     ----------
@@ -255,72 +357,23 @@ def _strip_own_stamp(name, header):
     return header
 
 
-def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
-    """Return the on-grid table text actually fed to the solver.
-
-    Resamples ``(T9, rate, err)`` onto the master T9 grid
-    (``cfg.rate_grid_{npts,T9_min,T9_max}``) with the exact same
-    :func:`primat.network_data._resample_rate_table` log-log cubic
-    interpolation used by ``load_network``, then formats it as a 3-column text
-    table mirroring the shipped ``data/nuclear/tables/*.txt`` files. This is
-    what the Download tab offers for a replaced reaction, so the user can
-    verify exactly what was used (as opposed to the raw upload).
-
-    Parameters
-    ----------
-    cfg : PRIMATConfig
-        Supplies the master-grid parameters.
-    T9, rate, err : np.ndarray
-        Raw uploaded arrays, as returned by :func:`parse_rate_upload`.
-    name : str
-        Reaction name, written into the header's ``ref=`` field (only used
-        when ``source_header`` is empty).
-    source_header : sequence[str]
-        The uploader's own ``#``-prefixed header lines (from
-        :func:`parse_rate_upload`), preserved verbatim ahead of a bookkeeping
-        line, rather than being replaced by a generic label.
-
-    Returns
-    -------
-    str
-        Table text with one or more ``#`` header lines followed by
-        ``T9 rate err`` rows on the master grid.
-    """
-    grid = np.logspace(np.log10(cfg.rate_grid_T9_min),
-                        np.log10(cfg.rate_grid_T9_max),
-                        cfg.rate_grid_npts)
-    rate_grid = _resample_rate_table(T9, rate, grid)
-    err_grid = _resample_rate_table(T9, err, grid)
-    # Provenance line first, then a long "#"-fence so it's visually obvious
-    # that whatever the *original* uploaded file's own header said (preserved
-    # verbatim below) is a separate, prior provenance -- not something
-    # primat itself wrote.
-    lines = [
-        f"# {reaction_display_name(name)}   [{name}]   "
-        "(custom rate reinterpolated by primat)",
-        "#" * 70,
-    ]
-    lines.extend(source_header)
-    for t9, r, e in zip(grid, rate_grid, err_grid):
-        lines.append(f"{t9:.6e}   {r:.6e}   {e:.6e}")
-    return "\n".join(lines)
-
-
 def verbatim_table_text(T9, rate, err, name="custom", source_header=()):
     """Return table text with the upload on its ORIGINAL grid, full precision.
 
-    Unlike :func:`effective_table_text` (which pre-resamples onto the master
-    grid), this writes the parsed ``(T9, rate, err)`` arrays verbatim -- same
-    grid points the user uploaded, at full float64 precision (``%.17e``). It is
-    what a reproduction bundle bundles for a replaced/added reaction, so that
-    ``load_network``'s ``_resample_rate_table`` runs *once* on exactly the data
-    the GUI's own live run resampled -- reproducing the run bit-for-bit.
+    Writes the parsed ``(T9, rate, err)`` arrays verbatim -- same grid points
+    the user uploaded, at full float64 precision (``%.17e``). It is what an
+    exported network zip and a reproduction bundle carry for a
+    replaced/added reaction, so that ``load_network``'s
+    ``_resample_rate_table`` runs *once* on exactly the data the GUI's own
+    live run resampled -- reproducing the run bit-for-bit.
 
-    Pre-resampling at export instead (``effective_table_text``) breaks that
-    bit-for-bit match two ways: the exported values are rounded (``%.6e``), and
-    resampling a coarse upload onto the wider master grid *extrapolates*, so the
-    overlay would then resample that extrapolated+rounded table a second time --
-    diverging from the GUI's single raw resample by ~1e-6.
+    Pre-resampling onto the master grid at export time instead would break
+    that bit-for-bit match two ways: the exported values are rounded
+    (``%.6e``), and resampling a coarse upload onto the wider master grid
+    *extrapolates*, so the overlay would then resample that
+    extrapolated+rounded table a second time -- diverging from the GUI's
+    single raw resample by ~1e-6. This is why the export is deliberately
+    verbatim-on-the-original-grid rather than "the effective on-grid table".
 
     Parameters
     ----------
@@ -366,6 +419,53 @@ def decay_override_table_text(name, rate_s):
     lines = [f"# {name}: decay rate overridden in primat (was log(2)/halflife)"]
     lines += [f"{t9:.6e}   {rate_s:.6e}   {1.0:.6e}" for t9 in grid]
     return "\n".join(lines)
+
+
+def _base_network_filenames(cfg):
+    """``{bare_reaction_name: table_filename}`` for ``cfg.network``'s own list.
+
+    A network file may pin a *specific* rate table per reaction with the
+    ``name, filename.txt`` syntax -- ``small_parthenope.txt`` does so for all
+    12 of its entries (``n_p__d_g, n_p__d_g_parthenope3.0.txt``, ...), and
+    ``large.txt`` spells out ``*_primat.txt`` explicitly. :func:`export_zip`
+    needs that mapping to copy the table the run *actually used* for a
+    reaction the user never customised; assuming ``<name>_primat.txt`` instead
+    silently substituted primat's own rates for Parthenope's, exporting a
+    ``small_parthenope`` network that re-imported to different abundances
+    (D/H 2.4999622e-05 -> 2.4358771e-05, Li7/H 4.812238e-10 -> 5.557655e-10).
+
+    Reactions listed by bare name (no comma) are absent from the returned map:
+    they have no pinned filename, so the caller's ``<name>_primat.txt``
+    default is the right answer for them.
+
+    Parameters
+    ----------
+    cfg : PRIMATConfig
+        Its ``network`` names the list to read. A network with no file on disk
+        ('small', or a name driven entirely by ``custom_network``) simply
+        yields an empty map.
+
+    Returns
+    -------
+    dict[str, str]
+
+    Example
+    -------
+    >>> _base_network_filenames(PRIMATConfig({"network": "small_parthenope"}))
+    {'n_p__d_g': 'n_p__d_g_parthenope3.0.txt', ...}
+    """
+    try:
+        entries = load_reaction_names(cfg, cfg.network)
+    except (ValueError, KeyError, OSError):
+        # An unreadable/absent network list is not worth failing an export
+        # over -- fall back to the per-reaction default for every reaction.
+        return {}
+    pinned = {}
+    for entry in entries:
+        parts = re.split(r'[, ]+', entry, maxsplit=1)
+        if len(parts) > 1 and parts[1].strip():
+            pinned[parts[0].strip()] = parts[1].strip()
+    return pinned
 
 
 def _shipped_table_dir(cfg, name):
@@ -435,10 +535,15 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
         * An unmodified reaction (still using a shipped table, default or an
           alternate like ``*_parthenope3.0.txt``) keeps its real, unaltered
           filename and content -- so picking an existing alternate from the
-          dropdown is never confused with a genuine edit.
-        * A genuinely new/uploaded/edited table is written as
-          ``<name>_newnetwork.txt``, with the primat-provenance header from
-          :func:`effective_table_text`.
+          dropdown is never confused with a genuine edit. Which table that is
+          comes from ``cfg.network``'s own ``name, filename`` pairing (see
+          :func:`_base_network_filenames`), *not* from assuming
+          ``<name>_primat.txt``.
+        * A genuinely new/uploaded/edited table is written by
+          :func:`verbatim_table_text` (the upload on its own original grid, at
+          full precision, under the basename agreed at upload time), so that
+          re-importing it resamples exactly once and reproduces the run
+          bit-for-bit.
         * A decay reaction (Bm/Bp, rate from the shared ``decays.txt``, not a
           per-reaction file) has no table file at all; if its rate has been
           overridden the network-file line is instead ``name, <rate_s>`` --
@@ -456,6 +561,11 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
     custom_tables = {**custom_network.get("replaced", {}),
                      **custom_network.get("added", {})}
     decay_table = _load_decay_table(os.path.join(cfg._resolved_data_dir, "nuclear", "tables"))
+    # Which on-disk table each *uncustomised* reaction actually uses, per
+    # cfg.network's own list -- e.g. "*_parthenope3.0.txt" for
+    # small_parthenope. Assuming "<name>_primat.txt" here used to silently
+    # export the wrong rates for any such network.
+    pinned_filenames = _base_network_filenames(cfg)
 
     # Decay-reaction overrides are pulled out of custom_tables here: they get
     # their rate written inline in the network file, not a per-reaction
@@ -465,7 +575,8 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
         if name in decay_table:
             raw_text = custom_tables.pop(name)
             try:
-                T9, rate, err, header = parse_rate_upload(raw_text)
+                T9, rate, err, header = parse_rate_upload(
+                    raw_text, cfg=cfg, warn=False)
                 decay_overrides[name] = float(np.asarray(rate).reshape(-1)[0])
             except (ValueError, IndexError):
                 pass
@@ -494,7 +605,8 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                     zf.writestr(f"tables/{name}/{shipped_name}", raw_text)
                     continue
                 try:
-                    T9, rate, err, header = parse_rate_upload(raw_text)
+                    T9, rate, err, header = parse_rate_upload(
+                        raw_text, cfg=cfg, warn=False)
                     # Write the upload on its ORIGINAL grid at full precision --
                     # NOT pre-resampled onto the master grid -- so load_network
                     # resamples it exactly once, identically to the GUI's own
@@ -519,23 +631,71 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                 lines.append(f"{name}, {fname}")
                 zf.writestr(f"tables/{name}/{fname}", table_text)
                 continue
-            # Unmodified shipped-default reaction: copy its on-disk table
-            # verbatim (no resampling needed, it is already a valid rate
-            # file) under its own real name, so the zip does not depend on
-            # the importing install's own shipped tables/<name>/ folder.
-            path = os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name,
-                                f"{name}_primat.txt")
+            # Unmodified shipped reaction: copy its on-disk table verbatim (no
+            # resampling needed, it is already a valid rate file) under its own
+            # real name, so the zip does not depend on the importing install's
+            # own shipped tables/<name>/ folder. The filename comes from the
+            # base network's own pairing when it pins one (small_parthenope's
+            # "*_parthenope3.0.txt"), falling back to primat's default table
+            # for a network that lists the reaction by bare name.
+            fname = pinned_filenames.get(name, f"{name}_primat.txt")
+            path = os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name, fname)
             try:
                 with open(path) as f:
                     table_text = f.read()
             except OSError:
                 lines.append(name)
                 continue
-            fname = f"{name}_primat.txt"
             lines.append(f"{name}, {fname}")
             zf.writestr(f"tables/{name}/{fname}", table_text)
         zf.writestr(f"networks/{network_filename}.txt", "\n".join(lines) + "\n")
     return buf.getvalue()
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def _export_zip_cached(custom_network_json, kept_names, network_filename,
+                       network, data_dir, _cfg):
+    """Memoised :func:`export_zip`. See :func:`export_zip_cached`.
+
+    ``_cfg`` is underscore-prefixed so Streamlit excludes it from the cache
+    key (a ``PRIMATConfig`` is not hashable); the two ``cfg`` attributes that
+    actually change the output -- ``network`` (which table each unmodified
+    reaction uses, see :func:`_base_network_filenames`) and the resolved data
+    root -- are passed separately as ordinary hashable key components.
+    """
+    return export_zip(_cfg, json.loads(custom_network_json), list(kept_names),
+                      network_filename=network_filename)
+
+
+def export_zip_cached(cfg, custom_network, kept_names, network_filename="custom"):
+    """:func:`export_zip`, memoised on its inputs.
+
+    Every "Download network (zip)" button builds its bytes *eagerly* --
+    Streamlit's ``st.download_button`` takes the data up front, it cannot pull
+    them lazily at click time -- and the buttons live inside panels/dialogs
+    that re-render on every widget interaction. For the large network that is
+    428 rate-table files read off disk and deflated into a 4.3 MB archive,
+    measured at ~0.47 s, paid again on every single reaction toggle inside the
+    "Create custom network" dialog. Memoising collapses that to once per
+    distinct (customisation, kept set, title, network, data root).
+
+    Parameters are exactly :func:`export_zip`'s; ``custom_network`` must be
+    JSON-serialisable (it always is -- the GUI already round-trips it through
+    ``json.dumps`` to reach ``PRIMAT(custom_network=...)``).
+
+    Returns
+    -------
+    bytes
+        The zip contents, identical to what :func:`export_zip` returns.
+
+    Example
+    -------
+    >>> export_zip_cached(cfg, {"removed": [], "replaced": {}, "added": {}},
+    ...                   ["n_p__d_g"], network_filename="small")
+    """
+    return _export_zip_cached(
+        json.dumps(custom_network, sort_keys=True), tuple(kept_names),
+        network_filename, cfg.network, cfg._resolved_data_dir, _cfg=cfg)
 
 
 def import_zip(fh):
@@ -685,26 +845,3 @@ def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None, filenames=
     true_filenames = {n: f for n, f in (filenames or {}).items() if n in true_replaced}
     return {"removed": removed, "replaced": true_replaced, "added": added,
             "filenames": true_filenames}
-
-
-def import_single(fh, reaction_name):
-    """Build a ``custom_network`` fragment that replaces one reaction's table.
-
-    Parameters
-    ----------
-    fh : file-like
-        The uploaded raw rate-table file (2 or 3 columns).
-    reaction_name : str
-        Bare name of the reaction to replace.
-
-    Returns
-    -------
-    dict
-        ``{"removed": [], "replaced": {reaction_name: raw_text}}``.
-    """
-    raw_text = fh.read()
-    if isinstance(raw_text, bytes):
-        raw_text = raw_text.decode()
-    # Validate it parses before storing (raises ValueError on malformed input).
-    parse_rate_upload(raw_text)
-    return {"removed": [], "replaced": {reaction_name: raw_text}}

@@ -53,8 +53,26 @@ st.set_page_config(
 # `primat-gui --backend python` exercise the pure-Python backend instead.
 _GUI_BACKEND = os.environ.get("PRIMAT_GUI_BACKEND", "auto")
 
+# How many distinct parameter sets each of the three heavy caches below
+# (_solve, _build_preview, _build_background) retains.
+#
+# st.cache_resource defaults to *unbounded*, and is process-global (shared by
+# every visitor, not per-session), so without a cap nothing is ever evicted:
+# a user sweeping one sidebar parameter accumulates entries until the process
+# dies. Each entry is dominated by an `UpdateNuclearRates` holding every
+# resampled rate table -- measured at ~16 MB for the large network -- and
+# _solve and _build_preview cache that independently, so a distinct
+# large-network configuration costs ~32 MB across the two, plus
+# _build_background's weak-rate tables.
+#
+# 8 bounds the three caches at a few hundred MB worst case, which fits the
+# ~1 GB the public Streamlit Community Cloud demo (primat.streamlit.app, see
+# CLAUDE.md's "Streamlit Cloud deployment chain") gets, while still keeping
+# a comfortable working set of recent configurations instant to revisit.
+_CACHE_MAX_ENTRIES = 8
 
-@st.cache_resource(show_spinner=False)
+
+@st.cache_resource(show_spinner=False, max_entries=_CACHE_MAX_ENTRIES)
 def _solve(params_items):
     """Build a ``PRIMAT`` instance for ``params`` and solve the network.
 
@@ -242,7 +260,7 @@ def _quick_mc(params_items, num_mc, run):
     """
     t0 = time.time()
     status = st.empty()
-    cache = st.session_state.get("_quick_mc_cache")
+    cache = st.session_state.get(SessionKeys.quick_mc_cache)
     # Reuse the cached MCResult as a starting point only when it was computed
     # for exactly these parameters; run_mc itself re-checks seed, quantities,
     # params, custom_network and backend before trusting ``prev``.
@@ -272,11 +290,11 @@ def _quick_mc(params_items, num_mc, run):
                          seed=0, prev=prev, custom_network=custom_network)
     status.empty()
     elapsed = time.time() - t0
-    st.session_state["_quick_mc_cache"] = (params_items, mc)
+    st.session_state[SessionKeys.quick_mc_cache] = (params_items, mc)
     return mc, elapsed
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False, max_entries=_CACHE_MAX_ENTRIES)
 def _build_preview(params_items):
     """Build just enough of a ``PRIMAT`` to back the Reactions summary tab.
 
@@ -317,7 +335,7 @@ def _build_preview(params_items):
     return types.SimpleNamespace(cfg=cfg, nucl=nucl)
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False, max_entries=_CACHE_MAX_ENTRIES)
 def _build_background(params_items):
     """Build a Python ``StandardBackground``/``CustomBackground`` for the
     "Output tables" downloads, regardless of which backend actually solved
@@ -429,11 +447,11 @@ def main():
     # tab the user last had open. Gated on `params_up_to_date` alone (not the
     # MC-aware `up_to_date`) -- a stale quick-MC request must not hide the
     # already-solved BBN results tabs.
-    if st.session_state.get("_tabs_up_to_date") != params_up_to_date:
-        st.session_state["_tabs_up_to_date"] = params_up_to_date
-        st.session_state["_tabs_gen"] = st.session_state.get("_tabs_gen", 0) + 1
+    if st.session_state.get(SessionKeys.tabs_up_to_date) != params_up_to_date:
+        st.session_state[SessionKeys.tabs_up_to_date] = params_up_to_date
+        st.session_state[SessionKeys.tabs_gen] = st.session_state.get(SessionKeys.tabs_gen, 0) + 1
     default_tab = "Final abundances" if params_up_to_date else "Reactions summary"
-    tabs_gen = st.session_state.get("_tabs_gen", 0)
+    tabs_gen = st.session_state.get(SessionKeys.tabs_gen, 0)
 
     tab_reactions, tab_results, tab_evolution, tab_downloads = st.tabs(
         ["Reactions summary", "Final abundances", "Abundance evolution",

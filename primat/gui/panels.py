@@ -160,6 +160,11 @@ def render_results_panel(run, mc=None, run_params=None, backend_used=None):
             active = st.session_state.get(SessionKeys.active_custom_network)
             network_name = (active["title"] if active else
                             (run.cfg.network if run.cfg.network != "large" else "large"))
+            # Sanitised for the same reason as in _render_reaction_downloads:
+            # this value is both the overlay's networks/<stem>.txt filename and
+            # the `network=` written into the bundle's .py/.ini, so the two must
+            # agree on a filename-safe stem.
+            network_name = custom_rates.sanitize_filename(network_name)
             kept_names = [name for name, equation, source, file
                           in run.nucl.describe_reactions() if name != "n__p"]
         params_only = {k: v for k, v in run_params.items() if k != "custom_network"}
@@ -350,18 +355,23 @@ def _render_reaction_downloads(run):
     active = st.session_state.get(SessionKeys.active_custom_network)
     title = active["title"] if active else (run.cfg.network if run.cfg.network != "large"
                                             else "large")
+    # A custom network's title is free text, so sanitise it into a filename
+    # stem exactly as the "Create custom network" dialog's own download button
+    # does -- otherwise a title containing e.g. "/" writes a nested path
+    # inside the zip that no longer matches the network name selecting it.
+    title = custom_rates.sanitize_filename(title)
     st.markdown("**Export this network**")
     kept_names = [name for name, equation, source, file
                   in run.nucl.describe_reactions()
-                  if name not in ("n__p", "n__p")]
+                  if name != "n__p"]
     try:
-        zip_bytes = custom_rates.export_zip(run.cfg, custom_network, kept_names,
-                                            network_filename=title)
+        zip_bytes = custom_rates.export_zip_cached(run.cfg, custom_network, kept_names,
+                                                   network_filename=title)
     except Exception as exc:
         st.warning(f"Could not build the network export: {exc}")
     else:
         st.download_button(
-            f"Download network (zip)",
+            "Download network (zip)",
             data=zip_bytes,
             file_name=f"{title}.zip",
             mime="application/zip",
@@ -636,19 +646,30 @@ def render_evolution_panel(run):
     light_default = [n for n in _LIGHT_NUCLIDES if n in names]
     default_selection = list(names)
 
-    if "evolution_selection" not in st.session_state:
-        st.session_state["evolution_selection"] = default_selection
+    # Re-seed whenever the *option set itself* changes, not just on first use.
+    # Streamlit silently intersects a stored selection with the current
+    # options -- no exception, no warning -- so a selection left over from a
+    # previous network would survive as its intersection with the new one:
+    # after running `small` and then `large`, the panel would show only the 8
+    # light nuclides and never the ~59 the new network tracks, with nothing on
+    # screen explaining why. Keying the seed on the option tuple restores the
+    # "a new run plots everything it tracks" default this function intends.
+    # Written before the multiselect below is instantiated, which is the one
+    # safe window to set a widget's session_state value in Streamlit.
+    if st.session_state.get(SessionKeys.evolution_options) != tuple(names):
+        st.session_state[SessionKeys.evolution_options] = tuple(names)
+        st.session_state[SessionKeys.evolution_selection] = default_selection
 
     preset_cols = st.columns([1, 1, 1, 3])
     if preset_cols[0].button("Light elements"):
-        st.session_state["evolution_selection"] = light_default
+        st.session_state[SessionKeys.evolution_selection] = light_default
     if preset_cols[1].button("All"):
-        st.session_state["evolution_selection"] = list(names)
+        st.session_state[SessionKeys.evolution_selection] = list(names)
     if preset_cols[2].button("Clear"):
-        st.session_state["evolution_selection"] = []
+        st.session_state[SessionKeys.evolution_selection] = []
 
     selection = st.multiselect(
-        "Nuclides to plot", options=names, key="evolution_selection",
+        "Nuclides to plot", options=names, key=SessionKeys.evolution_selection,
     )
 
     use_temperature = st.radio(
