@@ -1,11 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-test_evolution.py
-==================
-Unit tests for ``primat.evolution`` (the unified time-evolution schema,
-``PRIMAT.md`` S7), independent of any actual BBN solve: round-trips a
-synthetic ``EvolutionResult`` through :func:`dump_evolution`/
-:func:`load_evolution`, both to a string and to a real file on disk.
+Unit tests for the unified time-evolution schema (``primat.evolution``),
+independent of any actual BBN solve.
+
+GOAL: pin the schema's *writer/reader* contract on its own, away from the
+solvers. These round-trip a synthetic ``EvolutionResult`` through
+:func:`dump_evolution`/:func:`load_evolution` -- both to a string and to a
+real file on disk -- and assert the exact header
+(``t_s``/``a``/``T_gamma_MeV``/``T_nue_MeV``/``T_numu_MeV``/``T_nutau_MeV``/
+``Y_<nuclide>``) that ``primat/evolution.py``'s module docstring defines as
+authoritative.
+
+This is the Python-writer half of the schema's guard; that the *C* backend's
+independent writer emits a byte-identical header is asserted in
+``tests/test_backend_parity.py::test_evolution_tsv_header_is_identical_across_backends``.
 """
 import numpy as np
 import pytest
@@ -27,6 +35,11 @@ def _make_result():
 
 
 def test_dump_evolution_header_and_round_trip(tmp_path):
+    """dump_evolution writes the documented header, and load_evolution reads
+    every column back unchanged.
+
+    The returned text and the file on disk must be identical: the string form
+    is what the GUI serves, so the two cannot be allowed to diverge."""
     result = _make_result()
     path = tmp_path / "evolution.tsv"
 
@@ -49,6 +62,8 @@ def test_dump_evolution_header_and_round_trip(tmp_path):
 
 
 def test_dump_evolution_without_path_writes_nothing(tmp_path):
+    """With path=None, dump_evolution returns the text and touches no file --
+    the in-memory path primat-gui uses to avoid a server-side tempfile."""
     result = _make_result()
     text = dump_evolution(result)
     assert isinstance(text, str)

@@ -10,8 +10,8 @@ only exercised indirectly, through a full ``PRIMAT(...).solve()`` (see
 ``solved_small``, and ``tests/test_decoupling_qed.py``'s Neff pins for the
 four ``incomplete_decoupling`` x ``QED_corrections`` combinations). This
 module instantiates ``StandardBackground`` on its own (``cfg`` + ``Plasma``,
-no nuclear network / no full solve) to check two claims documented in
-CLAUDE.md that no existing test pins directly:
+no nuclear network / no full solve) to check two documented properties of
+``external_scale_factor`` that no existing test pins directly:
 
 * ``external_scale_factor`` (read ``a(T)`` straight from the NEVO table's
   ``x`` column) agrees with the default entropy-conservation ODE integration
@@ -62,7 +62,8 @@ _T_MID_TABLE_MEV = [5.0, 1.0, 0.5, 0.1, 0.05]
 
 def test_external_scale_factor_agrees_with_ode_integration():
     """a(T) and t(T) from external_scale_factor=True/False must agree to
-    ~1e-5, per CLAUDE.md's "Advanced: custom NEVO tables" claim."""
+    ~1e-5 -- the two ways of obtaining a(T) (the NEVO table's x column vs the
+    entropy-conservation ODE) must describe the same expansion history."""
     bg_ode = _build_background(external_scale_factor=False)
     bg_ext = _build_background(external_scale_factor=True)
 

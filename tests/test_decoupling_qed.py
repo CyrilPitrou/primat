@@ -76,10 +76,13 @@ class TestPlasmaNoQED:
             assert thermo.PQEDofT(T) == 0.0
 
     def test_dPQEDdT_is_zero(self, thermo):
+        """dP_QED/dT must vanish too when QED_corrections=False."""
         for T in [0.1, 1.0, 10.0, 100.0]:
             assert thermo.dPQEDdT(T) == 0.0
 
     def test_d2PQEDdT2_is_zero(self, thermo):
+        """d2P_QED/dT2 must vanish too when QED_corrections=False -- it enters the
+    entropy derivative, so a non-zero residue would leak into a(T)."""
         for T in [0.1, 1.0, 10.0, 100.0]:
             assert thermo.d2PQEDdT2(T) == 0.0
 

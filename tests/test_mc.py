@@ -26,18 +26,22 @@ def mc_multi():
 # --- MCResult structure ---
 
 def test_mc_single_returns_MCResult(mc_single):
+    """A single-quantity request still returns a full MCResult container."""
     assert isinstance(mc_single, MCResult)
 
 
 def test_mc_multi_returns_MCResult(mc_multi):
+    """A multi-quantity request returns one MCResult covering them all."""
     assert isinstance(mc_multi, MCResult)
 
 
 def test_mc_single_has_expected_key(mc_single):
+    """Iterating an MCResult yields the quantity names that were requested."""
     assert "YPBBN" in list(mc_single)
 
 
 def test_mc_multi_has_all_keys(mc_multi):
+    """Every requested quantity is present -- none silently dropped."""
     for key in ("YPBBN", "DoH", "Li7oH"):
         assert key in list(mc_multi)
 
@@ -45,27 +49,39 @@ def test_mc_multi_has_all_keys(mc_multi):
 # --- MCQuantityResult attributes ---
 
 def test_central_is_float(mc_single):
+    """``central`` (the unvaried solve) is a plain float, not a numpy scalar --
+    it crosses into JSON output and the Cobaya wrapper."""
     assert isinstance(mc_single["YPBBN"].central, float)
 
 
 def test_mean_is_float(mc_single):
+    """``mean`` is a plain float (see test_central_is_float)."""
     assert isinstance(mc_single["YPBBN"].mean, float)
 
 
 def test_std_is_float(mc_single):
+    """``std`` is a plain float (see test_central_is_float)."""
     assert isinstance(mc_single["YPBBN"].std, float)
 
 
 def test_values_shape(mc_single):
+    """``values`` holds exactly one entry per requested MC sample."""
     assert mc_single["YPBBN"].values.shape == (_NUM_MC,)
 
 
 def test_mean_consistent_with_values(mc_single):
+    """``mean`` is the mean of ``values`` -- the summary cannot drift from the
+    samples it summarises."""
     q = mc_single["YPBBN"]
     assert q.mean == pytest.approx(np.mean(q.values), rel=1e-10)
 
 
 def test_std_consistent_with_values(mc_single):
+    """``std`` is the *sample* (ddof=1) standard deviation of ``values``.
+
+    Pinning ddof is what makes diag(cov) == std**2 hold (the cov()/corr()
+    matrices use ddof=1 too); a silent switch to the population estimator
+    would break that identity at small N."""
     q = mc_single["YPBBN"]
     # std is the sample (ddof=1) standard deviation -- unbiased and consistent
     # with the ddof=1 cov()/corr() matrices, so diag(cov) == std**2 (see
@@ -81,10 +97,13 @@ def test_central_close_to_nominal(mc_single):
 # --- std > 0 (rates actually vary) ---
 
 def test_std_positive(mc_single):
+    """Varying the nuclear rates produces a non-zero spread -- guards against
+    an MC loop that silently solves the same nominal rates every sample."""
     assert mc_single["YPBBN"].std > 0
 
 
 def test_std_positive_multi(mc_multi):
+    """Every quantity in a multi-quantity run has a non-zero spread."""
     for key in ("YPBBN", "DoH", "Li7oH"):
         assert mc_multi[key].std > 0
 
@@ -111,6 +130,7 @@ def _synthetic_mc(seed=0, n=200):
 
 
 def test_cov_matrix_shape_and_symmetry():
+    """cov() is square over the tracked quantities and symmetric."""
     mc = _synthetic_mc()
     C = mc.cov()
     assert C.shape == (3, 3)
@@ -126,6 +146,8 @@ def test_cov_diag_equals_std_squared():
 
 
 def test_corr_unit_diagonal():
+    """corr() has a unit diagonal for every quantity, including the
+    zero-variance one (whose 0/0 is defined to 1 on the diagonal)."""
     mc = _synthetic_mc()
     R = mc.corr()
     # Unit diagonal for every quantity, including the zero-variance C.
@@ -133,6 +155,7 @@ def test_corr_unit_diagonal():
 
 
 def test_corr_matrix_symmetry():
+    """corr() is symmetric, NaN entries included (the zero-variance rows)."""
     mc = _synthetic_mc()
     R = mc.corr()
     assert np.allclose(R, R.T, equal_nan=True)
@@ -151,6 +174,8 @@ def test_corr_matches_cov_over_std():
 
 
 def test_scalar_cov_corr_equal_matrix_entry():
+    """The two-name scalar forms cov(a,b)/corr(a,b) return exactly the matrix
+    entry, so callers can use either without a discrepancy."""
     mc = _synthetic_mc()
     C, R = mc.cov(), mc.corr()
     names = mc.quantity_names()
@@ -183,6 +208,7 @@ def test_zero_variance_guard_no_warning():
 
 
 def test_cov_corr_unknown_name_raises_keyerror():
+    """An unknown quantity name is a KeyError, not a silent NaN."""
     mc = _synthetic_mc()
     with pytest.raises(KeyError):
         mc.cov("not_a_quantity", "A")
@@ -238,12 +264,16 @@ def test_mc_multi_cov_shape_matches_quantities(mc_multi):
 # --- Reproducibility ---
 
 def test_same_seed_same_result():
+    """A fixed seed reproduces the sample values exactly -- the property every
+    MC-based uncertainty or covariance estimate is quoted against."""
     mc_a = mc_uncertainty(4, "YPBBN", params=_BASE, seed=42)
     mc_b = mc_uncertainty(4, "YPBBN", params=_BASE, seed=42)
     np.testing.assert_array_equal(mc_a["YPBBN"].values, mc_b["YPBBN"].values)
 
 
 def test_different_seed_different_result():
+    """Different seeds give different samples (the RNG is actually seeded from
+    the argument, not from a constant)."""
     mc_a = mc_uncertainty(4, "YPBBN", params=_BASE, seed=0)
     mc_b = mc_uncertainty(4, "YPBBN", params=_BASE, seed=99)
     assert not np.allclose(mc_a["YPBBN"].values, mc_b["YPBBN"].values)
@@ -314,6 +344,7 @@ def test_result_records_seed():
 # --- nuclide name as quantity ---
 
 def test_nuclide_quantity_works():
+    """A bare nuclide name works as an MC quantity, not just a result-dict key."""
     mc = mc_uncertainty(4, "He4", params=_BASE, seed=0)
     assert isinstance(mc, MCResult)
     assert mc["He4"].central > 0

@@ -1,34 +1,36 @@
 """
-Tests for the large BBN network (``network="large"``): ~433 reactions over ~59
+Tests for the large BBN network (``network="large"``): 429 LT reactions over 59
 nuclides, loaded from the generated CSVs and integrated in the LT era only.
 
 These check the load (species/reaction counts, formal conservation), the
 vectorised rate buffer (finite, bounded), and a full solve: that baryon number
-is conserved exactly and that the light-element abundances the small network
-predicts (n, p, d, t, He4, Li7, Be7) agree with the large network restricted
-to amax=8 (the old "medium" network's 68-reaction equivalent) -- they must,
-since the extra heavy-nuclide channels are tiny corrections.  The heavy-nuclide
-tail itself (B, C, N, O, ...) is approximate (limited by the AC2024 rate floors)
-and is not asserted here.
+is conserved and that the light-element abundances the small network predicts
+(n, p, d, t, He4, Li7, Be7) agree with the large network restricted to amax=8
+(its 68-reaction subset) -- they must, since the extra heavy-nuclide channels
+are tiny corrections.  The heavy-nuclide tail itself (B, C, N, O, ...) is
+approximate (limited by the AC2024 rate floors) and is not asserted here.
 
-Skips if the generated ``rates/nuclear/AC2024`` folder is absent.
+Skips if ``primat/data/csv/`` is absent -- it ships with the package, so in
+practice this only fires against a hand-assembled ``data_dir``.
 """
 import os
 
 import numpy as np
 import pytest
 
+from tests.reference_values import BARYON_ABS_TOL
+
 _AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "primat",
                            "data", "csv")
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
-    reason="rates/csv not generated",
+    reason="primat/data/csv/ not present",
 )
 
 
 @_needs_ac2024
 def test_large_network_loads_and_conserves():
-    """Loads 59 nuclides / ~424 reactions and passes the formal N/Z check."""
+    """Loads 59 nuclides / 429 LT reactions and passes the formal N/Z check."""
     from primat.config import PRIMATConfig
     from primat.network_data import load_network
     from primat.network_builder import compile_network, check_conservation
@@ -62,7 +64,23 @@ def test_large_rate_buffer_is_finite_and_bounded():
 @pytest.mark.solve
 def test_large_solve_conserves_baryon_and_matches_amax8():
     """Full large-network solve: baryon number conserved, and the light-element
-    finals agree with large/amax=8 (the heavy channels are tiny)."""
+    finals -- *including the free neutron* -- agree with large/amax=8.
+
+    GOAL: two properties in one solve pair.
+
+    1. ``sum_s A_s Y_s == 1``. Measured residual 1.6e-12 for all three
+       networks (2026-08-05); pinned at :data:`BARYON_ABS_TOL` = 1e-10 rather
+       than the decorative 1e-6 it used to carry, so that a real stoichiometry
+       leak fails instead of passing with six orders of slack.
+    2. ``n`` tracks its ``amax=8`` value. This is the standing guard on the
+       reverse-rate clamp in ``primat/network_data.py`` (its module docstring,
+       "exothermic blow-up"): before the clamp, heavy nuclides such as B10
+       flooded at low T and fed beta-delayed neutron emission, inflating the
+       final ``n`` to ~7e-13 instead of ~4.0e-16 -- a factor ~1750. That
+       property is advertised in tests/README.md's "Per-nuclide final
+       abundances" section, so it is asserted here rather than merely
+       described.
+    """
     from primat import PRIMAT
     med = PRIMAT(params={"network": "large", "amax": 8, "verbose": False})
     med.solve()
@@ -77,16 +95,20 @@ def test_large_solve_conserves_baryon_and_matches_amax8():
     ln = load_network(PRIMATConfig({"network": "large", "verbose": False}))
     Avec = {s: int(n) + int(z) for s, n, z in zip(ln.species, ln.N, ln.Z)}
     baryon = sum(Avec[s] * y for s, y in big.nuclear.Y_final.items())
-    assert abs(baryon - 1.0) < 1e-6
+    assert abs(baryon - 1.0) < BARYON_ABS_TOL
 
     # Light-element finals agree with large/amax=8 (relative, non-tiny ones).
+    # "n" is in this loop deliberately -- see the docstring's point 2; the
+    # measured agreement is 8.3e-06, i.e. ~240x inside the bound, while a
+    # regression of the reverse-rate clamp would miss it by a factor ~1750.
+    #
     # H3/Li7/Be7 are excluded: the large network alone carries the
     # t__He3_Bm/Be7__Li7_Bp analytic decay reactions (commit 6221e43), whose
     # laboratory decay constants convert ~0.23% of H3->He3 and ~18% of
     # Be7->Li7 over the ~15-day integration window (T_end=0.001 MeV) -- a
-    # real large-network-only effect, not a regression (see CLAUDE.md
+    # real large-network-only effect, not a regression (see tests/README.md's
     # "Per-nuclide final abundances").
-    for s in ("p", "H2", "He4"):
+    for s in ("n", "p", "H2", "He4"):
         assert abs(big.nuclear.Y_final[s] - med.nuclear.Y_final[s]) / abs(med.nuclear.Y_final[s]) < 2e-3
 
 
@@ -94,8 +116,8 @@ def test_large_solve_conserves_baryon_and_matches_amax8():
 @pytest.mark.slow
 @pytest.mark.solve
 def test_large_network_time_evolution_tsv(tmp_path):
-    """``output_time_evolution=True`` writes a TSV for network="large" too
-    (Item 5): one ``Y<species>`` column per of the ~59 large-network nuclides,
+    """``output_time_evolution=True`` writes a TSV for network="large" too:
+    one ``Y<species>`` column per large-network nuclide,
     no per-reaction flux columns (those are small/large-amax8 only), and the
     final He4/D/Li7 rows agree with the large/amax=8 time series to the same
     tolerances as the final-abundance comparison above."""
@@ -134,7 +156,8 @@ def test_large_network_time_evolution_tsv(tmp_path):
     # Li7 is excluded for the same reason as in that test: the large
     # network's Be7__Li7_Bp decay reaction (commit 6221e43) converts ~18% of
     # Be7 into Li7 over the full integration window, so large Li7 is ~4x
-    # large/amax=8 Li7 by design (see CLAUDE.md "Per-nuclide final abundances").
+    # large/amax=8 Li7 by design (see tests/README.md's "Per-nuclide final
+    # abundances").
     for s in ("He4", "H2"):
         col = header.index("Y_" + s)
         y_final_tsv = data[-1, col]

@@ -1,4 +1,35 @@
 
+"""
+Non-thermal neutrino spectra and their effect on the n<->p weak rates.
+
+GOAL: pin every way the neutrino distribution can depart from a plain
+Fermi-Dirac at the neutrino temperature, and check each departure reaches the
+observables through the right channel. Every test here is a *pair* of full
+solves differing in exactly one knob, so what is asserted is a difference, not
+an absolute number.
+
+Three families:
+
+1. ``spectral_distortions`` itself -- the NEVO-tabulated distortion of the
+   decoupling neutrino spectra: a small but non-zero shift in D/H, and (by
+   construction) no distortion energy density in NEVO.
+2. **Analytic** distortions (``analytic_distortions=True``): a y-type
+   (``y_SZ``) and a "gray" (``y_gray``) distortion each move Neff, and
+   ``finite_mass_corrections`` genuinely gates the SD-FM correction term on
+   top of CCR.
+3. **Chemical potentials** (``munuOverTnu`` and the per-flavour ``xi_e``/
+   ``xi_mu``/``xi_tau``): a genuine degeneracy shifts both the rates and the
+   energy density; Neff is even in its sign; the per-flavour knobs default
+   back to the common one; and -- the discriminating case -- ``xi_mu`` alone
+   gravitates but must *not* shift the n<->p rates, since only electron
+   neutrinos take part in them.
+
+Several tests set ``thermal_corrections=False``: the finite-temperature
+radiative corrections (CCRTh) assume an equilibrium FD plasma and are
+inconsistent with a chemical potential, so they are disabled where a
+degeneracy is imposed. That flag's own physical effect is pinned separately,
+in ``tests/test_regression.py::test_thermal_corrections_lower_YP``.
+"""
 import pytest
 import numpy as np
 from primat.main import PRIMAT
@@ -70,7 +101,7 @@ def test_ytype_distortion_shifts_Neff():
         Neff_spec - Neff_base = rho_nu_SD(Tnu_last) / rho_g(Tg_last)
                                  / ((7/8)(4/11)^(4/3))
 
-    pinned to ~1e-8 (CLAUDE.md). y_SZ=0.01 with mu(none)/gray off isolates the
+    pinned to ~1e-8. y_SZ=0.01 with mu(none)/gray off isolates the
     y-type term so the absolute-normalisation check below pins it exactly.
     """
     params_base = {

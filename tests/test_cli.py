@@ -31,7 +31,7 @@ def test_cli_default_summary(capsys):
     """No flags: default (small-network) run, human-readable summary.
 
     Parses the printed values rather than matching a literal string, and
-    compares against the centralised CLAUDE.md tolerances in
+    compares against the centralised constants and tolerances in
     tests/reference_values.py, so a routine default-parameter tweak (e.g.
     commit e00f062's rate_grid_npts/sampling_temperature_per_decade bump)
     does not require refreshing a hard-coded pin here.

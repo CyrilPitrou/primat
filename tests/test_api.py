@@ -5,6 +5,7 @@ from primat.main import PRIMAT
 
 
 def test_A_N_Z_dicts():
+    """A/N/Z expose each nuclide's mass, neutron and proton number."""
     r = PRIMAT()
     assert r.A["He4"] == 4
     assert r.Z["He4"] == 2
@@ -16,11 +17,13 @@ def test_A_N_Z_dicts():
 
 
 def test_getitem_returns_callable(solved_small):
+    """``primat["He4"]`` returns an abundance interpolator, not an array."""
     fn = solved_small["He4"]
     assert callable(fn)
 
 
 def test_getitem_returns_positive_values(solved_small):
+    """The interpolator is array-valued and non-negative above the noise floor."""
     t = np.logspace(0, 5, 20)
     vals = solved_small["He4"](t)
     assert vals.shape == (20,)
@@ -32,17 +35,20 @@ def test_getitem_returns_positive_values(solved_small):
 
 
 def test_getitem_scalar_input(solved_small):
+    """A scalar time gives a plain positive float, not a 0-d array."""
     val = solved_small["He4"](100.0)
     assert isinstance(val, float)
     assert val > 0
 
 
 def test_getitem_unknown_species_raises(solved_small):
+    """An unknown species name is a KeyError, not a silent zero."""
     with pytest.raises(KeyError):
         solved_small["Unobtainium"]
 
 
 def test_getitem_all_small_network_species(solved_small):
+    """Every small-network nuclide has a usable, non-negative interpolator."""
     for sp in ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"]:
         fn = solved_small[sp]
         assert callable(fn)
@@ -50,6 +56,8 @@ def test_getitem_all_small_network_species(solved_small):
 
 
 def test_T_of_t_and_t_of_T_are_inverses(solved_small):
+    """t(T) and T(t) invert each other -- the background's two time coordinates
+    must describe one history."""
     T_test = 0.5   # MeV
     t_val = float(solved_small.t_of_T(T_test))
     T_back = float(solved_small.T_of_t(t_val))
@@ -57,6 +65,7 @@ def test_T_of_t_and_t_of_T_are_inverses(solved_small):
 
 
 def test_a_of_T_and_T_of_a_are_inverses(solved_small):
+    """a(T) and T(a) invert each other (see t_of_T/T_of_t above)."""
     T_test = 0.5   # MeV
     a_val = float(solved_small.a_of_T(T_test))
     T_back = float(solved_small.T_of_a(a_val))
@@ -64,6 +73,7 @@ def test_a_of_T_and_T_of_a_are_inverses(solved_small):
 
 
 def test_a_of_t_and_t_of_a_are_inverses(solved_small):
+    """a(t) and t(a) invert each other (see t_of_T/T_of_t above)."""
     t_test = float(solved_small.t_of_T(0.5))   # s, at T_gamma = 0.5 MeV
     a_val = float(solved_small.a_of_t(t_test))
     t_back = float(solved_small.t_of_a(a_val))
@@ -79,17 +89,21 @@ def test_a_of_T_consistent_with_a_of_t_and_T_of_t(solved_small):
 
 
 def test_get_quantity_result_key(solved_small):
+    """get_quantity() resolves a result-dict key to that exact value."""
     assert solved_small.get_quantity("YPBBN") == pytest.approx(
         solved_small.results["YPBBN"], rel=1e-12)
 
 
 def test_get_quantity_nuclide_name(solved_small):
+    """get_quantity() also resolves a bare nuclide name to its final abundance,
+    so MC/sensitivity callers can name either kind of quantity uniformly."""
     val = solved_small.get_quantity("He4")
     assert val > 0
     assert val == pytest.approx(solved_small.nuclear.Y_final["He4"], rel=1e-12)
 
 
 def test_get_quantity_unknown_raises(solved_small):
+    """A name that is neither a result key nor a nuclide raises ValueError."""
     with pytest.raises(ValueError):
         solved_small.get_quantity("not_a_thing")
 
@@ -112,6 +126,8 @@ def test_solve_cached():
 
 
 def test_PyPRresults_returns_dict(solved_small):
+    """primat_results() returns the documented result dict, with the headline
+    observables present."""
     res = solved_small.primat_results()
     assert isinstance(res, dict)
     for key in ("YPBBN", "YPCMB", "DoH", "He3oH", "Li7oH", "Neff"):
@@ -119,6 +135,8 @@ def test_PyPRresults_returns_dict(solved_small):
 
 
 def test_result_values_physical(solved_small):
+    """Every observable lands in its physically sensible range -- the crudest
+    possible guard, which catches a catastrophically broken solve."""
     res = solved_small.results
     assert 0.20 < res["YPBBN"] < 0.30
     assert 1e-5 < res["DoH"]   < 5e-5

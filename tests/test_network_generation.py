@@ -21,8 +21,10 @@ The tests below check, without re-running the (slow) full generation:
 4. that the detailed-balance coefficients computed from nuclide data reproduce
    primat's published values for those 68 reactions.
 
-The CSV-based tests skip if the generated ``rates/nuclear/AC2024`` folder is
-absent (fresh checkout before the generator has been run).
+The CSV-based tests skip if ``primat/data/csv/`` is absent. That directory is
+git-tracked and ships in the wheel, so the guard is a safety net for a
+hand-assembled ``data_dir``, not a routine skip -- if these tests ever *do*
+skip in CI, something has gone wrong with packaging, not with the generator.
 """
 import csv
 import os
@@ -44,8 +46,8 @@ from nuclide_table import (resolve_token, conservation_residual,   # noqa: E402
 
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
-    reason="rates/csv not generated "
-           "(run python generate_rates/convert_ac2024_rates.py)",
+    reason="primat/data/csv/ not present (it ships with the package; "
+           "regenerate with python generate_rates/convert_ac2024_rates.py)",
 )
 
 
@@ -113,6 +115,10 @@ def test_shipped_rate_tables_are_on_the_master_grid():
 
 
 def test_leptons_and_photons_carry_charge_but_no_baryon():
+    """Photons and beta-decay leptons resolve with A = 0 but the right charge.
+
+    This is what lets check_conservation apply one uniform dZ = 0 rule to
+    weak and beta-decay channels instead of special-casing them."""
     assert resolve_token("g").kind == "photon"
     bm, bp = resolve_token("Bm"), resolve_token("Bp")
     assert (bm.kind, bm.A, bm.Q) == ("lepton", 0, -1)
@@ -120,6 +126,8 @@ def test_leptons_and_photons_carry_charge_but_no_baryon():
 
 
 def test_conservation_residual_zero_for_physical_reactions():
+    """Real reactions -- radiative capture, a 3-body breakup, and two
+    beta-minus decays -- have zero (dA, dQ) residual."""
     # n + p -> d + g ; t + t -> a + n + n ; a beta-minus decay.
     assert conservation_residual(["n", "p"], ["d", "g"]) == (0, 0)
     assert conservation_residual(["t", "t"], ["a", "n", "n"]) == (0, 0)
@@ -128,6 +136,8 @@ def test_conservation_residual_zero_for_physical_reactions():
 
 
 def test_conservation_residual_catches_violations():
+    """The residual is non-zero for a baryon-violating and a charge-violating
+    reaction: the check can actually fail, not just pass."""
     dA, dQ = conservation_residual(["n", "p"], ["He4"])      # 2 baryons vs 4
     assert dA != 0
     dA, dQ = conservation_residual(["p", "p"], ["d", "g"])   # charge 2 vs 1
@@ -135,6 +145,8 @@ def test_conservation_residual_catches_violations():
 
 
 def test_canonical_name_special_cases():
+    """canonical_name maps (Z, A) to primat's spelling, including the two
+    irregular cases n and p (which are not 'H1'-style names)."""
     assert canonical_name(0, 1) == "n"
     assert canonical_name(1, 1) == "p"
     assert canonical_name(1, 2) == "H2"
@@ -203,6 +215,8 @@ def test_reaction_list_is_superset_of_known_networks():
 
 @_needs_ac2024
 def test_every_listed_reaction_conserves_A_and_Q():
+    """Every reaction in the generated catalog conserves baryon number and
+    charge -- the formal gate on the whole generated network."""
     for r in _load_reactions_csv():
         reactants = r["reactants"].split("+")
         products = r["products"].split("+")
@@ -263,9 +277,11 @@ def test_detailed_balance_formula_consistency():
 def test_shipped_uncertainty_columns_are_at_least_one():
     """Every primat-generated rate table has ``f >= 1`` at every T9.
 
-    The Parthenope-sourced tables are excluded: they come from a different
-    generator (see CLAUDE.md's rate-table provenance), so their uncertainty
-    column is not this converter's to guarantee.
+    Only the ``*_primat.txt`` tables are globbed, i.e. those written by
+    ``generate_rates/convert_ac2024_rates.py``. The ``*_parthenope3.0.txt``
+    tables (used by the ``small_parthenope`` network) come from a different
+    generator, ``generate_rates/parthenope3.0_extract/postprocess.py``, so
+    their uncertainty column is not this converter's to guarantee.
     """
     import glob
     import os

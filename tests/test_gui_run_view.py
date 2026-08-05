@@ -42,7 +42,8 @@ def _build_gui_run():
     # the default "auto" here would silently pick the C backend
     # (primat._primat_c, when built) and compare across backends instead of
     # checking GuiRun's own interpolator/getter logic -- the known
-    # ~7e-4-relative C-vs-Python D/H gap (CLAUDE.md) would then dominate
+    # cross-backend D/H gap (see tests/test_backend_parity.py's module
+    # docstring for its measured size) would then dominate
     # this test's diffs instead of any real GuiRun bug.
     full_params = dict(_PARAMS, output_time_evolution=True, output_file=None)
     result = backend.run_bbn(full_params, force_backend="python")
@@ -61,11 +62,15 @@ def test_gui_run_A_Z_N_match_a_real_primat_instance(solved_small):
 
 
 def test_gui_run_abundance_names_matches_real_primat_instance(solved_small):
+    """GuiRun exposes the same nuclide list as the PRIMAT instance it stands in
+    for."""
     run = _build_gui_run()
     assert set(run.abundance_names) == set(solved_small.abundance_names)
 
 
 def test_gui_run_get_quantity_matches_real_primat_instance(solved_small):
+    """GuiRun.get_quantity agrees with PRIMAT.get_quantity for both result-dict
+    keys and the per-nuclide fallback."""
     run = _build_gui_run()
     for key in ("DoH", "YPBBN", "He3oH", "Li7oH"):
         assert run.get_quantity(key) == pytest.approx(
@@ -76,6 +81,7 @@ def test_gui_run_get_quantity_matches_real_primat_instance(solved_small):
 
 
 def test_gui_run_get_quantity_raises_on_unknown_name():
+    """An unknown quantity name raises ValueError, matching PRIMAT's contract."""
     run = _build_gui_run()
     with pytest.raises(ValueError):
         run.get_quantity("not_a_real_quantity")
@@ -91,6 +97,8 @@ def test_gui_run_getitem_interpolator_matches_real_primat_instance(solved_small)
 
 
 def test_gui_run_T_of_t_matches_real_primat_instance(solved_small):
+    """GuiRun.T_of_t, rebuilt from the discrete evolution arrays, agrees with
+    PRIMAT's live background interpolator."""
     run = _build_gui_run()
     t_mid = 0.5 * (run.evolution.t[0] + run.evolution.t[-1])
     assert run.T_of_t(t_mid) == pytest.approx(solved_small.T_of_t(t_mid), rel=1e-3)
