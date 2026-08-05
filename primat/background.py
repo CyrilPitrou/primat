@@ -1010,6 +1010,28 @@ class StandardBackground(Background):
         T_grid = T_sol                          # already sampled low→high
         a_grid = a_of_T(T_grid)                  # low a → high a (a_of_T is array-safe)
 
+        # Linear, deliberately -- and deliberately NOT matching the C backend,
+        # which fits a not-a-knot cubic over these same nodes
+        # (background.c's `T_of_a_smooth`) for its own ODE right-hand side.
+        #
+        # That looks like a parity gap and was reviewed as one, but the C's
+        # cubic is a *performance* workaround, not an accuracy improvement: its
+        # RK45 stepper was rejecting ~65% of steps on the curvature kinks at
+        # every node, making that one ODE ~40x more expensive, and its comment
+        # is explicit that "the solution itself [is] unchanged -- only how
+        # cheaply the same tolerance is reached". LSODA here has no such
+        # problem, so there is nothing to buy.
+        #
+        # Importing the cubic anyway was tried and measured WORSE: Python's
+        # external-mode t(T) self-convergence (600 -> 9600 nodes/decade) went
+        # from 5.67e-06 to 7.80e-06. The reason is that in this mode a(T) is
+        # itself a table read (the NEVO `x` column), so these nodes do not
+        # sample a smooth function -- fitting a cubic through them manufactures
+        # curvature the data does not contain. Cross-backend YP also degraded
+        # 2.45e-07 -> 3.83e-06.
+        #
+        # So: the two backends genuinely differ here, and that is the right
+        # outcome. Each uses the interpolant suited to its own integrator.
         T_of_a = interp1d(a_grid, T_grid, bounds_error=False, fill_value="extrapolate")
 
         a_ini = a_of_T(Tstartcosmo)
