@@ -296,7 +296,11 @@ def build_reproduction_zip(params, *, backend_used="auto", mc=None, cfg=None,
     import io
     import zipfile
 
-    from primat.gui.custom_rates import export_zip
+    # Memoised: render_results_panel rebuilds this bundle on *every* rerun of
+    # the Final abundances tab (st.download_button takes its bytes up front),
+    # and for a custom network the overlay below is the same ~0.5 s / 4.3 MB
+    # export the Reactions tab pays. See custom_rates.export_zip_cached.
+    from primat.gui.custom_rates import export_zip_cached
 
     active = custom_network is not None
     cn_name = network_name if active else None
@@ -337,8 +341,8 @@ def build_reproduction_zip(params, *, backend_used="auto", mc=None, cfg=None,
             # self-contained networks/ + tables/ overlay (inlining uploaded and
             # edited tables). Re-nest it under nuclear/ so user_nuclear_dir
             # points at a single overlay root.
-            inner = export_zip(cfg, custom_network, kept_names,
-                               network_filename=network_name)
+            inner = export_zip_cached(cfg, custom_network, kept_names,
+                                      network_filename=network_name)
             with zipfile.ZipFile(io.BytesIO(inner)) as innerzf:
                 for item in innerzf.namelist():
                     zf.writestr(f"nuclear/{item}", innerzf.read(item))

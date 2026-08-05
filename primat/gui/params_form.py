@@ -40,7 +40,6 @@ scratch -- which itself only *saves* the result and returns here, rather
 than running BBN directly (use the main "Run BBN" button for that, same as
 for an imported network).
 """
-import importlib.resources
 import json
 import os
 import re
@@ -52,7 +51,6 @@ from primat.config import DEFAULT_PARAMS, PRIMATConfig
 from primat.network_data import (
     load_network, load_reaction_names, reaction_category,
     group_reactions_by_category, available_rate_tables, reaction_stoichiometry,
-    AMAX_LARGE,
 )
 from primat.gui import custom_rates
 from primat.gui.panels import _equation_unicode
@@ -268,14 +266,47 @@ def _root():
 
     ``reaction_stoichiometry`` / ``reaction_category`` /
     ``group_reactions_by_category`` each take an optional catalog root and fall
-    back to the *shipped* tree when it is omitted -- which silently ignores a
-    ``data_dir`` override.  Routing them all through this one helper (as the
-    rate-table paths at ``_table_choices``/``_shipped_table_text`` already do)
-    keeps "which data tree is the GUI showing?" a single question with a single
-    answer, so teaching :func:`_cfg` about a user-set ``data_dir`` fixes every
-    call site at once.
+    back to the *shipped* tree when it is omitted -- which would silently
+    ignore a ``data_dir`` override.  Routing them all through this one helper
+    (as the rate-table paths and :func:`_network_dirs` already do) keeps "which
+    data tree is the GUI showing?" a single question with a single answer.
+
+    Note that :func:`_cfg` currently builds a default ``PRIMATConfig()``: the
+    sidebar form exposes no ``data_dir``/``user_nuclear_dir`` widget and
+    ``config.py`` reads no environment variable, so today this always resolves
+    to the shipped tree. The indirection is what makes that a *one-line* change
+    if those overrides ever become GUI-settable, instead of a hunt through
+    every catalog call site -- so new lookups should go through here rather
+    than reaching into ``importlib.resources`` directly.
     """
     return _cfg()._resolved_data_dir
+
+
+def _network_dirs():
+    """Directories to scan for selectable ``<name>.txt`` network files.
+
+    The resolved data root's ``nuclear/networks/`` first, then the
+    ``user_nuclear_dir`` overlay's own ``networks/`` when one is configured --
+    matching how ``load_network`` resolves a network name (per-file, overlay
+    first, shipped tree as fallback), so anything the solver could load is
+    also offered in the dropdown.
+
+    Returns
+    -------
+    list[str]
+        Existing-or-not directory paths, in scan order; callers ignore the
+        ones that cannot be listed.
+
+    Example
+    -------
+    >>> _network_dirs()
+    ['/.../primat/data/nuclear/networks']
+    """
+    dirs = [os.path.join(_root(), "nuclear", "networks")]
+    overlay = getattr(_cfg(), "user_nuclear_dir", None)
+    if overlay:
+        dirs.append(os.path.join(overlay, "networks"))
+    return dirs
 
 
 def _available_networks():
@@ -293,11 +324,18 @@ def _available_networks():
     popup.
     """
     names = {"small"}
-    try:
-        net_dir = importlib.resources.files("primat") / "data" / "nuclear" / "networks"
-        names |= {p.stem for p in net_dir.iterdir() if p.suffix == ".txt"}
-    except (FileNotFoundError, ModuleNotFoundError, NotADirectoryError):
-        pass
+    # Read through the same resolved data root every other catalog lookup in
+    # this module uses (see _root()), rather than reaching into the installed
+    # package directly: a data_dir override must not leave this one list still
+    # showing the shipped tree's networks. The user_nuclear_dir overlay (which
+    # load_network resolves per-file) is scanned too, so a network dropped
+    # there is selectable.
+    for net_dir in _network_dirs():
+        try:
+            entries = os.listdir(net_dir)
+        except OSError:
+            continue
+        names |= {os.path.splitext(f)[0] for f in entries if f.endswith(".txt")}
     result = sorted(names)
     for title in st.session_state.get(SessionKeys.known_custom_networks, {}):
         if title not in result:
@@ -433,11 +471,11 @@ def _widget_for(key, label, help_text):
 
 _RESERVED_NETWORK_NAMES = {"small", "small_parthenope", "large"}
 
-
-def _sanitize_filename(title):
-    """Turn a free-text network title into a safe zip/filename stem."""
-    cleaned = re.sub(r'[^A-Za-z0-9_.-]+', '_', (title or "").strip())
-    return cleaned.strip("_") or "custom"
+# Re-exported so this module's many call sites keep reading naturally; the
+# implementation lives in ``custom_rates`` so ``panels`` can sanitise its own
+# export titles too without an import cycle (``params_form`` imports
+# ``panels``, not the other way round).
+_sanitize_filename = custom_rates.sanitize_filename
 
 
 _NUCLIDE_NAME_RE = re.compile(r"^([A-Za-z]+)(\d+)$")
@@ -601,7 +639,8 @@ class _DialogState:
                     # not a real per-T9 file -- recover the bare rate rather
                     # than treating it as an uploaded table.
                     try:
-                        _, rate, _err, _hdr = custom_rates.parse_rate_upload(raw)
+                        _, rate, _err, _hdr = custom_rates.parse_rate_upload(
+                            raw, cfg=_cfg(), warn=False)
                         decay_override[name] = float(np.asarray(rate).reshape(-1)[0])
                     except (ValueError, IndexError):
                         pass
@@ -992,9 +1031,12 @@ def _render_reaction_row(name):
         # to render normally.
         up = st.file_uploader(f"New rate table for {name}", key=SessionKeys.dialog_upload_widget(name))
         if up is not None:
-            raw = up.getvalue().decode()
             try:
-                custom_rates.parse_rate_upload(raw)
+                # decode_upload_text is *inside* the try: the uploader accepts
+                # any file, so a binary/non-UTF-8 pick must surface as the same
+                # clean message as a malformed table, not a raw traceback.
+                raw = custom_rates.decode_upload_text(up.getvalue())
+                custom_rates.parse_rate_upload(raw, cfg=_cfg())
             except Exception as exc:
                 st.error(f"`{name}`: {exc}")
                 custom_rates.show_rate_format_help()
@@ -1106,9 +1148,12 @@ def _render_add_rate_section(dialog_amax, all_entries):
             if upload is None:
                 st.error("Upload a rate table for the new reaction first.")
                 return
-            raw = upload.getvalue().decode()
             try:
-                custom_rates.parse_rate_upload(raw)
+                # Decode inside the try -- see the same guard in
+                # _render_reaction_row: a binary upload must not escape as an
+                # uncaught UnicodeDecodeError.
+                raw = custom_rates.decode_upload_text(upload.getvalue())
+                custom_rates.parse_rate_upload(raw, cfg=_cfg())
             except Exception as exc:
                 st.error(f"Rate table: {exc}")
                 custom_rates.show_rate_format_help()
@@ -1139,7 +1184,7 @@ def _render_dialog_footer(params, title, base_network, dialog_amax):
 
     cols = st.columns(2)
     try:
-        zip_bytes = custom_rates.export_zip(
+        zip_bytes = custom_rates.export_zip_cached(
             _cfg(), custom_network, kept_names, network_filename=safe_title)
     except Exception as exc:
         cols[0].error(f"Could not build zip: {exc}")
@@ -1398,7 +1443,7 @@ def _manage_networks_dialog(params):
         entry = known[selected]
         safe_title = _sanitize_filename(selected)
         try:
-            zip_bytes = custom_rates.export_zip(
+            zip_bytes = custom_rates.export_zip_cached(
                 _cfg(), entry["custom_network"], entry["kept"], network_filename=safe_title)
         except Exception:
             zip_bytes = None

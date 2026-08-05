@@ -34,7 +34,14 @@ and fixed by hand-testing the popup:
   custom network's own kept-list too) but starts unchecked again on every
   genuine transition into a (possibly different) custom network;
 * loading a network under a reserved built-in name ("small"/"large"/
-  "small_parthenope") silently shadowing the real network of that name.
+  "small_parthenope") silently shadowing the real network of that name;
+* exporting an *unmodified* network whose file pins a specific rate table per
+  reaction (``small_parthenope``'s ``*_parthenope3.0.txt``) shipping primat's
+  own default tables instead, so the zip re-imported to different abundances
+  with nothing to signal it (``custom_rates._base_network_filenames``);
+* a binary/non-UTF-8 file picked in a rate-table uploader escaping as an
+  uncaught ``UnicodeDecodeError`` instead of a clean message
+  (``custom_rates.decode_upload_text``).
 
 A harness quirk worth knowing if extending these tests: once the "Create
 custom network" dialog has been opened and then closed again (via its own
@@ -1297,3 +1304,176 @@ def test_reproduction_bundle_matches_gui_bit_for_bit(base, label, mode, backend,
         assert gui[key] == bundle[key], (
             f"[{label}/{mode}/{backend}] {key}: bundle {bundle[key]!r} != "
             f"GUI {gui[key]!r}")
+
+
+# ---------------------------------------------------------------------------
+# Post-run "Download network (zip)" must export the tables the run ACTUALLY
+# used, not an assumed "<name>_primat.txt" (pass-9 review finding F9.1)
+# ---------------------------------------------------------------------------
+
+def test_export_of_small_parthenope_keeps_its_own_rate_tables():
+    """GOAL: an unmodified network whose file *pins* a specific rate table per
+    reaction must export that table, not primat's default one.
+
+    ``small_parthenope.txt`` maps every one of its 12 reactions to a dedicated
+    ``*_parthenope3.0.txt`` table. ``export_zip``'s "unmodified reaction"
+    branch used to hard-code ``<name>_primat.txt``, so the Reactions tab's
+    "Download network (zip)" silently shipped the *small* network's rates
+    under the Parthenope name -- a well-formed zip that re-imported to
+    different physics with nothing to signal it.
+
+    This pins the structural half (filenames + byte-identical content);
+    ``test_small_parthenope_export_roundtrips_to_the_same_abundances`` pins
+    the physics half.
+    """
+    import io
+    import os
+    import re
+    import zipfile
+
+    from primat.config import PRIMATConfig
+    from primat.gui import custom_rates
+    from primat.network_data import load_reaction_names
+
+    cfg = PRIMATConfig({"network": "small_parthenope"})
+    entries = load_reaction_names(cfg, "small_parthenope")
+    kept = [re.split(r'[, ]+', e, maxsplit=1)[0].strip() for e in entries]
+
+    # Exactly what panels._render_reaction_downloads passes for a run with no
+    # customisation at all.
+    zip_bytes = custom_rates.export_zip(
+        cfg, {"removed": [], "replaced": {}, "added": {}}, kept,
+        network_filename="small_parthenope")
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        net_text = zf.read("networks/small_parthenope.txt").decode()
+        members = set(zf.namelist())
+        for line in net_text.splitlines():
+            if not line.strip():
+                continue
+            bare, fname = (p.strip() for p in line.split(",", 1))
+            assert fname.endswith("_parthenope3.0.txt"), (
+                f"{bare}: exported as {fname!r}, but small_parthenope pins "
+                f"{bare}_parthenope3.0.txt -- the wrong rate table was exported"
+            )
+            assert f"tables/{bare}/{fname}" in members
+            on_disk = os.path.join(cfg._resolved_data_dir, "nuclear", "tables",
+                                   bare, fname)
+            with open(on_disk) as fh:
+                assert zf.read(f"tables/{bare}/{fname}").decode() == fh.read(), (
+                    f"{bare}: exported table content differs from {fname}"
+                )
+
+
+def test_small_parthenope_export_roundtrips_to_the_same_abundances(tmp_path):
+    """GOAL: exporting an unmodified ``small_parthenope`` run and re-running the
+    exported overlay must reproduce that run's abundances exactly.
+
+    The physics half of F9.1. Before the fix the round trip silently returned
+    the ``small`` network's numbers instead -- D/H 2.4999622e-05 ->
+    2.4358771e-05 (-2.6%) and Li7/H 4.812238e-10 -> 5.557655e-10 (+15.5%),
+    against a +-3e-9 same-backend regression pin. The second assertion is the
+    one that actually catches the substitution: an equality check alone would
+    still pass if *both* sides silently used primat's tables.
+    """
+    import io
+    import re
+    import zipfile
+
+    from primat.backend import run_bbn
+    from primat.config import PRIMATConfig
+    from primat.gui import custom_rates
+    from primat.network_data import load_reaction_names
+
+    cfg = PRIMATConfig({"network": "small_parthenope"})
+    entries = load_reaction_names(cfg, "small_parthenope")
+    kept = [re.split(r'[, ]+', e, maxsplit=1)[0].strip() for e in entries]
+    zip_bytes = custom_rates.export_zip(
+        cfg, {"removed": [], "replaced": {}, "added": {}}, kept,
+        network_filename="parthy")
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        zf.extractall(tmp_path)
+
+    original = run_bbn({"network": "small_parthenope"}, force_backend="python")
+    roundtrip = run_bbn({"network": "parthy",
+                         "user_nuclear_dir": str(tmp_path)},
+                        force_backend="python")
+    plain_small = run_bbn({"network": "small"}, force_backend="python")
+
+    for key in ("YPBBN", "DoH", "He3oH", "Li7oH", "Neff"):
+        assert roundtrip[key] == original[key], (
+            f"{key}: round-tripped small_parthenope gives {roundtrip[key]!r}, "
+            f"original run gives {original[key]!r}"
+        )
+    # The bug's signature: the round trip silently became the `small` network.
+    assert roundtrip["DoH"] != plain_small["DoH"], (
+        "round-tripped small_parthenope reproduces the *small* network's D/H "
+        "-- the exported zip is carrying primat's rate tables, not Parthenope's"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Upload robustness + export memoisation (pass-9 review findings F9.2, F9.4)
+# ---------------------------------------------------------------------------
+
+def test_binary_upload_raises_a_clean_value_error():
+    """GOAL: a non-UTF-8 file picked in a rate-table uploader must surface as a
+    catchable ``ValueError``, not an uncaught ``UnicodeDecodeError``.
+
+    The rate-table uploaders deliberately do not restrict ``type=`` (a rate
+    table may be named .txt/.dat/.csv/anything), so a user can pick a PNG. The
+    upload handlers' ``.decode()`` used to sit one line *above* the ``try``
+    meant to turn a bad upload into a clean message, so that produced a raw
+    traceback in the dialog.
+    """
+    import pytest as _pytest
+
+    from primat.gui import custom_rates
+
+    png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+    with _pytest.raises(ValueError, match="not UTF-8 text"):
+        custom_rates.decode_upload_text(png)
+    # ... and through the full parse path the handlers actually call.
+    with _pytest.raises(ValueError, match="not UTF-8 text"):
+        custom_rates.parse_rate_upload(png)
+    # A valid table still parses unchanged, from bytes or str.
+    for payload in (b"1.0  2.0\n2.0  3.0\n3.0 4.0\n", "1.0  2.0\n2.0  3.0\n3.0 4.0\n"):
+        T9, rate, err, header = custom_rates.parse_rate_upload(payload, warn=False)
+        assert list(T9) == [1.0, 2.0, 3.0]
+        assert list(err) == [0.0, 0.0, 0.0]
+
+
+def test_export_zip_cached_matches_export_zip():
+    """GOAL: the memoised exporter is byte-identical to the direct one.
+
+    Every download button builds its zip eagerly on every rerun (Streamlit
+    takes the bytes up front), which for the large network is 428 table reads
+    and a 4.3 MB deflate, ~0.47 s per interaction. ``export_zip_cached``
+    collapses that to once per distinct input -- it must not change the
+    output, and must key on ``cfg.network`` (which decides *which* table an
+    unmodified reaction exports, see F9.1).
+    """
+    import re
+
+    from primat.config import PRIMATConfig
+    from primat.gui import custom_rates
+    from primat.network_data import load_reaction_names
+
+    empty = {"removed": [], "replaced": {}, "added": {}}
+    produced = {}
+    for network in ("small", "small_parthenope"):
+        cfg = PRIMATConfig({"network": network})
+        kept = [re.split(r'[, ]+', e, maxsplit=1)[0].strip()
+                for e in load_reaction_names(cfg, network)]
+        direct = custom_rates.export_zip(cfg, empty, kept, network_filename="x")
+        cached = custom_rates.export_zip_cached(cfg, empty, kept, network_filename="x")
+        assert cached == direct, f"{network}: cached export differs from direct"
+        # Second call hits the cache and must still be identical.
+        assert custom_rates.export_zip_cached(
+            cfg, empty, kept, network_filename="x") == direct
+        produced[network] = cached
+    # Same kept names + same title, different cfg.network -> different bytes.
+    assert produced["small"] != produced["small_parthenope"], (
+        "export_zip_cached collapsed two different networks onto one cache "
+        "entry -- cfg.network is missing from the cache key"
+    )

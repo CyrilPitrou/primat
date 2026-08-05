@@ -45,6 +45,25 @@ class SessionKeys:
     run_custom_network_dict = "run_custom_network_dict"
     network = "network"
 
+    # ---- app.py's own bookkeeping (not widget keys) ------------------------
+    # Cached (params_items, MCResult) pair backing the quick-MC incremental
+    # reuse (app._quick_mc); deliberately NOT an st.cache_resource, so that a
+    # larger sample request can extend the smaller cached one.
+    quick_mc_cache = "_quick_mc_cache"
+    # Generation counter remounting st.tabs so a changed `default=` is
+    # actually honoured, plus the "up to date" value it tracks -- same
+    # key-remount pattern as `dialog_gen` below.
+    tabs_gen = "_tabs_gen"
+    tabs_up_to_date = "_tabs_up_to_date"
+
+    # ---- Abundance-evolution panel (panels.render_evolution_panel) ---------
+    # The multiselect's chosen nuclides, plus the option set it was seeded
+    # from -- the latter so a network change (different nuclide set) re-seeds
+    # the selection instead of silently keeping the previous network's, which
+    # Streamlit would then intersect down without any visible signal.
+    evolution_selection = "evolution_selection"
+    evolution_options = "_evolution_options"
+
     # ---- Sidebar form (params_form.render_sidebar_form) --------------------
     amax_enabled = "amax_enabled"
     amax_value = "amax_value"
