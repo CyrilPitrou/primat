@@ -56,6 +56,8 @@ def test_dir_includes_default_params_and_dynamic_rate_keys():
 
 
 def test_default_construction():
+    """A no-argument PRIMATConfig is usable: the headline defaults are present
+    and sane."""
     cfg = PRIMATConfig()
     assert cfg.Omegabh2 > 0
     assert cfg.is_small is True
@@ -63,11 +65,14 @@ def test_default_construction():
 
 
 def test_user_override():
+    """A user dict overrides the corresponding default."""
     cfg = PRIMATConfig({"Omegabh2": 0.020})
     assert cfg.Omegabh2 == pytest.approx(0.020)
 
 
 def test_unknown_key_warns():
+    """An unrecognised key warns, naming the offending key so a typo is
+    findable."""
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         PRIMATConfig({"not_a_real_param": 42})
@@ -75,17 +80,22 @@ def test_unknown_key_warns():
 
 
 def test_unknown_key_does_not_raise():
+    """...but it does not raise: strict_params defaults to False, i.e.
+    'warn and ignore' (see test_strict_params_* for the opt-in strict mode)."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         PRIMATConfig({"totally_unknown": 99})
 
 
 def test_omegabh2_to_eta0b_positive():
+    """The Omegabh2 -> eta0b conversion factor is positive and available."""
     cfg = PRIMATConfig()
     assert cfg.Omegabh2_to_eta0b > 0
 
 
 def test_nuclides_keys():
+    """The Nuclides table covers at least every species the shipped networks
+    evolve."""
     cfg = PRIMATConfig()
     expected_subset = {"n", "p", "H2", "H3", "He3", "He4", "He6",
                        "Li6", "Li7", "Be7", "Li8", "B8"}
@@ -107,6 +117,8 @@ def test_p_rxn_typo_warns():
 
 
 def test_delta_rxn_typo_warns():
+    """A delta_<rxn> override naming a reaction outside the network warns
+    (the additive-variation twin of test_p_rxn_typo_warns above)."""
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         PRIMATConfig({"delta_not_a_real_reaction": 0.5})
@@ -125,6 +137,8 @@ def test_p_rxn_valid_reaction_does_not_warn():
 
 
 def test_nuclides_NZ_values():
+    """Nuclides maps each name to its [N, Z] pair -- spot-checked against the
+    values every A/Z conservation check depends on."""
     cfg = PRIMATConfig()
     assert cfg.Nuclides["He4"] == [2, 2]
     assert cfg.Nuclides["H2"]  == [1, 1]
@@ -154,6 +168,8 @@ def test_p_rate_keys_count():
 
 
 def test_physical_constants_positive():
+    """Every physical constant exposed on the config is positive -- catches a
+    unit conversion or a default that got zeroed out."""
     cfg = PRIMATConfig()
     for attr in ("me", "mn", "mp", "Mpl", "kB", "MeV"):
         assert getattr(cfg, attr) > 0, f"cfg.{attr} should be positive"

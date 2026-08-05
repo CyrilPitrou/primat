@@ -1,4 +1,26 @@
 
+"""
+Detailed balance: the shipped reverse-rate coefficients must be derivable.
+
+GOAL: prove that `primat/data/csv/detailed_balance.csv` -- the table the LT
+network reads its reverse rates from -- is not a hand-maintained set of magic
+numbers but a reproducible function of the nuclide data.
+
+For a reaction with forward rate `lambda_f(T9)`, the reverse rate follows from
+equilibrium statistical mechanics as
+
+    lambda_r / lambda_f = alpha * T9**beta * exp(-gamma / T9),
+
+with `alpha` fixed by the spin degeneracies, masses and the number of
+particles on each side, `beta` by the change in the number of interacting
+bodies, and `gamma` by the reaction Q-value. `compute_detailed_balance_coefficients`
+derives all three from the nuclide table; this test walks every row of the CSV
+and checks the derivation reproduces it.
+
+A single test covers the whole file (one assertion per row per coefficient),
+which is why this module is short: a mismatch on any reaction means either the
+nuclide data or the derivation changed, and both are single-cause failures.
+"""
 import os
 import csv
 import pytest

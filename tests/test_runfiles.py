@@ -1,14 +1,26 @@
 """
-Smoke test for the example scripts in ``runfiles/``.
+Smoke test for the example scripts in ``runfiles/``, plus the one numeric
+check that backs the documented validation workflow.
 
-CLAUDE.md documents ``runfiles/primat_run.py`` as the canonical "run this to
-validate a change" entry point, and ``primat_compare.py``/
-``primat_run_explanatory.py`` as further worked examples -- but nothing in
-the test suite actually executes them (``tests/reference_values.py`` only
-mirrors their expected numbers, and ``tests/test_docs_consistency.py`` only
-string-checks parameter names in ``primat_reference_run.py``). This means an
-import-path bug or an API rename in ``primat.backend``/``primat.main`` could
-break these scripts silently until a human runs one by hand.
+``runfiles/primat_run.py`` is the canonical "run this to validate a change"
+entry point (tests/README.md's "Validation reference"), and
+``primat_compare.py``/``primat_run_explanatory.py`` are further worked
+examples -- but nothing in the test suite used to execute them
+(``tests/reference_values.py`` only mirrors their expected numbers, and
+``tests/test_docs_consistency.py`` only string-checks parameter names in
+``primat_reference_run.py``). This means an import-path bug or an API rename
+in ``primat.backend``/``primat.main`` could break these scripts silently until
+a human runs one by hand.
+
+``test_primat_run_matches_the_validation_reference`` closes the other half of
+that hole: it parses the script's *printed numbers* and checks them against
+the published reference, so the workflow tests/README.md tells a contributor
+to follow by hand is also run by CI. It deliberately uses
+``ROUTINE_RUN_*_ABS_TOL`` rather than the tight ``DOH_ABS_TOL``: this script
+runs at the default ``numerical_precision=1e-7``, not the reference run's
+1e-10, so the +-3e-9 reference bound does not apply to it (the C backend lands
+3.8e-9 below the reference D/H -- outside +-3e-9 and correctly inside +-2e-8).
+See tests/README.md's "Which tolerance applies to which command".
 
 Each script is run as a real subprocess (``python <script>``) rather than
 imported, since none of them are wrapped in a ``main()``/``if __name__``
@@ -22,7 +34,7 @@ directory at the repo root.
 Deliberately excluded:
 
 * ``primat_reference_run.py`` -- several minutes by design (high-precision
-  reference run for updating CLAUDE.md's benchmarks), out of scope for a
+  reference run for updating tests/README.md's benchmarks), out of scope for a
   smoke test.
 * ``generate_weak_rate_caches.py`` -- (re)writes the fingerprinted
   ``rates/weak/nTOp_*.txt`` cache files that are force-added to git; not
@@ -31,11 +43,16 @@ Deliberately excluded:
 * ``generate_table_CLASS_CAMB.py`` -- needs an external CLASS/CAMB
   installation and a multi-hour Monte Carlo table generation run.
 """
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from tests.reference_values import (REF_LARGE8_YPBBN, REF_LARGE8_DOH,
+                                    ROUTINE_RUN_YPBBN_ABS_TOL,
+                                    ROUTINE_RUN_DOH_ABS_TOL)
 
 pytestmark = [pytest.mark.slow]
 
@@ -83,6 +100,39 @@ def test_runfile_executes_cleanly(name, tmp_path):
     # the solver rather than exiting early/silently.
     assert "Neff" in result.stdout
     assert "D/H" in result.stdout
+
+
+@pytest.mark.solve
+def test_primat_run_matches_the_validation_reference(tmp_path):
+    """primat_run.py's printed YP/(D/H) must match the published reference.
+
+    GOAL: make the documented "after any modification, run primat_run.py and
+    check the output against these tables" workflow (tests/README.md,
+    "Validation reference") an automated check rather than an honour-system
+    one. The script solves ``network="large", amax=8`` at the default
+    ``numerical_precision=1e-7``, so it is compared against the *routine*
+    tolerance column, not the reference one -- see this module's docstring.
+
+    Parsing stdout rather than importing the script is deliberate: what a
+    contributor actually reads is the printed line, so that is what is pinned.
+    """
+    result = subprocess.run(
+        [sys.executable, str(RUNFILES_DIR / "primat_run.py")],
+        cwd=tmp_path, capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+
+    def _printed(label):
+        # Lines look like " YP (BBN) =  0.24700262002081247".
+        m = re.search(rf"^\s*{re.escape(label)}\s*=\s*([0-9.eE+-]+)\s*$",
+                      result.stdout, re.M)
+        assert m, f"{label!r} not found in primat_run.py output:\n{result.stdout}"
+        return float(m.group(1))
+
+    assert _printed("YP (BBN)") == pytest.approx(
+        REF_LARGE8_YPBBN, abs=ROUTINE_RUN_YPBBN_ABS_TOL)
+    assert _printed("D/H") == pytest.approx(
+        REF_LARGE8_DOH, abs=ROUTINE_RUN_DOH_ABS_TOL)
 
 
 def test_primat_mc_runfile_executes_cleanly(tmp_path):

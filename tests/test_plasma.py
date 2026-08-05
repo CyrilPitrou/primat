@@ -12,21 +12,26 @@ def thermo():
 
 @pytest.mark.parametrize("T", [0.1, 1.0, 10.0])
 def test_rho_g_positive_and_scales(T):
+    """The photon energy density is positive and scales as T^4."""
     assert rho_g(T) > 0
     assert rho_g(2 * T) == pytest.approx(rho_g(T) * 16, rel=1e-6)
 
 
 @pytest.mark.parametrize("T", [0.5, 1.0, 5.0])
 def test_rho_e_positive(thermo, T):
+    """The e+/e- energy density is positive wherever the pairs are present."""
     assert thermo.rho_e(T) > 0
 
 
 def test_rho_e_vanishes_at_low_T(thermo):
+    """Below the e+/e- cutoff the pair density is exactly 0, not a tiny
+    Boltzmann residue -- the cutoff is what keeps the integrands finite."""
     assert thermo.rho_e(1e-5) == 0.0
 
 
 @pytest.mark.parametrize("T", [0.5, 1.0, 5.0])
 def test_p_e_positive(thermo, T):
+    """The e+/e- pressure is positive wherever the pairs are present."""
     assert thermo.p_e(T) > 0
 
 
@@ -66,6 +71,7 @@ def test_rho_nu_scaling():
 
 
 def test_spl_positive(thermo):
+    """The plasma entropy density is positive across the BBN temperature range."""
     for T in [0.1, 1.0, 10.0]:
         assert thermo.spl(T) > 0
 

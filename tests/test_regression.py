@@ -1,24 +1,36 @@
 """
-Regression tests against the reference values in CLAUDE.md.
+Regression tests on the final abundances, against the published reference
+values in tests/README.md's "Validation reference" section.
 
-Two layers:
+Three layers:
 
 * Default-precision sanity checks (via the ``solved_small`` / ``solved_large``
   fixtures) with loose tolerances — cheap, catch gross regressions.
+* The **per-nuclide** default-precision check
+  (``test_per_nuclide_abundances_match_the_reference_table``), which pins every
+  cell of the published per-nuclide table at 1e-4 relative. This is the live
+  half of that table's guard; the static half (README text vs. the constants)
+  is ``tests/test_docs_consistency.py``'s
+  ``test_per_nuclide_reference_table_matches_reference_constants``.
 * High-precision *reference* checks (``reference`` marker) that rerun at the
   exact settings used to produce the published numbers
-  (numerical_precision=1e-10, sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125,
-  T_start_cosmo=100 MeV) and pin them to the tight CLAUDE.md tolerances
-  (YP +/-1e-5, D/H +/-3e-9).  These take ~60 s total and are the real guard
-  for changes to the nuclear network.
+  (numerical_precision=1e-10, sampling_temperature_per_decade=2000,
+  sampling_nTOp_per_decade=125, T_start_cosmo=100 MeV) and pin them to the
+  tight published tolerances (YP +/-1e-5, D/H +/-3e-9).  These take ~60 s
+  total and are the real guard for changes to the nuclear network.
+
+All numbers come from tests/reference_values.py, which is the single source
+shared with tests/README.md, test_cli.py, test_gui.py and test_runfiles.py.
 """
 import pytest
 
-# Single source for the high-precision reference observables (also parsed by
+# Single source for the reference observables (also parsed by
 # tests/test_docs_consistency.py and quoted in tests/README.md's "Validation
 # reference" tables) -- keep all three in sync via tests/reference_values.py.
 from tests.reference_values import (REF_SMALL_YPBBN, REF_SMALL_DOH,
-                                    REF_LARGE8_YPBBN, REF_LARGE8_DOH)
+                                    REF_LARGE8_YPBBN, REF_LARGE8_DOH,
+                                    NUCLIDE_REFERENCE, NUCLIDE_COLUMNS,
+                                    NUCLIDE_REL_TOL)
 
 pytestmark = pytest.mark.slow
 
@@ -30,22 +42,80 @@ pytestmark = pytest.mark.slow
 
 @pytest.mark.solve
 def test_small_network_YPBBN(solved_small):
+    """Gross-regression guard on the small network's YP (loose, abs=1e-4)."""
     assert solved_small.results["YPBBN"] == pytest.approx(0.2469971, abs=1e-4)
 
 
 @pytest.mark.solve
 def test_small_network_DoH(solved_small):
+    """Gross-regression guard on the small network's D/H (loose, rel=2e-3)."""
     assert solved_small.results["DoH"] == pytest.approx(2.43590e-5, rel=2e-3)
 
 
 @pytest.mark.solve
 def test_large_network_YPBBN(solved_large):
+    """Gross-regression guard on the full large network's YP (loose, abs=1e-4)."""
     assert solved_large.results["YPBBN"] == pytest.approx(0.2470005, abs=1e-4)
 
 
 @pytest.mark.solve
 def test_large_network_DoH(solved_large):
+    """Gross-regression guard on the full large network's D/H (loose, rel=2e-3)."""
     assert solved_large.results["DoH"] == pytest.approx(2.43658e-5, rel=2e-3)
+
+
+# ---------------------------------------------------------------------------
+# Per-nuclide table (the live half of its guard)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def solved_large8():
+    """A solved PRIMAT instance (``large``, ``amax=8``) reused across the session.
+
+    conftest.py already provides ``solved_small`` and ``solved_large``; this
+    completes the trio of networks tests/README.md's per-nuclide table covers,
+    so that table's check costs one extra solve rather than three.
+    """
+    from primat.main import PRIMAT
+    r = PRIMAT({"network": "large", "amax": 8, "verbose": False})
+    r.solve()
+    return r
+
+
+@pytest.mark.solve
+@pytest.mark.parametrize("column,fixture_name", list(zip(
+    NUCLIDE_COLUMNS, ("solved_small", "solved_large8", "solved_large"))))
+def test_per_nuclide_abundances_match_the_reference_table(
+        column, fixture_name, request):
+    """Every cell of the published per-nuclide table must survive a real solve.
+
+    GOAL: pin tests/README.md's "Per-nuclide final abundances" table against
+    actual abundances. Only ``p`` and ``He4`` used to be pinned anywhere (via
+    reference_values' scalars, at an ``abs=1e-4`` that is 1.6e-3 *relative* for
+    He4 and vacuous for a ~4e-16 species), so 19 of the 21 cells were free to
+    drift -- and by 2026-08-05 every row was stale in its 5th significant
+    figure.
+
+    ``n`` matters most here: a regression of the reverse-rate clamp in
+    ``primat/network_data.py`` inflates it by a factor ~1750 (to ~7e-13), which
+    this catches at ``NUCLIDE_REL_TOL`` = 1e-4 with ~4 orders of margin.
+    ``tests/test_large_network.py`` guards the same property from the other
+    direction (large vs. large+amax=8).
+
+    The table was snapshotted on the auto (C) backend while these fixtures use
+    ``primat.main.PRIMAT`` (pure Python), deliberately: the check must hold
+    whether or not the C extension is built. The two backends agree on these
+    abundances to <=2.2e-05, comfortably inside the 1e-4 bound -- which is
+    itself why the table is documented as good to 5 significant figures, not
+    the 7 it prints.
+    """
+    Y = request.getfixturevalue(fixture_name).nuclear.Y_final
+
+    idx = NUCLIDE_COLUMNS.index(column)
+    for nuclide, expected in NUCLIDE_REFERENCE.items():
+        assert Y[nuclide] == pytest.approx(expected[idx], rel=NUCLIDE_REL_TOL), (
+            f"{nuclide} in the {column!r} column: solved {Y[nuclide]:.7e}, "
+            f"table says {expected[idx]:.7e}")
 
 
 @pytest.mark.solve
@@ -66,6 +136,50 @@ def test_Born_mode_lowers_YP(solved_small):
 
 
 @pytest.mark.solve
+def test_thermal_corrections_lower_YP(solved_small):
+    """CCRTh (finite-temperature radiative corrections) must lower YP, by the
+    measured amount.
+
+    GOAL: give ``thermal_corrections`` the physical-effect test every other
+    n<->p correction flag already had (``radiative_corrections`` /
+    ``finite_mass_corrections`` via ``test_Born_mode_lowers_YP`` above,
+    ``spectral_distortions`` via tests/test_spectral_distortions.py,
+    ``tau_n_normalization`` via tests/test_mc.py). CCRTh is the most intricate
+    of them -- a two-dimensional bremsstrahlung integral evaluated by vegas --
+    yet nothing asserted that switching it on changed anything at all: the
+    four modules that mention the flag all set it to ``False``, to avoid it.
+    Its cached table's *contents* are deliberately excluded from
+    tests/test_cache_parity.py too (independent Monte-Carlo streams), so only
+    its fingerprint was pinned.
+
+    Measured 2026-08-05 at numerical_precision=1e-8, network="small":
+
+        YPBBN  0.2470107713 (off) -> 0.2469986676 (on)   -1.2104e-05 abs
+        D/H    2.435933632e-05    -> 2.435868102e-05     -2.6901e-05 rel
+
+    The sign is the physics (Brown & Sawyer 2001: the thermal photon bath
+    slightly suppresses the n->p rate less than p->n, lowering the freeze-out
+    n/p ratio); the +/-20% band catches both "silently not wired up"
+    (difference exactly 0) and a wrong-magnitude regression, while tolerating
+    ordinary vegas/solver noise -- the shift is 1.2x the +-1e-5 YP reference
+    tolerance, so it cannot be pinned much more tightly at this precision.
+
+    Read-only: save_nTOp*/=False keeps the fingerprint-mismatched recompute
+    from writing a new cache file next to the shipped ones.
+    """
+    from primat.main import PRIMAT
+    common = dict(network="small", numerical_precision=1e-8, verbose=False,
+                  debug=False, save_nTOp=False, save_nTOp_thermal=False)
+    on = PRIMAT(dict(common, thermal_corrections=True)).primat_results()
+    off = PRIMAT(dict(common, thermal_corrections=False)).primat_results()
+
+    assert on["YPBBN"] < off["YPBBN"]
+    assert on["YPBBN"] - off["YPBBN"] == pytest.approx(-1.2104e-05, rel=0.2)
+    assert (on["DoH"] - off["DoH"]) / off["DoH"] == pytest.approx(-2.6901e-05,
+                                                                  rel=0.2)
+
+
+@pytest.mark.solve
 def test_Li7oH_order_of_magnitude(solved_small):
     """Li7/H should be in the range 1e-10 to 1e-9."""
     Li7 = solved_small.results["Li7oH"]
@@ -80,7 +194,7 @@ def test_He3oH_order_of_magnitude(solved_small):
 
 
 # ---------------------------------------------------------------------------
-# High-precision reference checks (tight) — reproduce the CLAUDE.md numbers
+# High-precision reference checks (tight) — reproduce the published numbers
 # ---------------------------------------------------------------------------
 # Settings used to produce the published reference values.
 _REF_PARAMS = dict(numerical_precision=1e-10, sampling_temperature_per_decade=2000,
@@ -102,21 +216,29 @@ def ref_large():
 
 @pytest.mark.reference
 def test_reference_small_YPBBN(ref_small):
+    """High-precision small-network YP reproduces the published value (±1e-5)."""
     assert ref_small["YPBBN"] == pytest.approx(REF_SMALL_YPBBN, abs=1e-5)
 
 
 @pytest.mark.reference
 def test_reference_small_DoH(ref_small):
+    """High-precision small-network D/H reproduces the published value (±3e-9).
+
+    This is the tightest pin in the suite -- ~1.2e-4 *relative* -- and the
+    reason the reference tier exists: at the routine 1e-7 precision the same
+    solve carries ~1e-8 of adaptive-step jitter, which would swamp it."""
     assert ref_small["DoH"] == pytest.approx(REF_SMALL_DOH, abs=3e-9)
 
 
 @pytest.mark.reference
 def test_reference_large_YPBBN(ref_large):
+    """High-precision large/amax=8 YP reproduces the published value (±1e-5)."""
     assert ref_large["YPBBN"] == pytest.approx(REF_LARGE8_YPBBN, abs=1e-5)
 
 
 @pytest.mark.reference
 def test_reference_large_DoH(ref_large):
+    """High-precision large/amax=8 D/H reproduces the published value (±3e-9)."""
     assert ref_large["DoH"] == pytest.approx(REF_LARGE8_DOH, abs=3e-9)
 
 
@@ -163,9 +285,12 @@ def test_amax_filter_light_elements_match_large(solved_large):
 @pytest.mark.solve
 def test_small_amax2_collapses_to_deuterium_channel():
     """``network="small", amax=2`` must collapse both MT and LT to just the
-    n<->p weak rate + n_p__d_g (CUSTOMPOPUP.md §1.2's MT-branch amax-ordering
-    fix): previously the MT-era intersection used the *unfiltered* bare names,
-    so an amax-violating reaction could still run in the MT era."""
+    n<->p weak rate + n_p__d_g.
+
+    Regression guard for the MT-branch amax-ordering fix: the MT-era
+    intersection used to be taken over the *unfiltered* bare reaction names,
+    so an amax-violating reaction could still run in the MT era even though
+    the LT era correctly dropped it."""
     from primat.main import PRIMAT
     from primat.config import PRIMATConfig
     from primat.network_data import load_network

@@ -1,13 +1,23 @@
-"""Guard against README/CLAUDE.md documentation staling relative to the code.
+"""Guard the tracked documentation against staling relative to the code.
 
-Both docs quote specific PRIMATConfig defaults and specific
-runfiles/primat_reference_run.py parameter names/values (CLAUDE.md's
-"Validation before committing" section says references were produced with
-particular settings). Neither file is machine-checked by anything else, so a
-config refactor can silently leave them wrong (this happened: CLAUDE.md used
-to cite a `n_temperature_table`/`sampling_nTOp` that no longer exist). These
-tests assert the quoted facts still hold, so a future config change that
-breaks them fails a test instead of just leaving stale prose.
+`README.md`, `tests/README.md`, `notebooks/README.md`, `docs/tutorials/index.md`
+and the two generated parameter templates quote specific PRIMATConfig
+defaults, specific `runfiles/primat_reference_run.py` parameter names/values,
+and specific reference numbers. None of that is machine-checked by anything
+else, so a config refactor can silently leave them wrong (this happened: the
+docs used to cite an `n_temperature_table`/`sampling_nTOp` that no longer
+exist). These tests assert the quoted facts still hold, so a future change
+that breaks them fails a test instead of just leaving stale prose.
+
+Scope note: `CLAUDE.md` is deliberately *not* read here. It is a local,
+gitignored file (`.gitignore`), so it is not present in a public clone or in
+CI and cannot be asserted against. Anything that must be enforced has to live
+in a tracked file -- which is why the "Validation reference" numbers were
+moved into `tests/README.md` and `tests/reference_values.py`, where the two
+`*_matches_reference_constants` tests below pin them.
+
+Every test in this module is a static file read -- no solve -- so the whole
+file stays in the fast (`-m "not slow"`) lane.
 """
 import ast
 import os
@@ -23,7 +33,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 def _read_text(path):
     """Read a text file as UTF-8, explicitly.
 
-    README.md, CLAUDE.md, config.py and the run templates all contain
+    README.md, tests/README.md, config.py and the run templates all contain
     non-ASCII physics characters (ν, ↔, →, σ, …). ``open()`` with no
     ``encoding`` uses the platform's locale default, which on Windows is
     cp1252 ("charmap") and raises ``UnicodeDecodeError`` on those bytes --
@@ -36,8 +46,8 @@ def _read_text(path):
 def test_cprimat_version_matches_pyproject():
     """primat-c/include/config.h's CPRIMAT_VERSION must track pyproject.toml's version.
 
-    CLAUDE.md documents this sync as manual ("update CPRIMAT_VERSION by hand
-    in the same commit") with no automated check. Parse both files directly
+    The sync is performed by hand in the same commit as a version bump, with
+    no other automated check. Parse both files directly
     (no import of a built/installed package) so this test only depends on
     the two source files staying in the same commit.
     """
@@ -56,7 +66,7 @@ def test_cprimat_version_matches_pyproject():
     assert config_h_version == pyproject_version, (
         f"CPRIMAT_VERSION ({config_h_version!r}) in primat-c/include/config.h "
         f"is out of sync with pyproject.toml's version ({pyproject_version!r}); "
-        "update both in the same commit (see CLAUDE.md)."
+        "update both in the same commit."
     )
 
 
@@ -106,8 +116,13 @@ def _reference_run_options():
     ("sampling_nTOp_per_decade", 125),
     ("T_start_cosmo_MeV", 100.0),
 ])
-def test_reference_run_params_match_claude_md(key, expected):
-    """The param names/values CLAUDE.md quotes for the reference run must exist verbatim."""
+def test_reference_run_params_match_published_settings(key, expected):
+    """The reference-run settings tests/README.md publishes must exist verbatim.
+
+    tests/README.md's "Validation reference" section states the exact
+    high-precision settings its numbers were produced with; if
+    primat_reference_run.py stops setting one of them, those numbers are no
+    longer reproducible by the documented command."""
     options = _reference_run_options()
     assert key in options, f"{key!r} no longer in primat_reference_run.py's MyOptions"
     assert options[key] == expected
@@ -152,7 +167,7 @@ def test_readme_does_not_reference_old_mc_file_key():
 
 def test_streamlit_wheel_matches_pyproject_version():
     """requirements.txt's last line (the Streamlit Cloud deployment chain,
-    see CLAUDE.md/wheels/README.md) must point at a
+    see wheels/README.md) must point at a
     wheel file that (a) actually exists under wheels/ and (b) has the same
     version as pyproject.toml, or the public demo silently keeps serving an
     old build after a version bump."""
@@ -250,9 +265,9 @@ class _no_warning_context:
 
 
 # ---------------------------------------------------------------------------
-# DEFAULT_PARAMS three-file sync (CLAUDE.md's "Keeping DEFAULT_PARAMS,
-# primat_run_explanatory.py, and run_basic.ini in sync"). Until now this was
-# a purely manual rule; these tests make drift a test failure.
+# DEFAULT_PARAMS three-file sync (config.py's DEFAULT_PARAMS <-> the
+# generated primat_run_explanatory.py and run_basic.ini). This used to be a
+# purely manual rule; these tests make drift a test failure.
 # ---------------------------------------------------------------------------
 
 _TEMPLATE_PY = os.path.join(REPO_ROOT, "runfiles", "primat_run_explanatory.py")
@@ -281,6 +296,8 @@ def _template_ini_keys():
 
 
 def test_explanatory_template_lists_every_default_param():
+    """runfiles/primat_run_explanatory.py lists every DEFAULT_PARAMS key, and no
+    stale ones -- it is the primary user-facing reference for what can be set."""
     from primat.config import DEFAULT_PARAMS
     found, expected = _template_py_keys(), set(DEFAULT_PARAMS)
     assert expected - found == set(), \
@@ -290,6 +307,8 @@ def test_explanatory_template_lists_every_default_param():
 
 
 def test_ini_template_lists_every_default_param():
+    """primat-c/examples/run_basic.ini lists every DEFAULT_PARAMS key, and no
+    stale ones -- the C backend's equivalent of the template above."""
     from primat.config import DEFAULT_PARAMS
     found, expected = _template_ini_keys(), set(DEFAULT_PARAMS)
     assert expected - found == set(), \
@@ -304,8 +323,8 @@ def test_param_templates_match_generator():
     byte-for-byte what the generator would produce right now, so a
     DEFAULT_PARAMS/PARAM_GROUPS change that isn't followed by
     `python -m primat.tools.gen_param_templates` fails here instead of
-    silently drifting (CLAUDE.md's "Keeping DEFAULT_PARAMS ... in sync"
-    chore, now enforced rather than merely documented)."""
+    silently drifting (the "Keeping DEFAULT_PARAMS ... in sync" chore, now
+    enforced rather than merely documented)."""
     from primat.tools.gen_param_templates import (
         generate_run_explanatory, generate_run_basic_ini)
 
@@ -319,30 +338,63 @@ def test_param_templates_match_generator():
 
 def test_param_count_comments_match_default_params():
     """The two templates' count comments must quote len(DEFAULT_PARAMS)
-    exactly. (CLAUDE.md's '(currently NN keys)' count is NOT asserted --
-    CLAUDE.md is an untracked local file since Task 0; keep it updated by
-    hand.)"""
+    exactly. (Any '(currently NN keys)' count in the untracked CLAUDE.md is
+    NOT asserted -- see this module's docstring; keep it updated by hand.)"""
     from primat.config import DEFAULT_PARAMS
     n = len(DEFAULT_PARAMS)
     assert f"All {n} DEFAULT_PARAMS keys are listed" in _read_text(_TEMPLATE_PY)
     assert f"all {n} keys round-trip" in _read_text(_TEMPLATE_INI)
 
 
-def test_validation_reference_table_matches_reference_constants():
-    """tests/README.md's 'Validation reference' tables (moved there from
-    CLAUDE.md by Task 0) and tests/reference_values.py must quote the same
-    numbers, so neither can be updated without the other (the regression
-    tier asserts the constants against actual solves)."""
-    from reference_values import (REF_SMALL_YPBBN, REF_SMALL_DOH,
-                                  REF_LARGE8_YPBBN, REF_LARGE8_DOH)
+def _validation_reference_section():
+    """The text of tests/README.md's 'Validation reference' section."""
     readme = _read_text(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "README.md"))
-    section = readme[readme.index("## Validation reference"):]
+    return readme[readme.index("## Validation reference"):]
+
+
+def test_validation_reference_table_matches_reference_constants():
+    """tests/README.md's 'Validation reference' observable tables and
+    tests/reference_values.py must quote the same numbers, so neither can be
+    updated without the other (the regression tier asserts the constants
+    against actual solves)."""
+    from reference_values import (REF_SMALL_YPBBN, REF_SMALL_DOH,
+                                  REF_LARGE8_YPBBN, REF_LARGE8_DOH)
+    section = _validation_reference_section()
     yp = re.findall(r"\|\s*YP \(BBN\)\s*\|\s*([0-9.eE+-]+)\s*\|", section)
     dh = re.findall(r"\|\s*D/H\s*\|\s*([0-9.eE+-]+)\s*\|", section)
     # First table is the small network, second is large+amax=8.
     assert [float(v) for v in yp[:2]] == [REF_SMALL_YPBBN, REF_LARGE8_YPBBN]
     assert [float(v) for v in dh[:2]] == [REF_SMALL_DOH, REF_LARGE8_DOH]
+
+
+def test_per_nuclide_reference_table_matches_reference_constants():
+    """tests/README.md's per-nuclide table and reference_values.NUCLIDE_REFERENCE
+    must quote the same numbers, in the same column order.
+
+    GOAL: close the half of the "Validation reference" section that nothing
+    parsed. Until now only the two observable tables above were checked, so
+    the 21-cell per-nuclide table could -- and did -- drift silently: by
+    2026-08-05 every one of its rows was stale in the 5th significant figure
+    (up to 6.2e-05 relative on the free neutron), while being advertised as
+    test-pinned.
+
+    This is the static half (README text vs. the constants);
+    tests/test_regression.py::test_per_nuclide_abundances_match_the_reference_table
+    is the live half (the constants vs. an actual solve).
+    """
+    from reference_values import NUCLIDE_REFERENCE, NUCLIDE_COLUMNS
+    section = _validation_reference_section()
+    for nuclide, expected in NUCLIDE_REFERENCE.items():
+        m = re.search(rf"^\|\s*{nuclide}\s*\|([^\n]*)\|\s*$", section, re.M)
+        assert m, f"tests/README.md's per-nuclide table has no {nuclide!r} row"
+        cells = [float(c) for c in m.group(1).split("|")]
+        assert len(cells) == len(NUCLIDE_COLUMNS), (
+            f"{nuclide!r} row has {len(cells)} columns, "
+            f"expected {NUCLIDE_COLUMNS}")
+        assert cells == list(expected), (
+            f"tests/README.md's {nuclide!r} row {cells} disagrees with "
+            f"reference_values.NUCLIDE_REFERENCE {list(expected)}")
 
 
 def test_readme_documents_the_unified_evolution_schema():
@@ -382,7 +434,7 @@ def test_readme_rate_columns_match_implementation():
 
 def test_tests_readme_lists_every_test_file():
     """tests/README.md's structure table must mention every tests/test_*.py
-    (CLAUDE.md: the suite's README documents the goal of every test group).
+    -- the suite's README documents the goal of every test group.
     Mirrors test_notebooks_readme_lists_every_notebook."""
     tests_dir = os.path.dirname(os.path.abspath(__file__))
     readme_text = _read_text(os.path.join(tests_dir, "README.md"))

@@ -105,14 +105,16 @@ def test_form_metadata_covers_amax_default():
     """`amax` (the one DEFAULT_PARAMS key whose default is ``None``) must be
     handled by curated logic, not the generic type-based widget chooser
     (which has no sensible widget for ``None``). Unlike the other
-    conditionally-rendered keys, `amax` is now offered for *every* network
-    (CUSTOMPOPUP.md §3.3), so it is handled directly in
+    conditionally-rendered keys, `amax` is offered for *every* network, so it
+    is handled directly in
     ``render_sidebar_form`` rather than through ``_CONDITIONAL``."""
     assert "amax" in params_form._FORM_METADATA
     assert "amax" not in params_form._CONDITIONAL
 
 
 def test_available_networks_includes_small_and_large():
+    """The sidebar offers exactly the shipped networks, sorted -- a new network
+    file appearing (or one vanishing) shows up here."""
     networks = params_form._available_networks()
     assert networks == ["large", "small", "small_parthenope"]
 
@@ -120,7 +122,7 @@ def test_available_networks_includes_small_and_large():
 def test_network_label_appends_reaction_count():
     """The selectbox shows e.g. 'small (12)'/'large (N)' so users can
     gauge a network's size before picking it; the count is read dynamically
-    (CUSTOMPOPUP.md dropped the old fixed-size 'deuterium' network)."""
+    (the old fixed-size 'deuterium' network no longer exists)."""
     assert params_form._network_label("small") == "small (12)"
     n_large = len(params_form.load_reaction_names(
         params_form.PRIMATConfig({"network": "large"}), "large"))
@@ -175,7 +177,7 @@ def test_default_run_matches_cli_reference():
     same defaults (using the same C backend by default), so they must agree to
     full precision -- this is the verification step 3 ("reference run parity").
     Rather than pinning a second copy of the literal numbers (which then drifts
-    independently of test_cli.py's pins, see FUTURE.md P0.1), this computes the
+    independently of test_cli.py's pins), this computes the
     CLI result in-process and compares GUI == CLI directly: it tests parity (its
     stated purpose) and can never go stale from a routine default tweak.
     """
@@ -231,8 +233,8 @@ def test_evolution_panel_renders_with_default_selection():
 # ---------------------------------------------------------------------------
 
 def test_amax_widget_shown_for_every_network():
-    """`amax` is offered regardless of `network`'s
-    value (CUSTOMPOPUP.md §3.3 dropped the old "large only" restriction)."""
+    """`amax` is offered regardless of `network`'s value -- the old
+    "large only" restriction is gone, since amax filters any network."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
 
@@ -515,7 +517,16 @@ def test_export_params_ini_text_round_trips_values():
 
 
 def test_export_py_prints_full_standard_ratio_set():
-    """The exported .py prints every standard ratio, in CLAUDE.md precision."""
+    """The exported .py prints every standard ratio, at the reporting precision.
+
+    Each entry of ``_STANDARD_RATIOS`` carries its own format string, and those
+    are the minimum decimal counts BBN observables must be reported at:
+    ``.8f`` for Neff/YPBBN/YPCMB, ``.7e`` for He4/H, D/H and He3/H, ``.6e`` for
+    He3/He4, Li7/H, Li6/Li7 and YCNO. Fewer digits would hide the ~1e-3..1e-2
+    Neff shifts that flags such as ``incomplete_decoupling`` and
+    ``QED_corrections`` produce, so an exported script that dropped a ratio --
+    or reformatted one -- would silently under-report the run it claims to
+    reproduce."""
     from primat.gui.export_params import _STANDARD_RATIOS, python_export_text
 
     script = python_export_text({"network": "small"}, backend_used="c")

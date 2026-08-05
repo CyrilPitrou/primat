@@ -44,8 +44,8 @@ def test_wheel_install_smoke_solve():
       2. Create a fresh venv (``--system-site-packages`` to reuse numpy/scipy/
          joblib already present) and ``pip install --no-deps`` the wheel.
       3. In that venv, run a default-configuration small-network solve and
-         check YP/D-H against the loose CLAUDE.md tolerances used by
-         ``tests/test_regression.py``'s default-precision checks.
+         check YP/D-H against the same loose tolerances
+         ``tests/test_regression.py``'s default-precision checks use.
 
     A failure here most likely means ``rates/`` data files are missing from
     the wheel, or a path is computed relative to the source tree instead of

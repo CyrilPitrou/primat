@@ -24,6 +24,9 @@ from primat.cache_utils import (
 
 
 def test_fingerprint_hash_is_order_independent():
+    """The fingerprint hashes the dict's *content*, not its insertion order, so
+    two configs that differ only in how their fields were assembled share a
+    cache file. Also pins the 16-character digest length the filenames use."""
     h1 = fingerprint_hash({"a": 1, "b": 2})
     h2 = fingerprint_hash({"b": 2, "a": 1})
     assert h1 == h2
@@ -31,10 +34,13 @@ def test_fingerprint_hash_is_order_independent():
 
 
 def test_fingerprint_hash_distinguishes_values():
+    """A changed field value changes the hash -- the whole point of the scheme."""
     assert fingerprint_hash({"a": 1}) != fingerprint_hash({"a": 2})
 
 
 def test_write_then_read_round_trip(tmp_path):
+    """A written cache reads back with the same fingerprint and intact data rows
+    (the fingerprint header lines must stay '#' comments np.loadtxt skips)."""
     path = str(tmp_path / "cache.txt")
     fp = {"format_version": 1, "sampling_nTOp_per_decade": 80}
     write_cache_with_fingerprint(path, fp, [np.array([1., 2., 3.]),
@@ -49,10 +55,14 @@ def test_write_then_read_round_trip(tmp_path):
 
 
 def test_read_missing_file_returns_none(tmp_path):
+    """A missing cache file is reported as 'unknown fingerprint' (None), not an
+    exception: a cache miss is normal control flow."""
     assert read_cache_fingerprint_hash(str(tmp_path / "does_not_exist.txt")) is None
 
 
 def test_read_truncated_header_returns_none(tmp_path):
+    """A header-less or corrupt file is also an unknown fingerprint, so a
+    hand-edited or legacy cache degrades to a recompute rather than crashing."""
     path = tmp_path / "corrupt.txt"
     # No '# fingerprint_hash:' line at all -- a header-less legacy file.
     path.write_text("# just a comment\n1.0 2.0\n")
@@ -60,6 +70,8 @@ def test_read_truncated_header_returns_none(tmp_path):
 
 
 def test_read_mismatched_hash_is_detected(tmp_path):
+    """A stored hash differs from a different config's hash -- what makes the
+    caller's 'stale cache' check work."""
     path = str(tmp_path / "cache.txt")
     write_cache_with_fingerprint(path, {"a": 1}, [np.array([1.])])
     stored = read_cache_fingerprint_hash(path)
@@ -82,6 +94,8 @@ def test_write_is_atomic_no_leftover_tmp_file(tmp_path):
 
 
 def test_write_overwrites_existing_file_atomically(tmp_path):
+    """Rewriting an existing cache replaces both its fingerprint and its data,
+    with no residue from the previous contents."""
     path = str(tmp_path / "cache.txt")
     write_cache_with_fingerprint(path, {"a": 1}, [np.array([1.])])
     write_cache_with_fingerprint(path, {"a": 2}, [np.array([99.])])

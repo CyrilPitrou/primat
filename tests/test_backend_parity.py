@@ -11,37 +11,63 @@ This file is that check: it pins down (1) the result-dict *shape* exactly,
 and (2) the numerical agreement *level* the two backends currently achieve,
 so a future change that silently widens the gap is caught.
 
-Residual gap (root-caused)
---------------------------
+Historical gap (fixed)
+----------------------
 The dominant C-vs-Python parity gap used to be a weak-rate *interpolation
 scheme* mismatch: Python interpolated the cached n<->p rate table with a
 linear-space quadratic spline (scipy ``interp1d(kind='quadratic')``), while
 the C backend used a local 3-point Lagrange quadratic. On the same cached
 nodes the two curves differed by up to ~1e-4 relative through the n/p
 freeze-out window (T ~ 0.2..2 MeV), C systematically above Python -- which
-propagated to a systematic ~2.5e-5 YP and ~1.8e-5 D/H offset (Neff was always
-identical, since the background agrees exactly). It was *not* BDF controller
-noise: the gap plateaued rather than shrank as ``numerical_precision`` was
-tightened 1e-7 -> 1e-10.
+propagated to a systematic ~2.5e-5 YP and ~1.8e-5 D/H offset.
 
 Both backends now interpolate the weak rates with the *same* log10-log10
 not-a-knot cubic spline (Python ``_weak_rate_loglog_interp``, C
 ``cpr_weak_rate_nTOp`` via ``cpr_cubic_spline_fit_notaknot``) -- the scheme the
 nuclear rate tables already share -- which also happens to be ~1-2 orders of
 magnitude more accurate than either old scheme at the shipped node density.
-This collapsed the YP gap to ~1e-6 and the D/H gap to <~1e-5. The small
-residual D/H gap (~1e-6 for 'small', ~6e-6 for 'large'+amax=8) is the
-*separate*, smaller nuclear-rate-table interpolation + BDF step-sequence
-difference between the two solver stacks (it does not touch YP, which is set
-purely by n/p freeze-out) -- BDF controller noise that shrinks with tighter
-``numerical_precision``, not a scheme mismatch.
+That collapsed the gap by ~2 orders of magnitude and is why the budget below
+is ``rel=5e-5`` rather than the pre-fix ``rel=1e-3``.
 
-The cross-backend budget below (``rel=5e-5`` in D/H) is therefore ~40x tighter
-than the pre-fix ``1e-3`` -- still a distinct, coarser budget than CLAUDE.md's
-+/-3e-9 *same-backend* D/H regression tolerance, leaving headroom for the
-BDF-noise residual to vary across platforms. Tightening it further tracks any
-future unification of the nuclear-rate/solver residual; loosening it should
-not happen without updating this docstring.
+Residual gap: what is actually left, and why
+--------------------------------------------
+Measured 2026-08-05 at default precision (auto/C vs. pure Python):
+
+===============  ===========  ===========  ==========
+config           YPBBN (abs)  D/H (rel)    Neff (abs)
+===============  ===========  ===========  ==========
+small            3.42e-07     5.32e-06     0.0
+large, amax=8    1.22e-07     7.47e-06     0.0
+large            1.23e-07     1.11e-05     0.0
+===============  ===========  ===========  ==========
+
+``Neff`` is bit-identical: the background agrees exactly. The other two have
+*different* causes, and conflating them has misled a reader before:
+
+* **YPBBN** is the **HT-era integrator method mismatch**, not solver noise.
+  Python integrates the HT era (n<->p only) with ``LSODA``
+  (``primat/nuclear_network.py:286``); C uses Dormand-Prince RK45
+  (``primat-c/src/nuclear_network.c``, "HT era: n <-> p only, non-stiff
+  RK45"). Patching *only* Python's HT method to RK45 reproduces the C
+  backend's ``YPBBN = 0.24699742`` **exactly**, i.e. this one difference is
+  the whole YP gap. It therefore does **not** shrink with tighter
+  ``numerical_precision``: sweeping 1e-6 -> 1e-10 with the HT era set to
+  LSODA, RK45 and BDF in turn has all three converging, but to a residual
+  1.6e-07 spread. Aligning the two on BDF was tried and *degraded* YP parity
+  (5.2e-07 -> 1.1e-06), so the divergence is deliberate and documented in
+  place on both sides rather than removed.
+* **D/H** is the genuine solver-stack residual: nuclear-rate-table
+  interpolation plus BDF step-sequence differences through the LT era. This
+  one *is* controller noise and does shrink with tighter tolerances. It grows
+  with network size (5.3e-06 -> 1.1e-05 from 'small' to full 'large'), which
+  is why the budget is set from the largest of the three.
+
+The ``rel=5e-5`` D/H budget is a distinct, coarser budget than the +/-3e-9
+*same-backend* D/H regression tolerance (tests/README.md's "Validation
+reference"), leaving ~4.5x headroom over the worst measured gap for
+cross-platform variation. Tightening it tracks any future unification of the
+solver stacks; loosening it should not happen without updating this docstring
+and re-measuring the table above.
 """
 import numpy as np
 import pytest
@@ -103,8 +129,9 @@ def test_backend_small_network_numerical_agreement():
 
 @requires_c_backend
 def test_backend_large_amax8_numerical_agreement():
-    """C vs. Python agreement for network='large', amax=8 (PRIMAT.md S8.2's
-    second reference config, alongside 'small' above)."""
+    """C vs. Python agreement for network='large', amax=8 -- the second of the
+    two configurations tests/README.md's "Validation reference" publishes,
+    alongside 'small' above."""
     params = {"network": "large", "amax": 8}
     r_c = run_bbn(params, force_backend="c")
     r_py = run_bbn(params, force_backend="python")
@@ -274,14 +301,66 @@ def test_output_background_evolution_both_backends(force_backend, capfd, tmp_pat
     assert "a [1]" in header
 
 
+@requires_c_backend
+@pytest.mark.parametrize("params", [
+    {"network": "small"},
+    {"network": "large", "amax": 8},
+], ids=["small", "large_amax8"])
+def test_evolution_tsv_header_is_identical_across_backends(params, tmp_path):
+    """The written time-evolution TSV must carry a byte-identical header on
+    both backends.
+
+    GOAL: enforce the unified time-evolution schema as a *contract* rather
+    than as prose. The authoritative column list lives in
+    ``primat/evolution.py``'s module docstring
+    (``t_s``/``a``/``T_gamma_MeV``/``T_nue_MeV``/``T_numu_MeV``/
+    ``T_nutau_MeV``/``Y_<nuclide>``), and both backends have their own,
+    independent writer. A column that only one writer emits is a parity bug,
+    not a feature -- but until this test existed nothing compared the two
+    written headers: ``test_evolution.py`` pins the header for a synthetic
+    ``EvolutionResult`` through the *Python* ``dump_evolution`` only, and the
+    cross-backend checks below compare in-memory arrays, never the file.
+
+    Byte-identity (not set equality) is the assertion, since ``load_evolution``
+    and every downstream consumer read the columns positionally.
+    """
+    def _header(backend):
+        out = tmp_path / f"evolution_{backend}_{params['network']}.tsv"
+        p = dict(params, output_time_evolution=True, output_file=str(out))
+        if backend == "c":
+            # Run out-of-process: the C writer prints from C-level stdout, and
+            # a fresh interpreter keeps this independent of any earlier solve.
+            script = ("from primat.backend import run_bbn\n"
+                      f"run_bbn({p!r}, force_backend='c')\n")
+            subprocess.run([sys.executable, "-c", script], check=True,
+                           capture_output=True, text=True)
+        else:
+            run_bbn(p, force_backend=backend)
+        with open(out) as fh:
+            return fh.readline().rstrip("\n")
+
+    h_c, h_py = _header("c"), _header("python")
+    assert h_c == h_py, (
+        "time-evolution TSV headers diverged between backends:\n"
+        f"  C     : {h_c}\n  Python: {h_py}"
+    )
+
+    # ... and it is the documented schema, in the documented order.
+    cols = h_c.split("\t")
+    assert cols[:6] == ["t_s", "a", "T_gamma_MeV", "T_nue_MeV",
+                        "T_numu_MeV", "T_nutau_MeV"]
+    assert all(c.startswith("Y_") for c in cols[6:])
+    assert "Y_n" in cols and "Y_p" in cols
+
+
 @pytest.mark.parametrize("params", [
     {"network": "small"},
     {"network": "large", "amax": 8},
 ], ids=["small", "large_amax8"])
 def test_evolution_round_trip_matches_in_memory_result(params, tmp_path):
     """dump_evolution/load_evolution round-trips the Python backend's
-    in-memory EvolutionResult (PRIMAT.md S7.3/S7.4) at full precision --
-    the disk file is a derived convenience, not a separate source of truth.
+    in-memory EvolutionResult at full precision -- the disk file is a
+    derived convenience, not a separate source of truth.
     """
     p = dict(params, output_time_evolution=True, output_file=None)
     result = run_bbn(p, force_backend="python")
@@ -307,12 +386,11 @@ def test_evolution_round_trip_matches_in_memory_result(params, tmp_path):
     {"network": "large", "amax": 8},
 ], ids=["small", "large_amax8"])
 def test_evolution_cross_backend_agreement(params):
-    """C and Python backends' in-memory EvolutionResults (PRIMAT.md S7.3,
-    populated with no disk I/O via output_file=None) agree at matching time
-    stamps, interpolating one series onto the other's timestamps (mirrors
-    test_custom_background.py's table-interpolation comparison pattern), at
-    PRIMAT.md S8.2's documented 1e-5 relative tolerance for the core
-    background columns. Final-time Y agreement uses the coarser cross-backend
+    """C and Python backends' in-memory EvolutionResults (populated with no disk
+    I/O via output_file=None) agree at matching time stamps, interpolating one
+    series onto the other's timestamps (mirrors test_custom_background.py's
+    table-interpolation comparison pattern), at a 1e-4 relative tolerance for
+    the core background columns. Final-time Y agreement uses the coarser cross-backend
     D/H-level budget from this module's docstring, since the abundance
     curves cross through their steep BBN transition at slightly different t
     grids on the two backends (an O(1) relative artifact right at that
@@ -346,6 +424,8 @@ def test_run_bbn_auto_prefers_c_backend():
 
 
 def test_run_bbn_rejects_unknown_force_backend():
+    """An unrecognised force_backend value raises rather than silently picking
+    one."""
     with pytest.raises(ValueError, match="force_backend"):
         run_bbn({"network": "small"}, force_backend="nope")
 
@@ -460,10 +540,10 @@ def test_run_bbn_auto_prefers_c_backend_for_extra_rho(monkeypatch):
 
 @requires_c_backend
 def test_run_bbn_c_backend_supports_output_time_evolution():
-    """The unified EvolutionResult (primat.evolution, PRIMAT.md S7.3) has a
-    C-side equivalent now (CPRResults's evol_* arrays, PRIMAT.md S7.6) --
-    force_backend="c" with output_time_evolution=True returns the same
-    in-memory EvolutionResult shape as the Python backend, not a raise."""
+    """The unified EvolutionResult (primat.evolution) has a C-side equivalent
+    now (CPRResults's evol_* arrays) -- force_backend="c" with
+    output_time_evolution=True returns the same in-memory EvolutionResult
+    shape as the Python backend, not a raise."""
     result = run_bbn({"network": "small", "output_time_evolution": True,
                        "output_file": None}, force_backend="c")
     from primat.evolution import EvolutionResult
@@ -820,9 +900,10 @@ def test_rates_columns_backend_parity(params, rtol):
     Tolerance is per-network. The small-network tables agree to ~1e-5 between
     the two stacks. The large network's AC2024 tables are resampled onto the
     master T9 grid slightly differently by the two backends' nuclear-rate
-    interpolators (the same cross-backend nuclear-rate-interpolation difference
-    CLAUDE.md documents and budgets at rel=5e-5 for the *observables* these
-    rates feed); a handful of individual large-network reactions (notably
+    interpolators -- the same cross-backend nuclear-rate-interpolation
+    difference this module's docstring budgets at rel=5e-5 for the
+    *observables* these rates feed; a handful of individual large-network
+    reactions (notably
     3-body ones like a_n_p__Li6_g) differ by up to ~2.5e-3 here, within the
     5e-3 budget -- far below the order-of-magnitude gap a real wrong-table/
     units/row-mapping bug would produce."""

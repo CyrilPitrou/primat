@@ -44,6 +44,8 @@ def test_mc_njobs_independence():
 # ---------------------------------------------------------------------------
 
 def test_eta0b_tracks_omegabh2_attribute():
+    """Reassigning cfg.Omegabh2 recomputes eta0b, rather than leaving the
+    baryon-to-photon ratio at its construction-time value."""
     cfg = PRIMATConfig({"Omegabh2": 0.02242})
     e0 = cfg.eta0b
     cfg.Omegabh2 = 0.024
@@ -51,6 +53,7 @@ def test_eta0b_tracks_omegabh2_attribute():
 
 
 def test_eta0b_tracks_omegabh2_setitem():
+    """The same recomputation happens through the cfg[...] item interface."""
     cfg = PRIMATConfig({"Omegabh2": 0.02242})
     e0 = cfg.eta0b
     cfg["Omegabh2"] = 0.024
@@ -144,6 +147,13 @@ def test_tabulated_electron_thermo_matches_exact(T):
 # ---------------------------------------------------------------------------
 
 def test_linear_rate_matches_interp1d():
+    """_LinearRate reproduces scipy interp1d(kind='linear',
+    fill_value='extrapolate') to 1e-12, including above the grid.
+
+    _LinearRate exists purely as a faster stand-in for that call in the
+    rate-table hot path, so it has to be numerically indistinguishable from
+    it -- extrapolation behaviour included, since the master T9 grid is
+    queried beyond its top edge."""
     from scipy.interpolate import interp1d
     from primat.network_data import _LinearRate
     rng = np.random.default_rng(0)
@@ -158,6 +168,7 @@ def test_linear_rate_matches_interp1d():
 
 
 def test_linear_rate_scalar_and_array():
+    """_LinearRate accepts both a scalar and an array, like interp1d."""
     from primat.network_data import _LinearRate
     f = _LinearRate(np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]))
     assert f(2.0) == pytest.approx(20.0)

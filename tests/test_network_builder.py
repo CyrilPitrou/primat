@@ -35,8 +35,8 @@ from _oracles import network_rhs, network_jacobian
 # up to A=23), which does not pair with SPECIES_MD (A<=8 only).  For the
 # kernel/conservation tests below -- which need an order/species pair that's
 # actually self-consistent -- use the large network restricted to amax=8
-# instead (the old "medium" network's exact 68-reaction equivalent, see
-# CUSTOMPOPUP.md §3.1).
+# instead -- the 68-reaction subset that replaced the old standalone
+# "medium" network.
 _ORDER_LT_AMAX8 = load_network(PRIMATConfig({"network": "large", "amax": 8}),
                                 era="LT").names
 
@@ -162,8 +162,8 @@ def test_buffer_orders_have_expected_lengths():
 
     ORDER_SMALL includes n__p + 12 nuclear reactions = 13 entries.
     ORDER_MT has 18 entries (n__p + 17).
-    ORDER_LT is now built from the *full* large network (not "medium", which
-    no longer exists -- CUSTOMPOPUP.md §1.2) and has 429 entries (n__p + 428
+    ORDER_LT is now built from the *full* large network (the old "medium"
+    network no longer exists) and has 429 entries (n__p + 428
     thermonuclear reactions, including all analytic beta-decay/
     electron-capture reactions up to A=23).
     """

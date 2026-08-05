@@ -181,6 +181,8 @@ def test_dialog_defaults_to_small_amax7():
 # ---------------------------------------------------------------------------
 
 def test_select_all_and_deselect_all_actually_toggle_reactions():
+    """The per-category 'select all'/'deselect all' buttons really flip the kept
+    set, not just the checkbox widgets' appearance."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     _open_create_dialog(at)
@@ -219,6 +221,8 @@ def test_select_all_keeps_its_category_expanded():
 
 @_needs_ac2024
 def test_switching_base_network_refreshes_kept_set():
+    """Changing the base network rebuilds the kept-reaction set from the new
+    network, rather than leaving the previous network's selection in place."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     _open_create_dialog(at)
@@ -294,6 +298,8 @@ def test_amax_filtered_reactions_are_actually_removed_on_create():
 
 @_needs_ac2024
 def test_removing_one_reaction_and_creating_drops_it_from_the_network():
+    """A reaction unticked in the dialog is genuinely absent from the created
+    network -- the dialog's selection reaches the solver, not just the UI."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     _open_create_dialog(at)
@@ -324,6 +330,8 @@ def test_removing_one_reaction_and_creating_drops_it_from_the_network():
 
 @_needs_ac2024
 def test_decay_reactions_have_their_own_editable_category():
+    """Decays are grouped in their own category with editable rate inputs, and
+    editing one away from its shipped value registers as an override."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     _open_create_dialog(at)
@@ -357,6 +365,8 @@ def test_decay_reactions_have_their_own_editable_category():
 
 @_needs_ac2024
 def test_added_reaction_table_is_recognised_in_its_category():
+    """A brand-new reaction added through the dialog is filed under the right
+    mass-number category, so it is findable after being added."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     _open_create_dialog(at)
@@ -392,7 +402,7 @@ def test_added_reaction_table_is_recognised_in_its_category():
     assert "Li6_d__a_a" in at.session_state["_dialog_added"]
     assert at.session_state["_dialog_keep"]["Li6_d__a_a"] is True
     # The chosen basename must read as a custom override, not the bare
-    # upload name (CPLAN.md request).
+    # upload name.
     assert at.session_state["_dialog_table_choice"]["Li6_d__a_a"] == "Li6_d__a_a_custom_rate.txt"
 
     # And, the actual regression this guards: its category row must show the
@@ -406,6 +416,8 @@ def test_added_reaction_table_is_recognised_in_its_category():
 # ---------------------------------------------------------------------------
 
 def test_evolved_nuclides_section_matches_small_network():
+    """The 'evolved nuclides' summary counts the species the chosen reaction set
+    actually evolves (8 for the small-network default)."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     _open_create_dialog(at)
@@ -415,10 +427,12 @@ def test_evolved_nuclides_section_matches_small_network():
 
 # ---------------------------------------------------------------------------
 # "Create this network" saves and returns to "Manage networks" without
-# running BBN (FUTURE.md / CPLAN.md request)
+# running BBN -- building a network and running one are separate actions.
 # ---------------------------------------------------------------------------
 
 def test_create_this_network_saves_without_running_bbn():
+    """'Create this network' stores the network and returns to 'Manage networks'
+    without triggering a solve -- running it stays the main button's job."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     _open_create_dialog(at)
@@ -518,7 +532,7 @@ def test_pending_network_selection_runs_bbn_with_the_custom_network():
 
 
 def test_amax_auto_unchecked_on_close_but_stays_clickable():
-    """Regression guard (CPLAN.md request): "Limit max mass number" must be
+    """Regression guard: "Limit max mass number" must be
     unchecked automatically once a custom network is applied via "Close",
     rather than silently carrying an unrelated previous network's value
     over onto the freshly chosen one -- but it must stay clickable (not
@@ -583,6 +597,8 @@ def test_amax_auto_unchecked_on_direct_sidebar_switch_to_custom_network():
 # ---------------------------------------------------------------------------
 
 def test_remove_button_only_offered_for_custom_networks():
+    """Remove/Rename are offered for a session-built network but never for the
+    shipped ones, which must not be deletable from the GUI."""
     from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
@@ -609,6 +625,8 @@ def test_remove_button_only_offered_for_custom_networks():
 
 
 def test_rename_a_custom_network():
+    """Renaming a custom network moves it to the new name, keeping its reaction
+    set and overrides."""
     from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
@@ -642,6 +660,8 @@ def test_rename_a_custom_network():
 
 
 def test_rename_to_a_reserved_name_is_blocked():
+    """A custom network cannot be renamed onto a shipped network's name, which
+    would shadow the real 'small'/'small_parthenope'/'large' thereafter."""
     from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
@@ -717,7 +737,7 @@ def test_download_zip_contains_a_table_for_every_kept_reaction():
 
 
 # ---------------------------------------------------------------------------
-# Load a network from a zip via "Manage networks" (FUTURE.md P2 coverage)
+# Load a network from a zip via "Manage networks"
 # ---------------------------------------------------------------------------
 
 @_needs_ac2024
@@ -784,7 +804,7 @@ def test_load_zip_edit_export_roundtrip():
 
 
 def test_loading_a_reserved_network_name_is_blocked():
-    """Regression guard (CPLAN.md request): loading a zip whose own network
+    """Regression guard: loading a zip whose own network
     name is "small"/"small_parthenope"/"large" must not be allowed to shadow
     the corresponding real, built-in network -- e.g. a "small" exported with
     an amax filter applied, then re-loaded, would otherwise silently make
@@ -819,11 +839,12 @@ def test_loading_a_reserved_network_name_is_blocked():
 
 
 # ---------------------------------------------------------------------------
-# Invalid uploaded rate table -> clean st.error, no crash (FUTURE.md P2)
+# Invalid uploaded rate table -> clean st.error, no crash
 # ---------------------------------------------------------------------------
 
 @_needs_ac2024
 def test_invalid_uploaded_rate_table_shows_clean_error():
+    """A malformed uploaded rate table surfaces as an st.error, not a traceback."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     _open_create_dialog(at)
@@ -858,7 +879,7 @@ def test_invalid_uploaded_rate_table_shows_clean_error():
 # ---------------------------------------------------------------------------
 # Export/import round trip of an *unmodified* network must look unmodified:
 # Source labels keep their original ref= provenance, never "custom upload",
-# since no rate table was actually uploaded by the user (CPLAN.md request).
+# since no rate table was actually uploaded by the user.
 # ---------------------------------------------------------------------------
 
 @_needs_ac2024
@@ -902,11 +923,14 @@ def test_unmodified_network_roundtrip_keeps_original_source_labels():
 # ---------------------------------------------------------------------------
 # Reopening a previously built/imported custom network in "Create new
 # network" must not mislabel its unmodified, shipped-default tables as
-# "_custom" (CPLAN.md request)
+# "_custom"
 # ---------------------------------------------------------------------------
 
 @_needs_ac2024
 def test_reopening_a_round_tripped_network_keeps_shipped_filenames():
+    """Reopening an exported-then-imported network in the create dialog still
+    labels its untouched reactions with their shipped table filenames, rather
+    than mislabelling them as user '_custom' uploads."""
     import io
 
     from primat.gui import custom_rates, params_form

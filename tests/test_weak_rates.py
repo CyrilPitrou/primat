@@ -55,6 +55,7 @@ def test_FD_nu3_zero_phi_equals_FD2():
 # ---------------------------------------------------------------------------
 
 def test_FermiCoulomb_positive(cfg):
+    """The Fermi-Coulomb factor is positive across the electron-velocity range."""
     for b in [0.1, 0.5, 0.9]:
         assert wr.FermiCoulomb(b, cfg) > 0
 
@@ -70,6 +71,8 @@ def test_FermiCoulomb_close_to_one_at_small_alpha(cfg):
 # ---------------------------------------------------------------------------
 
 def test_ComputeFn_positive(cfg):
+    """The neutron-decay phase-space integral Fn is positive -- it divides the
+    rate normalisation, so a sign or zero here poisons every weak rate."""
     Fn = wr.ComputeFn(cfg)
     assert Fn > 0
 
@@ -165,6 +168,8 @@ def rate_interpolants(cfg):
 
 
 def test_returns_two_interpolants(rate_interpolants):
+    """InterpolateWeakRates returns exactly the forward (n->p) and backward
+    (p->n) pair, in that order."""
     assert len(rate_interpolants) == 2          # forward (n->p), backward (p->n)
 
 
@@ -220,11 +225,11 @@ def test_forward_rate_increases_with_T(rate_interpolants):
 
 
 # ---------------------------------------------------------------------------
-# Vectorised fixed-order quadrature convergence (IDEAS 5.1)
+# Vectorised fixed-order quadrature convergence
 # ---------------------------------------------------------------------------
 
 def test_gauss_legendre_converged():
-    """The fixed-order Gauss-Legendre rate quadrature is converged (IDEAS §5.1).
+    """The fixed-order Gauss-Legendre rate quadrature is converged in node count.
 
     ComputeWeakRates replaced the per-grid-point adaptive scipy.quad with a
     single fixed-order Gauss-Legendre rule (``_N_GL`` nodes) vectorised over the
@@ -627,12 +632,39 @@ def test_external_scale_factor_requires_incomplete_decoupling():
 
 
 # ---------------------------------------------------------------------------
-# RecomputeWeakRates — recompute path vs the fingerprinted cache (IDEAS 7.1)
+# RecomputeWeakRates — recompute path vs the fingerprinted cache
 # ---------------------------------------------------------------------------
+
+# Bound for "a fresh ComputeWeakRates integration reproduces the shipped
+# nTOp_<hash>.txt". Measured 2026-08-05 across the four probe temperatures
+# below, both directions:
+#
+#     T [MeV]   forward     backward
+#     0.5       4.8e-09     2.3e-08
+#     1.0       1.2e-10     4.8e-10
+#     3.0       1.4e-09     4.8e-09
+#     10.0      0.0         0.0
+#
+# i.e. worst case 2.3e-08. 1e-06 leaves ~40x headroom for platform-dependent
+# quadrature noise while keeping the guard meaningful.
+#
+# This bound is load-bearing, so do not relax it casually. The shipped weak-rate
+# cache is the ONLY pin on the individual n<->p correction terms (Born, CCR,
+# FMCCR/FMNoCCR, SD_Born/SD_CCR, CCRTh): nothing else compares a fresh
+# integration against a committed number. At the previous rel=2e-3 an 0.2%
+# error in any one of those terms passed here while shifting YP by roughly
+# 0.4 * 0.247 * 2e-3 ~ 2e-4 -- 20x the +-1e-5 reference tolerance and ~7e4
+# times the +-3e-9 D/H pin.
+_RECOMPUTE_REL_TOL = 1e-6
+
 
 @pytest.mark.slow
 def test_recomputed_rates_match_cached():
     """The recompute path (weak_rate_cache=False) must agree with the cache.
+
+    GOAL: pin the *content* of the shipped, git-tracked n<->p rate tables
+    against a from-scratch integration, so that an error in any correction
+    term cannot hide behind the cache.
 
     conftest.py's session-scoped ``solved_small``/``solved_large`` fixtures
     deliberately use the *default* config (``weak_rate_cache=True``), so they
@@ -644,9 +676,9 @@ def test_recomputed_rates_match_cached():
     (``RecomputeWeakRates`` falling through to ``ComputeWeakRates`` when
     ``weak_rate_cache=False``) and checks it reproduces the cached tables:
     both describe the same physics for the same ``[T_gamma_vec, T_nue_vec]``,
-    just one read from disk (quadratic interpolation of the saved grid) and
-    the other freshly integrated (quadratic interpolation of a freshly built
-    grid) -- so they should agree to well within a percent.
+    just one read from disk and the other freshly integrated. See
+    :data:`_RECOMPUTE_REL_TOL` for the measured agreement and why the bound
+    is what it is.
     """
     from primat.main import PRIMAT
     from primat.config import PRIMATConfig
@@ -670,7 +702,8 @@ def test_recomputed_rates_match_cached():
         T_K = T_MeV * MeV_to_K
         for cached, fresh in ((r_cached.background.weak_nTOp_frwrd_raw, r_fresh.background.weak_nTOp_frwrd_raw),
                               (r_cached.background.weak_nTOp_bkwrd_raw, r_fresh.background.weak_nTOp_bkwrd_raw)):
-            assert fresh(T_K) == pytest.approx(cached(T_K), rel=2e-3)
+            assert fresh(T_K) == pytest.approx(cached(T_K),
+                                               rel=_RECOMPUTE_REL_TOL)
 
 
 @pytest.mark.slow

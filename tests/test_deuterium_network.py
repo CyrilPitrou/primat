@@ -2,15 +2,15 @@
 Tests for the ``network="large", amax=2`` configuration: the old standalone
 ``deuterium`` network (a single-reaction ``n_p__d_g`` network shipped as a
 clean-slate starting point for users building their own custom networks) is
-reproduced by restricting the large network to A <= 2 -- see CLAUDE.md's "Key
-configuration flags" table and CUSTOMPOPUP.md §1/§3.1 for the migration.
+reproduced by restricting the large network to A <= 2. The standalone
+``deuterium`` network was removed in favour of that ``amax`` filter, which
+applies uniformly to every network.
 
 Unlike the old standalone ``deuterium.txt`` (n_p__d_g only), the large
 network's A<=2 slice also includes ``p_p_n__d_p`` (same product, different
 channel), so there are 2 thermonuclear reactions, not 1 -- the physical
 scenario (baryon conservation, no nuclide beyond D produced, D/H value) is
-unaffected (matches the old deuterium-only D/H to ~1e-9 relative, see
-CLAUDE.md/CUSTOMPOPUP.md §3.1).
+unaffected: it matches the old deuterium-only D/H to ~1e-9 relative.
 
 Checks the load (species/reaction count, formal conservation) and a full solve:
 baryon number is conserved and, since there is no channel beyond n+p->d, all
