@@ -3,13 +3,13 @@ Backend parity: primat._primat_c (C) vs. primat.main.PRIMAT (Python).
 
 Why this test exists
 ---------------------
-CLAUDE.md's "Keeping primat-c and primat in sync" section mandates that any
-change to the physics/numerics of one backend be mirrored in the other, and
-that "the two backends must also agree on the *shape* of their outputs
-(same result-dict keys, ...) so callers can switch backends transparently."
-This file is that check: it pins down (1) the result-dict *shape* exactly,
-and (2) the numerical agreement *level* the two backends currently achieve,
-so a future change that silently widens the gap is caught.
+README.md's "Backend parity contract" requires that any change to the
+physics/numerics of one backend be mirrored in the other, and that the two
+agree on the *shape* of their outputs (same result-dict keys, same evolution
+columns) so callers can switch backends transparently. This file is that
+check: it pins down (1) the result-dict *shape* exactly, and (2) the numerical
+agreement *level* the two backends currently achieve, so a future change that
+silently widens the gap is caught.
 
 Historical gap (fixed)
 ----------------------
@@ -104,8 +104,8 @@ def test_backend_result_dict_shape_matches():
     assert {"Neff", "Omeganurel", "OneOverOmeganunr"} <= r_c.keys()
     assert {"Neff", "Omeganurel", "OneOverOmeganunr"} <= r_py.keys()
     # Both backends must expose the same keys, including the "Y_final"
-    # sub-dict of final nuclide mass fractions (CLAUDE.md's parity mandate:
-    # "same result-dict keys"). The C wrapper adds it in _wrapper.c's
+    # sub-dict of final nuclide mass fractions (the parity contract's "same
+    # result-dict keys"). The C wrapper adds it in _wrapper.c's
     # results_to_dict; the Python run_bbn mirrors it in backend._python_solve.
     assert r_c.keys() == r_py.keys()
     assert isinstance(r_c["Y_final"], dict)
@@ -589,8 +589,8 @@ def test_run_bbn_c_backend_honors_nuclear_overlay(tmp_path):
 def test_run_bbn_c_backend_accepts_data_dir(tmp_path):
     """A `data_dir` params key must run on BOTH backends and agree.
 
-    GOAL: data_dir is documented (CLAUDE.md, "Rates directory resolution") as
-    supported on both backends, but it is the one key that is *not* in
+    GOAL: data_dir is documented (docs/howto/data-overlays.md) as supported on
+    both backends, but it is the one key that is *not* in
     primat-c's FIELD_TABLE -- cfg->data_dir is a fixed buffer set by
     cpr_config_init_defaults. backend.py forwards the whole params dict on top
     of the positional data_dir argument, so before cpr_config_set_by_name
@@ -720,7 +720,7 @@ def test_backend_custom_network_result_dict_shape_matches():
     assert _ALWAYS_KEYS <= r_c.keys()
     assert _ALWAYS_KEYS <= r_py.keys()
     # Same keys on both backends, including "Y_final" (see the note in
-    # test_backend_result_dict_shape_matches / CLAUDE.md parity mandate).
+    # test_backend_result_dict_shape_matches / the parity contract).
     assert r_c.keys() == r_py.keys()
 
 

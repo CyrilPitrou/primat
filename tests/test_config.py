@@ -9,7 +9,8 @@ from primat.config import (PRIMATConfig, DEFAULT_PARAMS, PARAM_GROUPS,
 def test_param_groups_covers_every_default_params_key_exactly_once():
     """PARAM_GROUPS is the single source of truth the GUI, CLI --list-params,
     and the param-template generator all derive their section headings from
-    (CLAUDE.md's "keep the three templates in sync" chore); it must stay
+    (see primat/tools/gen_param_templates.py, which derives both templates
+    from it); it must stay
     exhaustive and non-overlapping as DEFAULT_PARAMS keys are added, removed,
     or renamed, or those consumers would silently drop or duplicate a key."""
     seen = []
