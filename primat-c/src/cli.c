@@ -84,7 +84,7 @@ static void print_credits(void)
  * prints: those live in config.py's inline comments, and Python parses them
  * out of the source rather than duplicating them (_default_params_comments).
  * Copying ~80 of them into this file would create a third place to keep in
- * sync -- exactly what CLAUDE.md's DEFAULT_PARAMS/template mandate exists to
+ * sync -- exactly what generating the templates from DEFAULT_PARAMS exists to
  * prevent. The generated examples/run_basic.ini already carries the same
  * descriptions for the C side, so this points there instead. */
 static void print_list_params(const CPRConfig *cfg)
@@ -549,8 +549,8 @@ static void print_json(const CPRResults *results, const CPRMCResult *mc)
 /* ---- Monte-Carlo output files (samples / covariance / correlation) ----
  *
  * The standalone C CLI writes the same three MC files as primat/cli.py, with
- * byte-identical header wording and value formatting (CLAUDE.md output-parity
- * mandate): <output_mc_file_prefix>_samples.tsv / _covariance.tsv /
+ * byte-identical header wording and value formatting:
+ * <output_mc_file_prefix>_samples.tsv / _covariance.tsv /
  * _correlation.tsv, each gated by its own boolean flag. The samples file is a
  * straight port of primat.backend.dump_mc_samples; the two matrix files port
  * dump_mc_covariance/dump_mc_correlation, computing the ddof=1 sample

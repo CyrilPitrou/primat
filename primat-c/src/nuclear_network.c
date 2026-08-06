@@ -735,8 +735,8 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
 
 /* =====================================================================
  * Decay Time (DT) era -- port of nuclear_network.py's _build_decay_matrix
- * / _integrate_decay_era / _write_decay_evolution (see CLAUDE.md's
- * backend feature gaps). After BBN ends at t_end, long-lived radioactive
+ * / _integrate_decay_era / _write_decay_evolution.
+ * After BBN ends at t_end, long-lived radioactive
  * isotopes (C14, Be10, Na22, the residual free neutron, ...) keep decaying
  * for years to Myr under the *constant* decay-rate matrix D alone (no Hubble
  * expansion, no thermal production, since T is far too low for any thermal

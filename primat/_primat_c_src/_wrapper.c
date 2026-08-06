@@ -9,8 +9,7 @@
  *   4. runs cprimat_run, and
  *   5. converts the resulting CPRResults into a plain Python dict with
  *      exactly the same key set PRIMAT.solve() returns (see
- *      primat/main.py's solve(); kept in sync per CLAUDE.md's backend-parity
- *      mandate -- see tests/test_backend_parity.py).
+ *      primat/main.py's solve(); pinned by tests/test_backend_parity.py).
  *
  * `data_dir` is the data root directory (cfg._resolved_data_dir on the Python
  * side — the equivalent of primat/data/, passed in from backend.py).

@@ -1,7 +1,7 @@
 /* test_network_data_phase4.c -- checks the Phase 4 physics layer
  * (cpr_load_network / cpr_nuclear_rates_init) on the real "small" and
- * "large, amax=8" networks: species/reaction counts against CLAUDE.md's
- * documented numbers, N/Z conservation (via cpr_check_conservation,
+ * "large, amax=8" networks: species/reaction counts against their
+ * documented values, N/Z conservation (via cpr_check_conservation,
  * exercised inside cpr_nuclear_rates_init itself -- this test fails loudly
  * if that ever throws), and a basic sanity check that rhsLT/JacobianLT
  * produce finite, non-degenerate output at a representative (Y, T) point. */
@@ -100,7 +100,7 @@ int main(void)
     cpr_nuclear_rates_free(&small);
 
     /* ---- "large, amax=8" network: must reproduce the old "medium"
-     * network's exact 68-reaction equivalent (CLAUDE.md). ---- */
+     * network's exact 68-reaction equivalent. ---- */
     free(cfg.network);
     cfg.network = strdup("large");
     cfg.amax = 8;
@@ -109,7 +109,7 @@ int main(void)
         printf("FAIL cpr_nuclear_rates_init(large, amax=8): %s\n", err);
         return 1;
     }
-    CHECK(med.lt_net.n_reac == 68, "large+amax8 LT network: n__p + 67 reactions (CLAUDE.md)");
+    CHECK(med.lt_net.n_reac == 68, "large+amax8 LT network: n__p + 67 reactions");
     cpr_nuclear_rates_free(&med);
 
     /* ---- full "large" network: just needs to load + conserve N/Z. ---- */
@@ -119,7 +119,7 @@ int main(void)
         printf("FAIL cpr_nuclear_rates_init(large): %s\n", err);
         return 1;
     }
-    CHECK(large.lt_net.n_reac == 429, "full large LT network: n__p + 428 reactions (CLAUDE.md)");
+    CHECK(large.lt_net.n_reac == 429, "full large LT network: n__p + 428 reactions");
     cpr_nuclear_rates_free(&large);
 
     cpr_config_free(&cfg);
@@ -133,7 +133,7 @@ int main(void)
             printf("FAIL custom_network config init: %s\n", cerr);
             return 1;
         }
-        /* Disable the nuclear-QED rescale (default on, see CLAUDE.md): it
+        /* Disable the nuclear-QED rescale (on by default): it
          * post-multiplies fwd_median for every reaction it knows about --
          * including d_p__He3_g, a radiative capture -- after the
          * custom_network injection loop (step 10, network_data.c), so
@@ -247,7 +247,7 @@ int main(void)
         /* Build a throwaway user_nuclear_dir containing only a custom
          * 2-reaction network file (referencing two shipped rate tables by
          * name, so this stays an *additive* overlay, not a full takeover --
-         * mirrors CLAUDE.md's "true additive overlay" note). Overlay roots
+         * a true additive overlay). Overlay roots
          * behave like primat/data/nuclear, so networks/ lives directly under
          * the overlay directory. */
         system("rm -rf build/test_user_nuclear_dir && mkdir -p build/test_user_nuclear_dir/networks");

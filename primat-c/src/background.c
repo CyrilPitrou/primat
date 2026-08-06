@@ -55,8 +55,8 @@
  * as the step itself, no separate interpolation error to hide. This lets
  * rtol/atol be loosened by ~5 orders of magnitude: empirically, 1e-7
  * through 1e-12 were tried against the small/large+amax=8 reference
- * numbers (CLAUDE.md's "Validation before committing"); 1e-7 already
- * nudges D/H outside CLAUDE.md's +-3e-9 bound, while 1e-8 through 1e-12
+ * numbers (tests/README.md's "Validation reference"); 1e-7 already
+ * nudges D/H outside its +-3e-9 bound, while 1e-8 through 1e-12
  * stay comfortably within +-1.2e-9. 1e-10 is chosen as a safety margin
  * below that edge rather than chasing the exact breakeven, since the
  * combined ODE is cheap regardless (2-D, smooth, dense-output already
@@ -542,18 +542,17 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
      * full small/large+amax=8 BBN solve (nuclear_network.c) with this
      * tolerance at the Python-nominal value vs. progressively tighter
      * ones: at 0.1*1e-7=1e-8 the resulting YP(BBN)/D-H/Yn were off by
-     * -0.14%/-1.8%/-3.5% from CLAUDE.md's reference numbers (BBN
+     * -0.14%/-1.8%/-3.5% from the published reference numbers (BBN
      * abundances are exponentially sensitive to T(t)/a(T) near freeze-out,
      * so this small a(T) error is greatly amplified downstream); at
      * BG_ODE_RTOL/BG_ODE_ATOL below the same comparison is within
-     * 0.002%/0.001%/0.005% -- inside CLAUDE.md's stated +-1e-5 (YP) and
+     * 0.002%/0.001%/0.005% -- inside the published +-1e-5 (YP) and
      * +-3e-9 (D/H) bounds. Decoupled from cfg->numerical_precision (rather
      * than e.g. dividing it by a fixed factor) because this ODE is low-
      * dimensional, smooth, and cheap regardless of tolerance -- there is no
      * performance reason to ever loosen it, even for a fast/rough run; a
      * user wanting an even higher-precision *reference* run already has
-     * other knobs for that (see CLAUDE.md's "Validation before
-     * committing" reference-run setup). */
+     * other knobs for that (see runfiles/primat_reference_run.py). */
     CPRRKOpts bg_ode_opts = cpr_ode_rk_default_opts();
     bg_ode_opts.rtol = BG_ODE_RTOL;
     bg_ode_opts.atol = BG_ODE_ATOL;

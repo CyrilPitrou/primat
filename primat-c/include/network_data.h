@@ -39,7 +39,7 @@
  * reactions_large.csv and the tables/<rxn_name>/ directory, and
  * `table_file` is the specific candidate table within it -- the
  * "_primat.txt"/"_parthenope3.0.txt" naming distinguishes sibling
- * alternates, see CLAUDE.md's "Adding a new reaction" section), or a bare
+ * alternates, see manual/EXTENDING.md), or a bare
  * "<rxn_name>" with no comma -- a T9-independent analytic decay/electron-
  * capture reaction looked up by name in decays.txt instead of a rate-table
  * file (`table_file[0] == '\0'` then; e.g. "B12__C12_Bm" in large.txt). */
@@ -55,14 +55,13 @@ typedef struct {
 
 /* Loads a data/nuclear/networks/<name>.txt file. Rejects (nonzero return,
  * *errmsg set) a network file that lists the same reaction name twice --
- * mirrors load_network's ValueError on duplicate entries (CLAUDE.md
- * "Adding a new reaction", step 5). */
+ * mirrors load_network's ValueError on duplicate entries. */
 int cpr_load_network_list(const char *path, CPRNetworkList *out, char **errmsg);
 void cpr_network_list_free(CPRNetworkList *list);
 
 /* One row of data/nuclear/tables/decays.txt: a T9-independent beta-decay/
- * electron-capture rate (see CLAUDE.md "Adding a new reaction", the
- * decays.txt exception). `ref` is the trailing free-text citation. */
+ * electron-capture rate (see manual/EXTENDING.md, the decays.txt
+ * exception). `ref` is the trailing free-text citation. */
 typedef struct {
     char name[64];
     double halflife_s;
@@ -222,8 +221,8 @@ typedef struct {
 /* Builds the selected network from its text reaction list -- the master
  * entry point (port of load_network). `era` is "MT" (intersect with the
  * fixed historical ORDER_MT/full-small-list order -- always integrated
- * even for `network="large"`, since the full network is too stiff there,
- * see CLAUDE.md "Key configuration flags") or "LT" (the full selected
+ * even for `network="large"`, since the full network is too stiff
+ * there) or "LT" (the full selected
  * list). `reaction_names`/`n_reaction_names` mirror load_network's
  * `reaction_names` override parameter: pass NULL/0 to read
  * cfg->network's own file (data/nuclear/networks/<network>.txt, or

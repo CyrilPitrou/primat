@@ -140,7 +140,7 @@ def _fill_buffer_core(T9, grid, fwd_table, abg, bwd_cap, clamp, r):
 
 # JIT-compile the fill-buffer inner loop once if numba is importable; otherwise
 # fall back to the identical pure-Python function above (numba is a recommended,
-# not mandatory, dependency -- see CLAUDE.md).  cache=True persists the compiled
+# not mandatory, dependency).  cache=True persists the compiled
 # kernel across processes, matching network_builder's kernels.
 try:                                                    # pragma: no cover
     from numba import njit as _njit
@@ -2411,7 +2411,7 @@ def _make_frwrd(rxn):
     the LT-network ODE right-hand side uses
     (:meth:`NetworkDefinition.fill_buffer`, via ``_fill_buffer_core``), and
     the one the C backend mirrors in ``cpr_network_fill_buffer`` /
-    ``cpr_nuclear_network_sample_rates`` (CLAUDE.md schema-parity mandate).
+    ``cpr_nuclear_network_sample_rates``.
     Returns 0 for any reaction not present in the active LT network (so the
     method exists for every large-network reaction but reads 0 under a smaller
     network).

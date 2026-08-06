@@ -62,8 +62,8 @@ key (plain Python lists, no numpy C-API dependency in the extension); this
 module assembles the same :class:`primat.evolution.EvolutionResult` shape
 the Python backend produces, with no disk I/O on either backend's part.
 
-``data_dir``/``user_nuclear_dir`` (see CLAUDE.md's "Rates directory
-resolution" section) *are* supported on both backends: ``data_dir`` fully
+``data_dir``/``user_nuclear_dir`` (see ``docs/howto/data-overlays.md``)
+*are* supported on both backends: ``data_dir`` fully
 replaces the shipped data tree; ``user_nuclear_dir`` is an additive overlay
 for nuclear networks and rate tables.  They are ordinary ``params`` dict keys
 applied generically via ``cpr_config_set_by_name`` on the C side, so no
@@ -79,8 +79,8 @@ Python side expands it via ``config._PATH_PARAMS``).
 ``primat._primat_c``'s ``run_mc`` (wrapping ``primat-c/src/mc.c``'s threaded
 ``cpr_mc_uncertainty``) and ``primat.main.mc_uncertainty`` (joblib), returning
 the same :class:`primat.main.MCResult` shape either way -- the "common
-language" the two backends share for MC results (CLAUDE.md's backend-parity
-mandate). The C path uses a pthread/xoshiro256** RNG, *not* NumPy's
+language" the two backends share for MC results. The C path uses a
+pthread/xoshiro256** RNG, *not* NumPy's
 ``default_rng``, so individual samples are not bit-for-bit comparable across
 backends (only statistically, mean/std convergence -- see ``mc.h``).
 
@@ -756,7 +756,7 @@ def dump_mc_samples(mc: "MCResult") -> str:
     """Serialise an :class:`primat.main.MCResult` to TSV text: one column per
     quantity (header = quantity names, in their original order), one row per
     MC sample -- the on-disk "common language" for MC results shared by both
-    backends (CLAUDE.md's backend-parity mandate), and the same shape
+    backends, and the same shape
     written to ``<output_mc_file_prefix>_samples.tsv`` when
     ``output_mc_samples=True``.
 
@@ -779,8 +779,7 @@ def _mc_num_and_seed(mc: "MCResult") -> tuple[int, str]:
     and ``seed_str`` is the base seed rendered for the file header (the integer,
     or ``"None"`` for a seedless result).  Kept in one place so both matrix
     headers -- and their byte-identical C-side counterparts (``primat-c``'s
-    ``mc.c``, per CLAUDE.md's verbose/output-parity mandate) -- agree on the
-    wording.
+    ``mc.c``) -- agree on the wording.
     """
     n = mc.samples_array().shape[0]
     seed = mc.seed

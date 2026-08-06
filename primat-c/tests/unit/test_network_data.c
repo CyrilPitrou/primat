@@ -1,6 +1,6 @@
 /* test_network_data.c -- loads real rates/nuclear/{networks,data,tables}
  * files and checks counts plus a few known rows, including the small.txt
- * 12-reaction / large.txt 428-reaction counts documented in CLAUDE.md. */
+ * 12-reaction / large.txt 428-reaction counts. */
 #include "network_data.h"
 
 #include <math.h>
