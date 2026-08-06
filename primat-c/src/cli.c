@@ -6,6 +6,7 @@
 #include "config.h"
 #include "ini.h"
 #include "mc.h"
+#include "network_data.h"
 
 #include <dirent.h>
 #include <math.h>
@@ -153,12 +154,129 @@ static const char * const bool_flags[] = {
     NULL
 };
 
+/* The 16 measured physical constants (primat.constants.OVERRIDABLE_CONSTANTS),
+ * each exposed as its own --<name> VALUE flag so a sensitivity study reads the
+ * same on both CLIs. The ten exact-by-definition constants are deliberately
+ * absent: no config can carry them across the ABI. */
+static const char * const CONSTANT_FLAGS[] = {
+    "alphaem", "GF", "mZ", "me", "mn", "mp", "T0CMB", "gA", "Vud",
+    "kappa_p", "kappa_n", "radproton", "ma", "He4Overma", "HOverma", "Neff_SM"
+};
+#define CONSTANT_FLAGS_N (sizeof(CONSTANT_FLAGS) / sizeof(CONSTANT_FLAGS[0]))
+
+/* Returns the constant name if `arg` is "--<one of CONSTANT_FLAGS>", else NULL. */
+static const char *constant_flag_name(const char *arg)
+{
+    if (arg[0] != '-' || arg[1] != '-') return NULL;
+    for (size_t k = 0; k < CONSTANT_FLAGS_N; k++)
+        if (strcmp(arg + 2, CONSTANT_FLAGS[k]) == 0) return CONSTANT_FLAGS[k];
+    return NULL;
+}
+
+/* `--list-reactions`: every reaction of the configured network -- exactly the
+ * bare names the p_<name>/delta_<name> rate-variation keys accept. That family
+ * is per-network and unbounded, so it cannot appear in --list-params. Honours
+ * network/amax, and skips the leading n<->p weak reaction, which carries no
+ * rate table to vary. Mirrors cli.py's _print_list_reactions. */
+static int name_cmp(const void *a, const void *b)
+{
+    return strcmp(*(const char * const *)a, *(const char * const *)b);
+}
+
+/* p_<rxn>/delta_<rxn> typo check -- the standalone-CLI half of
+ * PRIMATConfig._warn_unknown_rate_variations. A key naming a reaction outside
+ * the loaded network is a silent no-op otherwise, and reaction names are long
+ * and underscore-heavy enough to be mistyped. Callers arriving through
+ * primat/backend.py were already checked by PRIMATConfig, which is why this
+ * lives here and not in cprimat_run: it must not report the same typo twice.
+ * Runs only when the user actually passed such a key, so the usual path pays
+ * no network load. Returns nonzero (having printed) iff strict_params makes
+ * it fatal. */
+static int check_rate_variation_keys(const CPRConfig *cfg)
+{
+    if (cfg->p_rxn.n == 0 && cfg->delta_rxn.n == 0) return 0;
+
+    CPRNetworkDef net;
+    char *err = NULL;
+    if (cpr_load_network(cfg, "LT", NULL, 0, NULL, &net, &err)) {
+        /* Not this check's job to report a broken network: the run below
+         * fails on the same load with its own message. */
+        free(err);
+        return 0;
+    }
+
+    char bad[512];
+    size_t used = 0;
+    int n_bad = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        const CPRRxnMap *map = pass ? &cfg->delta_rxn : &cfg->p_rxn;
+        const char *prefix = pass ? "delta_" : "p_";
+        for (size_t i = 0; i < map->n; i++) {
+            int known = 0;
+            for (size_t j = 0; j < net.n_reac && !known; j++)
+                known = (strcmp(net.names[j], map->entries[i].name) == 0);
+            if (known) continue;
+            n_bad++;
+            if (used < sizeof(bad) - 64)
+                used += (size_t)snprintf(bad + used, sizeof(bad) - used,
+                                         "%s'%s%s'", used ? ", " : "",
+                                         prefix, map->entries[i].name);
+        }
+    }
+    cpr_network_def_free(&net);
+    if (n_bad == 0) return 0;
+
+    /* Same wording as the Python warning/ValueError, per the output-parity
+     * mandate; strict_params promotes it to a fatal error there too. */
+    fprintf(stderr,
+            "%s: PRIMATConfig: rate-variation key%s %s do%s not match any "
+            "reaction in network '%s'; %s no effect on the run.%s\n",
+            cfg->strict_params ? "error" : "warning",
+            n_bad > 1 ? "s" : "", bad, n_bad > 1 ? "" : "es", cfg->network,
+            n_bad > 1 ? "they have" : "it has",
+            cfg->strict_params ? " [strict_params=True]" : "");
+    return cfg->strict_params ? 1 : 0;
+}
+
+static int print_list_reactions(const CPRConfig *cfg)
+{
+    CPRNetworkDef net;
+    char *err = NULL;
+    if (cpr_load_network(cfg, "LT", NULL, 0, NULL, &net, &err)) {
+        fprintf(stderr, "error: %s\n", err ? err : "cannot load network");
+        free(err);
+        return 2;
+    }
+    const char **names = CPR_XMALLOC(net.n_reac * sizeof(*names));
+    size_t n = 0;
+    for (size_t i = 0; i < net.n_reac; i++)
+        if (strcmp(net.names[i], "n__p") != 0)
+            names[n++] = net.names[i];
+    qsort(names, n, sizeof(*names), name_cmp);
+
+    printf("# %zu reactions in network '%s'", n, cfg->network);
+    if (cfg->amax != -1) printf(" with amax=%d", cfg->amax);
+    printf("\n");
+    printf("# Vary any of them with --set p_<name>=<sigmas> (log-normal, in "
+           "units of the\n# tabulated 1-sigma factor) or --set "
+           "delta_<name>=<fraction> (additive).\n");
+    for (size_t i = 0; i < n; i++)
+        printf("%s\n", names[i]);
+
+    free(names);
+    cpr_network_def_free(&net);
+    return 0;
+}
+
 static void usage(const char *prog)
 {
-    printf("usage: %s [-h] [--credits] [--version] [--list-params]\n"
+    printf("usage: %s [-h] [--credits] [--version] [--list-params] [--list-reactions]\n"
            "          [--Omegabh2 VALUE] [--DeltaNeff VALUE] [--network NAME]\n"
            "          [--amax A] [--numerical_precision RTOL] [--munuOverTnu XI]\n"
            "          [--munuOverTnu_e XI_E] [--munuOverTnu_mu XI_MU] [--munuOverTnu_tau XI_TAU]\n"
+           "          [--alphaem V] [--GF V] [--mZ V] [--me V] [--mn V] [--mp V]\n"
+           "          [--T0CMB V] [--gA V] [--Vud V] [--kappa_p V] [--kappa_n V]\n"
+           "          [--radproton V] [--ma V] [--He4Overma V] [--HOverma V] [--Neff_SM V]\n"
            "          [--output_file FILE] [--output_final_file FILE]\n"
            "          [--output_background_file FILE] [--output_mc_file_prefix PREFIX]\n"
            "          [--QED_corrections | --no-QED_corrections]\n"
@@ -185,6 +303,9 @@ static void usage(const char *prog)
            "  --credits             Print the project credits and exit.\n"
            "  --version             Print the primat-c version and exit.\n"
            "  --list-params         Print every parameter settable via --set/--ini\n"
+           "  --list-reactions      Print every reaction name of the selected\n"
+           "                        --network/--amax (the p_<reaction>/\n"
+           "                        delta_<reaction> rate-variation keys), then exit.\n"
            "                        with its default value, then exit. One-line\n"
            "                        descriptions are in examples/run_basic.ini.\n"
            "  --Omegabh2 VALUE      Baryon density Omega_b h^2 (default: 0.02242).\n"
@@ -213,6 +334,13 @@ static void usage(const char *prog)
            "  --munuOverTnu_tau XI_TAU\n"
            "                        Per-flavour ξ of nu_tau (gravitates only; default:\n"
            "                        inherit --munuOverTnu).\n"
+           "  --alphaem V, --GF V, --mZ V, --me V, --mn V, --mp V, --T0CMB V,\n"
+           "  --gA V, --Vud V, --kappa_p V, --kappa_n V, --radproton V, --ma V,\n"
+           "  --He4Overma V, --HOverma V, --Neff_SM V\n"
+           "                        The 16 measured physical constants, settable for\n"
+           "                        sensitivity studies. --list-params prints each\n"
+           "                        one's default. The remaining ten constants are\n"
+           "                        exact by definition and cannot be set.\n"
            "  --output_file FILE    Write the full time-evolution TSV to FILE when\n"
            "                        --output_time_evolution is enabled.\n"
            "  --output_final_file FILE\n"
@@ -845,6 +973,7 @@ int cpr_cli_main(int argc, char **argv)
     const char *ini_path = NULL;
     int cache_info = 0, cache_clear = 0, credits = 0, version = 0;
     int list_params = 0;
+    int list_reactions = 0;
     int do_json = 0;
     int mc_n = 0, mc_seed = 0, mc_jobs = -1;   /* -1 = one worker per core */
     /* mc_n == 0 also means "no --mc at all", so a separate flag is needed to
@@ -877,6 +1006,8 @@ int cpr_cli_main(int argc, char **argv)
             version = 1;
         } else if (strcmp(argv[i], "--list-params") == 0) {
             list_params = 1;
+        } else if (strcmp(argv[i], "--list-reactions") == 0) {
+            list_reactions = 1;
         } else if (strcmp(argv[i], "--json") == 0) {
             do_json = 1;
         } else if (strcmp(argv[i], "--mc") == 0 && i + 1 < argc) {
@@ -988,9 +1119,18 @@ int cpr_cli_main(int argc, char **argv)
         if (strcmp(a, "--cache-info") == 0 || strcmp(a, "--cache-clear") == 0
             || strcmp(a, "--credits") == 0 || strcmp(a, "--version") == 0
             || strcmp(a, "--list-params") == 0 || strcmp(a, "--json") == 0
+            || strcmp(a, "--list-reactions") == 0
             || strcmp(a, "--help") == 0 || strcmp(a, "-h") == 0) continue;
         if (strcmp(a, "--mc") == 0 || strcmp(a, "--mc-seed") == 0
             || strcmp(a, "--mc-jobs") == 0) { i++; continue; }
+
+        /* ---- The 16 measured physical constants ---- */
+        const char *const_name = constant_flag_name(a);
+        if (const_name && has_val) {
+            CPRParam p = cpr_parse_literal(argv[++i]);
+            APPLY_OR_FAIL(&cfg, &cp, const_name, p, a);
+            continue;
+        }
 
         /* ---- Simple scalar flags (string or numeric) ---- */
         if (strcmp(a, "--Omegabh2") == 0 && has_val) {
@@ -1108,6 +1248,19 @@ int cpr_cli_main(int argc, char **argv)
     if (cpr_config_validate(&cfg, &err)) {
         fprintf(stderr, "error: %s\n", err);
         free(err);
+        cpr_paramlist_free(&cp);
+        cpr_config_free(&cfg);
+        return 1;
+    }
+
+    if (list_reactions) {
+        int rc = print_list_reactions(&cfg);
+        cpr_paramlist_free(&cp);
+        cpr_config_free(&cfg);
+        return rc;
+    }
+
+    if (check_rate_variation_keys(&cfg)) {
         cpr_paramlist_free(&cp);
         cpr_config_free(&cfg);
         return 1;

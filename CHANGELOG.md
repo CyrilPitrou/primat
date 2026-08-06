@@ -12,6 +12,12 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **A mistyped rate-variation key is no longer silent on the standalone C
+  CLI.** `cprimat --set p_n_p__d_gg=1` ran to completion with that rate
+  unvaried and no message, where the Python CLI warns (and, under
+  `strict_params`, raises). Both now report the same text and the same exit
+  status. Runs reaching the C solver through `primat/backend.py` were already
+  covered, since `PRIMATConfig` validates the params dict first.
 - **The `reference` test tier now runs the configuration it documents.** Its
   parameter set listed four of the eight solver settings
   `runfiles/primat_reference_run.py` uses, so the tier meant to reproduce the
@@ -321,6 +327,30 @@ in this repository is the authoritative source.
   previous D/H, YP and Neff bit-for-bit.
 
 ### Added
+- **The 16 measured physical constants are now ordinary parameters.**
+  `alphaem`, `GF`, `mZ`, `me`, `mn`, `mp`, `T0CMB`, `gA`, `Vud`, `kappa_p`,
+  `kappa_n`, `radproton`, `ma`, `He4Overma`, `HOverma` and `Neff_SM` are
+  `DEFAULT_PARAMS` keys, settable through a params dict, `--me 0.511`, a
+  `me = 0.511` INI line, `cpr_config_set_by_name`, and a "Constants" group in
+  the GUI. The dividing line is whether a number has an error bar: the other
+  ten (`Kelvin`/`second`/`cm`/`gram`, `kB`/`clight`/`hbar`/`MeV`/`keV`, `Mpc`)
+  are exact by the natural-units convention, the 2019 SI redefinition or an
+  IAU definition, and stay frozen — overriding one is now rejected with an
+  error rather than silently honoured by Python and ignored by the C backend.
+  Every derived quantity follows an override (`sW2`, `deltakappa`, `mB`,
+  `n0CMB` and the `eta0b` chain), and each cache is re-keyed on the constants
+  it was computed with, so a run with a shifted `me` cannot load the
+  default-`me` tables. At default values both backends are bit-identical to
+  before and every shipped cache filename is unchanged. One documented
+  exception: the Pitrou & Pospelov QED correction to the radiative-capture
+  nuclear rates is a fit performed at the CODATA α and keeps its own literal,
+  so `alphaem` does not reach it.
+- **`--list-reactions` on both CLIs.** The `p_<reaction>`/`delta_<reaction>`
+  rate-variation keys are a per-network, unbounded family, so they cannot
+  appear in `--list-params`; a user previously had to already know a
+  reaction's exact internal name to vary its rate. The new flag prints the
+  reaction names of the selected `--network`/`--amax`, byte-identically on
+  both backends.
 - **`--list-params` and `--mc-jobs` on the C CLI.** The first enumerates the
   same field table the setter dispatches on, so the listing cannot drift from
   what is settable; the second exposes the MC job count, which was hard-coded

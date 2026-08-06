@@ -105,9 +105,9 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
     double YBe7 = cpr_nuclear_network_get(nn, "Be7");
 
     results->YPBBN = 4.0 * Ya;
-    results->YPCMB = ((g_const.He4Overma / 4.0) * results->YPBBN)
-        / ((g_const.He4Overma / 4.0) * results->YPBBN
-           + g_const.HOverma * (1.0 - results->YPBBN));
+    results->YPCMB = ((cfg->consts.He4Overma / 4.0) * results->YPBBN)
+        / ((cfg->consts.He4Overma / 4.0) * results->YPBBN
+           + cfg->consts.HOverma * (1.0 - results->YPBBN));
     /* He4/H by *number* (not mass): the directly observed quantity in e.g.
      * extragalactic HII-region spectroscopy; He4/H = Y_He4/Y_p. */
     results->He4oH   = ratio(Ya, Yp);

@@ -13,6 +13,7 @@ No file I/O happens here.  Nuclear rate data are loaded separately in
 ``nuclear_data.py``.
 """
 
+import dataclasses
 import difflib
 import numbers
 import os
@@ -21,7 +22,8 @@ import warnings
 from typing import TYPE_CHECKING
 import numpy as np
 
-from .constants import CONST
+from .constants import (CONST, Constants, DERIVED_OVERRIDABLE,
+                        FROZEN_CONSTANTS, OVERRIDABLE_CONSTANTS)
 
 __all__ = ['DEFAULT_PARAMS', 'PARAM_GROUPS', 'PRIMATConfig']
 
@@ -124,6 +126,34 @@ DEFAULT_PARAMS: dict = {
     # this literal digit-for-digit in primat-c/src/config.c's
     # cpr_config_set_GN default.
     "GN":                         6.6743e-11,   # Newton's constant, SI units [m^3 kg^-1 s^-2]
+
+    # The 16 MEASURED constants of primat.constants (constants.OVERRIDABLE_CONSTANTS):
+    # every one carries an experimental uncertainty, so varying it is a
+    # sensitivity study. The defaults are read from CONST rather than retyped,
+    # so the two can never drift apart; the remaining 10 fields are exact by
+    # definition and stay frozen (see PRIMATConfig.validate_frozen_constants).
+    # Every derived quantity follows automatically -- overriding alphaem moves
+    # sW2/geL/geR/gmuL/gmuR, T0CMB moves s0CMB/n0CMB/eta0b, and so on.
+    # One documented exception: the Pitrou & Pospelov QED correction to the
+    # radiative-capture nuclear rates (nuclear_qed_corrections) is a fit
+    # performed at the CODATA alpha and keeps its own literal, so alphaem does
+    # not reach it -- see network_data._qed_nuclear_rescale.
+    "alphaem":   CONST.alphaem,   # fine-structure constant             (CODATA 2018)
+    "GF":        CONST.GF,        # Fermi constant [MeV^-2]             (PDG 2020)
+    "mZ":        CONST.mZ,        # Z boson mass [MeV]                  (PDG 2020)
+    "me":        CONST.me,        # electron mass [MeV]                 (CODATA 2018)
+    "mn":        CONST.mn,        # neutron mass [MeV]                  (PDG/CODATA 2018)
+    "mp":        CONST.mp,        # proton mass [MeV]                   (CODATA 2018)
+    "T0CMB":     CONST.T0CMB,     # CMB photon temperature today [K]    (Fixsen 2009)
+    "gA":        CONST.gA,        # nucleon axial coupling              (PDG 2018)
+    "Vud":       CONST.Vud,       # CKM matrix element V_ud            (PDG 2018)
+    "kappa_p":   CONST.kappa_p,   # proton anomalous magnetic moment    (CODATA 2018)
+    "kappa_n":   CONST.kappa_n,   # neutron anomalous magnetic moment   (CODATA 2018)
+    "radproton": CONST.radproton, # proton charge radius [cm]           (CODATA 2018)
+    "ma":        CONST.ma,        # unified atomic mass unit [MeV]      (CODATA 2010)
+    "He4Overma": CONST.He4Overma, # M(He4) / u                          (AME2020)
+    "HOverma":   CONST.HOverma,   # M(H) / u                            (AME2016)
+    "Neff_SM":   CONST.Neff_SM,   # SM prediction for Neff              (Bennett et al. 2021)
 
     # ---- background thermodynamics ----------------------------------------
     "T_start_cosmo_MeV":          40.0, # photon temperature at which the background integration starts [MeV]; must be > T_end_MeV. 40 MeV is well before any BBN-relevant weak or nuclear process (T_weak = 1 MeV), so the initial condition is pure radiation domination.
@@ -385,6 +415,9 @@ PARAM_GROUPS: dict = {
     ),
     "Fundamental constants": (
         "GN",
+        "alphaem", "GF", "mZ", "me", "mn", "mp", "T0CMB", "gA", "Vud",
+        "kappa_p", "kappa_n", "radproton", "ma", "He4Overma", "HOverma",
+        "Neff_SM",
     ),
     "Background thermodynamics": (
         "T_start_cosmo_MeV", "T_end_MeV", "sampling_temperature_per_decade",
@@ -798,6 +831,26 @@ _PARAM_RANGE = {
     "decay_n_points":                    _POSITIVE_INT,
     # ---- non-negative (a 1-sigma width may legitimately be 0) ---------------
     "std_tau_n":           _NON_NEGATIVE,
+    # ---- measured physical constants ----------------------------------------
+    # A mass, a coupling or a temperature that is zero or negative is not a
+    # sensitivity study, it is a typo: every integrand below divides by me,
+    # takes sqrt(E^2 - me^2), or raises T0CMB to the third power. The two
+    # anomalous magnetic moments are deliberately absent -- kappa_n is
+    # negative by nature -- and so is Neff_SM, which only needs >= 0.
+    "alphaem":   _POSITIVE,
+    "GF":        _POSITIVE,
+    "mZ":        _POSITIVE,
+    "me":        _POSITIVE,
+    "mn":        _POSITIVE,
+    "mp":        _POSITIVE,
+    "T0CMB":     _POSITIVE,
+    "gA":        _POSITIVE,
+    "Vud":       _POSITIVE,
+    "radproton": _POSITIVE,
+    "ma":        _POSITIVE,
+    "He4Overma": _POSITIVE,
+    "HOverma":   _POSITIVE,
+    "Neff_SM":   _NON_NEGATIVE,
 }
 
 
@@ -889,15 +942,15 @@ def _frozen_constant_message(name: str, value) -> str:
     """
     return (
         f"{name} was overridden on this PRIMATConfig ({value!r} instead of the "
-        f"frozen {getattr(CONST, name)!r}), but {name} is not a run-time "
-        "parameter: the C backend reads its own compiled-in g_const and would "
-        "ignore the override entirely, so the two backends would silently "
-        "disagree on the same run. To change this constant, edit BOTH "
-        "primat/constants.py and primat-c/src/constants.c -- constants_hash "
-        "(cache_utils) then invalidates every cache computed with the old "
-        "value. Making it a real run-time parameter is scoped in "
-        "docs/superpowers/specs/"
-        "2026-08-04-cache-parity-and-constants-fingerprint-design.md, section 6.")
+        f"frozen {getattr(CONST, name)!r}), but {name} is exact by definition "
+        "and is not a run-time parameter: the C backend reads its own "
+        "compiled-in value, which no config can reach, so the two backends "
+        "would silently disagree on the same run. The 16 MEASURED constants "
+        f"({', '.join(OVERRIDABLE_CONSTANTS)}) are ordinary parameters -- pass "
+        "them in params, on the CLI or in an INI file. To change one of the "
+        "remaining ten, edit BOTH primat/constants.py and "
+        "primat-c/src/constants.c; constants_hash (cache_utils) then "
+        "invalidates every cache computed with the old value.")
 
 
 def _validate_param_value(key: str, value):
@@ -988,6 +1041,22 @@ class PRIMATConfig:
         external_scale_factor: bool
         custom_background: str | None
         GN: float
+        alphaem: float
+        GF: float
+        mZ: float
+        me: float
+        mn: float
+        mp: float
+        T0CMB: float
+        gA: float
+        Vud: float
+        kappa_p: float
+        kappa_n: float
+        radproton: float
+        ma: float
+        He4Overma: float
+        HOverma: float
+        Neff_SM: float
         T_start_cosmo_MeV: float
         T_end_MeV: float
         sampling_temperature_per_decade: int
@@ -1101,14 +1170,18 @@ class PRIMATConfig:
     # ------------------------------------------------------------------
     # Physical constants and unit-conversion factors
     # ------------------------------------------------------------------
-    # All fixed PDG values, CGS<->natural-units conversion factors, and the
-    # purely-constant derived quantities (sW2, s0bar, s0CMB, n0CMB, mB,
-    # HubbleOverh, the fixed temperature eras T_start/T_weak/T_nucl/T_end,
-    # ...) live in primat.constants.Constants (see that module for
-    # definitions, formulas and citations). They are re-exposed here as
-    # plain class attributes so existing code (cfg.me, cfg.MeV_to_Kelvin,
-    # cfg.s0bar, ...) is unaffected; new physics code may instead import
-    # CONST directly from primat.constants.
+    # The 10 constants that are exact by definition
+    # (constants.FROZEN_CONSTANTS) and every derived quantity that is a
+    # function of those alone, re-exposed as class attributes so existing code
+    # (cfg.MeV_to_Kelvin, cfg.s0bar, ...) is unaffected. They cannot move, so
+    # one shared value per process is correct; overriding one is rejected (see
+    # validate_frozen_constants).
+    #
+    # The 16 MEASURED constants are DEFAULT_PARAMS keys instead, set per
+    # instance like any other parameter, and the 10 derived quantities that
+    # depend on them (constants.DERIVED_OVERRIDABLE) are recomputed from
+    # primat.constants by _update_constants. See primat.constants for every
+    # definition, formula and citation.
     Kelvin         = CONST.Kelvin
     second         = CONST.second
     cm             = CONST.cm
@@ -1120,13 +1193,6 @@ class PRIMATConfig:
     Mpc            = CONST.Mpc
     MeV            = CONST.MeV
     keV            = CONST.keV
-    alphaem        = CONST.alphaem
-    GF             = CONST.GF
-    mZ             = CONST.mZ
-    me             = CONST.me
-    mn             = CONST.mn
-    mp             = CONST.mp
-    T0CMB          = CONST.T0CMB
     MeV_to_Kelvin  = CONST.MeV_to_Kelvin
     MeV_to_secm1   = CONST.MeV_to_secm1
     MeV_to_g       = CONST.MeV_to_g
@@ -1135,27 +1201,52 @@ class PRIMATConfig:
     T_start        = CONST.T_start
     T_weak         = CONST.T_weak
     T_nucl         = CONST.T_nucl
+    s0bar          = CONST.s0bar
+    HubbleOverh    = CONST.HubbleOverh
+
+    # The 10 derived quantities that DO depend on an overridable constant,
+    # here at their default values only: _update_constants shadows each with an
+    # instance attribute at the end of __init__. The class-level copies keep
+    # them readable during construction, before the overrides are all in.
     sW2            = CONST.sW2
     geL            = CONST.geL
     geR            = CONST.geR
     gmuL           = CONST.gmuL
     gmuR           = CONST.gmuR
-    gA             = CONST.gA
-    kappa_p        = CONST.kappa_p
-    kappa_n        = CONST.kappa_n
     deltakappa     = CONST.deltakappa
-    Vud            = CONST.Vud
-    radproton      = CONST.radproton
-    s0bar          = CONST.s0bar
     s0CMB          = CONST.s0CMB
     n0CMB          = CONST.n0CMB
-    ma             = CONST.ma
-    He4Overma      = CONST.He4Overma
-    HOverma        = CONST.HOverma
-    Neff_SM        = CONST.Neff_SM
     mB             = CONST.mB
     maOvermB       = CONST.maOvermB
-    HubbleOverh    = CONST.HubbleOverh
+
+    # ------------------------------------------------------------------
+    # Per-config constants snapshot and the quantities derived from it
+    # ------------------------------------------------------------------
+    @property
+    def constants(self) -> Constants:
+        """This config's :class:`primat.constants.Constants`: the frozen
+        defaults with the 16 overridable fields replaced by this config's
+        values. Used for the cache fingerprint
+        (:func:`primat.cache_utils.constants_hash`) and as the single source
+        of the derived quantities set by :meth:`_update_constants`.
+        """
+        return dataclasses.replace(
+            CONST, **{name: getattr(self, name)
+                      for name in OVERRIDABLE_CONSTANTS})
+
+    def _update_constants(self):
+        """Recompute the derived quantities that depend on an overridable
+        constant (``sW2``, ``deltakappa``, ``mB``, ``n0CMB``, ...), and the
+        ``eta0b`` chain built on top of them.
+
+        Called at construction and from ``__setattr__`` whenever one of the
+        16 is assigned, so ``cfg.alphaem = x`` can never leave ``cfg.sW2``
+        reporting the default.
+        """
+        consts = self.constants
+        for name in DERIVED_OVERRIDABLE:
+            object.__setattr__(self, name, getattr(consts, name))
+        self._update_derived()
 
     # ------------------------------------------------------------------
     # Quantities depending on overridable parameters (GN, T_start_cosmo_MeV)
@@ -1229,8 +1320,9 @@ class PRIMATConfig:
         self._validate_physics_flag_combos()
         self.validate_frozen_constants()
 
-        # Derived cosmological quantity (depends on Omegabh2)
-        self._update_derived()
+        # Derived constants (sW2, mB, n0CMB, ...) and, through them, the
+        # derived cosmological quantities (eta0b).
+        self._update_constants()
 
     def _init_defaults_and_nuclide_data(self, params: dict | None):
         """Seed every ``DEFAULT_PARAMS`` key as an instance attribute, apply
@@ -1408,72 +1500,48 @@ class PRIMATConfig:
                     stacklevel=2,
                 )
 
-    # Physical constants that are NOT run-time parameters but which a caller
-    # might plausibly try to override by poking the attribute, and whose value
-    # reaches the C backend only through primat-c's own `g_const` -- never
-    # through the config that crosses the ABI. Overriding either one is
-    # therefore honoured by most of the Python code and by *none* of the C
-    # code, which is a silent backend disagreement rather than a feature.
-    # See validate_frozen_constants for the full story and the supported route.
-    _FROZEN_CONSTANT_GUARDS = ("me", "alphaem")
+    # The 10 constants that are exact by definition (natural units, the 2019
+    # SI redefinition, the IAU parsec) and so are NOT run-time parameters.
+    # They reach the C backend only through primat-c's own compiled-in
+    # constants, never through the config that crosses the ABI, so poking one
+    # is honoured by the Python code and by *none* of the C code.
+    _FROZEN_CONSTANT_GUARDS = FROZEN_CONSTANTS
 
     def validate_frozen_constants(self):
-        """Raise if a frozen physical constant has been overridden on this config.
+        """Raise if one of the ten exact constants has been overridden here.
 
-        ``me`` and ``alphaem`` are class attributes copied from
-        :data:`primat.constants.CONST`, not ``DEFAULT_PARAMS`` keys.  Handing
-        them in as ``params={"me": ...}`` hits the unknown-key path and is
-        warned-and-ignored on both backends -- consistent, if unhelpful.  A
-        direct attribute poke is the dangerous case::
+        The 16 measured constants (``me``, ``alphaem``, ``gA``, ...) are
+        ordinary ``DEFAULT_PARAMS`` keys and cross the ABI like any other
+        parameter.  The remaining ten do not::
 
             cfg = PRIMATConfig()
-            cfg.me = 0.6          # honoured by primat/, invisible to primat-c/
+            cfg.kB = 1.4e-16      # honoured by primat/, invisible to primat-c/
 
-        The Python solver reads ``cfg.me`` in the plasma integrands, the weak
-        rates and the background, so it would dutifully use 0.6; the C solver
-        reads its own process-wide ``g_const.me``, which no config can reach,
-        so it would keep using 0.51099895.  The same run would then give two
-        different answers depending only on the backend -- and, because
-        ``constants_hash`` (:func:`primat.cache_utils.constants_hash`) hashes
-        ``CONST`` rather than ``cfg``, both would agree on a cache key that
-        describes neither.  Failing loudly here is the only honest option.
+        The Python solver would dutifully use the new value; the C solver reads
+        its own compiled-in constant, which no config can reach, so the same
+        run would give two different answers depending only on the backend.
+        The supported way to change one is to edit *both*
+        ``primat/constants.py`` and ``primat-c/src/constants.c``, which
+        ``constants_hash`` detects, correctly invalidating every cache.
 
-        Making the two genuinely user-settable is real work, deliberately left
-        out of this change: it means adding them to ``DEFAULT_PARAMS``,
-        ``PARAM_GROUPS`` and the template generator, regenerating both param
-        templates, and rewiring roughly thirty ``g_const.*`` read sites on the C
-        side -- several in functions that have no ``cfg`` in scope at all.  The
-        design note for that work is
-        ``docs/superpowers/specs/2026-08-04-cache-parity-and-constants-fingerprint-design.md``
-        (§6, "Deferred: making me/alphaem user-settable").  Until then, the
-        supported way to change a constant is to edit *both*
-        ``primat/constants.py`` and ``primat-c/src/constants.c`` -- which
-        ``constants_hash`` now detects, correctly invalidating every cache.
-
-        :meth:`__setattr__` already rejects such an assignment as it happens,
-        which is where a user normally meets this and where the traceback is
-        most useful.  This method is the defence-in-depth re-check, run at the
-        end of :meth:`__init__`: it catches the routes that bypass
-        ``__setattr__`` entirely -- a direct ``object.__setattr__``, a subclass
+        :meth:`__setattr__` rejects such an assignment as it happens, which is
+        where a user normally meets this.  This method is the defence-in-depth
+        re-check at the end of :meth:`__init__`, catching the routes that
+        bypass ``__setattr__``: a direct ``object.__setattr__``, a subclass
         overriding a constant as a class attribute, or an unpickled config.
-        Between them the two cover every config that can reach a backend:
-        ``backend.run_bbn``/``run_mc`` build theirs here, from ``params``, so
-        it is validated at construction, and ``params={"me": ...}`` never sets
-        the attribute in the first place (it is not a ``DEFAULT_PARAMS`` key,
-        so it takes the unknown-key warn-and-ignore path on both backends).
 
         Raises
         ------
         ValueError
-            If ``self.me`` or ``self.alphaem`` differs from ``CONST``'s value.
+            If any :data:`primat.constants.FROZEN_CONSTANTS` field differs
+            from ``CONST``'s value.
 
         Example
         -------
             >>> cfg = PRIMATConfig()
-            >>> cfg.me = 0.6
-            >>> cfg.validate_frozen_constants()      # doctest: +SKIP
-            ValueError: me was overridden on this PRIMATConfig (0.6 instead of
-            the frozen 0.51099895), but me is not a run-time parameter ...
+            >>> cfg.kB = 1.4e-16                     # doctest: +SKIP
+            ValueError: kB was overridden on this PRIMATConfig (1.4e-16
+            instead of the frozen 1.380649e-16), but kB is exact by ...
         """
         for name in self._FROZEN_CONSTANT_GUARDS:
             current = getattr(self, name)
@@ -1893,13 +1961,13 @@ class PRIMATConfig:
         elif name.startswith("delta_"):
             object.__getattribute__(self, 'delta_rxn')[name[6:]] = float(value)
         else:
-            # Frozen physical constants that the C backend reads from its own
-            # compiled-in g_const and that no config can carry across the ABI:
-            # reject the assignment where it happens, so the traceback points at
+            # The ten constants that are exact by definition cannot cross the
+            # ABI, so an override would be honoured by primat/ and by none of
+            # primat-c/: reject it where it happens, so the traceback points at
             # the offending line rather than at a later divergence between the
-            # two backends. validate_frozen_constants explains why and what the
-            # supported route is; it also re-checks at construction and at
-            # backend dispatch, covering an object.__setattr__ bypass.
+            # two backends. validate_frozen_constants explains the supported
+            # route and re-checks at construction, covering an
+            # object.__setattr__ bypass.
             if name in self._FROZEN_CONSTANT_GUARDS and value != getattr(CONST, name):
                 raise ValueError(_frozen_constant_message(name, value))
             if name in _PATH_PARAMS:
@@ -1907,7 +1975,10 @@ class PRIMATConfig:
                 # --set KEY=VALUE route through the same resolved path.
                 value = _expanduser_path(value)
             object.__setattr__(self, name, value)
-            if name == "Omegabh2":
+            if name in OVERRIDABLE_CONSTANTS:
+                # sW2, deltakappa, mB, n0CMB, ... and eta0b through them.
+                self._update_constants()
+            elif name == "Omegabh2":
                 self._update_derived()
 
     # Omegabh2 is exposed as a property so that the derived baryon-to-photon

@@ -261,7 +261,7 @@ def _thermal_fingerprint(cfg):
           # struct (cache_utils.constants_hash) rather than just those two is
           # deliberate -- see that function's docstring for why over-invalidating
           # is the safe side of this trade.
-          "constants_hash": constants_hash()}
+          "constants_hash": constants_hash(cfg)}
     for key in _THERMAL_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     # Effective ξ_e under the same historical "munuOverTnu" key as
@@ -325,7 +325,7 @@ def _weak_rate_fingerprint(cfg):
           # was keyed, and editing one silently reused the old table. Hashing the
           # whole struct rather than that curated list is deliberate -- see
           # cache_utils.constants_hash.
-          "constants_hash":          constants_hash()}
+          "constants_hash":          constants_hash(cfg)}
     for key in _WEAK_RATE_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     # Neutrino chemical potential in the weak rates: only the electron-neutrino

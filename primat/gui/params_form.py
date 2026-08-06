@@ -48,6 +48,7 @@ import numpy as np
 import streamlit as st
 
 from primat.config import DEFAULT_PARAMS, PRIMATConfig
+from primat.constants import OVERRIDABLE_CONSTANTS
 from primat.network_data import (
     load_network, load_reaction_names, reaction_category,
     group_reactions_by_category, available_rate_tables, reaction_stoichiometry,
@@ -194,6 +195,52 @@ _CONSTANTS_METADATA = {
         "Neutron lifetime, used to normalise the n<->p weak rates "
         "(when tau_n_normalization=True, the default).",
     ),
+    # The 16 measured physical constants (constants.OVERRIDABLE_CONSTANTS).
+    # Each carries an experimental uncertainty, so varying it is a sensitivity
+    # study; the ten that are exact by definition are not offered at all.
+    "alphaem": (
+        r"$\alpha_\mathrm{em}$  (fine-structure constant)",
+        "Enters the QED plasma pressure and the radiative corrections to "
+        "n<->p. Does NOT reach the Pitrou & Pospelov nuclear-rate QED "
+        "rescale, which is a fit performed at the CODATA value.",
+    ),
+    "GF": (r"$G_F$  (Fermi constant) [MeV⁻²]",
+           "Weak coupling; drops out of the rates when "
+           "tau_n_normalization=True (the default)."),
+    "mZ": (r"$m_Z$  (Z boson mass) [MeV]",
+           "Only enters through the on-shell Weinberg angle sin²θ_W."),
+    "me": (r"$m_e$  (electron mass) [MeV]",
+           "Sets the e± thermodynamics, the QED pressure tables and the "
+           "n<->p phase space."),
+    "mn": (r"$m_n$  (neutron mass) [MeV]",
+           "With m_p it sets the n-p mass difference Q that drives the "
+           "neutron-to-proton ratio."),
+    "mp": (r"$m_p$  (proton mass) [MeV]", "See m_n."),
+    "T0CMB": (r"$T_0^\mathrm{CMB}$  (CMB temperature today) [K]",
+              "Normalises the photon density, hence the baryon-to-photon "
+              "ratio η_b at fixed Ω_b h²."),
+    "gA": (r"$g_A$  (nucleon axial coupling)",
+           "Axial-to-vector ratio in the n<->p matrix element; shapes the "
+           "rates even under τ_n normalisation."),
+    "Vud": (r"$V_{ud}$  (CKM matrix element)",
+            "Absolute weak-rate normalisation only; inert when "
+            "tau_n_normalization=True (the default)."),
+    "kappa_p": (r"$\kappa_p$  (proton anomalous magnetic moment)",
+                "Enters the finite-nucleon-mass correction through "
+                "κ_p − κ_n."),
+    "kappa_n": (r"$\kappa_n$  (neutron anomalous magnetic moment)",
+                "See κ_p. Negative by nature."),
+    "radproton": (r"$r_p$  (proton charge radius) [cm]",
+                  "Enters the Coulomb (Fermi) function of the n<->p rates."),
+    "ma": (r"$u$  (atomic mass unit) [MeV]",
+           "Converts the baryon mass density to a number density."),
+    "He4Overma": (r"$M(^4\mathrm{He})/u$",
+                  "Sets the mean baryon mass and the BBN-to-CMB helium "
+                  "mass-fraction conversion."),
+    "HOverma": (r"$M(^1\mathrm{H})/u$", "See M(⁴He)/u."),
+    "Neff_SM": (r"$N_\mathrm{eff}^\mathrm{SM}$",
+                "Standard-Model reference value; used numerically only to "
+                "normalise the early-dark-energy era (f_EDE ≠ 0)."),
 }
 
 # Keys whose widget is only shown conditionally on another key's value.
@@ -393,6 +440,21 @@ def _network_label(network):
     return label
 
 
+def _float_format(key):
+    """``st.number_input`` format string for a float parameter.
+
+    ``"%.6g"`` keeps both O(1) values (Omegabh2) and very small/large ones
+    (GN = 6.67e-11) readable, and is enough precision for every ordinary
+    parameter. The measured physical constants are the exception: `mn` alone
+    carries 11 significant digits, and Streamlit rounds the value a widget
+    *returns* to its format string, so at 6 digits a user could not express a
+    per-mille shift of one -- their input would round back onto the displayed
+    default and be dropped as "untouched" (see :func:`_display_default`).
+    12 digits is comfortably finer than any of their measured uncertainties.
+    """
+    return "%.12g" if key in OVERRIDABLE_CONSTANTS else "%.6g"
+
+
 def _display_default(key):
     """Return ``DEFAULT_PARAMS[key]`` rounded to the precision a float
     widget actually displays/returns on an untouched render.
@@ -423,7 +485,7 @@ def _display_default(key):
     """
     default = DEFAULT_PARAMS[key]
     if isinstance(default, float):
-        return float(f"{default:.6g}")
+        return float(f"{default:{_float_format(key)[1:]}}")
     return default
 
 
@@ -455,10 +517,9 @@ def _widget_for(key, label, help_text):
         return int(st.number_input(label, value=default, step=1, help=help_text, key=key))
 
     if isinstance(default, float):
-        # "%.6g" keeps both O(1) values (Omegabh2) and very small/large ones
-        # (GN=6.67e-11) readable.
         return st.number_input(
-            label, value=default, format="%.6g", help=help_text, key=key,
+            label, value=default, format=_float_format(key), help=help_text,
+            key=key,
         )
 
     # Fallback for string-valued parameters (e.g. output_file paths).
@@ -1821,8 +1882,9 @@ def _render_curated_groups(params):
 
 
 def _render_constants_group(params):
-    """Render the "Constants" sidebar expander (GN and tau_n only), mutating
-    ``params`` in place with every value that differs from its default.
+    """Render the "Constants" sidebar expander -- GN, tau_n and the 16
+    measured physical constants -- mutating ``params`` in place with every
+    value that differs from its default.
     """
     with st.sidebar.expander("Constants", expanded=False):
         for key, (label, help_text) in _CONSTANTS_METADATA.items():

@@ -33,26 +33,23 @@ char *cpr_sha256_hex16(const char *json_str);
  * the intermediate JSON string. Malloc'd; caller frees. */
 char *cpr_fingerprint_hash(const CPRFPField *fields, size_t n);
 
-/* Returns the 16-hex-character hash of the ENTIRE physical-constants struct
- * `g_const`, mirroring primat.cache_utils.constants_hash() exactly (same 26
- * fields, same canonical JSON, same sha256 prefix). It is a field of all four
- * fingerprints -- weak rate, CCRTh thermal, electron thermo, QED pressure --
- * so that editing a constant (m_e, alpha, g_A, m_n, m_p, V_ud, radproton,
- * kappa_n/p, G_F, ...) invalidates every cache computed with the old value
- * instead of silently reloading it. See cache_utils.constants_hash's docstring
- * for why this hashes all 26 fields rather than a per-cache curated list
- * (over-invalidation costs a recompute; under-invalidation is a wrong answer).
+/* Writes the 16-hex-character hash of a config's ENTIRE physical-constants
+ * struct into `out` (17 bytes: 16 hex digits + NUL), mirroring
+ * primat.cache_utils.constants_hash() exactly (same 26 fields, same canonical
+ * JSON, same sha256 prefix). It is a field of all four fingerprints -- weak
+ * rate, CCRTh thermal, electron thermo, QED pressure -- so that a run
+ * overriding m_e, alpha, g_A, ... keys its own cache files instead of
+ * silently reloading the default ones. All 26 fields are hashed rather than a
+ * per-cache curated list: over-invalidation costs a recompute,
+ * under-invalidation is a wrong answer.
  *
  * Only the struct's own fields are hashed -- NOT the derived quantities
  * (cpr_sW2(), cpr_MeV_to_Kelvin(), ...), matching Python's use of
  * dataclasses.asdict(), which likewise sees fields but not @property values.
  *
- * The returned pointer is to a process-lifetime static buffer (the constants
- * are frozen, so the hash is computed at most once -- the C mirror of Python's
- * lru_cache) and must NOT be freed. That also makes it safe to store directly
- * in a CPRFPField's CPR_STRING value, which outlives no allocation of its own.
- * Calls cpr_constants_init() itself if g_const has not been populated yet. */
-const char *cpr_constants_hash(void);
+ * `out` is caller-owned, so it must outlive any CPRFPField storing it: pass a
+ * local buffer declared in the same scope as the field array. */
+void cpr_constants_hash(const CPRConstants *c, char out[17]);
 
 /* Builds the n<->p weak-rate cache fingerprint (nTOp_<hash>.txt), mirroring
  * weak_rates.cache._weak_rate_fingerprint(cfg). `out` must have room for at

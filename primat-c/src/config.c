@@ -1,5 +1,6 @@
 #include "config.h"
 #include "xalloc.h"
+#include "cache.h"
 #include "constants.h"
 
 #include <ctype.h>
@@ -276,6 +277,10 @@ typedef struct {
 } FieldDesc;
 
 #define FLD(field, kind) { #field, kind, offsetof(CPRConfig, field) }
+/* The 16 measured physical constants live in the nested cfg->consts, but are
+ * named without the prefix on every user-facing surface (params dict, --set,
+ * ini), exactly as in Python's DEFAULT_PARAMS. */
+#define FLD_CONST(field) { #field, F_DOUBLE, offsetof(CPRConfig, consts.field) }
 
 static const FieldDesc FIELD_TABLE[] = {
     FLD(verbose, F_BOOL),
@@ -299,6 +304,25 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(nevo_file_prefix, F_STRING),
     FLD(external_scale_factor, F_BOOL),
     FLD(custom_background, F_STRING),
+    /* The 16 measured physical constants (constants.OVERRIDABLE_CONSTANTS).
+     * The exact ten are deliberately absent: they cannot be set by name on
+     * either backend (Python's PRIMATConfig rejects them too). */
+    FLD_CONST(alphaem),
+    FLD_CONST(GF),
+    FLD_CONST(mZ),
+    FLD_CONST(me),
+    FLD_CONST(mn),
+    FLD_CONST(mp),
+    FLD_CONST(T0CMB),
+    FLD_CONST(gA),
+    FLD_CONST(Vud),
+    FLD_CONST(kappa_p),
+    FLD_CONST(kappa_n),
+    FLD_CONST(radproton),
+    FLD_CONST(ma),
+    FLD_CONST(He4Overma),
+    FLD_CONST(HOverma),
+    FLD_CONST(Neff_SM),
     FLD(T_start_cosmo_MeV, F_DOUBLE),
     FLD(T_end_MeV, F_DOUBLE),
     FLD(sampling_temperature_per_decade, F_INT),
@@ -368,6 +392,24 @@ static const FieldDesc FIELD_TABLE[] = {
  * cpr_config_field_name() can enumerate the *complete* settable surface --
  * `cprimat --list-params` omitting them would be a lie about what --set
  * accepts. Order matches config.py's DEFAULT_PARAMS grouping. */
+/* True iff a FIELD_TABLE offset points inside the nested cfg->consts, i.e. the
+ * entry was declared with FLD_CONST and writing it invalidates consts_hash. */
+static int offset_is_in_consts(size_t offset)
+{
+    return offset >= offsetof(CPRConfig, consts)
+        && offset < offsetof(CPRConfig, consts) + sizeof(CPRConstants);
+}
+
+void cpr_config_refresh_constants(CPRConfig *cfg)
+{
+    cpr_constants_hash(&cfg->consts, cfg->consts_hash);
+    /* eta0b is built from n0CMB, ma and maOvermB, so it must follow an
+     * override of T0CMB/ma/He4Overma/HOverma -- it was computed once from the
+     * defaults when Omegabh2 was first set. Mirrors _update_constants ->
+     * _update_derived in primat/config.py. */
+    cpr_config_set_Omegabh2(cfg, cfg->Omegabh2_);
+}
+
 static const char * const EXTRA_FIELD_NAMES[] = { "Omegabh2", "GN", "data_dir" };
 #define EXTRA_FIELD_N (sizeof(EXTRA_FIELD_NAMES) / sizeof(EXTRA_FIELD_NAMES[0]))
 
@@ -552,6 +594,11 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
 {
     memset(cfg, 0, sizeof(*cfg));
     cpr_constants_init();
+    /* This run's own copy of the physical constants: the 16 measured ones are
+     * then settable by name (see FLD_CONST in FIELD_TABLE), the ten exact ones
+     * stay at these values. */
+    cfg->consts = g_const;
+    cpr_constants_hash(&cfg->consts, cfg->consts_hash);
 
     cpr_config_assign_data_dir(cfg, data_dir);
 
@@ -809,8 +856,8 @@ void cpr_config_set_Omegabh2(CPRConfig *cfg, double value)
     cfg->Omegabh2_ = value;
     /* Omegabh2_to_eta0b = (rhocOverh2 / n0CMB) / (ma / maOvermB); eta0b =
      * Omegabh2_to_eta0b * Omegabh2 (Phys. Rep. baryon-to-photon ratio). */
-    cfg->Omegabh2_to_eta0b = (cpr_config_rhocOverh2(cfg) / cpr_n0CMB())
-                             / (g_const.ma / cpr_maOvermB());
+    cfg->Omegabh2_to_eta0b = (cpr_config_rhocOverh2(cfg) / cpr_n0CMB(&cfg->consts))
+                             / (cfg->consts.ma / cpr_maOvermB(&cfg->consts));
     cfg->eta0b = cfg->Omegabh2_to_eta0b * cfg->Omegabh2_;
 }
 
@@ -960,6 +1007,11 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                 snprintf(*errmsg, 128, "%s expects a number", name);
                 return CPR_SET_BAD_VALUE;
             }
+            /* One of the 16 measured constants (an FLD_CONST entry): keep the
+             * cached hash in step, so the fingerprints can never describe
+             * another set of constants than the one just set. */
+            if (offset_is_in_consts(FIELD_TABLE[i].offset))
+                cpr_config_refresh_constants(cfg);
             return CPR_SET_OK;
         case F_DOUBLE_OR_NONE:
             /* None → 0.0 (sentinel for "no cap"); any positive number is the cap value. */
@@ -1135,9 +1187,43 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
                 "mc_rate_rescale_cap=%.6g is out of range: must be >= 1 or None "
                 "(it clamps the MC rate factor to [1/cap, cap], whose bounds "
                 "cross below 1)", cfg->mc_rate_rescale_cap);
+    /* Measured physical constants: a mass, a coupling or a temperature that is
+     * zero or negative is not a sensitivity study but a typo (the integrands
+     * divide by me and take sqrt(E^2 - me^2)). The two anomalous magnetic
+     * moments are absent -- kappa_n is negative by nature -- and Neff_SM only
+     * needs >= 0. Mirrors primat/config.py's _PARAM_RANGE. */
+    CPR_REQUIRE(cfg->consts.alphaem > 0,
+                "alphaem=%.6g is out of range: must be > 0", cfg->consts.alphaem);
+    CPR_REQUIRE(cfg->consts.GF > 0,
+                "GF=%.6g is out of range: must be > 0", cfg->consts.GF);
+    CPR_REQUIRE(cfg->consts.mZ > 0,
+                "mZ=%.6g is out of range: must be > 0", cfg->consts.mZ);
+    CPR_REQUIRE(cfg->consts.me > 0,
+                "me=%.6g is out of range: must be > 0", cfg->consts.me);
+    CPR_REQUIRE(cfg->consts.mn > 0,
+                "mn=%.6g is out of range: must be > 0", cfg->consts.mn);
+    CPR_REQUIRE(cfg->consts.mp > 0,
+                "mp=%.6g is out of range: must be > 0", cfg->consts.mp);
+    CPR_REQUIRE(cfg->consts.T0CMB > 0,
+                "T0CMB=%.6g is out of range: must be > 0", cfg->consts.T0CMB);
+    CPR_REQUIRE(cfg->consts.gA > 0,
+                "gA=%.6g is out of range: must be > 0", cfg->consts.gA);
+    CPR_REQUIRE(cfg->consts.Vud > 0,
+                "Vud=%.6g is out of range: must be > 0", cfg->consts.Vud);
+    CPR_REQUIRE(cfg->consts.radproton > 0,
+                "radproton=%.6g is out of range: must be > 0", cfg->consts.radproton);
+    CPR_REQUIRE(cfg->consts.ma > 0,
+                "ma=%.6g is out of range: must be > 0", cfg->consts.ma);
+    CPR_REQUIRE(cfg->consts.He4Overma > 0,
+                "He4Overma=%.6g is out of range: must be > 0", cfg->consts.He4Overma);
+    CPR_REQUIRE(cfg->consts.HOverma > 0,
+                "HOverma=%.6g is out of range: must be > 0", cfg->consts.HOverma);
+
     /* non-negative doubles (a 1-sigma width may legitimately be 0) */
     CPR_REQUIRE(cfg->std_tau_n >= 0,
                 "std_tau_n=%.6g is out of range: must be >= 0", cfg->std_tau_n);
+    CPR_REQUIRE(cfg->consts.Neff_SM >= 0,
+                "Neff_SM=%.6g is out of range: must be >= 0", cfg->consts.Neff_SM);
 
     /* strictly positive integer counts */
     CPR_REQUIRE(cfg->n_electron_table >= 1,

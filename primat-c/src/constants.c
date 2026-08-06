@@ -50,7 +50,10 @@ void cpr_constants_init(void)
 
 double cpr_erg(void)
 {
-    return g_const.gram * g_const.cm * g_const.cm / g_const.second;
+    /* gram cm^2 / second^2 -- the second is squared, as the dimensions
+     * require. Exactly 1.0 under the natural-units convention. */
+    return g_const.gram * g_const.cm * g_const.cm
+           / (g_const.second * g_const.second);
 }
 
 double cpr_MeV_to_Kelvin(void) { return g_const.MeV / g_const.kB; }
@@ -68,18 +71,18 @@ double cpr_T_start(void) { return 10.0 * cpr_MeV_to_Kelvin(); }
 double cpr_T_weak(void)  { return 1.0 * cpr_MeV_to_Kelvin(); }
 double cpr_T_nucl(void)  { return 0.11 * cpr_MeV_to_Kelvin(); }
 
-double cpr_sW2(void)
+double cpr_sW2(const CPRConstants *c)
 {
     /* On-shell relation: sin^2(theta_W) from GF, mZ, alphaem. */
-    return 0.5 * (1. - sqrt(1. - 2. * sqrt(2.) * M_PI * g_const.alphaem
-                             / (g_const.GF * g_const.mZ * g_const.mZ)));
+    return 0.5 * (1. - sqrt(1. - 2. * sqrt(2.) * M_PI * c->alphaem
+                             / (c->GF * c->mZ * c->mZ)));
 }
 
-double cpr_geL(void) { return 0.5 + cpr_sW2(); }
-double cpr_geR(void) { return cpr_sW2(); }
-double cpr_gmuL(void) { return -0.5 + cpr_sW2(); }
-double cpr_gmuR(void) { return cpr_sW2(); }
-double cpr_deltakappa(void) { return g_const.kappa_p - g_const.kappa_n; }
+double cpr_geL(const CPRConstants *c) { return 0.5 + cpr_sW2(c); }
+double cpr_geR(const CPRConstants *c) { return cpr_sW2(c); }
+double cpr_gmuL(const CPRConstants *c) { return -0.5 + cpr_sW2(c); }
+double cpr_gmuR(const CPRConstants *c) { return cpr_sW2(c); }
+double cpr_deltakappa(const CPRConstants *c) { return c->kappa_p - c->kappa_n; }
 
 double cpr_s0bar(void)
 {
@@ -88,28 +91,28 @@ double cpr_s0bar(void)
     return 4. * M_PI * M_PI / 45.;
 }
 
-double cpr_s0CMB(void)
+double cpr_s0CMB(const CPRConstants *c)
 {
-    double t = g_const.T0CMB / cpr_MeV_to_Kelvin();
+    double t = c->T0CMB / cpr_MeV_to_Kelvin();
     return cpr_s0bar() * t * t * t;
 }
 
-double cpr_n0CMB(void)
+double cpr_n0CMB(const CPRConstants *c)
 {
     /* n_gamma = (2 zeta(3)/pi^2) T^3 for a bosonic gas with g=2 (photon). */
-    double t = g_const.T0CMB / cpr_MeV_to_Kelvin();
+    double t = c->T0CMB / cpr_MeV_to_Kelvin();
     return (2. * ZETA3) / (M_PI * M_PI) * t * t * t;
 }
 
-double cpr_mB(void)
+double cpr_mB(const CPRConstants *c)
 {
     /* Mean baryon mass [MeV] for a 24.7% He4 mass-fraction mixture with H. */
     const double percentHe = 24.7 / 100.;
-    return ((1. - percentHe) * g_const.HOverma
-            + percentHe * g_const.He4Overma / 4.) * g_const.ma;
+    return ((1. - percentHe) * c->HOverma
+            + percentHe * c->He4Overma / 4.) * c->ma;
 }
 
-double cpr_maOvermB(void) { return g_const.ma / cpr_mB(); }
+double cpr_maOvermB(const CPRConstants *c) { return c->ma / cpr_mB(c); }
 
 double cpr_HubbleOverh(void)
 {

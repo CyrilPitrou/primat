@@ -463,8 +463,8 @@ int cpr_compute_detailed_balance_coefficients(const char * const *reactants, siz
                                                 char **errmsg)
 {
     const double keV = g_const.keV, kB = g_const.kB;
-    const double ma_e = g_const.ma * g_const.MeV; /* atomic mass unit [erg] */
-    const double me_e = g_const.me * g_const.MeV; /* electron mass [erg] */
+    const double ma_e = cfg->consts.ma * g_const.MeV; /* atomic mass unit [erg] */
+    const double me_e = cfg->consts.me * g_const.MeV; /* electron mass [erg] */
 
     /* Nuclear (not atomic) rest mass energy [erg]: A*m_u + excess - Z*m_e. */
     double mass_cache[16];

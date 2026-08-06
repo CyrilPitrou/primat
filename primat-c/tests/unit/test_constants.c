@@ -35,15 +35,16 @@ int main(void)
      * the on-shell relation -- see test_constants.py's docstring. */
     double expected_sW2 = 0.5 * (1.0 - sqrt(1.0 - 2.0 * sqrt(2.0) * M_PI
                                   * g_const.alphaem / (g_const.GF * g_const.mZ * g_const.mZ)));
-    CHECK(close_rel(cpr_sW2(), expected_sW2, 1e-12), "sW2 matches on-shell relation");
+    CHECK(close_rel(cpr_sW2(&g_const), expected_sW2, 1e-12), "sW2 matches on-shell relation");
     /* Sanity check against the well-known PDG ballpark (~0.223 in MSbar;
      * the on-shell scheme used here is close but not identical). */
-    CHECK(cpr_sW2() > 0.20 && cpr_sW2() < 0.24, "sW2 is in the expected ballpark");
+    CHECK(cpr_sW2(&g_const) > 0.20 && cpr_sW2(&g_const) < 0.24,
+          "sW2 is in the expected ballpark");
 
-    CHECK(close_rel(cpr_geL(), 0.5 + cpr_sW2(), 1e-12), "geL == 0.5 + sW2");
-    CHECK(close_rel(cpr_geR(), cpr_sW2(), 1e-12), "geR == sW2");
-    CHECK(close_rel(cpr_gmuL(), -0.5 + cpr_sW2(), 1e-12), "gmuL == -0.5 + sW2");
-    CHECK(close_rel(cpr_gmuR(), cpr_sW2(), 1e-12), "gmuR == sW2");
+    CHECK(close_rel(cpr_geL(&g_const), 0.5 + cpr_sW2(&g_const), 1e-12), "geL == 0.5 + sW2");
+    CHECK(close_rel(cpr_geR(&g_const), cpr_sW2(&g_const), 1e-12), "geR == sW2");
+    CHECK(close_rel(cpr_gmuL(&g_const), -0.5 + cpr_sW2(&g_const), 1e-12), "gmuL == -0.5 + sW2");
+    CHECK(close_rel(cpr_gmuR(&g_const), cpr_sW2(&g_const), 1e-12), "gmuR == sW2");
 
     /* T_weak/T_nucl are MeV_to_Kelvin scaled by their defining MeV values. */
     CHECK(close_rel(cpr_T_weak(), 1.0 * cpr_MeV_to_Kelvin(), 1e-12),

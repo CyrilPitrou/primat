@@ -35,6 +35,8 @@
 
 #include <stddef.h>
 
+#include "constants.h"
+
 /* ---- Generic tagged-union value, used only at the parsing/CLI/ini
  * boundary (cpr_parse_literal, cpr_config_set_by_name). ---- */
 typedef enum { CPR_NONE, CPR_BOOL, CPR_INT, CPR_DOUBLE, CPR_STRING } CPRType;
@@ -188,6 +190,22 @@ typedef struct {
                 * cpr_config_set_by_name("GN", ...) use -- never assign this
                 * field directly with an SI-unit value. */
 
+    /* Physical constants for THIS run. Seeded from g_const by
+     * cpr_config_init_defaults; the 16 measured fields are then settable by
+     * name (alphaem, me, gA, ...) like any other parameter, while the ten
+     * exact ones have no field-table entry and stay at their defaults. Every
+     * solver read of a measured constant goes through here -- never through
+     * g_const -- so coexisting configs and MC worker threads cannot see each
+     * other's values. */
+    CPRConstants consts;
+
+    /* 16-hex-digit hash of `consts`, refreshed by
+     * cpr_config_refresh_consts_hash whenever a constant is set. Every
+     * fingerprint builder embeds it, and stores this very pointer in a
+     * CPRFPField -- which is why it lives here, with the config's lifetime,
+     * rather than in a builder-local buffer. */
+    char consts_hash[17];
+
     /* ---- background thermodynamics ---- */
     double T_start_cosmo_MeV;
     double T_end_MeV;
@@ -332,6 +350,13 @@ typedef struct {
 /* True iff cfg->network == "small" / "large" (mirrors is_small/is_large). */
 int cpr_config_is_small(const CPRConfig *cfg);
 int cpr_config_is_large(const CPRConfig *cfg);
+
+/* Recomputes everything that follows from cfg->consts: the cache-key hash
+ * cfg->consts_hash, and the eta0b chain built on n0CMB/ma/maOvermB. Called
+ * after every successful cpr_config_set_by_name of a measured constant, so no
+ * path can leave a config whose derived values describe other constants.
+ * Mirrors PRIMATConfig._update_constants. */
+void cpr_config_refresh_constants(CPRConfig *cfg);
 
 /* Derived constants depending on overridable params (mirrors the Python
  * @property of the same name). */

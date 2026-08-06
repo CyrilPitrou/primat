@@ -76,14 +76,16 @@ int main(void)
      * arguments must match the cpr_qed_compute_tables call above: they are
      * fingerprint fields, so passing a different grid here would write a
      * header describing a table that was never computed. */
-    rc = cpr_qed_save_tables(&t, "/tmp", 1e-3, 1e2, 200, &err);
+    char chash[17];
+    cpr_constants_hash(&g_const, chash);
+    rc = cpr_qed_save_tables(&t, "/tmp", 1e-3, 1e2, 200, chash, &err);
     CHECK(rc == 0, "cpr_qed_save_tables succeeds");
 
     /* The written files must carry a fingerprint header that the standard
      * reader can parse -- this is what makes a stale cache detectable at all
      * (plasma.c's split_valid gate), and what the two backends compare. */
     CPRFPField qfp[5];
-    size_t nqfp = cpr_qed_fingerprint(1e-3, 1e2, 200, qfp);
+    size_t nqfp = cpr_qed_fingerprint(1e-3, 1e2, 200, chash, qfp);
     char *want_hash = cpr_fingerprint_hash(qfp, nqfp);
     char *got_hash = cpr_cache_read_fingerprint_hash("/tmp/QED_pressure_correction_e2.txt");
     CHECK(got_hash != NULL, "saved e2 table carries a fingerprint_hash header");

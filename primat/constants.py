@@ -2,21 +2,23 @@
 """
 constants.py
 ============
-Frozen physical constants and unit-conversion factors for primat.
+Physical constants and unit-conversion factors for primat.
 
-This module is the single source of truth for the *fixed* physical
-constants used throughout the code: PDG masses and couplings, the
-CGS-vs-natural-units conversion factors, and the handful of purely
-numerical quantities (e.g. the high-T entropy coefficient ``s0bar``,
-the Weinberg angle ``sW2``) that follow from them.  None of the values
-here depend on any run-time configuration choice — quantities that *do*
-(``cfg.GN``, ``cfg.Omegabh2``, ``cfg.tau_n``, ``cfg.T_start_cosmo_MeV``, …)
-remain user-settable knobs on :class:`primat.config.PRIMATConfig`.
+This module is the single source of truth for the constants used throughout
+the code: PDG masses and couplings, the CGS-vs-natural-units conversion
+factors, and the derived quantities (the Weinberg angle ``sW2``, the mean
+baryon mass ``mB``, …) that follow from them.
 
-``CONST`` is a single frozen, module-level instance.  ``PRIMATConfig``
-re-exposes every field/property of ``CONST`` as a class attribute (e.g.
-``cfg.me``, ``cfg.MeV_to_Kelvin``) so existing physics code is unaffected.
-New code may instead import ``CONST`` directly:
+The 26 fields split by one question — *does this number have an error bar?*
+:data:`OVERRIDABLE_CONSTANTS` (16) are measured, so they are ``DEFAULT_PARAMS``
+keys settable like any other parameter; :data:`FROZEN_CONSTANTS` (10) are
+exact by the 2019 SI redefinition, an IAU definition, or the natural-units
+convention, so they stay fixed and ``PRIMATConfig`` rejects an override.
+
+``CONST`` is the frozen default instance.  A ``PRIMATConfig`` exposes its own
+values as plain attributes (``cfg.me``, ``cfg.sW2``, …) and its own snapshot as
+``cfg.constants``; ``CONST`` remains the right import for code with no config
+in hand:
 
     >>> from primat.constants import CONST
     >>> CONST.me
@@ -37,12 +39,45 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.special import zeta
 
-__all__ = ['Constants', 'CONST']
+__all__ = ['Constants', 'CONST', 'OVERRIDABLE_CONSTANTS', 'FROZEN_CONSTANTS',
+           'DERIVED_OVERRIDABLE']
+
+# The 16 measured constants, promoted to DEFAULT_PARAMS keys by
+# primat.config: each carries an experimental uncertainty, so varying it is a
+# sensitivity study rather than a redefinition.
+OVERRIDABLE_CONSTANTS = (
+    'alphaem', 'GF', 'mZ', 'me', 'mn', 'mp', 'T0CMB', 'gA', 'Vud',
+    'kappa_p', 'kappa_n', 'radproton', 'ma', 'He4Overma', 'HOverma', 'Neff_SM',
+)
+
+# The 10 that stay fixed: Kelvin/second/cm/gram are 1 by the natural-units
+# convention, kB/clight/hbar/MeV/keV are exact by the 2019 SI redefinition,
+# and Mpc is an IAU definition. PRIMATConfig rejects an override of any of
+# them (see PRIMATConfig.validate_frozen_constants).
+FROZEN_CONSTANTS = (
+    'Kelvin', 'second', 'cm', 'gram',
+    'kB', 'clight', 'hbar', 'MeV', 'keV', 'Mpc',
+)
+
+# The derived properties that depend on at least one OVERRIDABLE_CONSTANTS
+# field, and so must be recomputed whenever a config overrides one. The rest
+# (MeV_to_*, T_start/T_weak/T_nucl, s0bar, erg, HubbleOverh, GN_*_to_*) are
+# functions of frozen fields only and never move.
+DERIVED_OVERRIDABLE = (
+    'sW2', 'geL', 'geR', 'gmuL', 'gmuR',   # alphaem, GF, mZ
+    'deltakappa',                          # kappa_p, kappa_n
+    's0CMB', 'n0CMB',                      # T0CMB
+    'mB', 'maOvermB',                      # ma, He4Overma, HOverma
+)
 
 
 @dataclass(frozen=True)
 class Constants:
-    """Fixed physical constants and unit-conversion factors (immutable).
+    """Physical constants and unit-conversion factors (frozen dataclass).
+
+    A ``PRIMATConfig`` carries its own instance (``cfg.constants``), built by
+    replacing the :data:`OVERRIDABLE_CONSTANTS` fields with that config's
+    values; :data:`CONST` is the all-defaults one.
 
     Grouped as:
 
@@ -120,15 +155,10 @@ class Constants:
     # (Bennett et al. 2021, arXiv:2012.02726; de Salas & Pastor numerical
     # value to 3.044 quoted from the more recent re-evaluations of the
     # Mangano/Miele 3.046 result). Used wherever the *standard*-physics value
-    # of N_eff is needed as an input (rather than the value primat itself
-    # solves for via the NEVO non-instantaneous-decoupling table). Its only
-    # numerical use is the EDE-era radiation normalisation in
-    # ``StandardBackground._setup_EDE`` (mirrored by ``setup_ede`` in
-    # primat-c/src/background.c); elsewhere it appears only as the reference
-    # point of the reported ``Neff = Neff_SM + DeltaNeff`` relation.
-    # (This comment also used to cite a "radiation-density sanity check in
-    # StandardBackground._replace_LCDM_with_exact" -- that method performed no
-    # such check, never read Neff_SM, and has since been removed outright.)
+    # of N_eff is needed as an input, rather than the value primat itself
+    # solves for via the NEVO table: numerically only in the EDE-era radiation
+    # normalisation, elsewhere as the reference point of the reported
+    # ``Neff = Neff_SM + DeltaNeff`` relation.
     Neff_SM:   float = 3.044
 
     # ------------------------------------------------------------------

@@ -133,11 +133,12 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     /* --- Fingerprint gate on the current two-file format ------------------
      * The tables are a function of alpha and me (through the integrands) and
      * of the grid; cpr_qed_fingerprint records both, keyed on the whole
-     * constants struct via cpr_constants_hash. QED_T_MIN/QED_T_MAX/QED_N_PTS
+     * constants struct via cfg->consts_hash. QED_T_MIN/QED_T_MAX/QED_N_PTS
      * are shared with the cpr_qed_compute_tables call below so the hash always
      * describes the grid actually built. Mirrors plasma.py's _load_tables. */
     CPRFPField qed_fields[5];
-    size_t n_qed_fp = cpr_qed_fingerprint(QED_T_MIN, QED_T_MAX, QED_N_PTS, qed_fields);
+    size_t n_qed_fp = cpr_qed_fingerprint(QED_T_MIN, QED_T_MAX, QED_N_PTS,
+                                          cfg->consts_hash, qed_fields);
     char *qed_fp_hash = cpr_fingerprint_hash(qed_fields, n_qed_fp);
 
     int split_on_disk = file_exists(e2_file) && file_exists(e3_file);
@@ -187,14 +188,15 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
                                          : "files not found");
         CPRQEDTables t;
         if (cpr_qed_compute_tables(QED_T_MIN, QED_T_MAX, QED_N_PTS,
-                                    g_const.alphaem, g_const.me, &t, errmsg))
+                                    cfg->consts.alphaem, cfg->consts.me, &t, errmsg))
             return 1;
         if (save) {
             /* Non-fatal on a read-only install: the freshly computed
              * tables below are valid, only the disk cache is skipped -- warn
              * and point the user at the cache_dir remedy, do NOT abort. */
             if (cpr_qed_save_tables(&t, plasma_wdir,
-                                     QED_T_MIN, QED_T_MAX, QED_N_PTS, errmsg)) {
+                                     QED_T_MIN, QED_T_MAX, QED_N_PTS,
+                                     cfg->consts_hash, errmsg)) {
                 cpr_log(cfg, "plasma",
                         "could not write cache to %s: results are unaffected, "
                         "but the next run will recompute. Set the cache_dir "
@@ -406,33 +408,29 @@ static double elec_integrate(ElecIntegrand fn, double x, double upper)
     return elec_integrate_at_tol(&ctx, x, upper, seg_tol);
 }
 
-static double rho_e_exact(double Tg)
+static double rho_e_exact(double Tg, double me)
 {
-    double me = g_const.me;
     if (Tg < me / ELEC_THERMO_LOWT_RATIO) return 0.0;
     double r = elec_integrate(rho_e_intgd, me / Tg, 100.0);
     return 4.0 / (2.0 * M_PI * M_PI) * pow(Tg, 4.0) * r;
 }
 
-static double drho_e_dT_exact(double Tg)
+static double drho_e_dT_exact(double Tg, double me)
 {
-    double me = g_const.me;
     if (Tg < me / ELEC_THERMO_LOWT_RATIO) return 0.0;
     double r = elec_integrate(drho_e_dT_intgd, me / Tg, 100.0);
     return 1.0 / (2.0 * M_PI * M_PI) * pow(Tg, 3.0) * r;
 }
 
-static double p_e_exact(double Tg)
+static double p_e_exact(double Tg, double me)
 {
-    double me = g_const.me;
     if (Tg < me / ELEC_THERMO_LOWT_RATIO) return 0.0;
     double r = elec_integrate(p_e_intgd, me / Tg, 100.0);
     return 4.0 / (6.0 * M_PI * M_PI) * pow(Tg, 4.0) * r;
 }
 
-static double dp_e_dT_exact(double Tg)
+static double dp_e_dT_exact(double Tg, double me)
 {
-    double me = g_const.me;
     if (Tg < me / ELEC_THERMO_LOWT_RATIO) return 0.0;
     double r = elec_integrate(dp_e_dT_intgd, me / Tg, 100.0);
     return 1.0 / (6.0 * M_PI * M_PI) * pow(Tg, 3.0) * r;
@@ -445,7 +443,8 @@ static double dp_e_dT_exact(double Tg)
 
 static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
 {
-    double Tmin = g_const.me / ELEC_THERMO_LOWT_RATIO;
+    const double me = cfg->consts.me;
+    double Tmin = me / ELEC_THERMO_LOWT_RATIO;
     double Tmax = fmax(cfg->T_start_cosmo_MeV, 100.0) * 1.5;
     size_t npts = (size_t)cfg->n_electron_table;
 
@@ -455,9 +454,8 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
     fields[2] = (CPRFPField){ "T_start_cosmo_MeV", { CPR_DOUBLE, { .d = cfg->T_start_cosmo_MeV } } };
     /* Physical constants: the e+- integrands and the grid's lower edge
      * (Tmin = me/30 above) are functions of the electron mass, so editing `me`
-     * changes every row. Mirrors _build_electron_tables in plasma.py; the
-     * pointer is cpr_constants_hash's process-lifetime static buffer. */
-    fields[3] = (CPRFPField){ "constants_hash", { CPR_STRING, { .s = cpr_constants_hash() } } };
+     * changes every row. Mirrors _build_electron_tables in plasma.py. */
+    fields[3] = (CPRFPField){ "constants_hash", { CPR_STRING, { .s = cfg->consts_hash } } };
     char *fp_hash = cpr_fingerprint_hash(fields, 4);
 
     /* The hash goes in the FILENAME, not just the header, mirroring the weak
@@ -522,10 +520,10 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
     for (size_t i = 0; i < npts; i++) {
         double frac = (npts == 1) ? 0.0 : (double)i / (double)(npts - 1);
         grid[i] = pow(10.0, log_min + frac * (log_max - log_min));
-        rho_e_arr[i] = rho_e_exact(grid[i]);
-        p_e_arr[i] = p_e_exact(grid[i]);
-        drho_e_dT_arr[i] = drho_e_dT_exact(grid[i]);
-        dp_e_dT_arr[i] = dp_e_dT_exact(grid[i]);
+        rho_e_arr[i] = rho_e_exact(grid[i], me);
+        p_e_arr[i] = p_e_exact(grid[i], me);
+        drho_e_dT_arr[i] = drho_e_dT_exact(grid[i], me);
+        dp_e_dT_arr[i] = dp_e_dT_exact(grid[i], me);
     }
 
     int rc = cpr_cubic_spline_fit_notaknot(grid, rho_e_arr, npts, &pl->rho_e_tab, errmsg)
@@ -605,25 +603,25 @@ static double qed_d2P(const CPRPlasma *pl, double Tg) { return pl->qed_active ? 
 
 double cpr_plasma_rho_e(const CPRPlasma *pl, double Tg)
 {
-    if (Tg < g_const.me / ELEC_THERMO_LOWT_RATIO) return 0.0;
+    if (Tg < pl->cfg->consts.me / ELEC_THERMO_LOWT_RATIO) return 0.0;
     return cpr_cubic_spline_eval(&pl->rho_e_tab, Tg);
 }
 
 double cpr_plasma_drho_e_dT(const CPRPlasma *pl, double Tg)
 {
-    if (Tg < g_const.me / ELEC_THERMO_LOWT_RATIO) return 0.0;
+    if (Tg < pl->cfg->consts.me / ELEC_THERMO_LOWT_RATIO) return 0.0;
     return cpr_cubic_spline_eval(&pl->drho_e_dT_tab, Tg);
 }
 
 double cpr_plasma_p_e(const CPRPlasma *pl, double Tg)
 {
-    if (Tg < g_const.me / ELEC_THERMO_LOWT_RATIO) return 0.0;
+    if (Tg < pl->cfg->consts.me / ELEC_THERMO_LOWT_RATIO) return 0.0;
     return cpr_cubic_spline_eval(&pl->p_e_tab, Tg);
 }
 
 double cpr_plasma_dp_e_dT(const CPRPlasma *pl, double Tg)
 {
-    if (Tg < g_const.me / ELEC_THERMO_LOWT_RATIO) return 0.0;
+    if (Tg < pl->cfg->consts.me / ELEC_THERMO_LOWT_RATIO) return 0.0;
     return cpr_cubic_spline_eval(&pl->dp_e_dT_tab, Tg);
 }
 

@@ -59,6 +59,10 @@ int main(void)
 
     CPRConfig cfg;
     memset(&cfg, 0, sizeof(cfg));
+    /* The 16 measured constants live per config now: without this the
+     * memset above would leave the thermal integrands reading alphaem = 0. */
+    cfg.consts = g_const;
+    cpr_config_refresh_constants(&cfg);
     cfg.epsrel_thermal = 1.0e-3;
     cfg.munuOverTnu = 0.0;
     /* Production defaults (config.c's cpr_config_default): the 2D
@@ -67,12 +71,13 @@ int main(void)
     cfg.vegas_n_eval = 20000;
     cfg.vegas_n_itn = 20;
 
-    double me = g_const.me * g_const.MeV;
-    double mn = g_const.mn * g_const.MeV;
-    double mp = g_const.mp * g_const.MeV;
+    double me = cfg.consts.me * g_const.MeV;
+    double mn = cfg.consts.mn * g_const.MeV;
+    double mp = cfg.consts.mp * g_const.MeV;
     /* nh=NULL: L_CCRTh_compute and everything it calls never touch
      * ctx->nh (only the non-thermal Born/CCR/SD rate does). */
-    RateCtx ctx = { &cfg, NULL, me, mn, mp, mn - mp, cfg.munuOverTnu, g_const.gA, cpr_deltakappa() };
+    RateCtx ctx = { &cfg, NULL, me, mn, mp, mn - mp, cfg.munuOverTnu, cfg.consts.gA,
+                    cpr_deltakappa(&cfg.consts) };
 
     /* Flat Tnu/Tg=0.7138 ratio table (see header comment), bracketing the
      * full T range below with just two points. */

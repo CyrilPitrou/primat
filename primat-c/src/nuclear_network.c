@@ -58,14 +58,14 @@ static double saha_YA(const CPRConfig *cfg, double eta_b, const char *name,
     double Z = (double)nuc->Z;
     double N = A - Z;
 
-    double Mass = A * g_const.ma * g_const.MeV
+    double Mass = A * cfg->consts.ma * g_const.MeV
                   + g_const.keV * nuc->mass_excess_keV
-                  - Z * g_const.me * g_const.MeV;
+                  - Z * cfg->consts.me * g_const.MeV;
     double BindE = N * nuc_n->mass_excess_keV + Z * nuc_p->mass_excess_keV
                    - nuc->mass_excess_keV;
     /* (M_A / mn^N mp^Z)^(3/2): ratio of nuclear to free-nucleon masses. */
-    double NormYA = pow(Mass / (pow(g_const.mn * g_const.MeV, A - Z)
-                                  * pow(g_const.mp * g_const.MeV, Z)),
+    double NormYA = pow(Mass / (pow(cfg->consts.mn * g_const.MeV, A - Z)
+                                  * pow(cfg->consts.mp * g_const.MeV, Z)),
                           1.5);
 
     return (2.0 * nuc->spin + 1.0)
@@ -229,7 +229,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     nn->t_end = t_end;
 
     /* ---- Baryon-to-photon ratio at T_weak, for the MT-era Saha seed. ---- */
-    double nB_weak = cpr_bg_rhoB_BBN(background, t_weak) / (g_const.ma * cpr_MeV4_to_gcmm3());
+    double nB_weak = cpr_bg_rhoB_BBN(background, t_weak) / (cfg->consts.ma * cpr_MeV4_to_gcmm3());
     double ngamma_weak = (2.0 * ZETA3 / (M_PI * M_PI)) * pow(T_weak_K / cpr_MeV_to_Kelvin(), 3.0);
     double eta_b_weak = nB_weak / ngamma_weak;
 
