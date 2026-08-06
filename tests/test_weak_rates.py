@@ -609,8 +609,8 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
 
 def test_fingerprint_unaffected_by_external_scale_factor():
     """external_scale_factor only changes how a(T_gamma) is obtained (entropy
-    ODE vs. reading the NEVO table's x column, see CLAUDE.md "Advanced:
-    custom NEVO tables") -- it does not change the rate(T) integrand itself
+    ODE vs. reading the NEVO table's x column, see
+    docs/howto/nevo-tables.md) -- it does not change the rate(T) integrand itself
     (ComputeWeakRates takes a T grid directly, with no dependence on a(T)).
     _WEAK_RATE_BG_FIELDS (weak_rates.py) deliberately excludes
     external_scale_factor for exactly this reason (see the module's "v1"

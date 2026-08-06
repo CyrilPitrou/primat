@@ -206,6 +206,27 @@ backend too. (`extra_rho` is handed to C as a table sampled from the
 callables; `decay_era`'s only output, the `output_decay_evolution` TSV, is
 written identically by both backends.)
 
+### Backend parity contract
+
+The two backends are held to a single contract, so switching between them is a
+performance choice and not a physics choice:
+
+- **Physics and numerics.** Every formula, correction term, clamp, tolerance,
+  cache-fingerprint field and default exists in both `primat/` and
+  `primat-c/src/`; a change to one is mirrored in the other.
+- **Output shape.** Same result-dict keys (including the `Y_final` sub-dict),
+  same time-evolution TSV columns in the same order — the schema contract is
+  `primat/evolution.py`'s module docstring.
+- **On-disk caches.** Both backends compute the same fingerprint hash for a
+  given configuration, so they share every cache file rather than evicting each
+  other's.
+- **Console output.** Verbose (`verbose=True`) runs report the same stages with
+  the same wording.
+
+`tests/test_backend_parity.py` and `tests/test_cache_parity.py` enforce this in
+code; the former's module docstring is the authoritative account of the
+numerical agreement the two currently achieve and of what causes the residual.
+
 ### Using primat-c directly
 
 For users who prefer to work directly with the C code, the `primat-c/` directory

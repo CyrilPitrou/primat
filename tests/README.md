@@ -220,3 +220,21 @@ sharply from `small` on these three rows, while agreeing closely with each
 other). `tests/test_large_network.py` nonetheless excludes H3/Li7/Be7 from
 its large-vs-amax=8 ≲1e-3 assertions, out of caution against this shared
 decay-channel sensitivity.
+
+## Known cross-backend divergences
+
+README.md's "Backend parity contract" says the two backends mirror each
+other's physics and numerics. Three places knowingly do not, and this is the
+tracked list of them, so that a future reviewer neither re-discovers them nor
+"fixes" one that was measured and kept on purpose. The *magnitudes* are pinned
+and kept current in `tests/test_backend_parity.py`'s module docstring — this
+section states the causes and the decisions.
+
+| Divergence | Status |
+|---|---|
+| **HT-era integrator.** Python integrates the n↔p-only HT era with `LSODA`, C with Dormand-Prince RK45. | **Intentional.** This one mismatch is the whole YP gap: patching Python's HT method to RK45 reproduces C's `YPBBN` exactly. It therefore does not shrink with tighter `numerical_precision`. Aligning both on BDF was tried and *degraded* YP parity, so alignment would buy reviewability, not accuracy. Documented in place in both backends' `nuclear_network` sources. |
+| **`external_scale_factor` interpolant.** Python reads T(a) linearly inside its time-integration RHS; C fits a not-a-knot cubic over the same nodes. | **Intentional.** The C cubic is a performance workaround — its RK45 stepper rejected ~65 % of steps on the kinks — and leaves the solution unchanged; LSODA has no such problem. Making Python match was tried and measured *worse* in both self-convergence and cross-backend YP, because in this mode a(T) is itself a table read (NEVO's `x` column), so a cubic through those nodes manufactures curvature the data does not contain. |
+| **Residual D/H gap.** At converged tolerance the two settle on different D/H, with Li7/H and He3/H following and YP/Neff agreeing far better. | **Open.** It does not shrink with `numerical_precision` (swept 1e-6 … 1e-10), so it is structural, not round-off. The background is ruled out: `t(T)` agrees cross-backend and each backend self-converges, and the weak-rate tables are tabulated on identical grids (see `test_cache_parity.py`). The cause is downstream — the nuclear network itself, or how the n↔p rates couple into it. It sits far below observational significance (observed D/H is known to ~1 %). |
+
+Everything else that round-1 review found divergent between the two backends
+was closed rather than documented; `git log` is the record of those.

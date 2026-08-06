@@ -94,6 +94,66 @@ in `tests/README.md`'s "Validation reference" — not something to use for
 routine runs or MC sampling. Most of that time is the thermal (CCRTh) `vegas`
 recompute: those settings miss both shipped weak-rate caches.
 
+## Where the Python backend's time goes
+
+The pure-Python backend is roughly 35× slower than C on a warm `small` run, and
+that gap is *not* the physics: a `cProfile` of a warm run showed the compiled
+numba RHS kernel accounting for ~2 % of the runtime, the rest being
+Python-level glue paid once per ODE step.
+
+Profile of a warm `small` run (2026-07-16, ≈3 s under the profiler, 6.3 M
+calls), before the optimisation described below:
+
+| Hot spot | Cumulative | Nature |
+|---|---|---|
+| scipy interpolator `__call__`s (`interp1d`/`PPoly`/`BSpline`) | ~1.4 s | 105 k **scalar** evaluations of `T_of_t`, `rhoB_BBN`, the weak-rate `_eval` and the thermal-correction lambdas; each pays ~10 µs of `asarray`/validation overhead for a trivial spline lookup |
+| scipy BDF stepper internals (`scipy/integrate/_ivp/bdf.py`) | ~0.8 s | pure-Python stepping logic |
+| `NetworkDefinition.fill_buffer` | ~0.75 s | Python+numpy rate-buffer fill, 24 k calls, slice copies and temporaries |
+| numba RHS kernel (`primat/network_builder.py`) | 0.06 s | the actual physics — already fast |
+
+Three of those four were addressed in 2026-07-16 work, taking the warm
+small-network run from **1.61 s to ~1.08 s**:
+
+1. njit scalar evaluators (`primat/weak_rates/fast_eval.py`) replacing the
+   scipy interpolators on the hot path. The weak-rate interpolant is a
+   cross-backend parity contract, so its coefficients are pulled out of the
+   fitted spline rather than re-fitted; the background's *linear* interpolants
+   were deliberately left on scipy, since a njit reimplementation was not
+   bit-identical (~3e-14) and they are already covered by (3).
+2. `fill_buffer` fused into a compiled kernel.
+3. A one-entry memo keyed on bit-identical `t`, so the RHS and Jacobian
+   closures do not redo the same `T_of_t(t)` / `rhoB_BBN(t)` / weak-rate work
+   at the same step.
+
+(2) and (3) are bit-identical. (1) moves `D/H` by 5e-11 absolute — a pure
+BDF-`rtol` artifact, since the LT solver runs at `rtol≈1e-6` and a ~1e-15
+change in how the *same* spline is evaluated nudges step selection; it stays
+well inside the regression tolerance pinned in `tests/reference_values.py`.
+
+**What remains is scipy's pure-Python BDF stepper** — the ~0.8 s row above,
+and the only route left to matching C. Replacing it (a numba port, or
+numbalsoda/SUNDIALS) changes the integrator itself and therefore every
+regression pin, so it is a deliberate decision rather than an optimisation.
+`primat-c/src/ode_bdf.c` is a term-for-term transcription of scipy's
+`_ivp/bdf.py`, which gives such a port a checked reference implementation to
+follow.
+
+To re-profile:
+
+```bash
+python -c "
+import cProfile, pstats, io
+from primat.backend import run_bbn
+run_bbn(force_backend='python')          # warm caches/JIT
+pr=cProfile.Profile(); pr.enable(); run_bbn(force_backend='python'); pr.disable()
+s=io.StringIO(); pstats.Stats(pr,stream=s).sort_stats('tottime').print_stats(20)
+print(s.getvalue())
+"
+```
+
+Note that `numba` is recommended but not mandatory: every njit kernel has a
+pure-numpy fallback, so the package keeps working (more slowly) without it.
+
 ## Regenerating this table
 
 ```bash
