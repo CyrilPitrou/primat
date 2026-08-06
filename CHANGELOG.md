@@ -12,6 +12,29 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **The `reference` test tier now runs the configuration it documents.** Its
+  parameter set listed four of the eight solver settings
+  `runfiles/primat_reference_run.py` uses, so the tier meant to reproduce the
+  published validation reference was reproducing a different run — by 2.0e-08
+  in `large, amax=8`'s D/H, 6.6x the ±3e-9 bound the same table advertises. It
+  passed because the published constants had been produced by the tier's own
+  configuration rather than the documented one. The settings are now mirrored,
+  the whole "Validation reference" section is re-snapshotted against one tree,
+  and the reference run's two weak-rate caches are shipped, taking that run
+  from 1395 s to 23 s with bit-identical output.
+- **Both backends now interpolate the CCRTh thermal correction the same way.**
+  The finite-temperature n↔p correction is read from a cache the two backends
+  share, but they drew different curves between its nodes: Python fitted
+  scipy's global quadratic B-spline, the C backend a local 3-point Lagrange
+  quadratic. That is the same class of mismatch that once dominated the
+  *non-thermal* rate and was fixed there by adopting a shared cubic; the
+  thermal channel was never converted, and its cache grid is ~8× coarser, so
+  the two curves parted by up to 1e-05 of the rate between nodes while
+  agreeing to 8e-13 at them. Both now fit a not-a-knot cubic in linear space
+  (linear rather than log-log because that correction changes sign). At
+  converged tolerance this removes ~94 % of the cross-backend YPBBN gap and
+  ~85 % of the D/H gap; every published number stays inside its pinned
+  tolerance. Found by the new cross-backend divergence harness.
 - **The background's time coordinate no longer flows through a linear `T(a)`
   inverse.** Python's `t(a)` ODE took its right-hand side through
   `interp1d(a_grid, T_grid)`, a linear inversion carrying a median 3.9e-06

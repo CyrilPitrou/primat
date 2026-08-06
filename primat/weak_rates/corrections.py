@@ -1499,8 +1499,16 @@ def _L_CCRTh_interpolants(ctx):
 
     T_th, L_nTh, L_pTh = _compute_or_load_L_CCRTh_grid(ctx)
 
-    _interp_n = interp1d(T_th, L_nTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
-    _interp_p = interp1d(T_th, L_pTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
+    # Not-a-knot cubic in linear (T, L) space -- the same scheme and boundary
+    # condition the C backend fits (weak_rates.c, CPRWeakRates.Lnth_sp), so
+    # both draw the identical curve between the shared cache's nodes. Linear
+    # space rather than the non-thermal rates' log10-log10: L_nTOpCCRTh changes
+    # sign along the grid. Below the 4 knots a not-a-knot cubic needs, both
+    # backends fall back to linear through the same nodes (unreachable at the
+    # shipped grid density, kept so a short custom grid still matches).
+    kind = 'cubic' if len(T_th) >= 4 else 'linear'
+    _interp_n = interp1d(T_th, L_nTh, bounds_error=False, fill_value="extrapolate", kind=kind)
+    _interp_p = interp1d(T_th, L_pTh, bounds_error=False, fill_value="extrapolate", kind=kind)
 
     def _clamp_below_floor(interp):
         # T_th's lowest point is _T_CCRTH_MIN, not cfg.T_end: callers (the HT/MT

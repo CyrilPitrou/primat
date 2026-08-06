@@ -244,26 +244,16 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     CPRRecorder rec_ht; recorder_init(&rec_ht, 2);
     recorder_push(&rec_ht, t_start, Y_ht);
     HTCtx ht_ctx = { background };
-    /* HT integrator: Dormand-Prince RK45 here, LSODA on the Python side
-     * (nuclear_network.py's _solve_HT). This is a KNOWN, accepted divergence,
-     * not an oversight -- recorded here so it is not "fixed" by accident.
-     *
-     * Both run at the same rtol (cfg->numerical_precision) and atol (1e-10),
-     * and the era is n <-> p only. Measured on the default config: swapping
-     * Python's HT to RK45 moves YPBBN by ~5e-07 relative, i.e. the method
-     * choice accounts for essentially all of the cross-backend YP gap. But
-     * neither method is more accurate -- sweeping numerical_precision 1e-6 to
-     * 1e-10 with the HT era set to LSODA, RK45 and BDF in turn shows all three
-     * converging to the same YPBBN (spread 1.6e-07 relative at rtol=1e-9),
-     * which is well inside the accuracy the default rtol=1e-7 delivers.
-     *
-     * Aligning them was tried (both on BDF with the exact analytic 2x2
-     * Jacobian, the HT system being linear in Y) and did NOT improve
-     * cross-backend agreement: YP parity got worse at the default tolerance
-     * (5.2e-07 -> 1.1e-06) while D/H improved only ~1.5x, because the residual
-     * is dominated by the MT/LT BDF solves walking different step sequences,
-     * not by the HT method. Alignment therefore buys reviewability, not
-     * numbers; it is available if wanted, but is not currently applied. */
+    /* HT integrator: Dormand-Prince RK45 here, LSODA on the Python side. This
+     * is a KNOWN, accepted divergence, not an oversight -- recorded here so it
+     * is not "fixed" by accident. Both run at the same rtol
+     * (cfg->numerical_precision) and atol (1e-10), and the era is n <-> p
+     * only, so neither method is more accurate: sweeping numerical_precision
+     * has LSODA, RK45 and BDF converging to the same YPBBN. Aligning them was
+     * tried (both on BDF with the exact analytic 2x2 Jacobian, the HT system
+     * being linear in Y) and made cross-backend YP parity worse. Its
+     * contribution to the cross-backend gap is measured by
+     * tests/backend_divergence.py. */
     CPRRKOpts rk_opts = cpr_ode_rk_default_opts();
     rk_opts.rtol = cfg->numerical_precision; rk_opts.atol = 1.0e-10;
     if (cfg->show_progress && !cfg->verbose) {

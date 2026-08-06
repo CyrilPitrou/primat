@@ -106,21 +106,6 @@ double cpr_interp_linear(const double *x, const double *y, size_t n, double xq,
     return y[i] + t * (y[i + 1] - y[i]);
 }
 
-double cpr_interp_quadratic_local(const double *x, const double *y, size_t n, double xq)
-{
-    size_t i = cpr_find_segment(x, n, xq);          /* bracketing segment [i, i+1] */
-    /* 3-point window {k, k+1, k+2} centred on the segment, clamped so it
-     * stays inside [0, n-1]. */
-    size_t k = (i == 0) ? 0 : i - 1;
-    if (k + 2 > n - 1) k = n - 3;
-    double x0 = x[k], x1 = x[k + 1], x2 = x[k + 2];
-    double y0 = y[k], y1 = y[k + 1], y2 = y[k + 2];
-    double L0 = (xq - x1) * (xq - x2) / ((x0 - x1) * (x0 - x2));
-    double L1 = (xq - x0) * (xq - x2) / ((x1 - x0) * (x1 - x2));
-    double L2 = (xq - x0) * (xq - x1) / ((x2 - x0) * (x2 - x1));
-    return y0 * L0 + y1 * L1 + y2 * L2;
-}
-
 /* -------------------------------------------------------------------- */
 /* Thomas (tridiagonal) solver: lower[k]*x[k-1] + diag[k]*x[k] +
  * upper[k]*x[k+1] = rhs[k]; lower[0] and upper[m-1] are unused. Solves in

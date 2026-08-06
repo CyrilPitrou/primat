@@ -24,6 +24,9 @@ vegas-based) thermal-correction recompute on a fresh checkout:
    non-instantaneous-decoupling mode (``PRIMATConfig.__init__`` raises
    otherwise).
 4. Same as (3) but ``QED_corrections=False``.
+5. Combo (1)'s physics on the denser grids ``runfiles/primat_reference_run.py``
+   uses, so re-snapshotting ``tests/README.md``'s "Validation reference" costs
+   seconds rather than an hours-long vegas recompute.
 
 Run from the repo root::
 
@@ -97,6 +100,17 @@ _COMBOS = [
     ("instantaneous decoupling, QED off (spectral forced off)",
      dict(incomplete_decoupling=False, QED_corrections=False,
           spectral_distortions=False)),
+    # Same physics as combo 1, denser grids: this is the configuration
+    # runfiles/primat_reference_run.py uses to produce tests/README.md's
+    # "Validation reference". Its thermal fingerprint misses every combo above
+    # (denser thermal grid, more vegas samples), so without it shipped the
+    # documented re-snapshot command spends hours in vegas before printing a
+    # number.
+    ("reference run (primat_reference_run.py's denser grids)",
+     dict(sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125,
+          T_start_cosmo_MeV=100.0, rate_grid_npts=4000,
+          sampling_nTOp_thermal_per_decade=25,
+          vegas_n_eval=100000, vegas_n_itn=50)),
 ]
 
 def _expected_filenames(combos):

@@ -46,7 +46,7 @@ must stay in step (`pytest --strict-markers` is the check).
 |--------|---------|
 | `slow` | any test excluded from the fast lane: a full primat solve (or a Monte-Carlo loop of solves), a weak-rate recompute (~1.8 s, bypassing the fingerprinted cache), or packaging checks. Deselect with `-m "not slow"`. |
 | `solve` | the "solve" tier: tests that run >=1 full primat solve at *default* (non-reference) precision; always also marked `slow`. `-m "not slow or solve"` selects the fast lane plus this tier. |
-| `reference` | high-precision runs (numerical_precision=1e-10, sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125, T_start_cosmo=100 MeV) that reproduce the documented reference values to YP ±1e-5, D/H ±3e-9; ~60 s total; always also marked `slow`. |
+| `reference` | high-precision runs at every setting `runfiles/primat_reference_run.py` uses (mirrored in `_REF_PARAMS`, `tests/test_regression.py`) that reproduce the documented reference values to YP ±1e-5, D/H ±3e-9; always also marked `slow`. |
 | `wheel` | builds a wheel and `pip install`s it into a clean venv before running a smoke solve; always also marked `slow`. |
 | `gui` | drives the optional Streamlit GUI (`primat.gui`) via `AppTest`; skipped if the `gui` extra is not installed; always also marked `slow` and `solve`. |
 | `notebook` | papermill-executes a demonstration notebook end-to-end; skipped if the optional `notebooks` extra is not installed; always also marked `slow`. |
@@ -112,6 +112,7 @@ yet done, so the `solve` tier still runs full three-era solves.
 | `test_runfiles.py` | The example scripts in `runfiles/`: each runs as a real subprocess from a throwaway cwd and must exit 0 with no traceback; and `primat_run.py`'s *printed* YP/(D/H) are checked against the "Validation reference" below at the routine tolerance, so the documented "run this after any modification" workflow is automated rather than honour-system. |
 | `test_sensitivity.py` | `primat.sensitivity` — the logarithmic-sensitivity API. |
 | `test_spectral_distortions.py` | Non-thermal neutrino spectra, each pinned as a *difference* between two full solves (`solve` tier): `spectral_distortions` on/off (small but non-zero on D/H, zero distortion energy in NEVO by construction); the analytic y-type (`y_SZ`) and gray (`y_gray`) distortions shifting Neff, and `finite_mass_corrections` genuinely gating the SD-FM term; and neutrino chemical potentials (`munuOverTnu`, per-flavour `xi_*`) — Neff even in the sign, per-flavour knobs reducing to the common one, and the discriminating case that `xi_mu` alone gravitates but must *not* shift the n↔p rates. |
+| `backend_divergence.py` | (helper, not a test) The cross-backend divergence harness: measures each link of the chain — background, nuclear rate tables, CCRTh interpolation, per-nuclide abundances — so a widened total can be attributed. Runnable as `python -m tests.backend_divergence`; the terms it measures are pinned at the end of `test_backend_parity.py` and explained under "Known cross-backend divergences" below. |
 | `reference_values.py` | (helper, not a test) Centralised default-run reference observables shared by test_cli/test_gui/test_regression, and the validation-reference constants (single source, see test_docs_consistency). |
 | `_oracles.py` | (helper, not a test) Test-only reference RHS/Jacobian oracle implementations the nuclear-network tests compare against. |
 
@@ -127,9 +128,12 @@ The values below hold at the defaults `Omegabh2=0.02242`,
 the radiative-capture QED corrections of Pitrou & Pospelov 2020). They were
 produced by `runfiles/primat_reference_run.py` — a **high-precision** run with
 `numerical_precision=1e-10`, `sampling_temperature_per_decade=2000`,
-`sampling_nTOp_per_decade=125`, `T_start_cosmo_MeV=100` and
-`rate_grid_npts=4000` explicit, so this reference stays decoupled from the
-routine-run defaults.
+`sampling_nTOp_per_decade=125`, `T_start_cosmo_MeV=100`,
+`rate_grid_npts=4000`, `sampling_nTOp_thermal_per_decade=25`,
+`vegas_n_eval=100000` and `vegas_n_itn=50` explicit, so this reference
+stays decoupled from the routine-run defaults. `tests/test_regression.py`'s
+`_REF_PARAMS` must list all of them: the four beyond the first four are
+worth 2.0e-08 in `large, amax=8`'s D/H, 6.6x the ±3e-9 bound below.
 
 ### Which tolerance applies to which command
 
@@ -143,10 +147,11 @@ documented check fail on a perfectly healthy tree:
 
 The routine column is looser because a default-precision solve carries ~1e-8
 of adaptive-step jitter in D/H, and because the two backends differ by a few
-parts in 1e6 (see `tests/test_backend_parity.py`). Measured 2026-08-05,
-`primat_run.py` lands 3.8e-9 (C backend) / 5.7e-10 (Python backend) below the
-reference D/H — i.e. *outside* the ±3e-9 reference bound, and correctly inside
-the ±2e-8 routine one.
+parts in 1e6 (see `tests/test_backend_parity.py`). Measured on this tree,
+`primat_run.py` lands 6.2e-10 (C backend) / 7.8e-10 (Python backend) below the
+reference D/H. That happens to sit inside the ±3e-9 reference bound as well,
+but the routine bound is what the documented check uses: the margin is a
+property of this platform and this network, not something to rely on.
 
 Note also that `runfiles/primat_run.py` runs **only** `large, amax=8`; the
 small-network table is checked by the `reference` tier and by
@@ -156,15 +161,15 @@ small-network table is checked by the `reference` tier and by
 
 | Observable | Expected | Reference tol. | Routine tol. |
 |------------|----------|----------------|--------------|
-| YP (BBN) | 0.24699819 | ±1e-5 | ±1e-5 |
-| D/H | 2.4358800e-05 | ±3e-9 | ±2e-8 |
+| YP (BBN) | 0.24699844 | ±1e-5 | ±1e-5 |
+| D/H | 2.4358977e-05 | ±3e-9 | ±2e-8 |
 
 **`large, amax=8`** (the 68-reaction subset of `large`):
 
 | Observable | Expected | Reference tol. | Routine tol. |
 |------------|----------|----------------|--------------|
-| YP (BBN) | 0.24700154 | ±1e-5 | ±1e-5 |
-| D/H | 2.4365900e-05 | ±3e-9 | ±2e-8 |
+| YP (BBN) | 0.24700179 | ±1e-5 | ±1e-5 |
+| D/H | 2.4366098e-05 | ±3e-9 | ±2e-8 |
 
 A result outside the applicable bound indicates a regression.
 
@@ -184,13 +189,13 @@ source and is checked live by
 
 | Nuclide | small | large, amax=8 | large |
 |---------|-------|----------------|-------|
-| n   | 3.997234e-16 | 3.996332e-16 | 3.996365e-16 |
-| p   | 7.529405e-01 | 7.529372e-01 | 7.529372e-01 |
-| H2  | 1.834071e-05 | 1.834570e-05 | 1.834580e-05 |
-| H3  | 5.851937e-08 | 5.838985e-08 | 5.839019e-08 |
-| He4 | 6.174982e-02 | 6.175066e-02 | 6.175066e-02 |
-| Li7 | 2.181375e-11 | 9.178225e-11 | 9.178156e-11 |
-| Be7 | 3.966446e-10 | 3.223685e-10 | 3.223652e-10 |
+| n   | 3.997246e-16 | 3.996325e-16 | 3.996357e-16 |
+| p   | 7.529408e-01 | 7.529374e-01 | 7.529374e-01 |
+| H2  | 1.834071e-05 | 1.834568e-05 | 1.834577e-05 |
+| H3  | 5.851941e-08 | 5.838979e-08 | 5.839007e-08 |
+| He4 | 6.174977e-02 | 6.175059e-02 | 6.175060e-02 |
+| Li7 | 2.181376e-11 | 9.178228e-11 | 9.178164e-11 |
+| Be7 | 3.966454e-10 | 3.223689e-10 | 3.223658e-10 |
 
 The full large network must match `large, amax=8` on every light element to
 ≲1e-3, **and also on the free neutron `n`**: the reverse-rate clamp in
@@ -230,11 +235,23 @@ tracked list of them, so that a future reviewer neither re-discovers them nor
 and kept current in `tests/test_backend_parity.py`'s module docstring — this
 section states the causes and the decisions.
 
+Each divergence is measured term by term by `tests/backend_divergence.py`
+(`python -m tests.backend_divergence`), and the individual magnitudes are
+pinned in `tests/test_backend_parity.py`, so this section can state causes and
+decisions without quoting numbers that go stale.
+
 | Divergence | Status |
 |---|---|
-| **HT-era integrator.** Python integrates the n↔p-only HT era with `LSODA`, C with Dormand-Prince RK45. | **Intentional.** This one mismatch is the whole YP gap: patching Python's HT method to RK45 reproduces C's `YPBBN` exactly. It therefore does not shrink with tighter `numerical_precision`. Aligning both on BDF was tried and *degraded* YP parity, so alignment would buy reviewability, not accuracy. Documented in place in both backends' `nuclear_network` sources. |
+| **Background ODE tolerance.** Python solves a(T) and t(T) at tolerances derived from `numerical_precision`; C uses a fixed, much tighter `BG_ODE_RTOL`. | **Open, and the dominant term at the default `numerical_precision`.** It is Python's own discretisation error rather than a disagreement about physics: it vanishes as `numerical_precision` is tightened, and forcing Python's background ODE to C's fixed tolerance removes ~98 % of the He3/H and Li7/H gaps. Aligning them was measured to cost 1.6–3× the pure-Python runtime while leaving ~1e-6 of D/H disagreement that is nuclear-side step-sequence noise at the default tolerance, so it was left open rather than paid for. |
+| **t(T) coordinate.** Python integrates `dt/d(lnT)` anchored at `T_start_cosmo`; C integrates a relative time anchored at `T_end`. | **Open.** Survives at converged tolerance and is what remains once the two above are aligned. Largest near e± annihilation. |
+| **HT-era integrator.** Python integrates the n↔p-only HT era with `LSODA`, C with Dormand-Prince RK45. | **Intentional, and now a negligible term.** Pass 7 measured this as the whole YP gap; re-measured after that pass's own `t(T)` fix it accounts for ~1e-10 of it. Aligning both on BDF was tried and *degraded* YP parity, so the two methods stay as they are. |
 | **`external_scale_factor` interpolant.** Python reads T(a) linearly inside its time-integration RHS; C fits a not-a-knot cubic over the same nodes. | **Intentional.** The C cubic is a performance workaround — its RK45 stepper rejected ~65 % of steps on the kinks — and leaves the solution unchanged; LSODA has no such problem. Making Python match was tried and measured *worse* in both self-convergence and cross-backend YP, because in this mode a(T) is itself a table read (NEVO's `x` column), so a cubic through those nodes manufactures curvature the data does not contain. |
-| **Residual D/H gap.** At converged tolerance the two settle on different D/H, with Li7/H and He3/H following and YP/Neff agreeing far better. | **Open.** It does not shrink with `numerical_precision` (swept 1e-6 … 1e-10), so it is structural, not round-off. The background is ruled out: `t(T)` agrees cross-backend and each backend self-converges, and the weak-rate tables are tabulated on identical grids (see `test_cache_parity.py`). The cause is downstream — the nuclear network itself, or how the n↔p rates couple into it. It sits far below observational significance (observed D/H is known to ~1 %). |
+
+Ruled out as sources, and pinned as such: the nuclear rate tables (both
+backends resample the same shipped tables onto the same master T9 grid), the
+weak-rate tables (including the CCRTh thermal correction, whose interpolation
+scheme the two backends shared as of review pass 13 — the largest structural
+term until then), and every thermodynamic quantity — `Neff` is bit-identical.
 
 Everything else that round-1 review found divergent between the two backends
 was closed rather than documented; `git log` is the record of those.

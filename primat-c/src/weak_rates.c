@@ -601,15 +601,25 @@ static void weak_interp_free(CPRWeakInterp *it)
     memset(it, 0, sizeof(*it));
 }
 
+/* CCRTh correction at T_K: the fitted not-a-knot cubic, or linear through the
+ * same nodes when the grid is too short to fit one (see CPRWeakRates). */
+static double thermal_eval(const CPRWeakRates *wr, const CPRCubicSpline *sp,
+                            const double *L, double T_K)
+{
+    if (wr->th_cubic)
+        return cpr_cubic_spline_eval(sp, T_K);
+    return cpr_interp_linear(wr->T_th, L, wr->n_th, T_K, CPR_EXTRAP_LINEAR);
+}
+
 double cpr_weak_rate_nTOp(const CPRWeakRates *wr, double T_K)
 {
     double v = weak_interp_eval(&wr->frwrd_i, T_K);
     /* wr->T_th's lowest knot is CCRTH_T_MIN, not T_end: below that floor the
-     * correction is pinned to 0 here rather than left to
-     * cpr_interp_quadratic_local's quadratic extrapolation, which is
-     * unconstrained there (mirrors corrections.py's _clamp_below_floor). */
+     * correction is pinned to 0 here rather than left to the interpolant's
+     * extrapolation, which is unconstrained there (mirrors corrections.py's
+     * _clamp_below_floor). */
     if (wr->has_thermal && T_K >= CCRTH_T_MIN)
-        v += cpr_interp_quadratic_local(wr->T_th, wr->Lnth, wr->n_th, T_K);
+        v += thermal_eval(wr, &wr->Lnth_sp, wr->Lnth, T_K);
     return v;
 }
 
@@ -617,7 +627,7 @@ double cpr_weak_rate_pTOn(const CPRWeakRates *wr, double T_K)
 {
     double v = weak_interp_eval(&wr->bkwrd_i, T_K);
     if (wr->has_thermal && T_K >= CCRTH_T_MIN)
-        v += cpr_interp_quadratic_local(wr->T_th, wr->Lpth, wr->n_th, T_K);
+        v += thermal_eval(wr, &wr->Lpth_sp, wr->Lpth, T_K);
     return v;
 }
 
@@ -627,6 +637,10 @@ void cpr_weak_rates_free(CPRWeakRates *wr)
     weak_interp_free(&wr->frwrd_i);
     weak_interp_free(&wr->bkwrd_i);
     free(wr->T_th); free(wr->Lnth); free(wr->Lpth);
+    if (wr->th_cubic) {
+        cpr_cubic_spline_free(&wr->Lnth_sp);
+        cpr_cubic_spline_free(&wr->Lpth_sp);
+    }
     memset(wr, 0, sizeof(*wr));
 }
 
@@ -1413,6 +1427,28 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             wr->Lpth[i] /= Fn;
         }
         wr->has_thermal = 1;
+
+        /* Fit the two CCRTh interpolants. Not-a-knot cubic in linear (T, L)
+         * space, the same scheme and boundary condition Python fits, so both
+         * backends draw the identical curve between the shared cache's nodes.
+         * Linear space rather than the nonthermal rates' log10-log10: the n->p
+         * correction changes sign along the grid. */
+        if (wr->n_th >= 4) {
+            if (cpr_cubic_spline_fit_notaknot(wr->T_th, wr->Lnth, wr->n_th,
+                                               &wr->Lnth_sp, errmsg)) {
+                free(Tg_K); free(ratio);
+                cpr_weak_rates_free(wr);
+                return 1;
+            }
+            if (cpr_cubic_spline_fit_notaknot(wr->T_th, wr->Lpth, wr->n_th,
+                                               &wr->Lpth_sp, errmsg)) {
+                cpr_cubic_spline_free(&wr->Lnth_sp);
+                free(Tg_K); free(ratio);
+                cpr_weak_rates_free(wr);
+                return 1;
+            }
+            wr->th_cubic = 1;
+        }
     }
 
     free(Tg_K); free(ratio);
