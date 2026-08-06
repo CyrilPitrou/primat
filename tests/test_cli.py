@@ -335,3 +335,16 @@ def test_cli_mc_summary_includes_all_displayed_sigmas(capsys):
     assert re.search(r"He3/He4\s*=\s*[\d.eE+-]+\s+\+/-\s+[\d.eE+-]+", out)
     assert re.search(r"Li6/Li7\s*=\s*[\d.eE+-]+\s+\+/-\s+[\d.eE+-]+", out)
     assert re.search(r"CNO \(mass\)\s*=\s*[\d.eE+-]+\s+\+/-\s+[\d.eE+-]+", out)
+
+
+def test_cli_unknown_rate_variation_key_is_fatal_under_strict(capsys):
+    """A mistyped p_<reaction> exits 2 under strict_params, like any config error.
+
+    Reaction names are long and underscore-heavy, so a typo is the archetypal
+    silent no-op: the run otherwise proceeds with that rate unvaried. Both CLIs
+    report it with the same wording and the same exit code -- the C side's
+    check lives in primat-c/src/cli.c, since runs arriving through
+    primat/backend.py are already validated by PRIMATConfig.
+    """
+    assert main(["--set", "strict_params=True", "--set", "p_not_a_reaction=1.0"]) == 2
+    assert "does not match any reaction" in capsys.readouterr().err

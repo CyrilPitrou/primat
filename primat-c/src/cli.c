@@ -1263,7 +1263,9 @@ int cpr_cli_main(int argc, char **argv)
     if (check_rate_variation_keys(&cfg)) {
         cpr_paramlist_free(&cp);
         cpr_config_free(&cfg);
-        return 1;
+        /* 2, the exit status both CLIs already use for every fatal
+         * configuration error (a bad range, an unknown network). */
+        return 2;
     }
 
     /* Startup note for an overlay/takeover data directory, byte-identical to
