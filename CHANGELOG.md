@@ -12,6 +12,19 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **Both backends now interpolate the CCRTh thermal correction the same way.**
+  The finite-temperature n↔p correction is read from a cache the two backends
+  share, but they drew different curves between its nodes: Python fitted
+  scipy's global quadratic B-spline, the C backend a local 3-point Lagrange
+  quadratic. That is the same class of mismatch that once dominated the
+  *non-thermal* rate and was fixed there by adopting a shared cubic; the
+  thermal channel was never converted, and its cache grid is ~8× coarser, so
+  the two curves parted by up to 1e-05 of the rate between nodes while
+  agreeing to 8e-13 at them. Both now fit a not-a-knot cubic in linear space
+  (linear rather than log-log because that correction changes sign). At
+  converged tolerance this removes ~94 % of the cross-backend YPBBN gap and
+  ~85 % of the D/H gap; every published number stays inside its pinned
+  tolerance. Found by the new cross-backend divergence harness.
 - **The background's time coordinate no longer flows through a linear `T(a)`
   inverse.** Python's `t(a)` ODE took its right-hand side through
   `interp1d(a_grid, T_grid)`, a linear inversion carrying a median 3.9e-06

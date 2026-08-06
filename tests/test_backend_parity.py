@@ -21,60 +21,58 @@ nodes the two curves differed by up to ~1e-4 relative through the n/p
 freeze-out window (T ~ 0.2..2 MeV), C systematically above Python -- which
 propagated to a systematic ~2.5e-5 YP and ~1.8e-5 D/H offset.
 
-Both backends now interpolate the weak rates with the *same* log10-log10
-not-a-knot cubic spline (Python ``_weak_rate_loglog_interp``, C
-``cpr_weak_rate_nTOp`` via ``cpr_cubic_spline_fit_notaknot``) -- the scheme the
-nuclear rate tables already share -- which also happens to be ~1-2 orders of
-magnitude more accurate than either old scheme at the shipped node density.
-That collapsed the gap by ~2 orders of magnitude and is why the budget below
-is ``rel=5e-5`` rather than the pre-fix ``rel=1e-3``.
+Both backends now interpolate the weak rates with the *same* schemes: a
+log10-log10 not-a-knot cubic for the non-thermal table (Python
+``_weak_rate_loglog_interp``, C ``cpr_weak_rate_nTOp``) and a linear-space
+not-a-knot cubic for the CCRTh thermal correction (Python
+``corrections._L_CCRTh_interpolants``, C ``CPRWeakRates.Lnth_sp``; linear space
+because that correction changes sign). The thermal channel kept the mismatched
+quadratics until review pass 13 -- worth ~1e-05 of the rate, and most of the
+YP gap.
 
 Residual gap: what is actually left, and why
 --------------------------------------------
-Measured 2026-08-05 at default precision (auto/C vs. pure Python):
+Measured at default precision (auto/C vs. pure Python):
 
 ===============  ===========  ===========  ==========
 config           YPBBN (abs)  D/H (rel)    Neff (abs)
 ===============  ===========  ===========  ==========
-small            3.42e-07     5.32e-06     0.0
-large, amax=8    1.22e-07     7.47e-06     0.0
-large            1.23e-07     1.11e-05     0.0
+small            1.05e-07     6.64e-06     0.0
+large, amax=8    8.62e-08     6.78e-06     0.0
+large            9.19e-08     9.59e-06     0.0
 ===============  ===========  ===========  ==========
 
 ``Neff`` is bit-identical: the background's thermodynamics agree exactly. The
-other two are the sum of four terms, attributed one by one by
-``tests/backend_divergence.py`` (``python -m tests.backend_divergence``) and
-each pinned separately at the end of this file:
+rest is attributed term by term by ``tests/backend_divergence.py``
+(``python -m tests.backend_divergence``), each term pinned separately at the
+end of this file:
 
 * **The background ODE tolerance asymmetry** dominates D/H *at the default*
   ``numerical_precision``. Python solves a(T) at ``0.1 * numerical_precision``
-  and t(T) at ``numerical_precision``; C uses a fixed ``BG_ODE_RTOL = 1e-14``.
-  This term is Python's own discretisation error and shrinks away as the
-  tolerance is tightened -- which is why the D/H gap falls by ~two orders from
-  ``numerical_precision`` 1e-6 to 1e-10 before plateauing.
-* **The CCRTh interpolation-scheme mismatch** is what it plateaus *on*, and it
-  dominates YPBBN at every tolerance. Both backends read the same cached
-  thermal correction and interpolate it differently -- scipy's global
-  quadratic B-spline (``corrections.py``) against C's local 3-point Lagrange
-  (``spline.c``) -- on a grid ~8x coarser than the non-thermal table's. It is
-  the same class of mismatch this module's "Historical gap" section describes,
-  in the one channel that fix did not convert.
-* **The t(T) coordinate** differs structurally (different integration variable
-  and anchor point) and is the residual once the two above are aligned.
-* **The HT-era integrator**, ``LSODA`` (``primat/nuclear_network.py:286``) vs
+  and t(T) at ``numerical_precision``; C uses a fixed ``BG_ODE_RTOL``. This
+  term is Python's own discretisation error, not a disagreement about physics,
+  and it shrinks away as the tolerance is tightened.
+* **BDF/LSODA step-sequence noise** through the MT and LT eras, likewise
+  tolerance-driven. Together with the term above it is why the numbers in the
+  table are ~50x larger than the same measurement at
+  ``numerical_precision=1e-9`` (see the converged-tolerance test below).
+* **The t(T) coordinate** differs structurally -- different integration
+  variable and anchor point -- and is what survives at converged tolerance.
+* **The HT-era integrator**, ``LSODA`` (``primat/nuclear_network.py``) vs
   Dormand-Prince RK45 (``primat-c/src/nuclear_network.c``), is deliberate and
-  now contributes ~1e-10 to YP. Aligning the two on BDF was tried and
-  *degraded* YP parity, so it stays as it is.
+  contributes ~1e-10 to YP. Aligning the two on BDF was tried and *degraded*
+  YP parity, so it stays as it is.
 
-The gap grows with network size (5.3e-06 -> 1.1e-05 in D/H from 'small' to
-full 'large'), which is why the budget is set from the largest of the three.
+The gap grows with network size, which is why the budget is set from the
+largest of the three.
 
 The ``rel=5e-5`` D/H budget is a distinct, coarser budget than the +/-3e-9
 *same-backend* D/H regression tolerance (tests/README.md's "Validation
-reference"), leaving ~4.5x headroom over the worst measured gap for
-cross-platform variation. Tightening it tracks any future unification of the
-solver stacks; loosening it should not happen without updating this docstring
-and re-measuring the table above.
+reference"), leaving ~5x headroom over the worst measured gap for
+cross-platform variation. It is a *default-precision* budget and cannot
+distinguish expected controller noise from a new structural divergence; that
+is what ``test_backend_agreement_at_converged_tolerance`` is for. Loosening
+either should not happen without updating this docstring and re-measuring.
 """
 import numpy as np
 import pytest
@@ -979,11 +977,12 @@ BG_SCALE_FACTOR_MEAN_REL = 2e-6
 # onto the same master T9 grid, so this is round-off, not a scheme difference.
 NUCLEAR_RATE_MAX_REL = 1e-7
 
-# CCRTh interpolation-scheme spread (scipy global quadratic vs C local
-# 3-point Lagrange) as a fraction of the n->p rate, at the log-midpoints
-# between the thermal cache's nodes. Measured 1.0e-05: this is the
-# tolerance-independent floor under the observables' gap.
-CCRTH_SCHEME_MAX_REL = 3e-5
+# CCRTh interpolant vs an independent not-a-knot cubic fit of the same shared
+# cache, as a fraction of the n->p rate, at the log-midpoints between nodes.
+# Measured 3.5e-19. Until review pass 13 the two backends fitted mismatched
+# quadratics here and this stood at 1.0e-05, which was most of the
+# cross-backend YP gap; the bound is set well below that so a revert fails.
+CCRTH_SCHEME_MAX_REL = 1e-12
 
 
 @requires_c_backend
@@ -1027,3 +1026,36 @@ def test_ccrth_interpolation_scheme_spread_is_pinned():
     assert spread is not None
     for channel, stats in spread.items():
         assert stats["max"] < CCRTH_SCHEME_MAX_REL, channel
+
+
+# Converged-tolerance budget. The rel=5e-5 D/H budget at the top of this file
+# is set at the *default* numerical_precision, where neither backend's ODEs are
+# converged and ~1e-6 of the gap is step-sequence noise that no parity fix can
+# remove. That budget therefore cannot tell "expected noise" from "a new
+# structural divergence". These do: run both backends converged, where the
+# noise is gone and only structural differences survive. Measured across
+# small / large+amax=8 / full large: D/H 1.2e-07..2.0e-07, YP 4.3e-09..1.1e-08.
+CONVERGED_PRECISION = 1e-9
+CONVERGED_DOH_RTOL = 1e-6
+CONVERGED_YPBBN_ATOL = 1e-7
+
+
+@requires_c_backend
+@pytest.mark.parametrize("params", [
+    {"network": "small"},
+    {"network": "large", "amax": 8},
+], ids=["small", "large_amax8"])
+def test_backend_agreement_at_converged_tolerance(params):
+    """With both backends' ODEs converged, only structural divergences remain.
+
+    This is the test that would catch a new one: at ``numerical_precision=1e-9``
+    the controller noise that dominates the default-precision gap is gone, so
+    the budget is ~50x tighter than the headline ``rel=5e-5``.
+    """
+    p = dict(params, numerical_precision=CONVERGED_PRECISION)
+    r_c = run_bbn(dict(p), force_backend="c")
+    r_py = run_bbn(dict(p), force_backend="python")
+
+    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=CONVERGED_DOH_RTOL)
+    assert r_c["YPBBN"] == pytest.approx(r_py["YPBBN"], abs=CONVERGED_YPBBN_ATOL)
+    assert r_c["Li7oH"] == pytest.approx(r_py["Li7oH"], rel=CONVERGED_DOH_RTOL)

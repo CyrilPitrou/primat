@@ -40,23 +40,6 @@ size_t cpr_find_segment_monotone(const double *x, size_t n, double xq, size_t *h
 double cpr_interp_linear(const double *x, const double *y, size_t n, double xq,
                           CPRExtrapMode mode);
 
-/* Local quadratic interpolant: the Lagrange quadratic through the 3
- * consecutive data points {x[k],x[k+1],x[k+2]} whose middle segment
- * brackets (or, outside the table, is nearest to) xq -- a stand-in for
- * scipy.interpolate.interp1d(kind='quadratic') (a global FITPACK B-spline).
- * Used by weak_rates.c's CCRTh thermal-correction table (the main n<->p
- * forward/backward rates now use a log10-log10 cubic spline instead, see
- * CPRWeakInterp in weak_rates.h). On the smooth,
- * densely-sampled grids those tables use (one point per
- * 1/sampling_nTOp_per_decade of a T-decade), a local quadratic through the
- * nearest 3 points agrees with the global B-spline to <~1e-6 relative in
- * the interior (verified against live Python output in test_weak_rates.c);
- * it is not a bit-exact replication of FITPACK's knot placement, which
- * would require a full B-spline solver for a difference unobservable at
- * this grid density. Requires n >= 3. Outside [x[0], x[n-1]], extrapolates
- * with the boundary window's quadratic (matches `fill_value="extrapolate"`). */
-double cpr_interp_quadratic_local(const double *x, const double *y, size_t n, double xq);
-
 /* A fitted piecewise-cubic interpolant: y(x) = a[i] + b[i]*dx + c[i]*dx^2 +
  * d[i]*dx^3 on segment i = [x[i], x[i+1]], dx = x - x[i]. */
 typedef struct {

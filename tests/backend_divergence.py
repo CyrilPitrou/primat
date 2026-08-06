@@ -153,21 +153,22 @@ def rate_column_gap(params, precision=None):
 
 
 def ccrth_interpolant_gap(params=None):
-    """Spread between the two backends' CCRTh interpolation schemes.
+    """Spread between the two backends' CCRTh interpolants.
 
-    The finite-temperature (CCRTh) correction is the one weak-rate term the
-    backends read from a shared cache but interpolate differently: Python fits
-    scipy's global quadratic B-spline (``corrections._L_CCRTh_interpolants``),
-    C evaluates a local 3-point Lagrange quadratic
-    (``spline.c:cpr_interp_quadratic_local``). Both reproduce the cached nodes;
-    they differ between them. This evaluates both on the shipped thermal table
-    at the log-midpoints between nodes -- the worst case -- and reports the
-    spread as a fraction of the n->p rate at the same temperature, which is the
-    scale both weak terms enter the network's right-hand side against.
+    The finite-temperature (CCRTh) correction is read from a cache the two
+    backends share, so only the curve *between* its nodes can differ. Both fit
+    a not-a-knot cubic in linear (T, L) space -- Python
+    ``interp1d(kind='cubic')``, C ``cpr_cubic_spline_fit_notaknot``, two
+    implementations of the same mathematical object. This evaluates Python's
+    against an independent scipy not-a-knot fit at the log-midpoints between
+    nodes (the worst case), as a fraction of the n->p rate: the scale both weak
+    terms enter the network's right-hand side against.
 
-    Needs no C backend: it compares the two schemes, not the two builds.
+    It guards the *scheme*. A mismatch here is invisible to any end-to-end
+    comparison -- both curves pass through the shared nodes -- and moves the
+    observables. Needs no C backend.
     """
-    from scipy.interpolate import interp1d
+    from scipy.interpolate import CubicSpline
 
     from primat import PRIMAT
     from primat.weak_rates.cache import _thermal_fingerprint, fingerprint_hash
@@ -185,32 +186,20 @@ def ccrth_interpolant_gap(params=None):
     mid = mid[(T_MeV > BBN_WINDOW_MEV[0]) & (T_MeV < BBN_WINDOW_MEV[1])]
     scale = run.background.weak_nTOp_frwrd(mid) * cfg.tau_n
 
+    # The live closures, so a change of scheme in corrections.py shows up here
+    # rather than being re-asserted by this file. They return L/Fn, the units
+    # the non-thermal table (and `scale`) are in.
+    from primat.weak_rates.corrections import (ComputeFn,
+                                                _thermal_correction_interpolants)
+    inv_Fn = 1.0 / ComputeFn(cfg)
+    fn, fp = _thermal_correction_interpolants(
+        [run.background.Tg_vec, run.background.Tnue_vec], cfg)
+
     out = {}
-    for name, L in (("n_to_p", Ln), ("p_to_n", Lp)):
-        scipy_scheme = interp1d(T, L, kind="quadratic", bounds_error=False,
-                                fill_value="extrapolate")(mid)
-        c_scheme = _local_quadratic(T, L, mid)
-        out[name] = _stats((c_scheme - scipy_scheme) / scale)
+    for name, L, f in (("n_to_p", Ln, fn), ("p_to_n", Lp, fp)):
+        reference = CubicSpline(T, L * inv_Fn, bc_type="not-a-knot")(mid)
+        out[name] = _stats((f(mid) - reference) / scale)
     return out
-
-
-def _local_quadratic(x, y, xq):
-    """Port of ``primat-c/src/spline.c:cpr_interp_quadratic_local``.
-
-    Local 3-point Lagrange quadratic on the window centred on the bracketing
-    segment, clamped to the table ends. Vectorised over ``xq``.
-    """
-    x, y = np.asarray(x, float), np.asarray(y, float)
-    n = x.size
-    q = np.atleast_1d(np.asarray(xq, float))
-    i = np.clip(np.searchsorted(x, q, side="right") - 1, 0, n - 2)
-    k = np.where(i == 0, 0, i - 1)
-    k = np.where(k + 2 > n - 1, n - 3, k)
-    x0, x1, x2 = x[k], x[k + 1], x[k + 2]
-    y0, y1, y2 = y[k], y[k + 1], y[k + 2]
-    return (y0 * (q - x1) * (q - x2) / ((x0 - x1) * (x0 - x2))
-            + y1 * (q - x0) * (q - x2) / ((x1 - x0) * (x1 - x2))
-            + y2 * (q - x0) * (q - x1) / ((x2 - x0) * (x2 - x1)))
 
 
 def report(params, tmp_dir, precision=None):
@@ -247,8 +236,8 @@ def report(params, tmp_dir, precision=None):
 
     th = ccrth_interpolant_gap(params)
     if th:
-        print("  CCRTh interpolation scheme (scipy quadratic vs C local "
-              "Lagrange), as a fraction of the total rate:")
+        print("  CCRTh interpolant vs an independent not-a-knot cubic fit, "
+              "as a fraction of the n->p rate:")
         for k, s in th.items():
             print(f"    {k:8s} max={s['max']:.2e}  median={s['median']:.2e}")
 

@@ -46,10 +46,9 @@ double cpr_compute_fn(const CPRConfig *cfg);
 
 /* The non-thermal rate table plus, when available, the separately-cached
  * thermal (CCRTh) correction -- mirrors RecomputeWeakRates's two-piece
- * return value, but stored as raw arrays (quadratic-interpolated on
- * evaluation, see cpr_interp_quadratic_local) rather than closures. Both
- * tables are in units of 1/tau_n (the caller multiplies by 1/cfg->tau_n,
- * or by the corresponding K, to get the physical rate in s^-1).
+ * return value, but stored as raw arrays plus fitted interpolants rather than
+ * closures. Both tables are in units of 1/tau_n (the caller multiplies by
+ * 1/cfg->tau_n, or by the corresponding K, to get the physical rate in s^-1).
  *
  * The nonthermal forward/backward rates are evaluated through log10-log10
  * not-a-knot cubic splines (frwrd_sp/bkwrd_sp), matching Python's
@@ -84,6 +83,13 @@ typedef struct {
     double *T_th, *Lnth, *Lpth; /* thermal correction table, only if has_thermal */
     size_t n_th;
     int has_thermal;
+    /* CCRTh interpolants: not-a-knot cubic splines of L vs T in LINEAR space
+     * (the n->p correction changes sign, so the log-log scheme the nonthermal
+     * rates use is unavailable here), mirroring Python's
+     * corrections._L_CCRTh_interpolants. Valid iff th_cubic; below 4 knots
+     * both backends fall back to linear interpolation of the same nodes. */
+    CPRCubicSpline Lnth_sp, Lpth_sp;
+    int th_cubic;
 } CPRWeakRates;
 
 /* Builds the n<->p weak-rate tables for the given background, mirroring
