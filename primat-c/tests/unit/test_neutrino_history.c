@@ -30,6 +30,10 @@ int main(void)
 
     CPRConfig cfg;
     memset(&cfg, 0, sizeof(cfg));
+    /* The 16 measured constants live per config now: without this the
+     * memset above would leave every integrand reading me = 0. */
+    cfg.consts = g_const;
+    cpr_config_refresh_constants(&cfg);
     strncpy(cfg.data_dir, "../primat/data", sizeof(cfg.data_dir) - 1);
     cfg.QED_corrections = 1;
     cfg.n_electron_table = 2000;
@@ -88,6 +92,10 @@ int main(void)
      * here is out of scope). */
     CPRConfig cfg2;
     memset(&cfg2, 0, sizeof(cfg2));
+    /* The 16 measured constants live per config now: without this the
+     * memset above would leave every integrand reading me = 0. */
+    cfg2.consts = g_const;
+    cpr_config_refresh_constants(&cfg2);
     strncpy(cfg2.data_dir, "../primat/data", sizeof(cfg2.data_dir) - 1);
     cfg2.QED_corrections = 1;
     cfg2.n_electron_table = 2000;

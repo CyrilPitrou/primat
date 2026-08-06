@@ -263,13 +263,13 @@ static void setup_ede(CPRBackground *bg)
 
     double acEDE = 1.0 / (1.0 + cfg->zcEDE);
     double amaxEDE = acEDE * pow(4.0 / (3.0 * cfg->wnEDE - 1.0), 1.0 / (3.0 * cfg->wnEDE + 3.0));
-    double T0CMB_MeV = g_const.T0CMB / cpr_MeV_to_Kelvin();
+    double T0CMB_MeV = cfg->consts.T0CMB / cpr_MeV_to_Kelvin();
     double TmaxEDE = T0CMB_MeV / amaxEDE;
     bg->TcEDE = T0CMB_MeV / acEDE;
 
     bg->rhocEDEac = (cfg->fEDE / (1.0 - cfg->fEDE)
                       * cpr_rho_g(TmaxEDE)
-                      * (1.0 + g_const.Neff_SM * 7.0 / 8.0 * pow(4.0 / 11.0, 4.0 / 3.0))
+                      * (1.0 + cfg->consts.Neff_SM * 7.0 / 8.0 * pow(4.0 / 11.0, 4.0 / 3.0))
                       / 2.0
                       * (1.0 + 4.0 / (3.0 * cfg->wnEDE - 1.0)));
     bg->EDE_exponent = 3.0 * cfg->wnEDE + 3.0;
@@ -526,7 +526,7 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
      * photon temperature [MeV] today, sbar(T)=spl(T)/T^3 the EM plasma's
      * reduced entropy density (Phys. Rep. Eq. 21/24/30), s0bar its T->inf
      * limit (cpr_s0bar). */
-    double z0 = g_const.T0CMB / cpr_MeV_to_Kelvin();
+    double z0 = cfg->consts.T0CMB / cpr_MeV_to_Kelvin();
     double s_end, ds_dT_end;
     cpr_plasma_spl_and_dspl_dT(thermo, Tend, &s_end, &ds_dT_end);
     double sbar_end = s_end / (Tend * Tend * Tend);
@@ -792,9 +792,9 @@ static int setup_weak_rates_standard(CPRBackground *bg, char **errmsg)
         bg->norm_weak_rates = 1.0 / cfg->tau_n;
     } else {
         double Fn = cpr_compute_fn(cfg);
-        double GFtilde2 = (g_const.GF * g_const.Vud) * (g_const.GF * g_const.Vud)
-                            * (1.0 + 3.0 * g_const.gA * g_const.gA) / (2.0 * M_PI * M_PI * M_PI);
-        bg->norm_weak_rates = cpr_MeV_to_secm1() * (GFtilde2 * pow(g_const.me, 5.0)) * Fn;
+        double GFtilde2 = (cfg->consts.GF * cfg->consts.Vud) * (cfg->consts.GF * cfg->consts.Vud)
+                            * (1.0 + 3.0 * cfg->consts.gA * cfg->consts.gA) / (2.0 * M_PI * M_PI * M_PI);
+        bg->norm_weak_rates = cpr_MeV_to_secm1() * (GFtilde2 * pow(cfg->consts.me, 5.0)) * Fn;
     }
     return 0;
 }
@@ -1044,9 +1044,9 @@ int cpr_bg_init_custom(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasma 
         bg->norm_weak_rates = 1.0 / cfg->tau_n;
     } else {
         double Fn = cpr_compute_fn(cfg);
-        double GFtilde2 = (g_const.GF * g_const.Vud) * (g_const.GF * g_const.Vud)
-                            * (1.0 + 3.0 * g_const.gA * g_const.gA) / (2.0 * M_PI * M_PI * M_PI);
-        bg->norm_weak_rates = cpr_MeV_to_secm1() * (GFtilde2 * pow(g_const.me, 5.0)) * Fn;
+        double GFtilde2 = (cfg->consts.GF * cfg->consts.Vud) * (cfg->consts.GF * cfg->consts.Vud)
+                            * (1.0 + 3.0 * cfg->consts.gA * cfg->consts.gA) / (2.0 * M_PI * M_PI * M_PI);
+        bg->norm_weak_rates = cpr_MeV_to_secm1() * (GFtilde2 * pow(cfg->consts.me, 5.0)) * Fn;
     }
     return 0;
 }
@@ -1138,9 +1138,9 @@ int cpr_bg_Tnu_of_t(const CPRBackground *bg, double t, double *Tnue, double *Tnu
 double cpr_bg_rhoB_BBN(const CPRBackground *bg, double t)
 {
     const CPRConfig *cfg = bg->cfg;
-    double n0B = cpr_n0CMB() * cfg->eta0b;
+    double n0B = cpr_n0CMB(&cfg->consts) * cfg->eta0b;
     double a = cpr_bg_a_of_t(bg, t);
-    return g_const.ma * n0B * cpr_MeV4_to_gcmm3() / (a * a * a);
+    return cfg->consts.ma * n0B * cpr_MeV4_to_gcmm3() / (a * a * a);
 }
 
 double cpr_bg_weak_nTOp_frwrd(const CPRBackground *bg, double T_K)
@@ -1227,7 +1227,7 @@ int cpr_bg_Omeganuh2_relnu(const CPRBackground *bg, double *out)
 {
     if (bg->kind != CPR_BG_STANDARD) return 1;
     size_t i = bg->n_bg - 1;
-    double Tnu0 = bg->Tnu_vec[i] / bg->Tg_vec[i] * g_const.T0CMB / cpr_MeV_to_Kelvin();
+    double Tnu0 = bg->Tnu_vec[i] / bg->Tg_vec[i] * bg->cfg->consts.T0CMB / cpr_MeV_to_Kelvin();
     *out = (7.0 * M_PI * M_PI / 120.0 * pow(Tnu0, 4.0)) / cpr_config_rhocOverh2(bg->cfg);
     return 0;
 }
@@ -1236,7 +1236,7 @@ int cpr_bg_Omeganuh2_nrnu(const CPRBackground *bg, double *out)
 {
     if (bg->kind != CPR_BG_STANDARD) return 1;
     size_t i = bg->n_bg - 1;
-    double Tnu0 = bg->Tnu_vec[i] / bg->Tg_vec[i] * g_const.T0CMB / cpr_MeV_to_Kelvin();
+    double Tnu0 = bg->Tnu_vec[i] / bg->Tg_vec[i] * bg->cfg->consts.T0CMB / cpr_MeV_to_Kelvin();
     *out = (1.5 * ZETA3 / (M_PI * M_PI) * pow(Tnu0, 3.0)) / cpr_config_rhocOverh2(bg->cfg);
     return 0;
 }

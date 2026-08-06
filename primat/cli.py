@@ -49,6 +49,13 @@ from .cache_utils import (clear_cache, list_cache_files, plasma_cache_dir,
                            weak_cache_dir)
 from .config import (DEFAULT_PARAMS, PARAM_GROUPS, PRIMATConfig,
                      _default_params_comments, _rates_overlay_notice)
+from .constants import OVERRIDABLE_CONSTANTS
+from .tools.gen_param_templates import _TEMPLATE_DESCRIPTIONS
+
+# The measured physical constants, each exposed as its own --<name> float
+# flag below. Same tuple drives the flag definitions and the params dict, so
+# a constant added to primat.constants reaches the CLI with no edit here.
+_CONSTANT_FLAGS = OVERRIDABLE_CONSTANTS
 
 
 def _parse_set_value(raw: str):
@@ -181,6 +188,31 @@ def _print_list_params():
         print()
 
 
+def _print_list_reactions(params: dict):
+    """Print every reaction of the configured network, for
+    ``primat --list-reactions``.
+
+    Each name is the bare key of the ``p_<reaction>`` / ``delta_<reaction>``
+    rate-variation pattern -- an unbounded, per-network family that cannot
+    appear in ``DEFAULT_PARAMS`` and so is invisible to ``--list-params``.
+    The list honours ``--network`` and ``--amax``, so it is exactly the set
+    of names the run would accept.
+
+    Args:
+        params: the CLI's assembled overrides (only ``network``/``amax``/
+            ``data_dir``/``user_nuclear_dir`` matter here).
+    """
+    cfg = _inspect_config(params)
+    names = sorted(cfg.p_rxn)
+    print(f"# {len(names)} reactions in network {cfg.network!r}"
+          + (f" with amax={cfg.amax}" if cfg.amax is not None else ""))
+    print("# Vary any of them with --set p_<name>=<sigmas> (log-normal, in "
+          "units of the\n# tabulated 1-sigma factor) or --set "
+          "delta_<name>=<fraction> (additive).")
+    for name in names:
+        print(name)
+
+
 def _build_parser():
     """Build the ``argparse.ArgumentParser`` for the ``primat`` CLI.
 
@@ -198,7 +230,8 @@ def _build_parser():
                "delta_<reaction> rate variations) can be set with "
                "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4. Use "
                "--list-params to see every parameter's default and a "
-               "one-line description.",
+               "one-line description, and --list-reactions for the reaction "
+               "names those rate-variation keys accept.",
     )
     # `version` action prints the string and exits before any computation;
     # the version itself comes from the installed distribution metadata via
@@ -219,6 +252,12 @@ def _build_parser():
         "--list-params", action="store_true",
         help="Print every PRIMATConfig parameter, its default value, and a "
              "one-line description, then exit.",
+    )
+    parser.add_argument(
+        "--list-reactions", action="store_true",
+        help="Print every reaction name of the selected --network/--amax "
+             "(the p_<reaction>/delta_<reaction> rate-variation keys), then "
+             "exit.",
     )
     parser.add_argument(
         "--Omegabh2", type=float, default=None, metavar="VALUE",
@@ -264,6 +303,16 @@ def _build_parser():
              "tables/). Checked before the default tree; shipped networks "
              "remain accessible even when this is set. Default: None.",
     )
+    # The 16 measured physical constants, each a plain float flag so a
+    # sensitivity study reads `primat --gA 1.2762` rather than going through
+    # --set. Help text and default both come from the same two dicts the
+    # templates are generated from, so neither can drift from config.py.
+    for const_name in _CONSTANT_FLAGS:
+        parser.add_argument(
+            f"--{const_name}", type=float, default=None, metavar="VALUE",
+            help=f"{_TEMPLATE_DESCRIPTIONS[const_name]} "
+                 f"(PRIMATConfig default: {DEFAULT_PARAMS[const_name]!r}).",
+        )
     parser.add_argument(
         "--munuOverTnu", type=float, default=None, metavar="XI",
         help=f"Reduced neutrino chemical potential mu/T, the common default "
@@ -550,6 +599,7 @@ def _dispatch(args, parser):
         "output_mc_covariance", "output_mc_correlation", "show_progress",
         "output_file", "output_final_file", "output_background_file",
         "output_mc_file_prefix", "data_dir", "user_nuclear_dir",
+        *_CONSTANT_FLAGS,
     ):
         value = getattr(args, key)
         if value is not None:
@@ -561,6 +611,13 @@ def _dispatch(args, parser):
             parser.error(f"--set {entry!r}: expected KEY=VALUE")
         key, _, raw_value = entry.partition("=")
         params[key] = _parse_set_value(raw_value)
+
+    # Handled here, not with --credits/--list-params above: the reaction list
+    # depends on --network/--amax and the data-tree overlays, so it needs the
+    # assembled params.
+    if args.list_reactions:
+        _print_list_reactions(params)
+        return 0
 
     for key in ("data_dir", "user_nuclear_dir"):
         if params.get(key) is not None:

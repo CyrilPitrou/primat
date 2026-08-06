@@ -65,6 +65,7 @@ import os
 import numpy as np
 import pytest
 
+from primat.constants import CONST
 from primat.backend import HAS_C_BACKEND, run_bbn
 
 pytestmark = pytest.mark.skipif(
@@ -281,7 +282,7 @@ def test_thermal_cache_fingerprints_agree(thermal_dirs):
 def test_constants_hash_identical_across_backends():
     """Python's constants_hash() equals the C backend's cpr_constants_hash().
 
-    Both hash all 26 fields of the frozen constants struct in the same
+    Both hash all 26 fields of the config's constants struct in the same
     canonical-JSON form. If this ever fails, the cause is a build flag
     (-ffast-math, FMA contraction) making a derived constant such as hbar differ
     in its last bit between CPython and the C compiler -- a real bug worth
@@ -296,7 +297,7 @@ def test_constants_hash_identical_across_backends():
     assert len(constants_hash()) == 16
     # The cross-backend equality is asserted by the filename tests above; this
     # test additionally guards the Python side's own contract (16 hex digits,
-    # stable across calls thanks to the lru_cache).
+    # stable across calls).
     assert constants_hash() == constants_hash()
 
 
@@ -375,3 +376,36 @@ def test_qed_fingerprint_header_identical(qed_dirs):
         p = fp_lines(dirs["python"] / "plasma" / name)
         assert c, f"{name}: C backend wrote no fingerprint header"
         assert c == p, name
+
+
+@pytest.fixture(scope="module")
+def perturbed_constant_dirs(tmp_path_factory):
+    """Both backends on the coarse grid with me raised 1 %.
+
+    me is the constant with the widest reach -- the e+- thermodynamics, the
+    QED pressure tables and the n<->p phase space all read it -- so it
+    exercises every fingerprint at once.
+    """
+    return _run_both(tmp_path_factory.mktemp("perturbed"),
+                     extra={"me": CONST.me * 1.01})
+
+
+def test_overridden_constant_rekeys_both_backends_identically(
+        coarse_dirs, perturbed_constant_dirs):
+    """A constant override changes the cache filenames, the same way on both.
+
+    Two failure modes at once. If the names did not *change*, a run with an
+    overridden constant would load the default-constant table and report its
+    physics with no warning. If they changed *differently*, the backends would
+    stop sharing a cache they are meant to share -- and the ordinary parity
+    tests could not see it, since both would still agree with themselves.
+    """
+    for sub, prefix in (("weak", "nTOp_"), ("plasma", "electron_thermo_")):
+        base_c = _names(coarse_dirs["c"], sub, prefix)
+        bumped_c = _names(perturbed_constant_dirs["c"], sub, prefix)
+        bumped_py = _names(perturbed_constant_dirs["python"], sub, prefix)
+        assert bumped_c, f"C backend wrote no {sub} cache with me overridden"
+        assert bumped_c != base_c, (
+            f"{sub}/{prefix}* is unchanged by a 1 % shift in me: the override "
+            "would silently reuse the default-constant table")
+        assert bumped_c == bumped_py

@@ -287,69 +287,57 @@ static CPRParam ps(const char *s) {
 /* ---------------------------------------------------------------------------
  * Physical-constants hash -- the C mirror of cache_utils.constants_hash().
  *
- * Hashes every field of g_const (26 of them, exactly the fields of Python's
- * `Constants` dataclass, which is what dataclasses.asdict() serialises), so
- * that any edit to a physical constant invalidates every cache computed with
- * the old value. See cache.h for the contract and cache_utils.constants_hash's
- * docstring for the design rationale.
+ * Hashes every field of the config's own constants struct (26 of them,
+ * exactly the fields of Python's `Constants` dataclass, which is what
+ * dataclasses.asdict() serialises), so that a run overriding one of the 16
+ * measured constants keys its own cache files. See cache.h for the contract.
  *
  * The @property-derived quantities (sW2, MeV_to_Kelvin, mB, ...) are
  * deliberately absent on both sides: they are pure functions of the fields,
  * so they carry no extra information, and keeping them out means the hash
  * never depends on a float the C compiler might evaluate differently from
- * CPython (e.g. cpr_erg() divides by `second` where the Python property
- * divides by `second**2` -- inert at second = 1, but it would poison a hash
- * that included it).
+ * CPython.
  * ------------------------------------------------------------------------- */
-const char *cpr_constants_hash(void)
+void cpr_constants_hash(const CPRConstants *c, char out[17])
 {
-    /* Memoised for the process: the constants are frozen, so this is the C
-     * equivalent of Python's @lru_cache(maxsize=1). 17 = 16 hex digits + NUL. */
-    static char cached[17];
-    if (cached[0] != '\0')
-        return cached;
-
-    /* Idempotent; makes the helper safe to call before any explicit init. */
-    cpr_constants_init();
-
     /* Listed in the Python dataclass's declaration order for side-by-side
      * comparison with constants.py; cpr_fingerprint_json sorts by key anyway,
      * exactly as json.dumps(sort_keys=True) does. */
     const CPRFPField fields[] = {
         /* ---- CGS base units (natural units: all 1) ---- */
-        {"Kelvin",    pd(g_const.Kelvin)},
-        {"second",    pd(g_const.second)},
-        {"cm",        pd(g_const.cm)},
-        {"gram",      pd(g_const.gram)},
+        {"Kelvin",    pd(c->Kelvin)},
+        {"second",    pd(c->second)},
+        {"cm",        pd(c->cm)},
+        {"gram",      pd(c->gram)},
         /* ---- Fundamental constants ---- */
-        {"kB",        pd(g_const.kB)},
-        {"clight",    pd(g_const.clight)},
-        {"hbar",      pd(g_const.hbar)},
-        {"Mpc",       pd(g_const.Mpc)},
-        {"MeV",       pd(g_const.MeV)},
-        {"keV",       pd(g_const.keV)},
+        {"kB",        pd(c->kB)},
+        {"clight",    pd(c->clight)},
+        {"hbar",      pd(c->hbar)},
+        {"Mpc",       pd(c->Mpc)},
+        {"MeV",       pd(c->MeV)},
+        {"keV",       pd(c->keV)},
         /* ---- Electroweak sector ---- */
-        {"alphaem",   pd(g_const.alphaem)},
-        {"GF",        pd(g_const.GF)},
-        {"mZ",        pd(g_const.mZ)},
+        {"alphaem",   pd(c->alphaem)},
+        {"GF",        pd(c->GF)},
+        {"mZ",        pd(c->mZ)},
         /* ---- Fermion masses [MeV] ---- */
-        {"me",        pd(g_const.me)},
-        {"mn",        pd(g_const.mn)},
-        {"mp",        pd(g_const.mp)},
+        {"me",        pd(c->me)},
+        {"mn",        pd(c->mn)},
+        {"mp",        pd(c->mp)},
         /* ---- CMB ---- */
-        {"T0CMB",     pd(g_const.T0CMB)},
+        {"T0CMB",     pd(c->T0CMB)},
         /* ---- Weak-rate nuclear-structure constants ---- */
-        {"gA",        pd(g_const.gA)},
-        {"kappa_p",   pd(g_const.kappa_p)},
-        {"kappa_n",   pd(g_const.kappa_n)},
-        {"Vud",       pd(g_const.Vud)},
-        {"radproton", pd(g_const.radproton)},
+        {"gA",        pd(c->gA)},
+        {"kappa_p",   pd(c->kappa_p)},
+        {"kappa_n",   pd(c->kappa_n)},
+        {"Vud",       pd(c->Vud)},
+        {"radproton", pd(c->radproton)},
         /* ---- Atomic masses ---- */
-        {"ma",        pd(g_const.ma)},
-        {"He4Overma", pd(g_const.He4Overma)},
-        {"HOverma",   pd(g_const.HOverma)},
+        {"ma",        pd(c->ma)},
+        {"He4Overma", pd(c->He4Overma)},
+        {"HOverma",   pd(c->HOverma)},
         /* ---- Standard-model effective neutrino number ---- */
-        {"Neff_SM",   pd(g_const.Neff_SM)},
+        {"Neff_SM",   pd(c->Neff_SM)},
     };
     /* Compile-time guard: if a field is added to CPRConstants (and to Python's
      * Constants) but not to the array above, the two hashes silently diverge
@@ -360,9 +348,8 @@ const char *cpr_constants_hash(void)
                    "(see primat/constants.py); update both on any change");
 
     char *hash = cpr_fingerprint_hash(fields, sizeof(fields) / sizeof(fields[0]));
-    snprintf(cached, sizeof(cached), "%s", hash);
+    snprintf(out, 17, "%s", hash);
     free(hash);
-    return cached;
 }
 
 /* WEAK_RATE_FORMAT_VERSION in weak_rates/cache.py (see its changelog comment
@@ -382,10 +369,10 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"finite_mass_corrections", pb(cfg->finite_mass_corrections)};
     /* Physical constants (v5): the rate integrands read me, alphaem, mn, mp,
      * gA, Vud, radproton, kappa_n/p and GF directly. Mirrors Python
-     * _weak_rate_fingerprint's "constants_hash" entry; the pointer is to
-     * cpr_constants_hash's process-lifetime static buffer, so it safely
+     * _weak_rate_fingerprint's "constants_hash" entry; the pointer is to the
+     * config's own consts_hash buffer, so it safely
      * outlives this call. */
-    out[n++] = (CPRFPField){"constants_hash", ps(cpr_constants_hash())};
+    out[n++] = (CPRFPField){"constants_hash", ps(cfg->consts_hash)};
     /* Effective ξ_e under the historical "munuOverTnu" key: only nu_e
      * shifts the n<->p rates, and using the effective xi_e (= munuOverTnu when
      * munuOverTnu_e is unset) keeps the default-run hash unchanged so shipped
@@ -444,7 +431,7 @@ size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"sampling_nTOp_thermal_per_decade", pi(cfg->sampling_nTOp_thermal_per_decade)};
     /* Physical constants (v5): the CCRTh correction is itself O(alphaem) and
      * its integrands carry me. Mirrors Python _thermal_fingerprint. */
-    out[n++] = (CPRFPField){"constants_hash", ps(cpr_constants_hash())};
+    out[n++] = (CPRFPField){"constants_hash", ps(cfg->consts_hash)};
     out[n++] = (CPRFPField){"T_start_cosmo_MeV", pd(cfg->T_start_cosmo_MeV)};
     out[n++] = (CPRFPField){"QED_corrections", pb(cfg->QED_corrections)};
     out[n++] = (CPRFPField){"incomplete_decoupling", pb(cfg->incomplete_decoupling)};

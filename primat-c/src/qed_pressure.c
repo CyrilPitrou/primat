@@ -210,7 +210,7 @@ static int write_one_qed_file(const char *path, const char *src_tag,
 #define QED_FORMAT_VERSION 1
 
 size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
-                            CPRFPField *out)
+                            const char *consts_hash, CPRFPField *out)
 {
     size_t n = 0;
     out[n++] = (CPRFPField){"format_version",
@@ -219,7 +219,7 @@ size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
      * see cache_utils.constants_hash for why over-invalidating is the safe
      * side of that trade. */
     out[n++] = (CPRFPField){"constants_hash",
-                            { CPR_STRING, { .s = cpr_constants_hash() } }};
+                            { CPR_STRING, { .s = consts_hash } }};
     out[n++] = (CPRFPField){"T_min",  { CPR_DOUBLE, { .d = T_min } }};
     out[n++] = (CPRFPField){"T_max",  { CPR_DOUBLE, { .d = T_max } }};
     out[n++] = (CPRFPField){"n_pts",  { CPR_INT,    { .i = (long)n_pts } }};
@@ -227,7 +227,8 @@ size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
 }
 
 int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir,
-                         double T_min, double T_max, size_t n_pts, char **errmsg)
+                         double T_min, double T_max, size_t n_pts,
+                         const char *consts_hash, char **errmsg)
 {
     char path_e2[1024], path_e3[1024];
     snprintf(path_e2, sizeof(path_e2), "%s/QED_pressure_correction_e2.txt", plasma_dir);
@@ -237,7 +238,7 @@ int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir,
      * they are always generated together and summed column-by-column at point
      * of use (mirrors save_qed_tables in qed_pressure.py). */
     CPRFPField fields[5];
-    size_t nf = cpr_qed_fingerprint(T_min, T_max, n_pts, fields);
+    size_t nf = cpr_qed_fingerprint(T_min, T_max, n_pts, consts_hash, fields);
     char *fp_json = cpr_fingerprint_json(fields, nf);
     char *fp_hash = cpr_sha256_hex16(fp_json);
 

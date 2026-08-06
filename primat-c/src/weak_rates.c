@@ -247,9 +247,8 @@ static CCplx clgamma(CCplx z)
 
 double cpr_fermi_coulomb(double b, const CPRConfig *cfg)
 {
-    (void)cfg;
-    double me = g_const.me * g_const.MeV;
-    double Gamma = sqrt(1.0 - g_const.alphaem * g_const.alphaem) - 1.0;
+    double me = cfg->consts.me * g_const.MeV;
+    double Gamma = sqrt(1.0 - cfg->consts.alphaem * cfg->consts.alphaem) - 1.0;
     double gamma1 = 1.0 + Gamma;
     double gamma2 = 3.0 + 2.0 * Gamma;
     double Fn_Comp = g_const.hbar * g_const.clight / me;
@@ -261,7 +260,7 @@ double cpr_fermi_coulomb(double b, const CPRConfig *cfg)
      * while changing the (already huge, ~1e10-scale) y by a negligible
      * relative amount -- well below double precision's reach either way. */
     if (b < 1e-12) b = 1e-12;
-    double y = g_const.alphaem / b;
+    double y = cfg->consts.alphaem / b;
 
     CCplx lg = clgamma(cc(gamma1, y));
     /* exp(pi*y) * |Gamma(gamma1+iy)|^2, computed jointly (see comment above
@@ -269,7 +268,7 @@ double cpr_fermi_coulomb(double b, const CPRConfig *cfg)
     double sommerfeld = exp(M_PI * y + 2.0 * lg.re);
 
     return (1.0 + Gamma / 2.0)
-           * 4.0 * pow((2.0 * g_const.radproton * b) / Fn_Comp, 2.0 * Gamma)
+           * 4.0 * pow((2.0 * cfg->consts.radproton * b) / Fn_Comp, 2.0 * Gamma)
            / (tgamma(gamma2) * tgamma(gamma2))
            / pow(1.0 - b * b, Gamma)
            * sommerfeld;
@@ -277,7 +276,6 @@ double cpr_fermi_coulomb(double b, const CPRConfig *cfg)
 
 double cpr_rad_corr_resum(double b, double y, double en, const CPRConfig *cfg)
 {
-    (void)cfg;
     const double mA = 1.2e3 * g_const.MeV;
     const double Agndecay = -0.34;
     const double Cndecay = 0.891;
@@ -286,9 +284,9 @@ double cpr_rad_corr_resum(double b, double y, double en, const CPRConfig *cfg)
     const double Sndecay = 1.02248;
     const double NLLndecay = -0.0001;
 
-    double me = g_const.me * g_const.MeV;
-    double mn = g_const.mn * g_const.MeV;
-    double mp = g_const.mp * g_const.MeV;
+    double me = cfg->consts.me * g_const.MeV;
+    double mn = cfg->consts.mn * g_const.MeV;
+    double mp = cfg->consts.mp * g_const.MeV;
     double Q = mn - mp;
 
     double b_safe = (b == 0.0) ? 1.0 : b;
@@ -306,9 +304,9 @@ double cpr_rad_corr_resum(double b, double y, double en, const CPRConfig *cfg)
                     + Rd * (2.0 * (1.0 + b * b) + y * y / (6.0 * en * en) - 4.0 * b * Rd)
                     - (4.0 / b) * spence_real(1.0 - (2.0 * b) / (1.0 + b));
 
-    return (1.0 + g_const.alphaem / (2.0 * M_PI) * (Sirlin - 3.0 * log(mp / (2.0 * Q))))
-           * (Lndecay + (g_const.alphaem / M_PI) * Cndecay
-              + g_const.alphaem / (2.0 * M_PI) * deltand * 2.0 * M_PI / g_const.alphaem)
+    return (1.0 + cfg->consts.alphaem / (2.0 * M_PI) * (Sirlin - 3.0 * log(mp / (2.0 * Q))))
+           * (Lndecay + (cfg->consts.alphaem / M_PI) * Cndecay
+              + cfg->consts.alphaem / (2.0 * M_PI) * deltand * 2.0 * M_PI / cfg->consts.alphaem)
            * (Sndecay + 1.0 / (134.0 * 2.0 * M_PI) * (log(mp / mA) + Agndecay)
               + NLLndecay);
 }
@@ -382,16 +380,16 @@ static double fn_fm_int(double pe, void *ctx_)
 
 double cpr_compute_fn(const CPRConfig *cfg)
 {
-    double me = g_const.me * g_const.MeV;
-    double mn = g_const.mn * g_const.MeV;
-    double mp = g_const.mp * g_const.MeV;
+    double me = cfg->consts.me * g_const.MeV;
+    double mn = cfg->consts.mn * g_const.MeV;
+    double mp = cfg->consts.mp * g_const.MeV;
     double Q = mn - mp;
     double Q_over_me = Q / me;
 
     FnBornCtx born_ctx = { Q_over_me };
     double Fn_Born = cpr_quad_adaptive(fn_born_int, &born_ctx, 1.0, Q_over_me, 1e-12, 40, NULL);
 
-    double gA = g_const.gA, deltakappa = cpr_deltakappa();
+    double gA = cfg->consts.gA, deltakappa = cpr_deltakappa(&cfg->consts);
 
     if (!cfg->radiative_corrections) {
         if (!cfg->finite_mass_corrections) return Fn_Born;
@@ -954,7 +952,7 @@ static double ipen_ccrt(const RateCtx *ctx, double E, double k, double x, double
              * (th_chitilde(ctx, E - k, znu, sgnq) - th_chitilde(ctx, E + k, znu, sgnq))
            + FD2(E, x) * fermi_stat(ctx, sgnq, -1.0, pE / E)
              * (th_chitilde(ctx, -E + k, znu, sgnq) - th_chitilde(ctx, -E - k, znu, sgnq)));
-    return g_const.alphaem / (2.0 * M_PI) * (th_BE(x * k) / k) * (term1 - term2);
+    return ctx->cfg->consts.alphaem / (2.0 * M_PI) * (th_BE(x * k) / k) * (term1 - term2);
 }
 
 /* IPENCCRDiffBremsstrahlung: thermal differential-bremsstrahlung
@@ -996,7 +994,7 @@ static double ipen_ccr_diff_brems(const RateCtx *ctx, double E, double k, double
         res2 -= Fp * FD2(-E - sgnq * q, znu) * pow(fabs(E + sgnq * q) - k, 2.0);
     res2 *= res2_fac;
 
-    return g_const.alphaem / (2.0 * M_PI * k) * (res1 + res2);
+    return ctx->cfg->consts.alphaem / (2.0 * M_PI * k) * (res1 + res2);
 }
 
 /* C1dE: 1D thermal sub-integrand (corrections.py's C1dE), reusing chi_func
@@ -1016,7 +1014,7 @@ static double th_c1de_over_p_jacobian(const RateCtx *ctx, double E, double x, do
 {
     /* C1dE(E) * dE/dpE, with the E/pE * pE/E = E^0 cancellation already
      * applied algebraically (see the comment above): */
-    return -(g_const.alphaem * M_PI) / (3.0 * x * x)
+    return -(ctx->cfg->consts.alphaem * M_PI) / (3.0 * x * x)
            * (chi_func(ctx, E, x, znu, sgnq) + chi_func(ctx, -E, x, znu, sgnq));
 }
 
@@ -1053,7 +1051,7 @@ static double th_c2de1de2(const RateCtx *ctx, double e1, double e2, double x,
                             - (e1 * e1 * e2) / (p1 * p2) * L_fac))
         - fd2_e2 * (4.0 * e1 * p2 / p1 + 2.0 * e2 * L_fac);
 
-    return g_const.alphaem / (2.0 * M_PI) * chi_sum * term;
+    return ctx->cfg->consts.alphaem / (2.0 * M_PI) * chi_sum * term;
 }
 
 /* ---- Driver integrals (one quadrature/VEGAS evaluation per (T,sgnq)). ---- */
@@ -1211,14 +1209,15 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     }
     TNuOverTCtx tnu_ctx = { Tg_K, ratio, n_bg };
 
-    double me = g_const.me * g_const.MeV;
-    double mn = g_const.mn * g_const.MeV;
-    double mp = g_const.mp * g_const.MeV;
+    double me = cfg->consts.me * g_const.MeV;
+    double mn = cfg->consts.mn * g_const.MeV;
+    double mp = cfg->consts.mp * g_const.MeV;
     /* Only the electron-neutrino chemical potential enters the n<->p rates
      * (n <-> p + e + nu_e), so use the effective ξ_e (cpr_config_xi_nu_e:
      * munuOverTnu_e, or munuOverTnu if that override is unset). Mirrors the
      * Python _RateContext(xi_nu=cfg.xi_nu_e). */
-    RateCtx ctx = { cfg, nh, me, mn, mp, mn - mp, cpr_config_xi_nu_e(cfg), g_const.gA, cpr_deltakappa() };
+    RateCtx ctx = { cfg, nh, me, mn, mp, mn - mp, cpr_config_xi_nu_e(cfg), cfg->consts.gA,
+                    cpr_deltakappa(&cfg->consts) };
 
     double T_end = cpr_config_T_end(cfg);
     double T_start = cpr_T_start(); /* fixed 10 MeV era boundary, NOT T_start_cosmo */

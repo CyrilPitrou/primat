@@ -1,11 +1,21 @@
-/* constants.h -- frozen physical constants and unit-conversion factors.
+/* constants.h -- physical constants and unit-conversion factors.
  *
- * Direct port of primat/constants.py's `Constants` dataclass: the base
- * fields are literal PDG values (verbatim, no computation differs from
- * Python), and the derived quantities are implemented as functions of
- * `g_const` rather than dataclass `@property`s, since C has no lazy
- * per-instance property mechanism and these are pure functions of fixed
- * constants anyway (cheap to recompute, never needs caching).
+ * Direct port of primat/constants.py's `Constants` dataclass: the base fields
+ * are literal PDG values (verbatim, no computation differs from Python).
+ *
+ * The 26 fields split by one question -- does this number have an error bar?
+ * The 16 MEASURED ones (alphaem, GF, mZ, me, mn, mp, T0CMB, gA, Vud, kappa_p,
+ * kappa_n, radproton, ma, He4Overma, HOverma, Neff_SM) are ordinary
+ * parameters, stored per run in `cfg->consts` and settable through
+ * cpr_config_set_by_name like any other key. The other 10 are exact by
+ * definition and never move, so `g_const` (the defaults) is the right source
+ * for them anywhere -- including inside the derived helpers below that take
+ * no argument.
+ *
+ * Derived quantities are functions rather than dataclass `@property`s (C has
+ * no lazy per-instance property mechanism, and they are cheap to recompute).
+ * Those depending on a measured field take a `const CPRConstants *`; those
+ * built from the exact ten take none.
  *
  * Units convention (unchanged from Python): natural units throughout
  * (Kelvin = second = cm = gram = 1); the `cpr_MeV_to_*` functions convert
@@ -53,14 +63,16 @@ typedef struct {
     double HOverma;    /* M(H) / u */
 } CPRConstants;
 
-/* The single frozen instance, populated at startup by cpr_constants_init(). */
+/* The DEFAULT values, populated at startup by cpr_constants_init(). Read it
+ * directly only for the ten exact constants; a run's 16 measured ones live in
+ * `cfg->consts`, which cpr_config_init_defaults seeds from here. */
 extern CPRConstants g_const;
 
 /* Fills g_const with the literal values above. Idempotent; call once at
  * program start (or let any module needing g_const call it -- cheap). */
 void cpr_constants_init(void);
 
-/* ---- Derived quantities (pure functions of g_const) ---- */
+/* ---- Derived from the exact ten only (never move) ---- */
 double cpr_erg(void);
 double cpr_MeV_to_Kelvin(void);
 double cpr_MeV_to_secm1(void);
@@ -73,22 +85,22 @@ double cpr_T_start(void);  /* 10 MeV */
 double cpr_T_weak(void);   /* 1 MeV */
 double cpr_T_nucl(void);   /* 0.11 MeV */
 
-/* ---- Electroweak mixing angle and effective couplings ---- */
-double cpr_sW2(void);
-double cpr_geL(void);
-double cpr_geR(void);
-double cpr_gmuL(void);
-double cpr_gmuR(void);
-double cpr_deltakappa(void);
+/* ---- Electroweak mixing angle and effective couplings (alphaem, GF, mZ) ---- */
+double cpr_sW2(const CPRConstants *c);
+double cpr_geL(const CPRConstants *c);
+double cpr_geR(const CPRConstants *c);
+double cpr_gmuL(const CPRConstants *c);
+double cpr_gmuR(const CPRConstants *c);
+double cpr_deltakappa(const CPRConstants *c);  /* kappa_p, kappa_n */
 
 /* ---- High-T plasma entropy/number-density normalisations ---- */
 double cpr_s0bar(void);
-double cpr_s0CMB(void);
-double cpr_n0CMB(void);
+double cpr_s0CMB(const CPRConstants *c);  /* T0CMB */
+double cpr_n0CMB(const CPRConstants *c);  /* T0CMB */
 
-/* ---- Mean baryon mass (H + He4 mixture) ---- */
-double cpr_mB(void);
-double cpr_maOvermB(void);
+/* ---- Mean baryon mass (H + He4 mixture): ma, He4Overma, HOverma ---- */
+double cpr_mB(const CPRConstants *c);
+double cpr_maOvermB(const CPRConstants *c);
 
 /* ---- Hubble constant in natural units, per unit h ---- */
 double cpr_HubbleOverh(void);

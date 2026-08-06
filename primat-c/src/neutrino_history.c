@@ -104,7 +104,7 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
     double *Tnue_r = tab.cols[2], *Tnumu_r = tab.cols[3], *Tnutau_r = tab.cols[4];
     double *N_r    = tab.cols[5];
 
-    double me = g_const.me;
+    double me = cfg->consts.me;
     double *Tg = CPR_XMALLOC(n * sizeof(double));
     double *Tnue = CPR_XMALLOC(n * sizeof(double)), *Tnumu = CPR_XMALLOC(n * sizeof(double)), *Tnutau = CPR_XMALLOC(n * sizeof(double));
     for (size_t i = 0; i < n; i++) {
@@ -289,7 +289,7 @@ static void build_instantaneous(CPRNeutrinoHistory *nh, const CPRConfig *cfg)
      * InstantaneousDecoupling._build_temperatures comment for the
      * Dodelson & Turner 1992 / Heckler 1994 perturbative QED formula. */
     if (cfg->QED_corrections) {
-        double alpha = g_const.alphaem;
+        double alpha = cfg->consts.alphaem;
         double ratio3 = 11.0 / 4.0
                       - 25.0 * alpha / (8.0 * M_PI)
                       + 10.0 * pow(alpha, 1.5) * sqrt(M_PI / 3.0) / (M_PI * M_PI);

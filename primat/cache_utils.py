@@ -38,7 +38,7 @@ import warnings
 
 import numpy as np
 
-from .constants import CONST
+from .constants import CONST, Constants
 
 
 def _json_scalar(obj):
@@ -94,65 +94,50 @@ def fingerprint_hash(fingerprint: dict) -> str:
     return hashlib.sha256(_canonical_json(fingerprint).encode("utf-8")).hexdigest()[:16]
 
 
-@functools.lru_cache(maxsize=1)
-def constants_hash() -> str:
-    """Return the 16-hex-digit hash of the *entire* physical-constants struct.
+@functools.lru_cache(maxsize=16)
+def _constants_hash_cached(consts: Constants) -> str:
+    return fingerprint_hash(dataclasses.asdict(consts))
+
+
+def constants_hash(cfg=None) -> str:
+    """Return the 16-hex-digit hash of a config's *entire* constants struct.
 
     Every fingerprinted cache in primat is a function not only of the run-time
-    configuration but also of the frozen physical constants in
-    :mod:`primat.constants` -- the n<->p weak rates read m_e, alpha, m_n, m_p,
-    g_A, V_ud, the proton charge radius, the anomalous magnetic moments and
-    G_F; the e+- thermodynamic tables read m_e; the QED plasma-pressure tables
-    read m_e and alpha.  None of those constants used to appear in any
-    fingerprint, so editing one of them (say m_e in ``constants.py``) silently
-    reloaded rates computed with the *old* value: a wrong answer with no
-    warning anywhere.  This helper is the single field that closes that hole,
-    and it is added to all four fingerprints (weak rate, CCRTh thermal,
-    electron thermo, QED pressure).
+    flags but also of the physical constants: the n<->p weak rates read m_e,
+    alpha, m_n, m_p, g_A, V_ud, the proton charge radius, the anomalous
+    magnetic moments and G_F; the e+- thermodynamic tables read m_e; the QED
+    plasma-pressure tables read m_e and alpha.  This is the single field that
+    keys all four fingerprints (weak rate, CCRTh thermal, electron thermo, QED
+    pressure) on them, so overriding ``me`` cannot reload rates computed with
+    the previous value.
 
-    Why one broad hash of *all* 26 fields rather than a curated per-cache list
-    of the constants each one actually consumes:
+    All 26 fields are hashed, not a curated per-cache list of the ones each
+    cache consumes: over-invalidation costs a recompute, under-invalidation
+    returns a silently wrong number.  So changing ``Mpc`` -- a pure unit
+    conversion that cannot reach the weak-rate integrands -- does rebuild the
+    weak tables.  That is the intended trade.  Only dataclass *fields* are
+    hashed (:func:`dataclasses.asdict`), never the ``@property``-derived
+    quantities: they add no information, and excluding them keeps the hash
+    free of any float a C compiler might contract differently from CPython.
 
-    * The two failure modes are not symmetric.  **Over**-invalidation merely
-      costs a recompute -- every one of these caches is regenerable from
-      ``cfg`` by construction (see :func:`clear_cache`).
-      **Under**-invalidation returns a silently wrong number.  When in doubt,
-      invalidate.
-    * A curated list is exactly the kind of thing that goes stale: a constant
-      added to :class:`primat.constants.Constants` later would have to be
-      remembered and hand-added to each list.  Hashing the whole struct stays
-      correct with no maintenance.
+    The C backend hashes ``cfg->consts`` field for field in the same
+    canonical-JSON form (``cpr_constants_hash``, ``primat-c/src/cache.c``), so
+    both backends key a shared cache file identically;
+    ``tests/test_cache_parity.py`` asserts that equality.
 
-    So this deliberately over-covers: changing ``Mpc`` (a pure unit conversion
-    that cannot reach the weak-rate integrands) does rebuild the weak tables.
-    That is the intended trade, not an oversight.
-
-    Only dataclass *fields* are hashed (via :func:`dataclasses.asdict`), not
-    the ``@property``-derived quantities (``sW2``, ``MeV_to_Kelvin``, ...):
-    those are pure functions of the fields, so they add no information, and
-    excluding them keeps the hash free of any float that a C compiler might
-    contract differently from CPython.
-
-    The C backend computes the *same* hash over ``g_const``
-    (``cpr_constants_hash``, ``primat-c/src/cache.c``), field for field and in
-    the same canonical-JSON form, so both backends key a shared cache file
-    identically.  ``tests/test_cache_parity.py`` asserts that equality; if it
-    ever fails, the cause is a build flag (``-ffast-math``, FMA contraction)
-    making a derived constant such as ``hbar`` differ in its last bit between
-    the two, which is a real bug worth surfacing rather than working around.
-
-    Memoised with ``lru_cache``: ``CONST`` is a frozen module-level singleton,
-    so the hash is computed once per process (the JSON+sha256 of 26 fields is
-    cheap, but this is called on every cache lookup).
+    Args:
+        cfg: a ``PRIMATConfig`` (or anything exposing ``.constants``).
+            ``None`` uses the all-defaults :data:`primat.constants.CONST`.
 
     Returns:
         16-hex-character hash string, e.g. ``"6e0c1c4c95a2b6b0"``.
 
     Example:
-        >>> constants_hash()            # doctest: +SKIP
+        >>> constants_hash(cfg)         # doctest: +SKIP
         '6e0c1c4c95a2b6b0'
     """
-    return fingerprint_hash(dataclasses.asdict(CONST))
+    consts = CONST if cfg is None else cfg.constants
+    return _constants_hash_cached(consts)
 
 
 def read_cache_fingerprint_hash(path: str):

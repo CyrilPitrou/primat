@@ -43,6 +43,10 @@ int main(void)
 
     CPRConfig cfg;
     memset(&cfg, 0, sizeof(cfg));
+    /* The 16 measured constants live per config now: without this the
+     * memset above would leave every integrand reading me = 0. */
+    cfg.consts = g_const;
+    cpr_config_refresh_constants(&cfg);
     strncpy(cfg.data_dir, "../primat/data", sizeof(cfg.data_dir) - 1);
     cfg.QED_corrections = 1;
     cfg.recompute_qed_corrections = 0;

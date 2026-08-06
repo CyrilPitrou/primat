@@ -86,23 +86,14 @@ from scipy.interpolate import CubicSpline
 
 from .cache_utils import constants_hash, write_cache_with_fingerprint
 
-# Physical constants — kept local to this module (not imported from config)
-# so that generate_rates/ scripts can use it standalone, with no PRIMATConfig.
-# They are DEFAULTS ONLY: the solver no longer relies on them. primat.plasma's
-# Plasma._load_tables passes alpha=cfg.alphaem, me=cfg.me explicitly (matching
-# what plasma.c has always done with g_const), so for any actual BBN run these
-# two values are never read, and the "kept identical to CONST by hand" hazard
-# below no longer applies to solver results -- only to a direct standalone call
-# that omits the arguments.
-# (_ME_MEV read 0.5109989461, the CODATA 2014 electron mass, until it was
-# aligned with CONST.me = 0.51099895; the 8e-9 relative shift is far below any
-# BBN tolerance, but the divergence itself was a trap -- which is exactly why
-# the solver now sources both from cfg instead.)
-# The written tables additionally carry a fingerprint header keyed on
-# cache_utils.constants_hash (see _qed_fingerprint), so a table computed with
-# different constants is now detected and rebuilt rather than loaded silently.
-_ALPHA_FS = 1. / 137.035999084   # fine-structure constant (CODATA 2018) == CONST.alphaem
-_ME_MEV   = 0.51099895           # electron mass [MeV] (CODATA 2018) == CONST.me
+# Fallback constants for a standalone call with no PRIMATConfig in hand (the
+# generate_rates/ scripts). A BBN run never reads them: plasma.Plasma._load_tables
+# passes alpha=cfg.alphaem, me=cfg.me explicitly, and both are user-settable
+# parameters. The written tables carry a fingerprint header keyed on
+# cache_utils.constants_hash, so a table computed with other constants is
+# rebuilt rather than loaded silently.
+_ALPHA_FS = 1. / 137.035999084   # fine-structure constant (CODATA 2018)
+_ME_MEV   = 0.51099895           # electron mass [MeV] (CODATA 2018)
 
 # Bump when a code change alters the *numerical content* of the two QED
 # pressure-correction tables for a fixed (T_min, T_max, n_pts) and fixed
@@ -458,7 +449,7 @@ def compute_qed_pressure_tables(T_min=1e-3, T_max=1e2, n_pts=500,
     return out
 
 
-def qed_fingerprint(T_min, T_max, n_pts):
+def qed_fingerprint(T_min, T_max, n_pts, cfg=None):
     """Fingerprint dict for the two QED pressure-correction cache files.
 
     The tables are a function of exactly two things: the physical constants
@@ -478,6 +469,8 @@ def qed_fingerprint(T_min, T_max, n_pts):
         T_min: float, lowest grid temperature [MeV].
         T_max: float, highest grid temperature [MeV].
         n_pts: int, number of log-spaced grid points.
+        cfg: PRIMATConfig whose constants the tables were computed with;
+            ``None`` uses the defaults (:data:`primat.constants.CONST`).
 
     Returns:
         dict, JSON-serialisable; pass to
@@ -491,13 +484,13 @@ def qed_fingerprint(T_min, T_max, n_pts):
         '0f3a...'
     """
     return {"format_version": QED_FORMAT_VERSION,
-            "constants_hash": constants_hash(),
+            "constants_hash": constants_hash(cfg),
             "T_min": float(T_min),
             "T_max": float(T_max),
             "n_pts": int(n_pts)}
 
 
-def save_qed_tables(tables, plasma_dir, verbose=True):
+def save_qed_tables(tables, plasma_dir, verbose=True, cfg=None):
     """Write the computed QED tables to two four-column files, one per order in e.
 
     Produces the two files read by :func:`primat.plasma.Plasma._load_tables`:
@@ -562,7 +555,7 @@ def save_qed_tables(tables, plasma_dir, verbose=True):
     # loader checks each file's own header, and a mismatch on either rebuilds
     # (and rewrites) both, which is correct since they are always generated
     # together and summed column-by-column at point of use.
-    fp = qed_fingerprint(T[0], T[-1], len(T))
+    fp = qed_fingerprint(T[0], T[-1], len(T), cfg=cfg)
 
     # write_cache_with_fingerprint creates the target on demand -- when
     # redirected to a fresh cache_dir the plasma/ subdir may not exist yet --

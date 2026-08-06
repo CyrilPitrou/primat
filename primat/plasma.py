@@ -584,7 +584,7 @@ class Plasma:
         # cache_utils, and the recompute branch below already imports it
         # lazily for the same reason (keeping the module's import graph flat).
         from .qed_pressure import qed_fingerprint
-        fp_hash    = fingerprint_hash(qed_fingerprint(*_QED_TABLE_GRID))
+        fp_hash    = fingerprint_hash(qed_fingerprint(*_QED_TABLE_GRID, cfg=cfg))
         split_on_disk = os.path.exists(e2_file) and os.path.exists(e3_file)
         split_valid   = (split_on_disk
                          and read_cache_fingerprint_hash(e2_file) == fp_hash
@@ -641,7 +641,7 @@ class Plasma:
                 # crash -- the freshly computed in-memory tables below are valid.
                 qed_dir = cache_write_dir(cfg, "plasma")
                 try:
-                    save_qed_tables(tables, qed_dir, verbose=cfg.verbose)
+                    save_qed_tables(tables, qed_dir, verbose=cfg.verbose, cfg=cfg)
                 except OSError as exc:
                     import warnings
                     warnings.warn(
@@ -853,7 +853,7 @@ class Plasma:
               # cache_utils.constants_hash for why that over-coverage is the
               # deliberately safe side of the trade. Mirrored by
               # build_electron_tables in primat-c/src/plasma.c.
-              "constants_hash": constants_hash()}
+              "constants_hash": constants_hash(cfg)}
         fp_hash = fingerprint_hash(fp)
 
         # The hash goes in the FILENAME, not just the header, mirroring the

@@ -26,7 +26,7 @@ cfg = dict(
     # Every key below is shown at its DEFAULT_PARAMS default (see
     # primat/config.py for the authoritative, more detailed comments this
     # file summarises); uncomment and edit whichever you need to override.
-    # All 80 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
+    # All 96 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- General behaviour and numerical settings ----
     # verbose=False,  # print primat's own progress messages
@@ -67,6 +67,22 @@ cfg = dict(
 
     # ---- Fundamental constants ----
     # GN=6.6743e-11,  # Newton's constant, SI [m^3 kg^-1 s^-2] (CODATA literal)
+    # alphaem=0.0072973525692838015,  # fine-structure constant (CODATA 2018)
+    # GF=1.1663786999999999e-11,  # Fermi constant [MeV^-2] (PDG 2020)
+    # mZ=91187.6,  # Z boson mass [MeV] (PDG 2020)
+    # me=0.51099895,  # electron mass [MeV] (CODATA 2018)
+    # mn=939.56542052,  # neutron mass [MeV] (PDG/CODATA 2018)
+    # mp=938.27208816,  # proton mass [MeV] (CODATA 2018)
+    # T0CMB=2.7255,  # CMB photon temperature today [K] (Fixsen 2009)
+    # gA=1.2756,  # nucleon axial coupling (PDG 2018)
+    # Vud=0.9738,  # CKM matrix element V_ud (PDG 2018); drops out when tau_n_normalization=True
+    # kappa_p=1.7928473446300002,  # proton anomalous magnetic moment (CODATA 2018)
+    # kappa_n=-1.91304273,  # neutron anomalous magnetic moment (CODATA 2018)
+    # radproton=8.409e-14,  # proton charge radius [cm] (CODATA 2018)
+    # ma=931.494061,  # unified atomic mass unit [MeV] (CODATA 2010)
+    # He4Overma=4.0026032541,  # M(He4) / u (AME2020)
+    # HOverma=1.00782503223,  # M(H) / u (AME2016)
+    # Neff_SM=3.044,  # Standard-Model prediction for Neff; only used to normalise the EDE era
 
     # ---- Background thermodynamics ----
     # T_start_cosmo_MeV=40.0,  # starting temperature [MeV]
