@@ -67,7 +67,7 @@ _GUI_BACKEND = os.environ.get("PRIMAT_GUI_BACKEND", "auto")
 #
 # 8 bounds the three caches at a few hundred MB worst case, which fits the
 # ~1 GB the public Streamlit Community Cloud demo (primat.streamlit.app, see
-# CLAUDE.md's "Streamlit Cloud deployment chain") gets, while still keeping
+# wheels/README.md for its deployment chain) gets, while still keeping
 # a comfortable working set of recent configurations instant to revisit.
 _CACHE_MAX_ENTRIES = 8
 
@@ -142,8 +142,8 @@ def _solve(params_items):
 
     status = st.empty()
     # PRIMAT.__init__ itself (before solve()) is where the n<->p weak
-    # rates get (re)computed -- see CLAUDE.md's "Execution flow" step 1
-    # -- so that's the message to show here, not "Solving...". When
+    # rates get (re)computed, so that's the message to show here, not
+    # "Solving...". When
     # thermal_corrections is on AND its fingerprinted cache file isn't
     # already on disk, that step also runs the CCRTh finite-temperature
     # correction's vegas Monte Carlo integration -- by far the slowest
@@ -301,9 +301,9 @@ def _build_preview(params_items):
     That tab (:func:`primat.gui.panels.render_reactions_panel` and
     :func:`primat.gui.panels._render_reaction_downloads`) only ever reads
     ``run.cfg`` and ``run.nucl`` -- the compiled MT/LT networks and their
-    rate tables (see ``CLAUDE.md``'s "Execution flow", step 3). It never
+    rate tables. It never
     touches ``run.background``/``run.nuclear``, so building a full ``PRIMAT``
-    here would needlessly also run step 4: constructing ``StandardBackground``,
+    here would needlessly also construct ``StandardBackground``,
     which computes the n<->p weak rates. Those depend on most of the
     "Physics" sidebar group (``radiative_corrections``, ``thermal_corrections``,
     ``spectral_distortions``, ``analytic_distortions``, ...), so changing any

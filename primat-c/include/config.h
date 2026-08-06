@@ -18,9 +18,9 @@
 #ifndef CPRIMAT_CONFIG_H
 #define CPRIMAT_CONFIG_H
 
-/* MUST be kept in sync with pyproject.toml's `version` -- see CLAUDE.md
- * "Keeping primat-c and primat in sync". There is no automated check; bump
- * this by hand alongside pyproject.toml whenever the package version changes. */
+/* MUST be kept in sync with pyproject.toml's `version`; bump this by hand
+ * alongside pyproject.toml whenever the package version changes. Checked by
+ * tests/test_docs_consistency.py::test_cprimat_version_matches_pyproject. */
 #define CPRIMAT_VERSION "0.3.2"
 
 /* Buffer sizes for filesystem paths built by joining cfg->data_dir (see
@@ -237,7 +237,7 @@ typedef struct {
     int nuclear_qed_corrections;
 
     /* ---- nuclear overlay (mirrors PRIMATConfig.user_nuclear_dir; see
-     * CLAUDE.md "Rates directory resolution"). NULL = unset (shipped data/nuclear/
+     * docs/howto/data-overlays.md). NULL = unset (shipped data/nuclear/
      * tree only). Wired through cpr_config_resolve_rates_path() at the same
      * two call sites as the Python side: the network-file path
      * (nuclear/networks/<name>.txt) and each reaction's rate-table
@@ -311,8 +311,8 @@ typedef struct {
     CPRNuclideTable nuclides;
 
     /* ---- Tabulated extra energy density (mirrors PRIMAT.__init__'s
-     * `extra_rho` list of rho(Tg) callables; see CLAUDE.md's backend feature
-     * gaps). Python cannot ship a live callable across the C ABI, so
+     * `extra_rho` list of rho(Tg) callables). Python cannot ship a live
+     * callable across the C ABI, so
      * backend.py evaluates the *sum* of the user's extra_rho callables on a
      * dense log-spaced Tg grid once and hands the (Tg[], rho[]) arrays here;
      * cpr_bg_init_standard fits a cubic spline over them (in log10(Tg)) and

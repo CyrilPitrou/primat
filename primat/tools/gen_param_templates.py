@@ -2,10 +2,8 @@
 """
 primat.tools.gen_param_templates
 =================================
-Generator for the two user-facing parameter templates that CLAUDE.md's
-"Keeping DEFAULT_PARAMS, primat_run_explanatory.py, and run_basic.ini in
-sync" section used to require hand-editing on every ``DEFAULT_PARAMS``
-change:
+Generator for the two user-facing parameter templates that used to require
+hand-editing on every ``DEFAULT_PARAMS`` change:
 
 - ``runfiles/primat_run_explanatory.py`` -- Python template
 - ``primat-c/examples/run_basic.ini``    -- INI template for the C backend

@@ -22,8 +22,8 @@
  *
  * Kept fast on purpose (small network, amax=8 for the large one, tiny MC
  * sample counts): this binary is meant to be run for many iterations, not
- * for numerical precision -- see the reference run in CLAUDE.md /
- * test_api.c-equivalent tests for accuracy checks.
+ * for numerical precision -- see test_nuclear_network.c for the
+ * accuracy checks.
  */
 #include "api.h"
 #include "config.h"
@@ -54,7 +54,7 @@ static int CHECK_OK(int cond)
 
 /* One success-path cycle: build a config for `network` (and `amax`, if
  * >0), run BBN, check baryon number conservation (sum_s A_s Y_s == 1,
- * CLAUDE.md's exact-conservation invariant -- a cheap correctness check
+ * the exact-conservation invariant -- a cheap correctness check
  * that also forces every element of Y_final to actually be read, so an
  * ASan/valgrind build would catch an uninitialised-read bug here too),
  * then free everything. */

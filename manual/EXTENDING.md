@@ -22,8 +22,8 @@ rather than silently mis-integrating.
 
 For a one-off sensitivity study rather than a permanent addition, use the
 existing `p_<reaction>` / `delta_<reaction>` config knobs to perturb a
-rate already in the network — no file changes needed (see CLAUDE.md
-"Nuclear rate variation").
+rate already in the network — no file changes needed (see
+`docs/howto/rate-variation-mc.md`).
 
 ## (b) Add a dark-sector / non-standard background component
 
@@ -166,6 +166,5 @@ new analytic distortion shape — is a new class exposing the same interface
 (`Tnue_of_Tg`/`Tnumu_of_Tg`/`Tnutau_of_Tg`/`N_NEVO_of_Tg`/`dFDneu_func`/
 `rho_nu_SD`) plus a new branch in `make_neutrino_history`'s dispatch. For
 swapping the *data* underlying the existing `NEVOTable`/`InstantaneousDecoupling`
-classes without writing a new class, see the "Advanced: custom NEVO tables"
-section of `CLAUDE.md` (`nevo_file`/`nevo_spectral_file`/`nevo_grid_file`/
-`nevo_file_prefix`).
+classes without writing a new class, see `docs/howto/nevo-tables.md`
+(`nevo_file`/`nevo_spectral_file`/`nevo_grid_file`/`nevo_file_prefix`).

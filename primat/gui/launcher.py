@@ -47,8 +47,7 @@ def main(argv=None):
     reach ``app.py`` since Streamlit re-execs it as a script on every rerun
     without our ``argv``). This is what lets ``primat-gui --backend python``
     exercise the pure-Python backend for testing/development even though the
-    GUI otherwise defaults to the faster C backend (``CLAUDE.md``: "primat
-    is ... a fast C engine ... the default").
+    GUI otherwise defaults to the faster C backend.
 
     >>> main(["--backend", "python"])  # doctest: +SKIP
     """

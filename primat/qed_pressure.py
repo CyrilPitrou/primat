@@ -313,8 +313,7 @@ def _dPb(T, alpha=_ALPHA_FS, me=_ME_MEV, epsrel=1e-4):
     False, so δP_b never reaches the shipped tables nor any solve path, and
     the two backends stay in parity without it.  This is an intentional
     asymmetry, not a porting omission -- if δP_b is ever switched on by
-    default it must be ported (see CLAUDE.md, "Keeping primat-c and primat in
-    sync").
+    default it must be ported to the C backend.
 
     Parameters
     ----------

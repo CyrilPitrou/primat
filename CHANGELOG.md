@@ -12,6 +12,78 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **The background's time coordinate no longer flows through a linear `T(a)`
+  inverse.** Python's `t(a)` ODE took its right-hand side through
+  `interp1d(a_grid, T_grid)`, a linear inversion carrying a median 3.9e-06
+  error at the default node density. Sitting *inside* the RHS, it capped `t`'s
+  accuracy regardless of the ODE tolerance, and the stored temperature grid was
+  built by the same inverse, injecting the error twice — including into the
+  grid the n↔p weak-rate tables are tabulated on. Python now integrates
+  `dt/d(lnT)` directly (no `T(a)` inversion anywhere, verified against
+  `scipy.quad` to 1.6e-09), both backends interpolate `t_of_T`/`T_of_t` in
+  log-log, and the C samples its output arrays on the ODE's own `lnT` grid
+  instead of recovering T from a log(a) grid through that same inverse.
+  `t_of_T` self-convergence improves ~15× on both backends; the published
+  validation reference still holds within its tolerances, so nothing was
+  re-pinned. `external_scale_factor` keeps the inversion, having no closed-form
+  `d(ln a)/d(ln T)`.
+- **The C backend no longer runs on freed memory after an `--ini` type error.**
+  A string field was released *before* its replacement was type-checked, so a
+  rejected value left the field dangling; both C loaders then warned and
+  continued, and `cpr_config_free` double-freed at exit. Proven under ASan with
+  `network = 3`. Type errors are now fatal on the C side as they always were on
+  the Python side, and a nonexistent `user_nuclear_dir` is rejected through
+  every entry path rather than only the dedicated flag.
+- **`--ini` parameters now reach the Monte-Carlo workers.** The MC override set
+  was built from CLI flags alone, so `--ini Omegabh2=0.030 --mc 2` printed a
+  single-run D/H for the requested cosmology while every MC central value and σ
+  described the *default* one, with nothing to indicate the mismatch. A related
+  aliasing bug is fixed with it: two string `--set` overrides shared one static
+  scratch buffer, so the second silently overwrote the first.
+- **The GUI's exported network zip carries the rate tables the network actually
+  pins.** For a reaction the user had not customised, `export_zip` assumed a
+  `<name>_primat.txt` filename instead of reading the base network file's own
+  `name, filename` pairing. Downloading `small_parthenope` therefore shipped
+  `small`'s tables under the Parthenope name; re-importing reproduced D/H
+  −2.6 % and Li7/H +15.5 % off the run it claimed to reproduce, silently.
+  `small` and `large` exports are unaffected.
+- **The MT era's species set no longer depends on the network's name.** Python
+  special-cased `network="small"`, so a GUI custom network adding, say,
+  `d_a__Li6_g` integrated the MT era with one fewer nuclide than the C backend
+  did. Both now intersect the same fixed 18-reaction MT set. Default runs are
+  bit-identical. The MT BDF `atol` is aligned at 1e-15 on both backends too
+  (C was 1e-16, worth 1.4e-06 in D/H on the Python side).
+- **A failed `output_file` write is no longer silent.** The C CLI ignored the
+  writer's return code and exited 0 having written nothing; it now exits 1 with
+  a message, as the Python side raises `OSError`.
+- **`run_bbn` releases the GIL** for the duration of the solve, so Ctrl-C works
+  and a GUI thread is no longer blocked; `run_mc` no longer leaks a `PyFloat`
+  per quantity per call.
+- **A non-UTF-8 upload in the GUI reports a clear error** instead of an
+  uncaught `UnicodeDecodeError` — the `.decode()` sat one line above the `try`
+  meant to catch it. GUI memory is also bounded now: the heavy solve/preview
+  caches were unbounded and process-global (~16 MB per configuration) and the
+  export zip was rebuilt on every rerun rather than on demand, both of which
+  matter on the ~1 GB public demo.
+- **C backend hardening.** `cpr_load_network`'s four name matrices are
+  heap-allocated (219 KB → 27 KB stack frame, against MC workers' 512 KiB
+  thread stack); `rate_grid_npts` must be ≥ 2 on both backends (it was ≥ 1,
+  giving C an out-of-bounds read and Python a `ZeroDivisionError`); JSON string
+  escaping reserves for the `\u00xx` worst case; and per-solve scratch buffers
+  that were malloc/free'd 10⁴–10⁵ times per LT solve are hoisted.
+- **The C CLI's output now matches the Python CLI's exactly** — `--json` in
+  both its shapes, the plain-text report (including the running-time line and
+  the centred header), `--credits`, the overlay notice, and the verbose tag
+  stream, all of which diff empty against Python.
+- **`generate_qed_tables.py` writes where the solver reads.** Its output path
+  had not existed since the data tree moved, so the documented regeneration
+  command silently created a stray directory and left the shipped tables
+  untouched. A missing target is now a hard error naming the cause.
+- **The NUBASE half-life cross-check reads the right column**, per the file's
+  own format header; the off-by-one mis-parsed 8 ground states and printed a
+  spurious warning on every otherwise-clean run.
+- **The docs build is green again** (`sphinx-build -W --keep-going`): one
+  heading level was breaking it.
 - **Cache fingerprints now include the physical constants they were computed
   from.** `primat.constants.CONST` has 26 fields and *none* of them appeared in
   any fingerprint, so editing `me`, `alphaem`, `gA`, `mn`, `mp`, `Vud`,
@@ -226,6 +298,17 @@ in this repository is the authoritative source.
   previous D/H, YP and Neff bit-for-bit.
 
 ### Added
+- **`--list-params` and `--mc-jobs` on the C CLI.** The first enumerates the
+  same field table the setter dispatches on, so the listing cannot drift from
+  what is settable; the second exposes the MC job count, which was hard-coded
+  to all cores.
+- **Test coverage for what was documented but unpinned**: all 21 cells of the
+  per-nuclide reference table (live and static); the evolution TSV header
+  compared byte-for-byte across backends; `thermal_corrections` (CCRTh) given a
+  physical-effect test, so every n↔p correction flag now has one; the free
+  neutron added to the large-vs-`amax=8` comparison; and the first end-to-end
+  coverage of `generate_rates/`, including a byte-for-byte regeneration check
+  of all 395 shipped artifacts.
 - **`tests/test_cache_parity.py`** — cross-backend *cache* parity, the companion
   to `test_backend_parity.py`. The two backends share every on-disk cache; this
   module is what makes that safe rather than merely convenient. It asserts that
@@ -235,6 +318,23 @@ in this repository is the authoritative source.
   by one ulp fails 7 of its 8 tests.
 
 ### Documented
+- **The two backends' known, deliberate divergences** are recorded in
+  `tests/README.md`'s "Known cross-backend divergences", with README.md's
+  "Backend parity contract" stating what parity means and which tests enforce
+  it. Two divergences are intentional — the HT-era integrator (`LSODA` vs
+  RK45; aligning both on BDF was tried and *degraded* YP parity) and
+  `external_scale_factor`'s interpolant (a C-side performance workaround that
+  measures worse when mirrored) — and the residual D/H gap is open, structural
+  rather than round-off, and downstream of the background.
+- **`docs/` corrected against live runs**: the landing page's quick-start
+  numbers (stale by ~2900× the regression pin), the MC how-to's worked example
+  and its correlation prose (both fabricated), the evolution-TSV schema in the
+  output how-to (which described columns that do not exist and omitted the
+  background TSV entirely), and the custom-network export contract, which is
+  verbatim/original-grid precisely so a round trip is bit-for-bit.
+- **`docs/performance.md`** gained a profile of where the pure-Python backend's
+  time goes, the optimisations already applied, and the conclusion that the
+  remaining floor is scipy's pure-Python BDF stepper.
 - **`Omeganurel` and `OneOverOmeganunr` are per neutrino flavour** (ν + ν̄), not
   summed over the three — now stated in `Background.Omeganuh2_relnu`/`_nrnu`,
   `docs/howto/output.md` and `primat-c/include/background.h`. The values are
@@ -290,6 +390,15 @@ in this repository is the authoritative source.
   `weak_rate_cache=False`/`save_nTOp=False` for a non-standard history.
 
 ### Changed
+- **Test tolerances tightened, none loosened.** The only guard on the shipped
+  n↔p weak-rate cache against a fresh integration asserted `rel=2e-3` where the
+  measured agreement is 2.3e-08, so a 0.2 % error in any correction term passed
+  while moving YP by ~2e-4; it is now `1e-6`. The baryon-conservation bound
+  went 1e-6 → 1e-10 (measured 1.6e-12). The documented "run `primat_run.py`
+  after any change" workflow gained a second, correct tolerance column — the
+  ±3e-9 D/H bound belongs to the high-precision reference run and *fails* on a
+  healthy tree when applied to the default-precision script — and the script's
+  printed numbers are now checked by a test rather than by hand.
 - Python backend: the ten weak-rate Fermi-Dirac integrand kernels
   (`weak_rates/integrands.py`) and the four e± electron-thermo integrands
   (`plasma.py`) are now numba-compiled with `cache=True`, so a fresh process
@@ -385,7 +494,7 @@ in this repository is the authoritative source.
 - Assorted release-blocker fixes ahead of the first PyPI publish: packaging
   metadata, wheel build matrix, and related polish.
 - The Python backend's `run_bbn` now also exposes a `Y_final` sub-dict,
-  matching the C backend and restoring result-dict parity (CLAUDE.md).
+  matching the C backend and restoring result-dict parity.
 - Windows editable-install C-extension shadowing, and assorted
   Windows-portability failures in the CI Tests matrix.
 - MSVC POSIX-header/pthreads build failures on the Windows leg of
@@ -417,8 +526,8 @@ in this repository is the authoritative source.
 
 ### Changed
 - Renamed `rates_dir`/`user_rates_dir` config fields to `data_dir`/
-  `user_nuclear_dir` (clearer overlay semantics — see `CLAUDE.md`'s "Rates
-  directory resolution" section).
+  `user_nuclear_dir` (clearer overlay semantics — see
+  `docs/howto/data-overlays.md`).
 - Split the three separate QED plasma-pressure correction table files into
   one consolidated `QED_tables.txt`.
 - Integrated three background-ODE performance branches: dense-output RK45,

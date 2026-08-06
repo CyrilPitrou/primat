@@ -77,7 +77,7 @@ static void test_standard(void)
     CHECK(cpr_bg_rho_nu_total_final(&bg, &Tg_f, &rho_nu_f) == 0, "rho_nu_total_final succeeds");
     CHECK(close_rel(rho_nu_f, 4.548634316093674e-13, 1e-6), "rho_nu_total_final matches Python");
     CHECK(close_rel(cpr_bg_N_eff(&bg, Tg_f, rho_nu_f), 3.0439772985579183, 1e-6),
-          "Neff matches Python (== CLAUDE.md's documented default Neff)");
+          "Neff matches Python (== the documented default Neff)");
 
     CHECK(close_rel(cpr_bg_weak_nTOp_frwrd(&bg, 1.0e9), 0.0011509718118067201, 1e-2),
           "weak_nTOp_frwrd(1e9 K) matches Python");

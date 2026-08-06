@@ -54,8 +54,8 @@ $(BUILD)/unit/test_weak_rates_thermal: tests/unit/test_weak_rates_thermal.c $(fi
 test: $(UNIT_BIN)
 	@for t in $(UNIT_BIN); do echo "== $$t =="; $$t || exit 1; done
 
-# Times the two CLAUDE.md reference runs (small, large+amax=8) end-to-end
-# and reports the ratio against the recorded Python baseline (CPLAN.md S12)
+# Times the two reference runs (small, large+amax=8) end-to-end and reports
+# the ratio against the recorded Python baseline
 # -- examples/baseline_timings.txt, captured once via
 # `time python runfiles/primat_run.py`-equivalent calls (see that file's
 # header for how/when to refresh it). `--data-dir ../primat/data` matches

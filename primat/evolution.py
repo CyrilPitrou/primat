@@ -36,7 +36,7 @@ reaction-rate interpolant [same table units as the shipped nuclear rates]
 evaluated at each row's photon temperature, and live in
 :attr:`EvolutionResult.rates` (``None`` when the flag is off). Both backends
 emit the identical column names in the identical (lexicographically sorted)
-order -- see the CLAUDE.md schema-parity mandate. The ``a``/``T_nu`` columns
+order, pinned by ``tests/test_backend_parity.py``. The ``a``/``T_nu`` columns
 are ``np.nan`` when the active background has no scale-factor/neutrino-sector
 tracking (e.g. a minimal custom background).
 """

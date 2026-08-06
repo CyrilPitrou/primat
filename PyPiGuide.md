@@ -23,9 +23,8 @@ do — every release from now on follows the same recurring path below.
 ## Step 1 — 🟢 Bump the version everywhere
 
 1. Bump `version` in `pyproject.toml`.
-2. Bump `CPRIMAT_VERSION` in `primat-c/include/config.h` to match (see
-   `CLAUDE.md` — this sync is checked by
-   `tests/test_docs_consistency.py::test_cprimat_version_matches_pyproject`
+2. Bump `CPRIMAT_VERSION` in `primat-c/include/config.h` to match (checked
+   by `tests/test_docs_consistency.py::test_cprimat_version_matches_pyproject`,
    but the update itself is manual).
 3. Update `CHANGELOG.md`: turn the `[Unreleased]`/in-progress section into
    the new `## [X.Y.Z] - <date>` section (actual date, not a placeholder),
@@ -80,8 +79,8 @@ extension build flags.
 ## Step 3 — 🟢 Rebuild and commit the Streamlit demo wheel
 
 The public demo at **primat.streamlit.app** installs `primat` from the
-committed wheel under `wheels/` (see `CLAUDE.md`'s "Streamlit Cloud
-deployment chain"). Every version bump needs this wheel refreshed:
+committed wheel under `wheels/` (see `wheels/README.md` for the full
+deployment chain). Every version bump needs this wheel refreshed:
 
 1. Trigger `.github/workflows/build_linux.yml` (`workflow_dispatch`) to
    produce the new `primat-X.Y.Z-cp312-*-linux_x86_64.whl`.
@@ -102,7 +101,7 @@ Streamlit demo silently serving the old version.
 2. Verify end-to-end: `pip install -i https://test.pypi.org/simple/ primat`
    into a clean venv, run the validation script
    (`runfiles/primat_run.py`), and confirm the result matches the
-   documented tolerances in `CLAUDE.md`.
+   documented tolerances in `tests/README.md`'s "Validation reference".
 
 Why 🟢 this time (unlike the first-ever upload): the `(name, version)` pair
 being uploaded is the new version you're about to release, so there is no
@@ -133,7 +132,7 @@ Pre-flight checklist (everything above must already be true):
 - [ ] Step 2: local build + `twine check` clean.
 - [ ] Step 3: Streamlit demo wheel rebuilt and committed (or explicitly
       deferred — see Step 3's note, not a release blocker).
-- [ ] Step 4: full TestPyPI install-and-run dry run matches `CLAUDE.md`
+- [ ] Step 4: full TestPyPI install-and-run dry run matches the published
       tolerances.
 - [ ] The version string in `pyproject.toml` is exactly what you intend
       to ship — this is your last chance to change it before it's

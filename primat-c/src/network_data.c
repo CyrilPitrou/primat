@@ -550,9 +550,8 @@ static int qed_nuclear_rescale(const char *name, const double *grid, size_t n_gr
     /* Fine-structure constant (CODATA 2018) and electron mass [MeV] (PDG) --
      * literal constants matching network_data.py's local ALPHA/ME_MEV
      * exactly (not g_const.alphaem/g_const.me, which are PDG values from a
-     * possibly different edition; kept verbatim per CLAUDE.md's "port
-     * faithfully" convention since this factor must reproduce Python's
-     * numbers bit-for-bit). */
+     * possibly different edition; kept verbatim, since this factor must
+     * reproduce Python's numbers bit-for-bit). */
     const double ALPHA = 1.0 / 137.035999084;
     const double ME_MEV = 0.51099895;
 

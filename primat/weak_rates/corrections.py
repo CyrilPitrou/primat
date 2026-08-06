@@ -54,10 +54,6 @@ relevant structure is: §III.E "Radiative corrections at T = 0", §III.F
 corrections"; App. B.3 "Finite nucleon mass corrections", App. B.6
 "Radiative corrections and Sirlin's universal function", App. B.7
 "Bremsstrahlung", App. B.8 "Finite temperature radiative corrections".
-(Earlier revisions of this module cited §III.D for the T=0 radiative
-corrections and §III.H for the finite-temperature ones -- both off by one or
-two letters against that PDF, the drift CLAUDE.md warns about for
-PRIMAT-Main.m; they have been corrected throughout.)
 """
 
 import os

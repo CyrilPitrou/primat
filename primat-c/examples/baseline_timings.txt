@@ -31,7 +31,7 @@
 # background.c and tests/unit/test_nuclear_network.c's "Perf note".)
 #
 # Re-run both sides and update this file if either the reference physics
-# (CLAUDE.md's table) or the default numerical_precision/rate_grid_npts
+# (tests/README.md's table) or the default numerical_precision/rate_grid_npts
 # changes enough to shift these by more than a rounding error.
 python_small_s = 1.589
 python_large_amax8_s = 1.844

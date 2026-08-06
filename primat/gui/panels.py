@@ -37,7 +37,7 @@ from primat.gui.session_keys import SessionKeys
 # Final abundances + standard ratios panel
 # ---------------------------------------------------------------------------
 
-# Display precision per CLAUDE.md "Reporting numerical results": these flags'
+# Display precision: these flags'
 # effect on Neff is at the 1e-2..1e-3 level, so a handful of decimals are
 # needed to distinguish e.g. incomplete_decoupling / QED_corrections runs.
 _RATIO_FORMAT = {
@@ -95,7 +95,7 @@ def render_results_panel(run, mc=None, run_params=None, backend_used=None):
        = ...`` and exposed via ``primat_results()``; ``Omeganurel``/
        ``OneOverOmeganunr`` are
        omitted here as niche neutrino-energy-density quantities), formatted to
-       the precision required by ``CLAUDE.md``, plus an optional MC-uncertainty
+       the precision set by ``_RATIO_FORMAT``, plus an optional MC-uncertainty
        column (see ``mc`` above).
     2. The "Download reproduction bundle (.zip)" button (a self-contained
        ``.py``/``.ini`` + any custom network that reproduce these exact values;
@@ -432,7 +432,7 @@ def render_downloads_panel(run, mc=None, background=None):
       ``StandardBackground``/``CustomBackground`` (``primat.gui.app``'s
       ``_build_background``), so these are available regardless of which
       backend actually solved the BBN network (the C backend has no
-      equivalent of either file -- see ``CLAUDE.md``).
+      equivalent of either file).
     * **decays.txt** (large network only) -- the consolidated beta-decay /
       electron-capture rate table used by the large network
       (``data/nuclear/tables/decays.txt``).

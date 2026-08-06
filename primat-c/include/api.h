@@ -81,8 +81,8 @@ typedef struct {
      * cfg->output_rates_time_evolution && the network is small/small_parthenope.
      * evol_rates is n_evolution * n_evol_rates, row-major, in evol_rate_names
      * column order (each "<reaction>_frwrd", lexicographically sorted -- the
-     * IDENTICAL names and order the Python backend emits, CLAUDE.md schema
-     * parity). Owned; freed by cprimat_results_free. n_evol_rates==0 means no
+     * IDENTICAL names and order the Python backend emits). Owned; freed by
+     * cprimat_results_free. n_evol_rates==0 means no
      * rate columns (flag off or non-small-family network). ---- */
     size_t n_evol_rates;
     char (*evol_rate_names)[64];

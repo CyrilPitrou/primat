@@ -138,7 +138,7 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
  * small_parthenope, 68 for large+amax=8, ~429 for full large). When the
  * return is >0 and `out_names`!=NULL, fills out_names[0..count) with
  * "<reaction>_frwrd" lexicographically sorted -- the IDENTICAL names and order
- * the Python backend produces via sorted() (CLAUDE.md schema parity).
+ * the Python backend produces via sorted().
  * `out_names` must hold at least (n LT reactions - 1) entries; pass NULL to
  * query only the count. */
 size_t cpr_nuclear_network_rate_columns(const CPRNuclearNetwork *nn,

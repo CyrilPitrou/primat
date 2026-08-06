@@ -124,8 +124,7 @@ def _print_mc_matrices(mc):
     produced are shown; nothing is printed if fewer than two are present.
 
     The layout (fixed-width fields) is byte-for-byte identical to the C
-    backend's ``print_mc_matrices`` (``primat-c/src/cli.c``), per CLAUDE.md's
-    verbose/output-parity mandate.
+    backend's ``print_mc_matrices`` (``primat-c/src/cli.c``).
     """
     names = mc.quantity_names()
     labels = [q for q in _MC_MAIN_PRODUCTS if q in names]

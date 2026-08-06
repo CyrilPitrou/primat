@@ -5,8 +5,8 @@ name: Build Linux Wheel
 # repo-root requirements.txt, whose last line points at
 # ./wheels/primat-<version>-cp312-*-linux_x86_64.whl; this workflow is how
 # that committed wheel is produced (manually, via workflow_dispatch, then
-# committed by hand under wheels/ -- see wheels/README.md and CLAUDE.md's
-# "Streamlit Cloud deployment chain" section). Pinned to Python 3.12
+# committed by hand under wheels/ -- see wheels/README.md for the full
+# deployment chain). Pinned to Python 3.12
 # specifically because that is the wheel tag Streamlit Cloud's runtime needs.
 
 on:

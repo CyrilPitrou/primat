@@ -80,7 +80,7 @@ def _check_solver(sol, era, detail):
     Python bridge surfaces such failures as ``RuntimeError``
     (``_primat_c_src/_wrapper.c``'s ``PyErr_Format(PyExc_RuntimeError, ...)``).
     Raising ``RuntimeError`` here keeps the two backends' error behaviour
-    identical, as required by CLAUDE.md's parity mandate.
+    identical.
 
     Parameters
     ----------
@@ -764,8 +764,7 @@ class NuclearNetwork:
         ``EvolutionResult.rates`` and serialised by ``dump_evolution``. The
         n<->p weak rates are not duplicated on disk: recover them from
         ``run.background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd`` evaluated at the
-        ``T_gamma_MeV`` column. The C backend emits the identical rate columns
-        (CLAUDE.md schema-parity mandate).
+        ``T_gamma_MeV`` column. The C backend emits the identical rate columns.
         The richer background-only TSV (``H``, ``Nheating``, energy
         densities, ...) is still written separately by
         ``background.write_time_evolution``/``time_evolution_text`` when
@@ -807,8 +806,8 @@ class NuclearNetwork:
         # small/small_parthenope, 68 for large+amax=8, ~429 for full large),
         # value = the active forward-rate interpolant at each output
         # temperature (plain rate, not a flux). Sorted by column name so the C
-        # backend can emit the identical names in the identical order
-        # (CLAUDE.md schema parity). Computed directly from the LT rate table
+        # backend can emit the identical names in the identical order.
+        # Computed directly from the LT rate table
         # (the same linear interpolation on the master T9 grid that the ODE
         # right-hand side and the C backend's cpr_network_fill_buffer use), so
         # it works for any reaction the active network carries.

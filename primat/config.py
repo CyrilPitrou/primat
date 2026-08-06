@@ -122,7 +122,7 @@ DEFAULT_PARAMS: dict = {
     # float (6.674299257609439e-11, off from the tabulated constant at the
     # ~1e-7 relative level) which previously crept in here this way. Mirror
     # this literal digit-for-digit in primat-c/src/config.c's
-    # cpr_config_set_GN default (see CLAUDE.md's primat/primat-c sync rule).
+    # cpr_config_set_GN default.
     "GN":                         6.6743e-11,   # Newton's constant, SI units [m^3 kg^-1 s^-2]
 
     # ---- background thermodynamics ----------------------------------------
@@ -354,8 +354,8 @@ DEFAULT_PARAMS: dict = {
 # comments above.  This exists so the GUI's full-parameter listing, the CLI's
 # ``--list-params``, and the param-template generator (``generate_rates/
 # gen_param_templates.py``) can all derive the same section headings/order
-# from a single place instead of three independently hand-maintained copies
-# (the standing chore CLAUDE.md calls out).  Every DEFAULT_PARAMS key appears
+# from a single place instead of three independently hand-maintained copies.
+# Every DEFAULT_PARAMS key appears
 # in exactly one group -- test_config.py checks that this stays exhaustive
 # and non-overlapping whenever a key is added, removed, or renamed.
 # ---------------------------------------------------------------------------
@@ -707,7 +707,7 @@ def _default_params_comments():
 # one-line, self-explanatory TypeError/ValueError that names the key, the
 # received value, and the expected type/range.  The C backend mirrors the type
 # checks in cpr_config_set_by_name and the range checks in cpr_config_validate
-# (primat-c/src/config.c), per the CLAUDE.md parity mandate.
+# (primat-c/src/config.c).
 # ===========================================================================
 
 # Kind tags used by the spec below.  Each maps to a predicate on a candidate
@@ -1575,9 +1575,6 @@ class PRIMATConfig:
           factor is pinned to 0.5, i.e. every MC sample divides every rate by
           two.  A cap of exactly 1 means "no variation at all", which is
           allowed (and ``None`` disables the cap).
-
-        Mirrored in ``primat-c/src/config.c``'s ``cpr_config_validate`` per
-        CLAUDE.md's parity mandate.
 
         Example
         -------
