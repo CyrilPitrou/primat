@@ -196,10 +196,17 @@ def test_He3oH_order_of_magnitude(solved_small):
 # ---------------------------------------------------------------------------
 # High-precision reference checks (tight) — reproduce the published numbers
 # ---------------------------------------------------------------------------
-# Settings used to produce the published reference values.
+# Settings used to produce the published reference values: every solver-facing
+# knob runfiles/primat_reference_run.py sets, so this tier checks the
+# configuration tests/README.md actually documents. The last four were once
+# missing here, which silently made this tier a different run from the
+# published one -- worth 2.0e-08 in large+amax=8's D/H, 6.6x the bound below.
+# Both weak-rate caches for this configuration are shipped, so it stays fast.
 _REF_PARAMS = dict(numerical_precision=1e-10, sampling_temperature_per_decade=2000,
                    sampling_nTOp_per_decade=125, T_start_cosmo_MeV=100.0,
-                   Omegabh2=0.02242, verbose=False, debug=False)
+                   Omegabh2=0.02242, verbose=False, debug=False,
+                   rate_grid_npts=4000, sampling_nTOp_thermal_per_decade=25,
+                   vegas_n_eval=100000, vegas_n_itn=50)
 
 
 @pytest.fixture(scope="session")

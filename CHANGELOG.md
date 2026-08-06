@@ -12,6 +12,16 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **The `reference` test tier now runs the configuration it documents.** Its
+  parameter set listed four of the eight solver settings
+  `runfiles/primat_reference_run.py` uses, so the tier meant to reproduce the
+  published validation reference was reproducing a different run — by 2.0e-08
+  in `large, amax=8`'s D/H, 6.6x the ±3e-9 bound the same table advertises. It
+  passed because the published constants had been produced by the tier's own
+  configuration rather than the documented one. The settings are now mirrored,
+  the whole "Validation reference" section is re-snapshotted against one tree,
+  and the reference run's two weak-rate caches are shipped, taking that run
+  from 1395 s to 23 s with bit-identical output.
 - **Both backends now interpolate the CCRTh thermal correction the same way.**
   The finite-temperature n↔p correction is read from a cache the two backends
   share, but they drew different curves between its nodes: Python fitted

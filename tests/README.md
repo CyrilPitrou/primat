@@ -46,7 +46,7 @@ must stay in step (`pytest --strict-markers` is the check).
 |--------|---------|
 | `slow` | any test excluded from the fast lane: a full primat solve (or a Monte-Carlo loop of solves), a weak-rate recompute (~1.8 s, bypassing the fingerprinted cache), or packaging checks. Deselect with `-m "not slow"`. |
 | `solve` | the "solve" tier: tests that run >=1 full primat solve at *default* (non-reference) precision; always also marked `slow`. `-m "not slow or solve"` selects the fast lane plus this tier. |
-| `reference` | high-precision runs (numerical_precision=1e-10, sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125, T_start_cosmo=100 MeV) that reproduce the documented reference values to YP ±1e-5, D/H ±3e-9; ~60 s total; always also marked `slow`. |
+| `reference` | high-precision runs at every setting `runfiles/primat_reference_run.py` uses (mirrored in `_REF_PARAMS`, `tests/test_regression.py`) that reproduce the documented reference values to YP ±1e-5, D/H ±3e-9; always also marked `slow`. |
 | `wheel` | builds a wheel and `pip install`s it into a clean venv before running a smoke solve; always also marked `slow`. |
 | `gui` | drives the optional Streamlit GUI (`primat.gui`) via `AppTest`; skipped if the `gui` extra is not installed; always also marked `slow` and `solve`. |
 | `notebook` | papermill-executes a demonstration notebook end-to-end; skipped if the optional `notebooks` extra is not installed; always also marked `slow`. |
@@ -128,9 +128,12 @@ The values below hold at the defaults `Omegabh2=0.02242`,
 the radiative-capture QED corrections of Pitrou & Pospelov 2020). They were
 produced by `runfiles/primat_reference_run.py` — a **high-precision** run with
 `numerical_precision=1e-10`, `sampling_temperature_per_decade=2000`,
-`sampling_nTOp_per_decade=125`, `T_start_cosmo_MeV=100` and
-`rate_grid_npts=4000` explicit, so this reference stays decoupled from the
-routine-run defaults.
+`sampling_nTOp_per_decade=125`, `T_start_cosmo_MeV=100`,
+`rate_grid_npts=4000`, `sampling_nTOp_thermal_per_decade=25`,
+`vegas_n_eval=100000` and `vegas_n_itn=50` explicit, so this reference
+stays decoupled from the routine-run defaults. `tests/test_regression.py`'s
+`_REF_PARAMS` must list all of them: the four beyond the first four are
+worth 2.0e-08 in `large, amax=8`'s D/H, 6.6x the ±3e-9 bound below.
 
 ### Which tolerance applies to which command
 
@@ -144,10 +147,11 @@ documented check fail on a perfectly healthy tree:
 
 The routine column is looser because a default-precision solve carries ~1e-8
 of adaptive-step jitter in D/H, and because the two backends differ by a few
-parts in 1e6 (see `tests/test_backend_parity.py`). Measured 2026-08-05,
-`primat_run.py` lands 3.8e-9 (C backend) / 5.7e-10 (Python backend) below the
-reference D/H — i.e. *outside* the ±3e-9 reference bound, and correctly inside
-the ±2e-8 routine one.
+parts in 1e6 (see `tests/test_backend_parity.py`). Measured on this tree,
+`primat_run.py` lands 6.2e-10 (C backend) / 7.8e-10 (Python backend) below the
+reference D/H. That happens to sit inside the ±3e-9 reference bound as well,
+but the routine bound is what the documented check uses: the margin is a
+property of this platform and this network, not something to rely on.
 
 Note also that `runfiles/primat_run.py` runs **only** `large, amax=8`; the
 small-network table is checked by the `reference` tier and by
@@ -157,15 +161,15 @@ small-network table is checked by the `reference` tier and by
 
 | Observable | Expected | Reference tol. | Routine tol. |
 |------------|----------|----------------|--------------|
-| YP (BBN) | 0.24699819 | ±1e-5 | ±1e-5 |
-| D/H | 2.4358800e-05 | ±3e-9 | ±2e-8 |
+| YP (BBN) | 0.24699844 | ±1e-5 | ±1e-5 |
+| D/H | 2.4358977e-05 | ±3e-9 | ±2e-8 |
 
 **`large, amax=8`** (the 68-reaction subset of `large`):
 
 | Observable | Expected | Reference tol. | Routine tol. |
 |------------|----------|----------------|--------------|
-| YP (BBN) | 0.24700154 | ±1e-5 | ±1e-5 |
-| D/H | 2.4365900e-05 | ±3e-9 | ±2e-8 |
+| YP (BBN) | 0.24700179 | ±1e-5 | ±1e-5 |
+| D/H | 2.4366098e-05 | ±3e-9 | ±2e-8 |
 
 A result outside the applicable bound indicates a regression.
 
@@ -185,13 +189,13 @@ source and is checked live by
 
 | Nuclide | small | large, amax=8 | large |
 |---------|-------|----------------|-------|
-| n   | 3.997234e-16 | 3.996332e-16 | 3.996365e-16 |
-| p   | 7.529405e-01 | 7.529372e-01 | 7.529372e-01 |
-| H2  | 1.834071e-05 | 1.834570e-05 | 1.834580e-05 |
-| H3  | 5.851937e-08 | 5.838985e-08 | 5.839019e-08 |
-| He4 | 6.174982e-02 | 6.175066e-02 | 6.175066e-02 |
-| Li7 | 2.181375e-11 | 9.178225e-11 | 9.178156e-11 |
-| Be7 | 3.966446e-10 | 3.223685e-10 | 3.223652e-10 |
+| n   | 3.997246e-16 | 3.996325e-16 | 3.996357e-16 |
+| p   | 7.529408e-01 | 7.529374e-01 | 7.529374e-01 |
+| H2  | 1.834071e-05 | 1.834568e-05 | 1.834577e-05 |
+| H3  | 5.851941e-08 | 5.838979e-08 | 5.839007e-08 |
+| He4 | 6.174977e-02 | 6.175059e-02 | 6.175060e-02 |
+| Li7 | 2.181376e-11 | 9.178228e-11 | 9.178164e-11 |
+| Be7 | 3.966454e-10 | 3.223689e-10 | 3.223658e-10 |
 
 The full large network must match `large, amax=8` on every light element to
 ≲1e-3, **and also on the free neutron `n`**: the reverse-rate clamp in

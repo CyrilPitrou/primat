@@ -32,16 +32,13 @@ are driven by the same n<->p weak-rate / background machinery.
 # the PRIMATConfig defaults -- as produced by `primat.cli.main([])`,
 # `primat-gui`'s default "Run BBN", and `runfiles/primat_run.py`.
 #
-# Re-snapshotted 2026-08-05 (review pass 10) on the auto backend (C when
-# available), which is what these tests actually invoke. The previous snapshot
-# (2026-07-10) had drifted by 2.1e-06 in YP and 3.2e-10 in D/H under review
-# passes 6-7 (F6.3 electron-thermo tolerance, F6.4 CDM bootstrap, F7.15 t(T)
-# integration) -- inside every tolerance below, but no longer describing the
-# code. The pure-Python backend gives YPBBN 0.24699894 / D/H 2.4358642e-05,
-# i.e. 3.4e-07 and 1.3e-10 away, so both backends sit inside these bounds.
+# Snapshotted on the auto backend (C when available), which is what these tests
+# actually invoke. The pure-Python backend gives YPBBN 0.24699896 /
+# D/H 2.4358605e-05, i.e. 1.1e-07 and 1.6e-10 away, so both backends sit inside
+# the bounds below.
 NEFF_REFERENCE  = 3.0439772986
-YPBBN_REFERENCE = 0.24699928   # primat.cli.main() default (auto backend), Omegabh2=0.02242
-DOH_REFERENCE   = 2.4358771e-5  # primat.cli.main() default (auto backend), Omegabh2=0.02242
+YPBBN_REFERENCE = 0.24699907   # primat.cli.main() default (auto backend), Omegabh2=0.02242
+DOH_REFERENCE   = 2.4358767e-5  # primat.cli.main() default (auto backend), Omegabh2=0.02242
 
 # Tolerances (tests/README.md: "A result outside these bounds indicates a
 # regression").
@@ -52,32 +49,35 @@ DOH_ABS_TOL   = 3e-9
 # Per-nuclide final mass fractions, small network (primat.cli.main() default,
 # auto backend). Kept as scalars for the two callers that predate
 # NUCLIDE_REFERENCE below; they are the same numbers as its "small" column.
-P_REFERENCE   = 7.529405e-01
-HE4_REFERENCE = 6.174982e-02
+P_REFERENCE   = 7.529408e-01
+HE4_REFERENCE = 6.174977e-02
 NUCLIDE_ABS_TOL = 1e-4  # mirrors the table's own documented precision
 
 # ---------------------------------------------------------------------------
 # 2. High-precision reference observables
 # ---------------------------------------------------------------------------
 # tests/README.md "Validation reference", produced by
-# runfiles/primat_reference_run.py (numerical_precision=1e-10,
-# sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125,
-# T_start_cosmo_MeV=100, rate_grid_npts=4000). Single source for
-# tests/test_regression.py's reference tier AND the table parser in
-# tests/test_docs_consistency.py -- update all three places together (the
-# parser test fails if the README table and these constants drift).
-REF_SMALL_YPBBN  = 0.24699819
-REF_SMALL_DOH    = 2.4358800e-5
-REF_LARGE8_YPBBN = 0.24700154
-REF_LARGE8_DOH   = 2.4365900e-5
+# runfiles/primat_reference_run.py. Its full settings live in that script and
+# are mirrored by tests/test_regression.py's _REF_PARAMS, which must stay
+# byte-identical to them: the four it once omitted (rate_grid_npts,
+# sampling_nTOp_thermal_per_decade, vegas_n_eval, vegas_n_itn) moved
+# large+amax=8's D/H by 2.0e-08, i.e. 6.6x the +/-3e-9 bound these constants
+# are checked against. Single source for that reference tier AND the table
+# parser in tests/test_docs_consistency.py -- update all three places together
+# (the parser test fails if the README table and these constants drift).
+REF_SMALL_YPBBN  = 0.24699844
+REF_SMALL_DOH    = 2.4358977e-5
+REF_LARGE8_YPBBN = 0.24700179
+REF_LARGE8_DOH   = 2.4366098e-5
 
 # Bound for a *routine* `runfiles/primat_run.py` check against the two
 # constants above. That script runs at the default numerical_precision=1e-7,
 # not the reference run's 1e-10, so the tight DOH_ABS_TOL=3e-9 above does NOT
-# apply to it: measured 2026-08-05, the routine run lands 3.8e-09 (C backend)
-# and 5.7e-10 (Python backend) below REF_LARGE8_DOH. 2e-8 covers both with
-# ~5x headroom while staying ~120x tighter than the loose sanity tier in
-# tests/test_regression.py. See tests/README.md's "Validation reference".
+# apply to it: the routine run lands 6.2e-10 (C backend) and 7.8e-10 (Python
+# backend) below REF_LARGE8_DOH. 2e-8 leaves ample headroom over a margin that
+# is a property of this platform and network, while staying ~120x tighter than
+# the loose sanity tier in tests/test_regression.py. See tests/README.md's
+# "Validation reference".
 ROUTINE_RUN_DOH_ABS_TOL = 2e-8
 ROUTINE_RUN_YPBBN_ABS_TOL = 1e-5
 
@@ -90,18 +90,17 @@ ROUTINE_RUN_YPBBN_ABS_TOL = 1e-5
 # so NUCLIDE_REL_TOL below is what a check should actually use -- the last two
 # quoted digits are backend-dependent.
 #
-# Snapshotted 2026-08-05 (review pass 10) on the auto backend; the previous
-# README table dated from before passes 6-7 and had drifted by up to 6.2e-05
-# relative (on the free neutron `n`).
+# Snapshotted on the auto backend, alongside the high-precision constants
+# above; both move together whenever the solver's numerics change.
 NUCLIDE_REFERENCE = {
     #        small          large, amax=8   large
-    "n":   (3.997234e-16, 3.996332e-16, 3.996365e-16),
-    "p":   (7.529405e-01, 7.529372e-01, 7.529372e-01),
-    "H2":  (1.834071e-05, 1.834570e-05, 1.834580e-05),
-    "H3":  (5.851937e-08, 5.838985e-08, 5.839019e-08),
-    "He4": (6.174982e-02, 6.175066e-02, 6.175066e-02),
-    "Li7": (2.181375e-11, 9.178225e-11, 9.178156e-11),
-    "Be7": (3.966446e-10, 3.223685e-10, 3.223652e-10),
+    "n":   (3.997246e-16, 3.996325e-16, 3.996357e-16),
+    "p":   (7.529408e-01, 7.529374e-01, 7.529374e-01),
+    "H2":  (1.834071e-05, 1.834568e-05, 1.834577e-05),
+    "H3":  (5.851941e-08, 5.838979e-08, 5.839007e-08),
+    "He4": (6.174977e-02, 6.175059e-02, 6.175060e-02),
+    "Li7": (2.181376e-11, 9.178228e-11, 9.178164e-11),
+    "Be7": (3.966454e-10, 3.223689e-10, 3.223658e-10),
 }
 
 # Column order of NUCLIDE_REFERENCE's tuples, matching the README table.
