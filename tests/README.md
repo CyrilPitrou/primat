@@ -112,6 +112,7 @@ yet done, so the `solve` tier still runs full three-era solves.
 | `test_runfiles.py` | The example scripts in `runfiles/`: each runs as a real subprocess from a throwaway cwd and must exit 0 with no traceback; and `primat_run.py`'s *printed* YP/(D/H) are checked against the "Validation reference" below at the routine tolerance, so the documented "run this after any modification" workflow is automated rather than honour-system. |
 | `test_sensitivity.py` | `primat.sensitivity` — the logarithmic-sensitivity API. |
 | `test_spectral_distortions.py` | Non-thermal neutrino spectra, each pinned as a *difference* between two full solves (`solve` tier): `spectral_distortions` on/off (small but non-zero on D/H, zero distortion energy in NEVO by construction); the analytic y-type (`y_SZ`) and gray (`y_gray`) distortions shifting Neff, and `finite_mass_corrections` genuinely gating the SD-FM term; and neutrino chemical potentials (`munuOverTnu`, per-flavour `xi_*`) — Neff even in the sign, per-flavour knobs reducing to the common one, and the discriminating case that `xi_mu` alone gravitates but must *not* shift the n↔p rates. |
+| `backend_divergence.py` | (helper, not a test) The cross-backend divergence harness: measures each link of the chain — background, nuclear rate tables, CCRTh interpolation, per-nuclide abundances — so a widened total can be attributed. Runnable as `python -m tests.backend_divergence`; the terms it measures are pinned at the end of `test_backend_parity.py` and explained under "Known cross-backend divergences" below. |
 | `reference_values.py` | (helper, not a test) Centralised default-run reference observables shared by test_cli/test_gui/test_regression, and the validation-reference constants (single source, see test_docs_consistency). |
 | `_oracles.py` | (helper, not a test) Test-only reference RHS/Jacobian oracle implementations the nuclear-network tests compare against. |
 
@@ -230,11 +231,23 @@ tracked list of them, so that a future reviewer neither re-discovers them nor
 and kept current in `tests/test_backend_parity.py`'s module docstring — this
 section states the causes and the decisions.
 
+Each divergence is measured term by term by `tests/backend_divergence.py`
+(`python -m tests.backend_divergence`), and the individual magnitudes are
+pinned in `tests/test_backend_parity.py`, so this section can state causes and
+decisions without quoting numbers that go stale.
+
 | Divergence | Status |
 |---|---|
-| **HT-era integrator.** Python integrates the n↔p-only HT era with `LSODA`, C with Dormand-Prince RK45. | **Intentional.** This one mismatch is the whole YP gap: patching Python's HT method to RK45 reproduces C's `YPBBN` exactly. It therefore does not shrink with tighter `numerical_precision`. Aligning both on BDF was tried and *degraded* YP parity, so alignment would buy reviewability, not accuracy. Documented in place in both backends' `nuclear_network` sources. |
+| **CCRTh interpolation scheme.** Both backends read the same cached thermal (finite-temperature) correction and interpolate it differently: Python fits scipy's global quadratic B-spline, C evaluates a local 3-point Lagrange quadratic. | **Open, and the largest structural term.** It is the same scheme mismatch that used to dominate the *non-thermal* rate and was fixed there by moving both backends to a shared log10-log10 not-a-knot cubic; the thermal channel was not converted, and its cache grid is ~8× coarser. Both schemes reproduce the cached nodes and differ between them. Aligning Python to C's scheme removes most of the converged YP and D/H gap. |
+| **Background ODE tolerance.** Python solves a(T) and t(T) at tolerances derived from `numerical_precision`; C uses a fixed, much tighter `BG_ODE_RTOL`. | **Open.** At the default `numerical_precision` this is the dominant term in the D/H gap, and it is Python's own discretisation error rather than a disagreement about physics: it vanishes as `numerical_precision` is tightened, and forcing Python's background ODE to C's fixed tolerance removes ~98 % of the He3/H and Li7/H gaps. |
+| **t(T) coordinate.** Python integrates `dt/d(lnT)` anchored at `T_start_cosmo`; C integrates a relative time anchored at `T_end`. | **Open.** Survives at converged tolerance and is what remains once the two above are aligned. Largest near e± annihilation. |
+| **HT-era integrator.** Python integrates the n↔p-only HT era with `LSODA`, C with Dormand-Prince RK45. | **Intentional, and now a negligible term.** Pass 7 measured this as the whole YP gap; re-measured after that pass's own `t(T)` fix it accounts for ~1e-10 of it. Aligning both on BDF was tried and *degraded* YP parity, so the two methods stay as they are. |
 | **`external_scale_factor` interpolant.** Python reads T(a) linearly inside its time-integration RHS; C fits a not-a-knot cubic over the same nodes. | **Intentional.** The C cubic is a performance workaround — its RK45 stepper rejected ~65 % of steps on the kinks — and leaves the solution unchanged; LSODA has no such problem. Making Python match was tried and measured *worse* in both self-convergence and cross-backend YP, because in this mode a(T) is itself a table read (NEVO's `x` column), so a cubic through those nodes manufactures curvature the data does not contain. |
-| **Residual D/H gap.** At converged tolerance the two settle on different D/H, with Li7/H and He3/H following and YP/Neff agreeing far better. | **Open.** It does not shrink with `numerical_precision` (swept 1e-6 … 1e-10), so it is structural, not round-off. The background is ruled out: `t(T)` agrees cross-backend and each backend self-converges, and the weak-rate tables are tabulated on identical grids (see `test_cache_parity.py`). The cause is downstream — the nuclear network itself, or how the n↔p rates couple into it. It sits far below observational significance (observed D/H is known to ~1 %). |
+
+Ruled out as sources, and pinned as such: the nuclear rate tables (both
+backends resample the same shipped tables onto the same master T9 grid), the
+weak-rate tables away from the thermal term, and every thermodynamic quantity
+— `Neff` is bit-identical.
 
 Everything else that round-1 review found divergent between the two backends
 was closed rather than documented; `git log` is the record of those.

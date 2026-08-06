@@ -41,26 +41,33 @@ large, amax=8    1.22e-07     7.47e-06     0.0
 large            1.23e-07     1.11e-05     0.0
 ===============  ===========  ===========  ==========
 
-``Neff`` is bit-identical: the background agrees exactly. The other two have
-*different* causes, and conflating them has misled a reader before:
+``Neff`` is bit-identical: the background's thermodynamics agree exactly. The
+other two are the sum of four terms, attributed one by one by
+``tests/backend_divergence.py`` (``python -m tests.backend_divergence``) and
+each pinned separately at the end of this file:
 
-* **YPBBN** is the **HT-era integrator method mismatch**, not solver noise.
-  Python integrates the HT era (n<->p only) with ``LSODA``
-  (``primat/nuclear_network.py:286``); C uses Dormand-Prince RK45
-  (``primat-c/src/nuclear_network.c``, "HT era: n <-> p only, non-stiff
-  RK45"). Patching *only* Python's HT method to RK45 reproduces the C
-  backend's ``YPBBN = 0.24699742`` **exactly**, i.e. this one difference is
-  the whole YP gap. It therefore does **not** shrink with tighter
-  ``numerical_precision``: sweeping 1e-6 -> 1e-10 with the HT era set to
-  LSODA, RK45 and BDF in turn has all three converging, but to a residual
-  1.6e-07 spread. Aligning the two on BDF was tried and *degraded* YP parity
-  (5.2e-07 -> 1.1e-06), so the divergence is deliberate and documented in
-  place on both sides rather than removed.
-* **D/H** is the genuine solver-stack residual: nuclear-rate-table
-  interpolation plus BDF step-sequence differences through the LT era. This
-  one *is* controller noise and does shrink with tighter tolerances. It grows
-  with network size (5.3e-06 -> 1.1e-05 from 'small' to full 'large'), which
-  is why the budget is set from the largest of the three.
+* **The background ODE tolerance asymmetry** dominates D/H *at the default*
+  ``numerical_precision``. Python solves a(T) at ``0.1 * numerical_precision``
+  and t(T) at ``numerical_precision``; C uses a fixed ``BG_ODE_RTOL = 1e-14``.
+  This term is Python's own discretisation error and shrinks away as the
+  tolerance is tightened -- which is why the D/H gap falls by ~two orders from
+  ``numerical_precision`` 1e-6 to 1e-10 before plateauing.
+* **The CCRTh interpolation-scheme mismatch** is what it plateaus *on*, and it
+  dominates YPBBN at every tolerance. Both backends read the same cached
+  thermal correction and interpolate it differently -- scipy's global
+  quadratic B-spline (``corrections.py``) against C's local 3-point Lagrange
+  (``spline.c``) -- on a grid ~8x coarser than the non-thermal table's. It is
+  the same class of mismatch this module's "Historical gap" section describes,
+  in the one channel that fix did not convert.
+* **The t(T) coordinate** differs structurally (different integration variable
+  and anchor point) and is the residual once the two above are aligned.
+* **The HT-era integrator**, ``LSODA`` (``primat/nuclear_network.py:286``) vs
+  Dormand-Prince RK45 (``primat-c/src/nuclear_network.c``), is deliberate and
+  now contributes ~1e-10 to YP. Aligning the two on BDF was tried and
+  *degraded* YP parity, so it stays as it is.
+
+The gap grows with network size (5.3e-06 -> 1.1e-05 in D/H from 'small' to
+full 'large'), which is why the budget is set from the largest of the three.
 
 The ``rel=5e-5`` D/H budget is a distinct, coarser budget than the +/-3e-9
 *same-backend* D/H regression tolerance (tests/README.md's "Validation
@@ -948,3 +955,75 @@ def test_rates_columns_backend_parity(params, rtol):
         col_atol = 1e-12 * float(np.max(np.abs(evo_c.rates[name][mask])))
         np.testing.assert_allclose(evo_c.rates[name][mask], interp_py[mask],
                                    rtol=rtol, atol=col_atol, err_msg=name)
+
+
+# ---------------------------------------------------------------------------
+# Term-by-term divergence budget (tests/backend_divergence.py).
+#
+# The tests above pin the *total* gap on the observables. These pin the
+# individual links of the chain, so a future change that widens one of them is
+# attributed rather than merely noticed. Each bound is the value measured on
+# this tree, rounded up to the next round figure; the harness prints all of
+# them (``python -m tests.backend_divergence``).
+# ---------------------------------------------------------------------------
+
+# Background a(T) at matched T, mean |rel| over the BBN window, at the default
+# numerical_precision. Measured 8.5e-07: the two backends run their background
+# ODE at different tolerances (Python tracks numerical_precision, C is pinned
+# at BG_ODE_RTOL=1e-14), which is the dominant term in the default-precision
+# D/H gap -- see tests/README.md's "Known cross-backend divergences".
+BG_SCALE_FACTOR_MEAN_REL = 2e-6
+
+# Per-reaction forward nuclear rates at matched T, worst column, BBN window.
+# Measured 8.6e-09 for 'small': both backends resample the same shipped tables
+# onto the same master T9 grid, so this is round-off, not a scheme difference.
+NUCLEAR_RATE_MAX_REL = 1e-7
+
+# CCRTh interpolation-scheme spread (scipy global quadratic vs C local
+# 3-point Lagrange) as a fraction of the n->p rate, at the log-midpoints
+# between the thermal cache's nodes. Measured 1.0e-05: this is the
+# tolerance-independent floor under the observables' gap.
+CCRTH_SCHEME_MAX_REL = 3e-5
+
+
+@requires_c_backend
+def test_background_divergence_is_within_its_attributed_budget():
+    """a(T) is the dominant default-precision term; H(T)/T_nu(T) are not."""
+    import tempfile
+
+    from tests import backend_divergence as bd
+
+    with tempfile.TemporaryDirectory() as tmp:
+        g = bd.background_gap({"network": "small"}, tmp)
+    assert g["a"]["mean"] == pytest.approx(0.0, abs=BG_SCALE_FACTOR_MEAN_REL)
+    # The thermodynamic quantities are shared table lookups, not ODE outputs,
+    # and are three orders tighter. Pinning them separately keeps a background
+    # regression from hiding inside the a(T) budget.
+    assert g["H"]["max"] < 1e-8
+    assert g["Tnue"]["max"] < 1e-8
+
+
+@requires_c_backend
+def test_nuclear_rate_tables_agree_far_below_the_observable_gap():
+    """The shipped rate tables are not a source of the cross-backend gap."""
+    from tests import backend_divergence as bd
+
+    worst = max(s["max"] for s in
+                bd.rate_column_gap({"network": "small"}).values())
+    assert worst < NUCLEAR_RATE_MAX_REL
+
+
+def test_ccrth_interpolation_scheme_spread_is_pinned():
+    """The two backends interpolate the shared CCRTh cache differently.
+
+    Python fits scipy's global quadratic B-spline, C evaluates a local 3-point
+    Lagrange quadratic; both reproduce the cached nodes and differ between
+    them. This pins how far apart they are, so the day the schemes are unified
+    the bound moves to the spline's own accuracy instead of silently passing.
+    """
+    from tests import backend_divergence as bd
+
+    spread = bd.ccrth_interpolant_gap({"network": "small"})
+    assert spread is not None
+    for channel, stats in spread.items():
+        assert stats["max"] < CCRTH_SCHEME_MAX_REL, channel
