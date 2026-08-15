@@ -91,7 +91,7 @@ def _expected_electron_thermo_name(cfg):
         "format_version":    ELECTRON_THERMO_FORMAT_VERSION,
         "n_electron_table":  cfg.n_electron_table,
         "T_start_cosmo_MeV": cfg.T_start_cosmo_MeV,
-        "constants_hash":    constants_hash(),
+        "constants_hash":    constants_hash("electron_thermo", cfg),
     })
     return f"electron_thermo_{fp_hash}.txt"
 

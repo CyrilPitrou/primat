@@ -343,25 +343,29 @@ filename with the fingerprint only in its header; that is what used to make
 configurations evict each other and leave `git status` showing a modified file
 you never edited.)
 
-The two QED plasma-pressure tables keep fixed filenames — nothing user-facing
-varies for them, so they cannot proliferate — but they now carry a fingerprint
-header too, and are rebuilt if it does not match.
+The two QED plasma-pressure tables keep fixed filenames, and carry a
+fingerprint header. Because a fixed name cannot hold two configurations at
+once, they are *written* only when `recompute_qed_corrections=True` asks for
+it: a run whose `alphaem`/`me` do not match them recomputes the ~0.3 s of
+integrals in memory and leaves the files alone. Point `cache_dir` at a
+writable directory to keep a second configuration's pair.
 
-**What invalidates a cache.** Every fingerprint includes a `constants_hash`:
-the hash of the entire frozen physical-constants struct (`primat/constants.py`,
-mirrored by `primat-c/src/constants.c`). Editing any constant — `me`,
-`alphaem`, `gA`, `mn`, `mp`, `Vud`, the proton charge radius, the anomalous
-magnetic moments, `GF`, … — therefore invalidates every cache computed with the
-old value, on both backends at once. Before this existed, such an edit silently
-reused the stale tables. The hash covers all 26 fields rather than a per-cache
-list of the ones each table actually consumes: over-invalidating merely costs a
-recompute, whereas under-invalidating returns a wrong answer with no warning.
+**What invalidates a cache.** Every fingerprint includes a `constants_hash` —
+the hash of the physical constants *that cache reads*, listed in
+`cache_utils.CACHE_CONSTANTS`: eight for the n↔p rate table, five for the CCRTh
+thermal correction, two (`alphaem`, `me`) for the QED pressure tables, one
+(`me`) for the electron thermodynamics. Overriding one of them invalidates the
+caches that read it, on both backends at once; overriding one of the other
+measured constants (`T0CMB`, `GF`, `Vud`, `ma`, …) leaves every cache valid,
+because none of them can change a cached number. `tests/test_cache_constant_deps.py`
+proves both directions by perturbing each constant and rebuilding each cache
+from scratch, so a list that drifts fails the suite rather than serving stale
+physics.
 
-Note that `me` and `alphaem` are *not* run-time parameters — the C backend reads
-them from its own compiled-in constants, which no config can reach — so
-attempting to override either on a `PRIMATConfig` raises rather than diverging
-silently between backends. To change one, edit both `constants.py` and
-`constants.c`; `constants_hash` then takes care of the caches.
+All 16 measured constants are ordinary parameters (`primat --gA 1.276`, a
+`params` dict entry, a `gA = 1.276` INI line); the ten exact ones — the SI
+definitions and the natural-units conventions — are frozen, and overriding one
+raises.
 
 None of this affects the correctness of any result — the fingerprint check means
 a mismatched cache is never *used*, only rebuilt.

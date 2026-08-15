@@ -12,6 +12,14 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **A run with a non-default `alphaem` or `me` no longer overwrites the
+  shipped QED pressure tables.** Those two files keep fixed names, and a
+  fingerprint mismatch used to rebuild *and rewrite* them — harmless while the
+  constants were compile-time, a repository-dirtying footgun once they became
+  parameters. They are now written only when `recompute_qed_corrections` asks,
+  which is what that flag has always documented; a mismatched run recomputes
+  the ~0.3 s of integrals in memory. Use `cache_dir` to cache a second
+  configuration's pair.
 - **A mistyped rate-variation key is no longer silent on the standalone C
   CLI.** `cprimat --set p_n_p__d_gg=1` ran to completion with that rate
   unvaried and no message, where the Python CLI warns (and, under
@@ -325,6 +333,22 @@ in this repository is the authoritative source.
   (`python setup.py build_ext --inplace`).
 - No observable changes: with a rebuilt extension both backends reproduce the
   previous D/H, YP and Neff bit-for-bit.
+
+### Changed
+- **Each cache is now keyed on the constants it actually reads,** rather than
+  on all 26 at once: eight for the n↔p rate table, five for the CCRTh thermal
+  correction, two for the QED pressure tables, one for the electron
+  thermodynamics (`cache_utils.CACHE_CONSTANTS`, mirrored in
+  `primat-c/src/cache.c`). Eight of the sixteen measured constants — `T0CMB`,
+  `GF`, `mZ`, `Vud`, `ma`, `He4Overma`, `HOverma`, `Neff_SM` — change no cached
+  number, yet used to re-key every cache: `--T0CMB 2.7250` cost a 116 s
+  Monte-Carlo rebuild of a bit-identical CCRTh table. The declared lists are
+  proven, not asserted: `tests/test_cache_constant_deps.py` perturbs every
+  settable constant, rebuilds each cache from scratch, and fails if the data
+  moves when the constant is undeclared (under-keyed, silently wrong physics)
+  or stays put when it is declared (over-keyed, a needless recompute). Cache
+  format versions bumped accordingly (weak/thermal 5→6, electron thermo 2→3,
+  QED 1→2) and the shipped files re-keyed with byte-identical data rows.
 
 ### Added
 - **The 16 measured physical constants are now ordinary parameters.**

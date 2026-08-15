@@ -206,8 +206,8 @@ static int write_one_qed_file(const char *path, const char *src_tag,
 /* QED_FORMAT_VERSION in qed_pressure.py -- see its comment for the changelog
  * (v1: first fingerprinted generation; before it the tables carried no
  * fingerprint at all, so one computed with a different alpha/me or a different
- * T grid was loaded silently). */
-#define QED_FORMAT_VERSION 1
+ * T grid was loaded silently; v2 narrows constants_hash to alpha and me). */
+#define QED_FORMAT_VERSION 2
 
 size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
                             const char *consts_hash, CPRFPField *out)
@@ -215,9 +215,8 @@ size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
     size_t n = 0;
     out[n++] = (CPRFPField){"format_version",
                             { CPR_INT, { .i = QED_FORMAT_VERSION } }};
-    /* Covers alpha and me -- and, deliberately, the whole constants struct;
-     * see cache_utils.constants_hash for why over-invalidating is the safe
-     * side of that trade. */
+    /* Hash of alpha and me, the two constants the integrands read
+     * (cpr_constants_hash's `qed` subset). */
     out[n++] = (CPRFPField){"constants_hash",
                             { CPR_STRING, { .s = consts_hash } }};
     out[n++] = (CPRFPField){"T_min",  { CPR_DOUBLE, { .d = T_min } }};

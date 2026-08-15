@@ -31,7 +31,8 @@ For each deterministic cache, both backends are driven with their own
 
 1. **Hash identity** -- both backends must emit the *same filename*. This pins
    ``cpr_weak_rate_fingerprint`` == ``_weak_rate_fingerprint`` and
-   ``cpr_constants_hash`` == ``constants_hash()`` field for field. A single
+   ``cpr_constants_hash`` == ``constants_hash(cache)`` field for field, per
+   cache -- the two sides declare the same constant subsets. A single
    field present on one side only, a float formatted differently, a key sorted
    differently: all show up here as a different hash.
 2. **Column agreement** -- at tolerances held in named module constants whose
@@ -280,25 +281,26 @@ def test_thermal_cache_fingerprints_agree(thermal_dirs):
 
 
 def test_constants_hash_identical_across_backends():
-    """Python's constants_hash() equals the C backend's cpr_constants_hash().
+    """Python's constants_hash(cache) equals the C backend's per-cache hash.
 
-    Both hash all 26 fields of the config's constants struct in the same
-    canonical-JSON form. If this ever fails, the cause is a build flag
-    (-ffast-math, FMA contraction) making a derived constant such as hbar differ
-    in its last bit between CPython and the C compiler -- a real bug worth
-    surfacing loudly, not working around.
+    Each cache hashes only the constants it reads (cache_utils.CACHE_CONSTANTS,
+    mirrored by cpr_constants_hash), in the same canonical-JSON form. If this
+    ever fails, the cause is either the two subsets drifting apart -- which
+    makes every shared cache file a cross-backend miss -- or a build flag
+    (-ffast-math, FMA contraction) changing a constant's last bit between
+    CPython and the C compiler. Both are worth surfacing loudly.
 
     Checked indirectly but exactly: the value appears inside the fingerprint
-    JSON header that each backend writes, and the two filenames above are
-    derived from it. Here it is read straight out of a C-written header so the
-    failure message names the actual strings.
+    JSON header that each backend writes, and the filenames compared above are
+    derived from it. Here the Python side's own contract is pinned -- 16 hex
+    digits, stable across calls, and distinct per cache.
     """
-    from primat.cache_utils import constants_hash
-    assert len(constants_hash()) == 16
-    # The cross-backend equality is asserted by the filename tests above; this
-    # test additionally guards the Python side's own contract (16 hex digits,
-    # stable across calls).
-    assert constants_hash() == constants_hash()
+    from primat.cache_utils import CACHE_CONSTANTS, constants_hash
+    hashes = {c: constants_hash(c) for c in CACHE_CONSTANTS}
+    for c, h in hashes.items():
+        assert len(h) == 16, c
+        assert h == constants_hash(c), c
+    assert len(set(hashes.values())) == len(hashes), hashes
 
 
 # ---------------------------------------------------------------------------

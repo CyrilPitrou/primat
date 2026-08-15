@@ -107,7 +107,11 @@ _ME_MEV   = 0.51099895           # electron mass [MeV] (CODATA 2018)
 # different T bounds was loaded silently -- the hazard this version closes.
 # The shipped tables were given a v1 header in place: same numbers (the write
 # format stayed "%.6E"), header lines only.
-QED_FORMAT_VERSION = 1
+#
+# v2: `constants_hash` narrowed to the two constants the integrands read,
+# alphaem and me (cache_utils.CACHE_CONSTANTS). Numbers unchanged; the shipped
+# tables were re-keyed in place, header lines only.
+QED_FORMAT_VERSION = 2
 
 # Low-x cutoff: for x = mₑ/T > 50 (T < mₑ/50 ≈ 10 keV) the e± are so
 # non-relativistic that δP is effectively zero (Boltzmann-suppressed).
@@ -454,16 +458,13 @@ def qed_fingerprint(T_min, T_max, n_pts, cfg=None):
 
     The tables are a function of exactly two things: the physical constants
     that enter the integrands (α and mₑ, via
-    :func:`primat.cache_utils.constants_hash` -- which hashes the whole
-    constants struct, deliberately over-covering; see its docstring), and the
-    temperature grid they were evaluated on.  Everything else about a run
-    (network, baryon density, neutrino treatment, ...) leaves δP_a and δP_{e3}
-    untouched, which is also why these two files keep fixed names rather than
-    hash-named ones: nothing user-facing varies for them, so they cannot
-    proliferate the way ``nTOp_<hash>.txt`` does.
+    :func:`primat.cache_utils.constants_hash`), and the temperature grid they
+    were evaluated on.  Everything else about a run (network, baryon density,
+    neutrino treatment, ...) leaves δP_a and δP_{e3} untouched.
 
-    A mismatch makes the loader recompute (~0.3 s) and overwrite, exactly as
-    the electron-thermo cache already does.
+    A mismatch makes the loader recompute (~0.3 s) *without* writing, since
+    these two files keep fixed names and a write would replace another
+    configuration's pair (see :meth:`primat.plasma.Plasma._load_tables`).
 
     Args:
         T_min: float, lowest grid temperature [MeV].
@@ -484,7 +485,7 @@ def qed_fingerprint(T_min, T_max, n_pts, cfg=None):
         '0f3a...'
     """
     return {"format_version": QED_FORMAT_VERSION,
-            "constants_hash": constants_hash(cfg),
+            "constants_hash": constants_hash("qed", cfg),
             "T_min": float(T_min),
             "T_max": float(T_max),
             "n_pts": int(n_pts)}

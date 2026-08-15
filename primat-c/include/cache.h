@@ -33,23 +33,21 @@ char *cpr_sha256_hex16(const char *json_str);
  * the intermediate JSON string. Malloc'd; caller frees. */
 char *cpr_fingerprint_hash(const CPRFPField *fields, size_t n);
 
-/* Writes the 16-hex-character hash of a config's ENTIRE physical-constants
- * struct into `out` (17 bytes: 16 hex digits + NUL), mirroring
- * primat.cache_utils.constants_hash() exactly (same 26 fields, same canonical
- * JSON, same sha256 prefix). It is a field of all four fingerprints -- weak
- * rate, CCRTh thermal, electron thermo, QED pressure -- so that a run
+/* Writes into `out` (17 bytes: 16 hex digits + NUL) the hash of the physical
+ * constants that cache `which` reads, mirroring
+ * primat.cache_utils.constants_hash(cache) exactly -- same subset, same
+ * canonical JSON, same sha256 prefix -- so both backends key a shared cache
+ * file identically. It is a field of all four fingerprints, so a run
  * overriding m_e, alpha, g_A, ... keys its own cache files instead of
- * silently reloading the default ones. All 26 fields are hashed rather than a
- * per-cache curated list: over-invalidation costs a recompute,
- * under-invalidation is a wrong answer.
+ * silently reloading the default ones.
  *
  * Only the struct's own fields are hashed -- NOT the derived quantities
  * (cpr_sW2(), cpr_MeV_to_Kelvin(), ...), matching Python's use of
- * dataclasses.asdict(), which likewise sees fields but not @property values.
+ * dataclasses fields, which likewise excludes @property values.
  *
  * `out` is caller-owned, so it must outlive any CPRFPField storing it: pass a
  * local buffer declared in the same scope as the field array. */
-void cpr_constants_hash(const CPRConstants *c, char out[17]);
+void cpr_constants_hash(const CPRConstants *c, CPRConstsCache which, char out[17]);
 
 /* Builds the n<->p weak-rate cache fingerprint (nTOp_<hash>.txt), mirroring
  * weak_rates.cache._weak_rate_fingerprint(cfg). `out` must have room for at

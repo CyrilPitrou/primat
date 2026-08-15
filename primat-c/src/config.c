@@ -402,7 +402,8 @@ static int offset_is_in_consts(size_t offset)
 
 void cpr_config_refresh_constants(CPRConfig *cfg)
 {
-    cpr_constants_hash(&cfg->consts, cfg->consts_hash);
+    for (int k = 0; k < CPR_CONSTS_N_CACHES; k++)
+        cpr_constants_hash(&cfg->consts, (CPRConstsCache)k, cfg->consts_hash[k]);
     /* eta0b is built from n0CMB, ma and maOvermB, so it must follow an
      * override of T0CMB/ma/He4Overma/HOverma -- it was computed once from the
      * defaults when Omegabh2 was first set. Mirrors _update_constants ->
@@ -598,7 +599,8 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
      * then settable by name (see FLD_CONST in FIELD_TABLE), the ten exact ones
      * stay at these values. */
     cfg->consts = g_const;
-    cpr_constants_hash(&cfg->consts, cfg->consts_hash);
+    for (int k = 0; k < CPR_CONSTS_N_CACHES; k++)
+        cpr_constants_hash(&cfg->consts, (CPRConstsCache)k, cfg->consts_hash[k]);
 
     cpr_config_assign_data_dir(cfg, data_dir);
 

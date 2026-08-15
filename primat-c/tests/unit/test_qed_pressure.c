@@ -77,7 +77,7 @@ int main(void)
      * fingerprint fields, so passing a different grid here would write a
      * header describing a table that was never computed. */
     char chash[17];
-    cpr_constants_hash(&g_const, chash);
+    cpr_constants_hash(&g_const, CPR_CONSTS_QED, chash);
     rc = cpr_qed_save_tables(&t, "/tmp", 1e-3, 1e2, 200, chash, &err);
     CHECK(rc == 0, "cpr_qed_save_tables succeeds");
 

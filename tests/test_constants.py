@@ -125,21 +125,26 @@ def test_constants_hash_is_per_config_not_memoised_globally():
     to every later one -- so a run overriding gA would load, and report, the
     default-gA weak rates with no warning anywhere.
     """
-    default = constants_hash(PRIMATConfig())
-    assert default == constants_hash()          # cfg=None means CONST
-    for name in OVERRIDABLE_CONSTANTS:
-        bumped = PRIMATConfig({name: getattr(CONST, name) * 1.01})
-        assert constants_hash(bumped) != default, name
+    from primat.cache_utils import CACHE_CONSTANTS
+
+    for cache, names in CACHE_CONSTANTS.items():
+        default = constants_hash(cache, PRIMATConfig())
+        assert default == constants_hash(cache)     # cfg=None means CONST
+        for name in names:
+            bumped = PRIMATConfig({name: getattr(CONST, name) * 1.01})
+            assert constants_hash(cache, bumped) != default, (cache, name)
 
 
 def test_perturbing_a_constant_changes_the_weak_cache_filename():
-    """The cache key follows the constants, so no run can read another's table.
+    """The cache key follows the constants the table reads, and only those.
 
-    This is the miniature of pass 15's proof test: the filename carries the
-    fingerprint hash, so a changed constant must produce a different file
-    rather than silently hitting the default one.
+    The filename carries the fingerprint hash, so a changed weak-rate constant
+    must produce a different file rather than silently hitting the default
+    one -- while a constant the table does not read must leave the name alone,
+    or `--T0CMB` would cost a needless recompute. Which constants belong in
+    which set is proven by test_cache_constant_deps.py.
     """
-    from primat.cache_utils import fingerprint_hash
+    from primat.cache_utils import CACHE_CONSTANTS, fingerprint_hash
     from primat.weak_rates.cache import _weak_rate_fingerprint
 
     def cache_name(cfg):
@@ -148,4 +153,7 @@ def test_perturbing_a_constant_changes_the_weak_cache_filename():
     base = cache_name(PRIMATConfig())
     for name in OVERRIDABLE_CONSTANTS:
         bumped = PRIMATConfig({name: getattr(CONST, name) * 1.01})
-        assert cache_name(bumped) != base, name
+        if name in CACHE_CONSTANTS["weak"]:
+            assert cache_name(bumped) != base, name
+        else:
+            assert cache_name(bumped) == base, name
