@@ -1026,6 +1026,36 @@ def _ccrth_B(E):
     return 2. * E * np.log((E + pE) / (E - pE)) - 4. * pE
 
 
+def _ccrth_FD2_vec(en, xval):
+    """Fermi-Dirac occupation 1/(e^{en x} + 1), vectorised, with the argument
+    saturated at +-``exp_cutoff`` rather than zeroed: unlike the other
+    occupations below this one tends to 1 (not 0) at large negative argument,
+    so clipping is the safe overflow guard.  Mirrors ``FD2`` in
+    ``primat-c/src/weak_rates.c``.
+    """
+    resvec = np.zeros(len(en))
+    argvec = en * xval
+    idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
+    resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
+    idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
+    resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
+    return resvec
+
+
+def _ccrth_chitilde_vec(ctx, en, znuval, sgnq):
+    """chi~(E) = f_nu(E - sgnq q) (E - sgnq q)^2, the neutrino phase-space
+    weight of Phys. Rep. Eq. 110-111, with q = Q/m_e and the reduced chemical
+    potential ``ctx.xi_nu``.  Mirrors ``th_chitilde`` in
+    ``primat-c/src/weak_rates.c``.
+    """
+    q = ctx.Q / ctx.me
+    resvec = np.zeros(len(en))
+    argvec = znuval * (en - sgnq * q) - sgnq * ctx.xi_nu
+    my_index = np.where(np.abs(argvec) < exp_cutoff)[0]
+    resvec[my_index] = 1. / (np.exp(argvec[my_index]) + 1.)
+    return resvec * (en - sgnq * q)**2
+
+
 def _ccrth_IPENCCRT(ctx, E, k, x, znu, sgnq):
     """Integrand of Gamma^{gamma,T}, Phys. Rep. Eq. 109: stimulated emission
     and absorption of real photons off the thermal bath (plus the matching
@@ -1035,7 +1065,6 @@ def _ccrth_IPENCCRT(ctx, E, k, x, znu, sgnq):
     BE() is the Bose-Einstein occupation f(k) of the photon bath.
     :func:`_L_ThermalTruePhoton` integrates this over E and k.
     """
-    me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
     cfg = ctx.cfg
     pE = np.sqrt(E**2 - 1.)
 
@@ -1045,34 +1074,20 @@ def _ccrth_IPENCCRT(ctx, E, k, x, znu, sgnq):
         resvec[my_index] = 1. / (np.exp(EkBT[my_index]) - 1.)
         return resvec
 
-    def FD2_vec(en, xval):
-        resvec = np.zeros(len(en))
-        argvec = en * xval
-        idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
-        resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
-        idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
-        resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
-        return resvec
+    def chi(en):
+        return _ccrth_chitilde_vec(ctx, en, znu, sgnq)
 
-    def Chitilde_vec(en, znuval, sgnq):
-        q = Q / me
-        resvec = np.zeros(len(en))
-        argvec = znuval * (en - sgnq * q) - sgnq * xi_nu
-        my_index = np.where(np.abs(argvec) < exp_cutoff)[0]
-        resvec[my_index] = 1. / (np.exp(argvec[my_index]) + 1.)
-        return resvec * (en - sgnq * q)**2
+    fd_e = _ccrth_FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
+    fd_p = _ccrth_FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
 
+    # chi^A_+- (Eq. 110) multiplies A(E,k); chi^B_+- (Eq. 111) multiplies k B(E).
     return (cfg.alphaem / (2 * np.pi) * (BE(x * k) / k)
-            * (_ccrth_A(E, k) * (FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
-                          * (Chitilde_vec(E - k, znu, sgnq) + Chitilde_vec(E + k, znu, sgnq)
-                             - 2 * Chitilde_vec(E, znu, sgnq))
-                          + FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
-                          * (Chitilde_vec(-E + k, znu, sgnq) + Chitilde_vec(-E - k, znu, sgnq)
-                             - 2 * Chitilde_vec(-E, znu, sgnq)))
-               - k * _ccrth_B(E) * (FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
-                             * (Chitilde_vec(E - k, znu, sgnq) - Chitilde_vec(E + k, znu, sgnq))
-                             + FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
-                             * (Chitilde_vec(-E + k, znu, sgnq) - Chitilde_vec(-E - k, znu, sgnq)))))
+            * (_ccrth_A(E, k)
+               * (fd_e * (chi(E - k) + chi(E + k) - 2 * chi(E))
+                  + fd_p * (chi(-E + k) + chi(-E - k) - 2 * chi(-E)))
+               - k * _ccrth_B(E)
+               * (fd_e * (chi(E - k) - chi(E + k))
+                  + fd_p * (chi(-E + k) - chi(-E - k)))))
 
 
 def _ccrth_IPENCCRDiffBremsstrahlung(ctx, E, k, x, znu, sgnq):
@@ -1087,39 +1102,24 @@ def _ccrth_IPENCCRDiffBremsstrahlung(ctx, E, k, x, znu, sgnq):
     term, which is why the k-integral can start at a small but finite k_min.
     :func:`_L_ThermalDiffBremsstrahlung` integrates this over E and k.
     """
-    me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
     cfg = ctx.cfg
-    q  = Q / me
+    q  = ctx.Q / ctx.me
     pE = np.sqrt(E**2 - 1.)
-    Fp = (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E + k * (2. * E * np.log((E + pE) / (E - pE)) - 4. * pE)
-    Fm = (2. * E**2 + k**2) * np.log((E + pE) / (E - pE)) - 4. * pE * E - k * (2. * E * np.log((E + pE) / (E - pE)) - 4. * pE)
-
-    def FD2_vec(en, xval):
-        resvec = np.zeros(len(en))
-        argvec = en * xval
-        idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
-        resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
-        idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
-        resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
-        return resvec
-
-    def Chitilde_vec(en, znuval, sgnq):
-        q = Q / me
-        resvec = np.zeros(len(en))
-        argvec = znuval * (en - sgnq * q) - sgnq * xi_nu
-        my_index = np.where(np.abs(argvec) < exp_cutoff)[0]
-        resvec[my_index] = 1. / (np.exp(argvec[my_index]) + 1.)
-        return resvec * (en - sgnq * q)**2
+    # F_+-(E,k) = A(E,k) +- k B(E), Phys. Rep. Eq. B41.
+    A_kernel  = _ccrth_A(E, k)
+    kB_kernel = k * _ccrth_B(E)
+    Fp = A_kernel + kB_kernel
+    Fm = A_kernel - kB_kernel
 
     res_fac  = cfg.alphaem / (2. * np.pi * k)
-    res1_fac = FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
-    res1vec  = Fp * Chitilde_vec(E + k, znu, sgnq)
+    res1_fac = _ccrth_FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
+    res1vec  = Fp * _ccrth_chitilde_vec(ctx, E + k, znu, sgnq)
     argvec   = k
     my_index = np.where(np.abs(argvec) < np.abs(E - sgnq * q))[0]
-    res1vec[my_index] -= Fp[my_index] * FD2_vec(E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] - sgnq * q) - k[my_index])**2
+    res1vec[my_index] -= Fp[my_index] * _ccrth_FD2_vec(E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] - sgnq * q) - k[my_index])**2
     res1vec *= res1_fac
-    res2_fac = FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
-    res2vec  = Fm * Chitilde_vec(-E + k, znu, sgnq)
+    res2_fac = _ccrth_FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
+    res2vec  = Fm * _ccrth_chitilde_vec(ctx, -E + k, znu, sgnq)
     my_index = np.where(np.abs(argvec) < np.abs(E + sgnq * q))[0]
     # NOT a typo: the soft subtraction below uses Fp even though the term it is
     # subtracted from carries Fm (unlike res1, which is Fp throughout).  The
@@ -1138,7 +1138,7 @@ def _ccrth_IPENCCRDiffBremsstrahlung(ctx, E, k, x, znu, sgnq):
     # CCR rate at 3e10 K, two to three orders of magnitude too large for an
     # O(alpha) finite-temperature refinement.  primat-c/src/weak_rates.c's
     # ipen_ccr_diff_brems carries the same Fp for the same reason.
-    res2vec[my_index] -= Fp[my_index] * FD2_vec(-E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] + sgnq * q) - k[my_index])**2
+    res2vec[my_index] -= Fp[my_index] * _ccrth_FD2_vec(-E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] + sgnq * q) - k[my_index])**2
     res2vec *= res2_fac
     return res_fac * (res1vec + res2vec)
 
@@ -1175,15 +1175,6 @@ def _ccrth_C2dE1dE2(ctx, e1v, e2v, x, znu, sgnq):
     max_e1pe2    = 2. + max(10., 15. / x) + np.abs(e1me2)
     index_limits = np.where(((e1pe2 - min_e1pe2) > 0) * ((max_e1pe2 - e1pe2) > 0))[0]
 
-    def FD2_vec(en, xval):
-        resvec = np.zeros(len(en))
-        argvec = en * xval
-        idx = np.where(np.abs(argvec) <= exp_cutoff)[0]
-        resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
-        idx_ov = np.where(np.abs(argvec) > exp_cutoff)[0]
-        resvec[idx_ov] = 1. / (np.exp(np.sign(argvec[idx_ov]) * exp_cutoff) + 1.)
-        return resvec
-
     def D_FD2_vec(en, xval):
         resvec = np.zeros(len(en))
         argvec = en * xval
@@ -1200,7 +1191,7 @@ def _ccrth_C2dE1dE2(ctx, e1v, e2v, x, znu, sgnq):
 
     def ChiFunc_vec(E, p, x, znu, sgnq):
         return (FD_nu3_vec(E - sgnq * (Q / me), sgnq * xi_nu, znu)
-                * FD2_vec(-E, x) * (E - sgnq * (Q / me))**2)
+                * _ccrth_FD2_vec(-E, x) * (E - sgnq * (Q / me))**2)
 
     e1 = e1v[index_limits]
     e2 = e2v[index_limits]
@@ -1211,13 +1202,13 @@ def _ccrth_C2dE1dE2(ctx, e1v, e2v, x, znu, sgnq):
                      * (ChiFunc_vec(e1, p1, x, znu, sgnq) + ChiFunc_vec(-e1, p1, x, znu, sgnq))
                      * (-(1. / 4.) * np.log(((p1 + p2) / (p1 - p2))**2)**2
                         * (D_FD2_vec(e2, x) * p2 / p1 * e1**2 / e2 * (e1 + e2)
-                           + FD2_vec(e2, x) * e1**2 / (p1 * p2) * (e2 + e1 / e2**2))
+                           + _ccrth_FD2_vec(e2, x) * e1**2 / (p1 * p2) * (e2 + e1 / e2**2))
                         + np.log(((p1 + p2) / (p1 - p2))**2)
                         * (D_FD2_vec(e2, x) * (p2**2 * e1 / e2 * (1. / p1**2 + 2.) - e1**2 * p2 / p1 * L_fac)
-                           + FD2_vec(e2, x) * (e1 / (p1**2 * e2**2) * (e2**2 + 2 * p1**2 + 1.)
+                           + _ccrth_FD2_vec(e2, x) * (e1 / (p1**2 * e2**2) * (e2**2 + 2 * p1**2 + 1.)
                                                - (e1**2 + e2**2) / (e1 + e2)
                                                - (e1**2 * e2) / (p1 * p2) * L_fac))
-                        - FD2_vec(e2, x) * (4. * e1 * p2 / p1 + 2. * e2 * L_fac)))
+                        - _ccrth_FD2_vec(e2, x) * (4. * e1 * p2 / p1 + 2. * e2 * L_fac)))
     resvec[index_limits] = resvec_limits
     return resvec
 

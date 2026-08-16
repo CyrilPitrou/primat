@@ -47,25 +47,6 @@ int main(void)
         cpr_cubic_spline_free(&sp);
     }
 
-    /* Natural: exact for a *linear* function (zero curvature everywhere,
-     * so the natural spline's zero-curvature boundary assumption is exact
-     * everywhere, not just at the boundary). */
-    {
-        size_t n = 6;
-        double x[6], y[6];
-        for (size_t i = 0; i < n; i++) { x[i] = (double)i; y[i] = 3.0 - 1.5 * x[i]; }
-        CPRCubicSpline sp;
-        CHECK(cpr_cubic_spline_fit_natural(x, y, n, &sp, &err) == 0, "natural fit succeeds");
-        int ok = 1;
-        for (double xq = 0.0; xq <= 5.0; xq += 0.31) {
-            double got = cpr_cubic_spline_eval(&sp, xq);
-            double want = 3.0 - 1.5 * xq;
-            if (!close(got, want, 1e-9)) { ok = 0; break; }
-        }
-        CHECK(ok, "natural spline reproduces exact line on whole domain");
-        cpr_cubic_spline_free(&sp);
-    }
-
     /* Linear interpolation sanity check. */
     {
         double x[3] = { 0.0, 1.0, 3.0 };

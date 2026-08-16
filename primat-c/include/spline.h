@@ -1,7 +1,7 @@
 /* spline.h -- interpolation.
  *
  * Covers `np.interp`/`interp1d(kind="linear")` (cpr_interp_linear) and
- * natural/not-a-knot cubic splines (CPRCubicSpline, used by the QED-
+ * not-a-knot cubic splines (CPRCubicSpline, used by the QED-
  * pressure tables, the electron-thermo cache, and
  * network_data._resample_rate_table's log-log resampling -- see
  * cpr_resample_rate_table).
@@ -46,11 +46,6 @@ typedef struct {
     double *x, *a, *b, *c, *d;
     size_t n; /* number of knots; n-1 segments */
 } CPRCubicSpline;
-
-/* Natural boundary (second derivative = 0 at both ends), the standard
- * tridiagonal Thomas-algorithm solve. Requires n >= 3. */
-int cpr_cubic_spline_fit_natural(const double *x, const double *y, size_t n,
-                                   CPRCubicSpline *out, char **errmsg);
 
 /* "Not-a-knot" boundary (third derivative continuous across the second and
  * second-to-last knots, i.e. the first two and last two segments are each a

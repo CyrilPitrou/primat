@@ -389,6 +389,18 @@ ORDER_SMALL = [
 _KEY12_REACTIONS = ORDER_SMALL[1:]
 
 
+def _default_data_dir() -> str:
+    """Package-shipped data root (``primat/data/``, containing nuclear/, csv/, etc.).
+
+    Defined in this module rather than taken from ``PRIMATConfig`` so that
+    :func:`reaction_stoichiometry` and :func:`to_filename` can reach
+    :func:`_reaction_catalog` without constructing a throwaway config (which
+    re-reads ``nuclides.csv`` and would create a config<->nuclear circular
+    import).  Equivalent to ``PRIMATConfig()._pkg_data_dir``.
+    """
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+
 def _network_dir_from_cwd() -> str:
     """Return the package's network-list directory for import-time defaults.
 
@@ -396,9 +408,7 @@ def _network_dir_from_cwd() -> str:
     data), so the path is resolved relative to this file — never the current
     working directory — and works for both editable and regular installs.
     """
-    return os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "data", "nuclear", "networks")
-    )
+    return os.path.join(_default_data_dir(), "nuclear", "networks")
 
 
 def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
@@ -1177,18 +1187,6 @@ class NetworkDefinition:
         self._cache_T_t = T_t
         self._cache_clamp = clamp
         return r
-
-
-def _default_data_dir() -> str:
-    """Package-shipped data root (``primat/data/``, containing nuclear/, csv/, etc.).
-
-    Defined here so :func:`reaction_stoichiometry` and :func:`to_filename` can
-    reach :func:`_reaction_catalog` without constructing a throwaway
-    ``PRIMATConfig`` (which re-reads ``nuclides.csv`` and would create a
-    config<->nuclear circular import).  Equivalent to
-    ``PRIMATConfig()._pkg_data_dir``.
-    """
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 
 @lru_cache(maxsize=None)

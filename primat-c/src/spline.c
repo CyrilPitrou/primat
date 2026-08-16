@@ -145,42 +145,6 @@ static void coeffs_from_M(const double *x, const double *y, const double *M,
     }
 }
 
-int cpr_cubic_spline_fit_natural(const double *x, const double *y, size_t n,
-                                   CPRCubicSpline *out, char **errmsg)
-{
-    if (n < 3) {
-        *errmsg = strdup("cpr_cubic_spline_fit_natural: need at least 3 knots");
-        return 1;
-    }
-    double *h = CPR_XMALLOC((n - 1) * sizeof(double));
-    for (size_t i = 0; i + 1 < n; i++) h[i] = x[i + 1] - x[i];
-
-    size_t m = n - 2; /* unknowns M_1..M_{n-2} */
-    double *lower = CPR_XCALLOC(m, sizeof(double));
-    double *diag = CPR_XCALLOC(m, sizeof(double));
-    double *upper = CPR_XCALLOC(m, sizeof(double));
-    double *rhs = CPR_XCALLOC(m, sizeof(double));
-    double *Msub = CPR_XMALLOC(m * sizeof(double));
-
-    for (size_t k = 0; k < m; k++) {
-        size_t i = k + 1;
-        double h0 = h[i - 1], h1 = h[i];
-        if (k > 0) lower[k] = h0;
-        diag[k] = 2.0 * (h0 + h1);
-        if (k + 1 < m) upper[k] = h1;
-        rhs[k] = 6.0 * ((y[i + 1] - y[i]) / h1 - (y[i] - y[i - 1]) / h0);
-    }
-    thomas_solve(lower, diag, upper, rhs, Msub, m);
-
-    double *M = CPR_XCALLOC(n, sizeof(double)); /* M[0] = M[n-1] = 0 */
-    for (size_t k = 0; k < m; k++) M[k + 1] = Msub[k];
-
-    coeffs_from_M(x, y, M, n, out);
-
-    free(h); free(lower); free(diag); free(upper); free(rhs); free(Msub); free(M);
-    return 0;
-}
-
 int cpr_cubic_spline_fit_notaknot(const double *x, const double *y, size_t n,
                                     CPRCubicSpline *out, char **errmsg)
 {

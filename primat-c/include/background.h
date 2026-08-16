@@ -144,7 +144,7 @@ typedef struct {
  * history, the a(T)/t(a) ODE solutions, derived relic-neutrino Omegas, and
  * the n<->p weak rates -- mirrors StandardBackground.__init__'s call
  * sequence (_setup_LCDM, _setup_EDE, _setup_background_and_cosmo,
- * _setup_derived_cosmo, _setup_weak_rates). Python used to carry an extra
+ * _setup_weak_rates). Python used to carry an extra
  * _replace_LCDM_with_exact step, swapping a radiation-domination
  * approximation for rho_CDM out after the background solve; it has been
  * removed there in favour of publishing a(T) mid-solve, which is what this

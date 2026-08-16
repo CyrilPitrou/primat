@@ -133,7 +133,7 @@ DEFAULT_PARAMS: dict = {
     # so the two can never drift apart; the remaining 10 fields are exact by
     # definition and stay frozen (see PRIMATConfig.validate_frozen_constants).
     # Every derived quantity follows automatically -- overriding alphaem moves
-    # sW2/geL/geR/gmuL/gmuR, T0CMB moves s0CMB/n0CMB/eta0b, and so on.
+    # sW2/geL/geR/gmuL/gmuR, T0CMB moves n0CMB/eta0b, and so on.
     # One documented exception: the Pitrou & Pospelov QED correction to the
     # radiative-capture nuclear rates (nuclear_qed_corrections) is a fit
     # performed at the CODATA alpha and keeps its own literal, so alphaem does
@@ -1179,7 +1179,7 @@ class PRIMATConfig:
     # validate_frozen_constants).
     #
     # The 16 MEASURED constants are DEFAULT_PARAMS keys instead, set per
-    # instance like any other parameter, and the 10 derived quantities that
+    # instance like any other parameter, and the 9 derived quantities that
     # depend on them (constants.DERIVED_OVERRIDABLE) are recomputed from
     # primat.constants by _update_constants. See primat.constants for every
     # definition, formula and citation.
@@ -1187,7 +1187,6 @@ class PRIMATConfig:
     second         = CONST.second
     cm             = CONST.cm
     gram           = CONST.gram
-    erg            = CONST.erg
     kB             = CONST.kB
     clight         = CONST.clight
     hbar           = CONST.hbar
@@ -1205,7 +1204,7 @@ class PRIMATConfig:
     s0bar          = CONST.s0bar
     HubbleOverh    = CONST.HubbleOverh
 
-    # The 10 derived quantities that DO depend on an overridable constant,
+    # The 9 derived quantities that DO depend on an overridable constant,
     # here at their default values only: _update_constants shadows each with an
     # instance attribute at the end of __init__. The class-level copies keep
     # them readable during construction, before the overrides are all in.
@@ -1215,7 +1214,6 @@ class PRIMATConfig:
     gmuL           = CONST.gmuL
     gmuR           = CONST.gmuR
     deltakappa     = CONST.deltakappa
-    s0CMB          = CONST.s0CMB
     n0CMB          = CONST.n0CMB
     mB             = CONST.mB
     maOvermB       = CONST.maOvermB
