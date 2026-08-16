@@ -224,7 +224,7 @@ def test_output_files_announce_their_paths(force_backend, capfd, tmp_path):
             [sys.executable, "-c", script],
             check=True,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
         )
         out = proc.stderr
         assert "[output]" not in proc.stdout, proc.stdout
@@ -279,7 +279,7 @@ def test_output_background_evolution_both_backends(force_backend, capfd, tmp_pat
             [sys.executable, "-c", script],
             check=True,
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8",
         )
         out = proc.stderr
     else:
@@ -333,7 +333,7 @@ def test_evolution_tsv_header_is_identical_across_backends(params, tmp_path):
             script = ("from primat.backend import run_bbn\n"
                       f"run_bbn({p!r}, force_backend='c')\n")
             subprocess.run([sys.executable, "-c", script], check=True,
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8")
         else:
             run_bbn(p, force_backend=backend)
         with open(out) as fh:

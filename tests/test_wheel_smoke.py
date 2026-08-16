@@ -127,7 +127,7 @@ def test_wheel_install_smoke_solve():
             # cwd outside the checkout: `python -c` puts the working directory
             # first on sys.path, so running from the repo root would import the
             # source tree and never touch the wheel this test just installed.
-            cwd=str(tmp_path), check=True, capture_output=True, text=True,
+            cwd=str(tmp_path), check=True, capture_output=True, text=True, encoding="utf-8",
         )
 
     # Same loose tolerances as tests/test_regression.py::test_small_network_*
@@ -198,7 +198,7 @@ def test_core_runs_without_plotly_or_joblib():
     """
     result = subprocess.run(
         [sys.executable, "-c", _NO_OPTIONAL_DEPS_SCRIPT],
-        cwd=str(REPO_ROOT), capture_output=True, text=True,
+        cwd=str(REPO_ROOT), capture_output=True, text=True, encoding="utf-8",
     )
     assert result.returncode == 0, (
         "core solve / serial MC failed without plotly+joblib:\n"
@@ -264,7 +264,7 @@ def test_install_falls_back_to_python_when_the_extension_cannot_build():
         build = subprocess.run(
             [sys.executable, "-m", "pip", "wheel", str(src), "-w", str(wheel_dir),
              "--no-deps", "--no-build-isolation"],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8",
         )
         # The point of the test: a compile error is not an install error.
         assert build.returncode == 0, build.stdout + build.stderr
@@ -309,7 +309,7 @@ def test_install_falls_back_to_python_when_the_extension_cannot_build():
         result = subprocess.run(
             [str(venv_python), "-c", probe],
             cwd=str(tmp_path),      # see test_wheel_install_smoke_solve
-            check=True, capture_output=True, text=True,
+            check=True, capture_output=True, text=True, encoding="utf-8",
         )
 
     origin, has_c, values = result.stdout.strip().split("\n")

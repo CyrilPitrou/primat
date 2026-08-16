@@ -175,7 +175,7 @@ def test_cli_json_stdout_is_pure_json_in_a_subprocess(backend, tmp_path):
     proc = subprocess.run(
         [sys.executable, "-m", "primat.cli", "--json", "--backend", backend,
          "--output_time_evolution", "--output_file", str(tmp_path / "evo.tsv")],
-        capture_output=True, text=True, timeout=300,
+        capture_output=True, text=True, encoding="utf-8", timeout=300,
     )
     assert proc.returncode == 0, proc.stderr
     payload = json.loads(proc.stdout)          # fails if anything else got in
