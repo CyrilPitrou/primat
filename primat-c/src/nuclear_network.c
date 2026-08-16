@@ -403,12 +403,10 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     free(Yi_MT); free(Yi_LT);
     recorder_free(&rec_ht); recorder_free(&rec_mt); recorder_free(&rec_lt);
 
-    /* Propagate write failures. These return codes used to be discarded, so a
-     * bad output_file (unwritable directory, full disk) left the run reporting
-     * success with exit status 0 and no message -- while Python raised OSError
-     * for the same input -- and leaked the strdup'd *errmsg nobody would ever
-     * read or free (confirmed by `leaks`: 96 bytes). Failing the solve matches
-     * Python and makes the caller free the message on the normal error path. */
+    /* Propagate write failures: a bad output_file (unwritable directory, full
+     * disk) must fail the solve rather than report success with no message,
+     * matching Python's OSError, and must hand *errmsg to the caller's normal
+     * error path rather than leak it. */
     /* Unlike the HT/MT/LT failure paths above, these run with `nn` already
      * populated -- and this function's contract is that a nonzero return
      * leaves nothing for the caller to free (mc.c and api.c both just
@@ -469,12 +467,10 @@ double cpr_nuclear_network_Y_of_t(const CPRNuclearNetwork *nn, const char *name,
 
 /* Creates every directory component of `path` in turn, including `path`
  * itself (mkdir -p equivalent without a shell call) -- mirrors
- * os.makedirs(exist_ok=True). The intermediate-component loop alone
- * (walking only embedded '/' characters) never creates the final,
- * slash-free component -- e.g. mkdir_p("results") used to silently do
- * nothing, so a fresh checkout's first write into the (not-yet-existing)
- * "results/" directory failed with ENOENT; the explicit mkdir() below the
- * loop covers that last, most common case. */
+ * os.makedirs(exist_ok=True). The intermediate-component loop walks only
+ * embedded '/' characters, so it never creates the final, slash-free
+ * component -- mkdir_p("results") would do nothing at all. The explicit
+ * mkdir() below the loop covers that last, most common case. */
 static void mkdir_p(const char *path)
 {
     char buf[4300];

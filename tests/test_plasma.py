@@ -112,10 +112,9 @@ def test_electron_thermo_cache_is_hash_named(tmp_path):
     """Each configuration gets its OWN electron_thermo_<hash>.txt.
 
     The cache carries its fingerprint in the *filename*, not just the header,
-    so two configurations coexist instead of evicting one another. This is the
-    property that fixes F6.12: before it, any run whose fingerprint differed
-    from the file on disk overwrote the shipped, git-tracked copy, so a full
-    test-suite run left the working tree dirty.
+    so two configurations coexist instead of evicting one another. Without
+    it, any run whose fingerprint differed from the file on disk would
+    overwrite the shipped, git-tracked copy and leave the tree dirty.
 
     Everything is written into a throwaway ``cache_dir``; reads still fall back
     to the shipped tree, so nothing here can touch it.
@@ -257,9 +256,8 @@ def test_c_backend_plasma_recompute(tmp_path):
     weaker reason than it used to be. ``recompute_electron_thermo=True`` writes
     the file named by the *current* fingerprint, which for a default config is
     the shipped one — so without the redirect this would still rewrite a
-    git-tracked file (with numerically equivalent contents; the ~1e-4
-    Python-vs-C gap that made that dangerous was closed at the root by F6.3,
-    and the two now agree to ~1e-11).
+    git-tracked file, though with numerically equivalent contents: the two
+    backends' electron thermodynamics agree to ~1e-11.
 
     What is gone is the eviction hazard: a *non-default* config no longer
     overwrites anything, because its fingerprint names a different file. Reads

@@ -60,12 +60,10 @@ When loaded by :mod:`primat.plasma`, the two files' values (and
 derivatives) are summed to give the total correction.  The δP_b term
 would require a separate flag and file.
 
-(Backward compat: older cached checkouts may instead have a single
-7-column ``data/plasma/QED_tables.txt`` — T, dP_a, dP_e3, and their
-derivatives interleaved — or the even older legacy 3-file trio
-``QED_P_int.txt``/``QED_dP_intdT.txt``/``QED_d2P_intdT2.txt``.
-:func:`primat.plasma.Plasma._load_tables` still reads both as a fallback,
-but :func:`save_qed_tables` only ever writes the current two-file format.)
+(Backward compat: :func:`primat.plasma.Plasma._load_tables` also reads a
+single 7-column ``QED_tables.txt`` and the ``QED_P_int.txt``/
+``QED_dP_intdT.txt``/``QED_d2P_intdT2.txt`` trio as fallbacks;
+:func:`save_qed_tables` only ever writes the two-file format above.)
 
 Usage
 -----

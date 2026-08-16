@@ -103,21 +103,13 @@ def _solve(params_items):
     -------
     (run, float, str)
         ``run`` is a :class:`primat.gui.run_view.GuiRun` wrapping a plain
-        :func:`primat.backend.run_bbn` result dict -- exposing the same
-        minimal read-only interface a genuine ``primat.PRIMAT`` instance
-        would (``run.primat_results()``, ``run.abundance_names``,
-        ``run[name](t)``, ``run.T_of_t``, ``run.A``/``run.Z``/``run.N``,
-        ``run.cfg``, ``run.nucl``) so the result/evolution panels never need
-        to know which backend actually ran (see ``primat.backend``'s module
-        docstring) -- letting this pick the C
-        backend by default. Together with the wall-clock time (seconds) the
-        actual solve took, and a short string naming which backend ran (for
-        the caption in ``app.main``). The elapsed time is measured *inside*
-        this cached function (rather than by the caller timing the call)
-        specifically so that a cache *hit* -- a rerun with unchanged
-        parameters, which never re-executes this function body at all --
-        still reports the original solve's real duration instead of the ~0 s
-        a caller-side timer would measure around an instant cache lookup.
+        :func:`primat.backend.run_bbn` result dict, exposing the same minimal
+        read-only interface a real ``PRIMAT`` instance would, so the panels
+        never need to know which backend ran and this can default to C.
+        Alongside it, the wall-clock solve time and a short string naming the
+        backend. The time is measured *inside* this cached function, so a
+        cache hit still reports the original solve's duration rather than the
+        ~0 s a caller-side timer would see.
 
     Notes
     -----
@@ -129,11 +121,10 @@ def _solve(params_items):
     ``cache_data``) is used because ``GuiRun`` lazily builds SciPy
     interpolators that are not picklable.
 
-    No disk I/O of any kind happens here any more: the
-    download buttons (``panels.render_downloads_panel``) build their TSV text
-    lazily, at click time, straight from ``run``'s in-memory data -- nothing
-    is written to a server-side tempfile even transiently, which matters for
-    a hosted Streamlit deployment.
+    No disk I/O happens here: the download buttons
+    (``panels.render_downloads_panel``) build their TSV text at click time
+    from ``run``'s in-memory data, so nothing is written to a server-side
+    tempfile even transiently — which matters for a hosted deployment.
     """
     t0 = time.time()
     params = dict(params_items)

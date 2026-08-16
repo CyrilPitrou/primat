@@ -12,17 +12,16 @@ two never touch each other's files -- was considered and rejected. It converts
 a parity *bug* into a parity *blind spot*. The shipped
 ``electron_thermo_cache.txt`` coming back modified after a test run is precisely
 the observation that exposed a 1.0e-4 disagreement between the two backends'
-electron thermodynamics (finding F5.14), later closed at the root (F6.3,
-1.0e-4 -> 8.9e-12). Had the caches been segregated, that gap would still be in
-``plasma.c`` today, silently, each backend happily reading its own copy.
+electron thermodynamics, since closed at the root (1.0e-4 -> 8.9e-12). Had the
+caches been segregated, that gap would still be in ``plasma.c`` today,
+silently, each backend happily reading its own copy.
 Segregation would also double the shipped cache tree (~1 MB -> ~2 MB in a wheel
 served to Streamlit Community Cloud) and make every user who exercises both
 backends pay the multi-minute vegas build twice.
 
 Sharing is therefore the right default -- but it is only *safe* if something
 actively checks that the two backends agree. That is this module. It is the
-mechanism that makes the shared cache defensible, replacing what used to be a
-prose assertion in ``.claude/review_findings.md``.
+mechanism that makes the shared cache defensible.
 
 What is checked
 ---------------
@@ -40,8 +39,8 @@ For each deterministic cache, both backends are driven with their own
 
 The coarse grid (low ``sampling_nTOp_per_decade``, ``weak_rate_cache=False``)
 keeps the module inside the default suite. It does not weaken detection: the
-F5.14 divergence was a per-point quadrature-tolerance floor, not a
-grid-resolution effect, so a coarse grid catches it just as well. The grid
+divergence it is guarding against was a per-point quadrature-tolerance floor,
+not a grid-resolution effect, so a coarse grid catches it just as well. The grid
 density is itself a fingerprint field, so both backends still hash the same
 coarse config and the hash-identity assertion is unaffected.
 
@@ -81,18 +80,17 @@ pytestmark = pytest.mark.skipif(
 # ---------------------------------------------------------------------------
 
 # nTOp_<hash>.txt, both rate columns, max relative difference.
-# Measured 2.5e-10 (review pass 6, 2026-08-04) on the default grid; the pin is
-# ~40x looser to absorb the coarse grid used here and platform libm variation.
+# Measured 2.5e-10 on the default grid; the pin is ~40x looser to absorb the
+# coarse grid used here and platform libm variation.
 NTOP_RTOL = 1e-8
 
 # electron_thermo_<hash>.txt, all four columns (rho_e, p_e, drho_e_dT,
-# dp_e_dT), max relative difference. Measured 8.9e-12 (review pass 6,
-# 2026-08-04) after F6.3 closed the earlier 1.0e-4 gap at the root.
+# dp_e_dT), max relative difference. Measured 8.9e-12: both backends use a
+# quadrature tolerance relative to the integrand's own magnitude.
 ELECTRON_THERMO_RTOL = 1e-9
 
 # QED_pressure_correction_e{2,3}.txt: max |difference| normalised by the
-# COLUMN'S PEAK MAGNITUDE, not pointwise-relative. Measured 7.3e-20
-# (2026-08-04, this work).
+# COLUMN'S PEAK MAGNITUDE, not pointwise-relative. Measured 7.3e-20.
 #
 # Pointwise relative difference is the wrong metric for these two tables, and
 # using it would force a meaninglessly loose pin. delta_P falls off the bottom
@@ -321,8 +319,8 @@ def test_weak_rate_cache_columns_agree(coarse_dirs):
 def test_electron_thermo_cache_columns_agree(coarse_dirs):
     """The two backends' e+- thermodynamic tables agree in all four columns.
 
-    This is the comparison that would have caught F5.14 (a 1.0e-4 gap in
-    rho_e/p_e from a quadrature tolerance floor) the moment it appeared.
+    This is the comparison that catches a gap like the 1.0e-4 one a
+    quadrature tolerance floor once opened in rho_e/p_e.
     """
     dirs = coarse_dirs
     name = _names(dirs["c"], "plasma", "electron_thermo_")[0]

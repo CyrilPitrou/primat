@@ -1,6 +1,5 @@
 /* vegas.h -- 2D VEGAS adaptive-importance-sampling Monte Carlo integration
- * (Lepage 1978), replacing the deterministic nested-quadrature path
- * previously used for weak_rates.c's thermal (CCRTh) sub-integrals.
+ * (Lepage 1978), for weak_rates.c's thermal (CCRTh) sub-integrals.
  *
  * Ports the *algorithm* used by Python's `vegas` package (corrections.py's
  * `_L_ThermalTruePhoton`/`_L_ThermalDiffBremsstrahlung`/`_L_Thermal_2_3`),

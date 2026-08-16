@@ -1,4 +1,4 @@
-/* test_network_data_phase4.c -- checks the Phase 4 physics layer
+/* test_network_data_phase4.c -- checks network_data.c's physics layer
  * (cpr_load_network / cpr_nuclear_rates_init) on the real "small" and
  * "large, amax=8" networks: species/reaction counts against their
  * documented values, N/Z conservation (via cpr_check_conservation,

@@ -112,11 +112,9 @@ _WEAK_RATE_BG_FIELDS = [
     # set the rate table's own grid (that is sampling_nTOp_per_decade), but it
     # does set the node spacing of the LINEAR T_nu(T_gamma) interpolant built in
     # corrections._build_rate_context, which every rate integrand evaluates.
-    # Measured on the default NEVO history (rel. change of Gamma_{n->p} against
-    # a 2000-points/decade reference): 2e-3 at 10 points/decade, 1e-3 at 40,
-    # 1.4e-4 at 200, 1.4e-5 at the default 600. That is orders of magnitude
-    # above the +-3e-9 D/H regression tolerance, so a run that changes this
-    # knob must NOT reuse another run's table.
+    # Coarsening it changes Gamma_{n->p} by orders of magnitude more than the
+    # D/H regression tolerance, so a run that changes this knob must NOT reuse
+    # another run's table.
     "sampling_temperature_per_decade",
     "nevo_file",
     "nevo_spectral_file",
@@ -152,41 +150,20 @@ _WEAK_RATE_BG_FIELDS = [
 #
 # PROVENANCE CAVEAT (thermal cache only). The CCRTh table is a Monte-Carlo
 # (vegas) estimate, and the shipped nTOp_thermal_<hash>.txt files were produced
-# by a Python run whose vegas was UNSEEDED. Python's vegas is now seeded
-# deterministically (weak_rates/corrections.py's _vegas_rng, mirroring
-# primat-c/src/weak_rates.c's th_vegas_seed), so from here on a Python
-# recompute reproduces *itself* exactly.
-#
-# It does not reproduce the *shipped file* exactly, and cannot: the shipped
-# numbers came from a random stream that no longer exists. So a cache hit and a
-# fresh recompute of the same configuration -- same hash, same fingerprint --
-# can differ by the MC noise floor. That is inherent to caching a Monte-Carlo
-# integral, not a defect in the fingerprint: the fingerprint's job is to say
-# "this file describes THIS configuration", which remains true.
-#
-# Measured (2026-08-04), recomputing the default shipped table
-# (nTOp_thermal_c7da75afa7c0bf3b.txt, 57 rows) with the seeded vegas:
-#
-#   * two successive recomputes are now BYTE-IDENTICAL (max column difference
-#     exactly 0, identical D/H to all digits) -- the property seeding buys;
-#   * against the shipped (unseeded) table the CCRTh term itself moves by up to
-#     3.8e-2 relative on L_nTOpCCRTh and 1.2e-2 on L_pTOnCCRTh, with medians of
-#     9.7e-4 and 3.6e-4. Those percentages look large only because they are
-#     relative to CCRTh, which is itself a ~1e-3 correction to the total n<->p
-#     rate -- the worst point is ~4e-5 of the rate;
-#   * the resulting shift in the headline observable is D/H 2.43589845e-05 ->
-#     2.43589505e-05, i.e. |dD/H| = 3.4e-11, a factor 88 inside the +-3e-9 D/H
-#     regression tolerance.
-#
-# So regenerating the shipped thermal tables is NOT required for correctness,
-# which is why this change deliberately leaves them alone: doing so would cost
-# a multi-minute vegas run per shipped configuration and churn several tracked
-# data files, to move an observable by 1% of its own regression tolerance.
+# by an unseeded vegas. Python's is now seeded deterministically
+# (corrections._vegas_rng, mirroring weak_rates.c's th_vegas_seed), so a
+# recompute reproduces *itself* exactly — but it cannot reproduce the shipped
+# file, whose random stream no longer exists. A cache hit and a fresh
+# recompute of one configuration can therefore differ by the MC noise floor,
+# well inside the D/H regression tolerance. That is inherent to caching a
+# Monte-Carlo integral, not a defect in the fingerprint, whose job is to say
+# "this file describes THIS configuration" — still true. Regenerating the
+# shipped tables would cost a multi-minute vegas run per configuration to move
+# an observable by a fraction of its own tolerance.
 #
 # The `provenance:` header line (cache_utils.write_cache_with_fingerprint)
-# exists to record which backend and algorithm produced the numbers on disk
-# right now; it is deliberately NOT part of the hash, precisely so this
-# MC-noise difference never gates a cache hit/miss decision.
+# records which backend and algorithm produced the numbers on disk; it is
+# deliberately NOT hashed, so this MC noise never gates a hit/miss decision.
 #
 # T_end_MeV is deliberately NOT listed: the integral is clamped to exactly 0
 # below ~10**8.2 K regardless of cfg.T_end (see corrections._T_CCRTH_MIN /

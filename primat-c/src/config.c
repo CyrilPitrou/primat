@@ -1331,7 +1331,7 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     }
 
     /* NEVO override existence/shape checks: deferred to neutrino_history.c
-     * (Phase 3a), which owns resolve_nevo_path() and the CSV column counts. */
+     * which owns resolve_nevo_path() and the CSV column counts. */
 
     return 0;
 }

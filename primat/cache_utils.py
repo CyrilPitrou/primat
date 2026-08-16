@@ -203,37 +203,28 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
             ``"# "`` -- which is how the QED pressure tables keep their
             three-line physics provenance block above the fingerprint.
         fmt: optional ``np.savetxt`` format string. ``None`` (default) uses
-            numpy's own default (``"%.18e"``), which is what every cache
-            written from scratch here uses. It is overridden only by the QED
-            pressure tables, whose shipped files predate this fingerprinting
-            and were written with ``"%.6E"``: passing that format lets them
-            gain a fingerprint header with their data rows *byte-identical*,
-            so adding the header is provably a header-only change (see
+            numpy's ``"%.18e"``, which every cache written from scratch here
+            uses. Overridden only by the QED pressure tables, whose shipped
+            files are written ``"%.6E"`` (see
             :func:`primat.qed_pressure.save_qed_tables`).
         provenance: optional human-readable string recording which backend
             and algorithm computed this file (e.g.
             ``"backend=python algorithm=vegas"``), written as its own
             ``# provenance: ...`` header line *after* the fingerprint lines.
-            Deliberately NOT part of `fingerprint` / the hash: this cache
-            file is shared between backends (whichever computes it first,
-            the other just reads it -- see weak_rates/cache.py), and for the
-            deterministic (non-thermal) caches both backends always agree
-            to machine precision anyway. For the thermal (CCRTh) cache,
-            where both backends use independent Monte-Carlo estimates
-            (vegas) with their own noise floor, this is purely informational
-            provenance ("who produced the number on disk right now"), not a
-            cache key -- it must never gate a cache hit/miss decision.
+            Deliberately NOT hashed. The file is shared between backends,
+            whichever computes it first; the deterministic caches agree to
+            machine precision, and for the thermal (CCRTh) one, where each
+            backend runs its own Monte-Carlo with its own noise floor, this
+            records who produced the numbers on disk without ever gating a
+            cache hit/miss decision.
 
     Returns:
-        True if the file was written, False if the write failed on an
-        ``OSError`` (e.g. a read-only install). A failure is NOT fatal: the
-        freshly computed in-memory values are perfectly valid, only the on-disk
-        cache is skipped, so the caller continues and the next run just
-        recomputes. A ``UserWarning`` is emitted that names the ``cache_dir``
-        parameter as the remedy (redirect the whole cache tree to a writable
-        directory — see :func:`cache_write_dir`). This graceful degradation is
-        why the two writable cache trees can live inside the installed package
-        without crashing read-only installs.
+        True if the file was written, False if it failed on an ``OSError``
+        (e.g. a read-only install). A failure is NOT fatal — the in-memory
+        values are valid and only the on-disk cache is skipped — so the caller
+        continues and the next run recomputes. The ``UserWarning`` raised names
+        ``cache_dir`` as the remedy (see :func:`cache_write_dir`). This is what
+        lets the writable cache trees live inside the installed package.
 
     Example:
         >>> write_cache_with_fingerprint(

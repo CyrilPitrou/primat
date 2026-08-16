@@ -997,10 +997,9 @@ static double ipen_ccr_diff_brems(const RateCtx *ctx, double E, double k, double
  * integrable but *not* removable singularity (unlike the b->0 Sommerfeld
  * limit above): scipy.integrate.quad's open Gauss-Kronrod rule never
  * samples that exact endpoint and so never notices, but cpr_quad_adaptive's
- * Simpson rule does, and flooring pE there would just inject one
- * arbitrarily-large spurious endpoint sample into the Simpson estimate
- * (verified numerically: this previously inflated L_thermal_1 by 6-8
- * orders of magnitude). The fix actually used is below, in
+ * Simpson rule does, and flooring pE there would inject one
+ * arbitrarily-large spurious endpoint sample into the Simpson estimate,
+ * inflating L_thermal_1 by orders of magnitude. The fix used is below, in
  * c1_integrand_p: substitute the integration variable E -> pE = sqrt(E^2-1)
  * (dE = (pE/E) dpE), which makes the pE in the denominator cancel exactly
  * against the Jacobian, leaving a smooth (singularity-free) integrand. */
@@ -1129,8 +1128,8 @@ static double c23_vegas_f(const double pt[2], void *ctx_)
 }
 
 /* _L_Thermal_2_3: sum of two 2D integrals (e1me2 < 0 and e1me2 > 0 halves),
- * sharing the same (e1pe2) outer rectangle bound -- see this file's CPLAN
- * derivation comment (in the corresponding Python docstring) for why both
+ * sharing the same (e1pe2) outer rectangle bound -- see the corresponding
+ * Python docstring in corrections.py for the derivation of why both
  * branches reduce to the same outer limits despite the differing min/max
  * passed to dblquad in the Python source. Both halves go through VEGAS
  * (mirrors corrections.py's vegas.Integrator branch for this term). */
@@ -1326,7 +1325,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     }
 
     /* ---- Thermal correction (CCRTh): load from cache if present, else
-     * compute from scratch via L_CCRTh_compute (Phase 3b). ---- */
+     * compute from scratch via L_CCRTh_compute. ---- */
     wr->has_thermal = 0;
     if (cfg->thermal_corrections) {
         CPRFPField th_fields[12];   /* cpr_thermal_fingerprint fills 9 */

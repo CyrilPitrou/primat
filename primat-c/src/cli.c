@@ -959,9 +959,7 @@ static void print_plain(const CPRConfig *cfg, const CPRResults *results,
         print_mc_matrices(mc, mc_n);
     }
     /* Closing line, matching cli.py's final print in both the plain and the
-     * --mc case. (The C CLI used to print "--- Monte-Carlo: N samples ---"
-     * here instead, and nothing at all without --mc; neither line exists on
-     * the Python side, so the two outputs could not be diffed.) */
+     * --mc case, so the two CLIs' output diffs empty. */
     printf("--- running time: %.2f seconds ---\n", elapsed_s);
 }
 
@@ -1024,9 +1022,9 @@ int cpr_cli_main(int argc, char **argv)
     }
 
     /* Reject a non-positive explicit --mc before any setup: the sampler sizes
-     * its buffers from num_mc, so a negative count used to abort the process in
-     * CPR_XMALLOC with an "out of memory (1.8e19 bytes)" message naming neither
-     * the flag nor the mistake. Mirrors cli.py's parser.error. */
+     * its buffers from num_mc, so a negative count underflows size_t and
+     * aborts in CPR_XMALLOC naming neither the flag nor the mistake. Mirrors
+     * cli.py's parser.error. */
     if (mc_given && mc_n < 1) {
         fprintf(stderr, "error: --mc must be >= 1 (got %d); a sigma needs at "
                         "least 2 samples.\n", mc_n);

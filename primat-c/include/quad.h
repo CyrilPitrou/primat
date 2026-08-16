@@ -1,7 +1,6 @@
 /* quad.h -- 1D adaptive quadrature (adaptive Simpson with error estimate +
  * bisection, chosen here for simplicity over Gauss-Kronrod). Used for the
- * e+- thermodynamic integrals
- * and the Born weak-rate phase-space integral once those land (Phase 3a).
+ * e+- thermodynamic integrals and the Born weak-rate phase-space integral.
  */
 #ifndef CPRIMAT_QUAD_H
 #define CPRIMAT_QUAD_H

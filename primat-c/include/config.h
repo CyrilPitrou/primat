@@ -450,8 +450,7 @@ double cpr_config_get_GN(const CPRConfig *cfg);
  *   CPR_SET_BAD_VALUE   -- the key is known but the value has the wrong type
  *       (e.g. `network = 3`). Python raises TypeError unconditionally, so this
  *       is fatal on the C side as well: it is a malformed request, not a
- *       forward-compatibility question, and continuing past one used to leave
- *       the config holding a freed string.
+ *       forward-compatibility question.
  *
  * A name with prefix "p_" or "delta_" goes into the corresponding CPRRxnMap
  * (value coerced to double). Booleans accept CPR_BOOL or CPR_INT (0/1,

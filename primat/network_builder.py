@@ -5,54 +5,33 @@ network_builder.py
 Generic, stoichiometry-driven assembly of the nuclear-network right-hand side
 (dY/dt) and its Jacobian.
 
---------------------------------------------------------------------------------
 What problem this solves
---------------------------------------------------------------------------------
-A BBN run integrates a stiff system of ODEs, one per nuclide, coupling the
-abundances Y_s through hundreds of nuclear reactions.  Writing the algebra of
-every reaction by hand (as the original PRIMAT kernels did) is unmaintainable and
-hopeless for the ~433-reaction "large" network.  Instead we describe a network
-*abstractly* -- as a plain list of reactions, each a pair of
-``{species_index: multiplicity}`` dicts -- and **compile** it once into flat
-NumPy arrays (:func:`compile_network` -> :class:`CompiledNetwork`).  Two small
-array-driven kernels (:func:`_rhs_kernel`, :func:`_jac_kernel`) then evaluate
-dY/dt and J for *any* such network.  The numbers are identical, to round-off, to
-the hand-written reference -- but the same code path serves the small (8-species),
-small (8), large (~59), and any amax-restricted large network.
+------------------------
+A BBN run integrates a stiff ODE system, one equation per nuclide, coupling
+the abundances Y_s through hundreds of reactions. Rather than hand-writing the
+algebra of each, a network is described *abstractly* — a list of reactions,
+each a pair of ``{species_index: multiplicity}`` dicts — and **compiled** once
+into flat NumPy arrays (:func:`compile_network` -> :class:`CompiledNetwork`).
+Two array-driven kernels (:func:`_rhs_kernel`, :func:`_jac_kernel`) then
+evaluate dY/dt and J for any such network, so one code path serves `small`,
+`large` and every amax-restricted variant.
 
---------------------------------------------------------------------------------
-Lifecycle / how the pieces fit together  (READ THIS FIRST)
---------------------------------------------------------------------------------
-There are two very different time-scales, and keeping them straight is the key to
-understanding this module:
+Two time-scales
+---------------
+* **Once per run (setup):** :func:`compile_network` builds the immutable flat
+  arrays and :class:`NetworkKernels` binds them to the kernels (JIT-compiling
+  with numba if available) — once per era's network, in ``UpdateNuclearRates``.
+  The reaction *topology* is fixed from then on.
+* **Every solver step (hot path):** BDF calls the right-hand side and Jacobian
+  many times per accepted step. Each call fills the rate buffer ``r``
+  (``r[2i]`` forward, ``r[2i+1]`` backward for reaction ``i``, interpolated at
+  the current T) and runs the kernels over the compiled arrays with the current
+  ``Y`` and baryon density ``rho``. This is the innermost loop of the whole
+  computation, which is why it is flat-array and numba-friendly — no Python
+  objects, no per-reaction calls.
 
-  * **Once per run (setup):** :func:`compile_network` turns the abstract network
-    into a :class:`CompiledNetwork` (immutable flat arrays), and
-    :class:`NetworkKernels` binds it to the kernels (JIT-compiling them with
-    numba if available).  This happens a handful of times total -- once for each
-    era's network -- in ``UpdateNuclearRates`` (see :mod:`primat.network_data`).
-    A ``CompiledNetwork`` is therefore *not* recomputed during integration; it is
-    a fixed description of the reaction topology.
-
-  * **Every solver step (hot path):** ``scipy``'s BDF integrator calls the ODE
-    right-hand side and Jacobian many times per accepted step.  Each such call
-    (in :meth:`PRIMAT.solve`) does two things:
-      1. fill the *rate buffer* ``r`` -- the forward/backward reaction rates at
-         the current temperature T (interpolated from tables), ``r[2i]`` forward
-         and ``r[2i+1]`` backward for reaction ``i``;
-      2. call :meth:`NetworkKernels.rhs` / :meth:`NetworkKernels.jacobian`, which
-         run :func:`_rhs_kernel` / :func:`_jac_kernel` over the compiled arrays
-         with the current abundances ``Y``, baryon density ``rho`` and ``r``.
-    These two kernels are the innermost loop of the whole BBN computation, which
-    is why they are flat-array and numba-JIT-friendly (no Python objects, no
-    per-reaction function calls).
-
-So: the *topology* (who reacts with whom, the stoichiometry) is compiled once;
-only the *rates* and *abundances* change from step to step.
-
---------------------------------------------------------------------------------
 The mathematics the kernels implement
---------------------------------------------------------------------------------
+-------------------------------------
 Each reaction ``i`` has reactants with multiplicities c_s^react and products with
 c_s^prod (e.g. d + d -> He4 + g has c_d^react = 2, c_He4^prod = 1).  Mass-action
 kinetics gives a net flux F_i = F_forward - F_backward with

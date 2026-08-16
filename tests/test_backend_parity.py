@@ -11,24 +11,15 @@ check: it pins down (1) the result-dict *shape* exactly, and (2) the numerical
 agreement *level* the two backends currently achieve, so a future change that
 silently widens the gap is caught.
 
-Historical gap (fixed)
-----------------------
-The dominant C-vs-Python parity gap used to be a weak-rate *interpolation
-scheme* mismatch: Python interpolated the cached n<->p rate table with a
-linear-space quadratic spline (scipy ``interp1d(kind='quadratic')``), while
-the C backend used a local 3-point Lagrange quadratic. On the same cached
-nodes the two curves differed by up to ~1e-4 relative through the n/p
-freeze-out window (T ~ 0.2..2 MeV), C systematically above Python -- which
-propagated to a systematic ~2.5e-5 YP and ~1.8e-5 D/H offset.
-
-Both backends now interpolate the weak rates with the *same* schemes: a
-log10-log10 not-a-knot cubic for the non-thermal table (Python
+Shared interpolants
+-------------------
+Both backends must interpolate the weak rates with the *same* schemes, since
+a scheme mismatch on shared nodes is worth far more than every other term
+combined: a log10-log10 not-a-knot cubic for the non-thermal table (Python
 ``_weak_rate_loglog_interp``, C ``cpr_weak_rate_nTOp``) and a linear-space
 not-a-knot cubic for the CCRTh thermal correction (Python
-``corrections._L_CCRTh_interpolants``, C ``CPRWeakRates.Lnth_sp``; linear space
-because that correction changes sign). The thermal channel kept the mismatched
-quadratics until review pass 13 -- worth ~1e-05 of the rate, and most of the
-YP gap.
+``corrections._L_CCRTh_interpolants``, C ``CPRWeakRates.Lnth_sp``; linear
+space because that correction changes sign).
 
 Residual gap: what is actually left, and why
 --------------------------------------------
@@ -979,9 +970,8 @@ NUCLEAR_RATE_MAX_REL = 1e-7
 
 # CCRTh interpolant vs an independent not-a-knot cubic fit of the same shared
 # cache, as a fraction of the n->p rate, at the log-midpoints between nodes.
-# Measured 3.5e-19. Until review pass 13 the two backends fitted mismatched
-# quadratics here and this stood at 1.0e-05, which was most of the
-# cross-backend YP gap; the bound is set well below that so a revert fails.
+# Measured 3.5e-19. Mismatched quadratic fits here would put it at ~1e-05 --
+# most of the cross-backend YP gap -- so the bound sits far below that.
 CCRTH_SCHEME_MAX_REL = 1e-12
 
 

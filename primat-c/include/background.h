@@ -70,15 +70,10 @@ typedef struct {
      * cpr_background_free. */
     int has_extra_rho;
     CPRCubicSpline extra_rho_spline;
-    /* Historical note (pre-Branch E): CDM used to use the radiation-
-     * domination approximation a(T)~=T0CMB/T while the a(T)/t(a) ODEs were
-     * being solved sequentially (cpr_bg_Hubble had no way to know `a`
-     * exactly until the first ODE -- a(T) -- was fully solved and splined),
-     * then switched to the exact a_of_T once available. Since the combined
-     * a(T)/t(T) 2D ODE (setup_background_and_cosmo) always carries `a` in
-     * its own state vector (x = ln(a*T)), cpr_bg_Hubble now takes `a`
-     * directly as an explicit parameter and is always exact -- no bootstrap,
-     * no `lcdm_use_exact` flag needed any more. */
+    /* The CDM term needs no a(T) bootstrap: the combined a(T)/t(T) 2D ODE
+     * (setup_background_and_cosmo) carries `a` in its own state vector
+     * (x = ln(a*T)), so cpr_bg_Hubble takes `a` as an explicit parameter
+     * and is exact at every call. */
 
     /* ---- Neutrino sector (StandardBackground: NEVO table or instantaneous,
      * via neutrino_history.c; CustomBackground: always instantaneous,
@@ -144,12 +139,10 @@ typedef struct {
  * history, the a(T)/t(a) ODE solutions, derived relic-neutrino Omegas, and
  * the n<->p weak rates -- mirrors StandardBackground.__init__'s call
  * sequence (_setup_LCDM, _setup_EDE, _setup_background_and_cosmo,
- * _setup_weak_rates). Python used to carry an extra
- * _replace_LCDM_with_exact step, swapping a radiation-domination
- * approximation for rho_CDM out after the background solve; it has been
- * removed there in favour of publishing a(T) mid-solve, which is what this
- * port always did (cpr_bg_Hubble takes `a` explicitly). `plasma` must already be
- * initialised (cpr_plasma_init) and must outlive `bg`. Returns 0 on
+ * _setup_weak_rates). rho_CDM needs no post-solve correction on either side:
+ * a(T) is published mid-solve, and cpr_bg_Hubble takes `a` explicitly.
+ * `plasma` must already be initialised (cpr_plasma_init) and must outlive
+ * `bg`. Returns 0 on
  * success (caller must cpr_background_free the result), nonzero with
  * *errmsg set (caller frees) on failure. */
 int cpr_bg_init_standard(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasma *plasma,

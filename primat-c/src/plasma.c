@@ -224,12 +224,11 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     }
 
     /* File mode: load and sum the e^2/e^3 columns into (x, y) pairs, which the
-     * loop at the end of this function then converts to the SAME not-a-knot
-     * cubic spline the analytic path above builds (matches plasma.py's
-     * _qed_spline). The columns used to be interpolated linearly here, which
-     * left the "loaded" and "computed" paths ~8e-4 apart in delta_P -- enough
-     * to move Neff in its 6th decimal depending only on whether the tables
-     * happened to be on disk. */
+     * loop at the end of this function converts to the SAME not-a-knot cubic
+     * spline the analytic path above builds (matches plasma.py's _qed_spline).
+     * Cubic and not linear: a linear read of this grid separates the "loaded"
+     * and "computed" paths enough to move Neff in its 6th decimal depending
+     * only on whether the tables happen to be on disk. */
     CPRTable tab;
     if (split_present) {
         /* Current format: two 4-column files, one per order in e
@@ -385,14 +384,11 @@ static double elec_integrate_at_tol(ElecCtx *ctx, double x, double upper, double
 
 /* Two-pass so the tolerance is RELATIVE to the integral's own magnitude.
  *
- * cpr_quad_adaptive's `tol` is absolute (it is compared against
- * |refined - whole|), so this used to pass a fixed 1e-12/N_SEGMENTS. At the
- * electron-thermo grid's low-T edge (x = me/Tgamma = 30) the integrals are of
- * order e^-30 ~ 9e-14 -- smaller than that tolerance -- so every segment was
- * accepted at its first Simpson estimate and the result had no significant
- * digits. Python had the identical defect (epsabs=1e-12), which is why the two
- * backends' tables disagreed by ~1e-4 on rho_e/p_e down there despite sharing
- * one fingerprint.
+ * cpr_quad_adaptive's `tol` is absolute (compared against |refined - whole|),
+ * and a fixed absolute tolerance is useless here: at the electron-thermo
+ * grid's low-T edge (x = me/Tgamma = 30) the integrals are themselves of
+ * order e^-30, so every segment is accepted at its first Simpson estimate and
+ * the result carries no significant digits at all.
  *
  * Pass 1 gets the magnitude at a cheap loose tolerance; pass 2 redoes the
  * sweep at epsrel * |I_est|, floored at DBL_MIN-ish so a genuinely zero

@@ -23,11 +23,10 @@
 #include "ode_rk.h" /* reuses CPRODEFunc, CPRODEStepCB */
 
 /* Analytic Jacobian callback: writes df_i/dy_j into J (row-major, n*n) at
- * (t, y). If NULL is passed to cpr_ode_bdf, a forward-difference Jacobian
- * is computed internally (sufficient for validation against the S8
- * benchmarks; network_builder.c's analytic `_jac_kernel` port, Phase 4,
- * is a drop-in replacement once available, for speed on the real ~60-
- * species network). */
+ * (t, y). If NULL is passed to cpr_ode_bdf, a forward-difference Jacobian is
+ * computed internally — fine for the small benchmarks, but the solver passes
+ * network_builder.c's analytic Jacobian for speed on the real ~60-species
+ * network (see nuclear_network.c's mt_jac/lt_jac). */
 typedef int (*CPRODEJacFunc)(double t, const double *y, double *J, void *ctx);
 
 typedef struct {

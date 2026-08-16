@@ -112,9 +112,8 @@ typedef struct {
  * Gauss-Legendre rate integrals (Born/CCR/FM/SD) and, if cfg->save_nTOp,
  * written to that cache file. The thermal correction is loaded from
  * data/weak/nTOp_thermal_<hash>.txt when cfg->thermal_corrections is set
- * and that file exists (`has_thermal` is then 1); if thermal_corrections is
- * set but no matching file exists, this returns nonzero (the from-scratch
- * thermal computation is Phase 3b, not yet ported).
+ * and that file exists (`has_thermal` is then 1), and otherwise computed
+ * from scratch by L_CCRTh_compute.
  *
  * Returns 0 on success (caller must cpr_weak_rates_free), nonzero with
  * *errmsg set (caller frees) otherwise. */

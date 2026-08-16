@@ -1377,7 +1377,7 @@ def _custom_network_dialog(params):
         ))
 
     # Reset per-reaction state if the (base_network, amax) pair changed since
-    # the dialog last computed it -- mirrors the old _customise_network guard.
+    # the dialog last computed it.
     sig = (base_network, dialog_amax)
     if st.session_state.get(SessionKeys.dialog_signature) != sig:
         _DialogState().reset(base_network, dialog_amax)

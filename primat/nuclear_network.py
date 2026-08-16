@@ -58,29 +58,18 @@ def _check_solver(sol, era, detail):
 
     Why this is needed
     ------------------
-    scipy reports a step failure through ``sol.success`` / ``sol.status``, *not*
-    by raising: on failure it still returns whatever partial trajectory it
-    managed to compute in ``sol.y``.  Reading ``sol.y[..., -1]`` without
-    checking therefore turns a solver failure into *silently wrong abundances*
-    rather than an error -- the worst possible failure mode for a precision BBN
-    code.  This is not hypothetical: forcing the (stiff) MT era onto scipy's
-    LSODA makes it fail with "Repeated convergence failures", after which the
-    unchecked final values give YP = 0.434 instead of 0.247 and a 60%-wrong
-    D/H, with no warning of any kind.
+    scipy reports a step failure through ``sol.success``/``sol.status``, *not*
+    by raising, and still returns whatever partial trajectory it managed in
+    ``sol.y``.  Reading ``sol.y[..., -1]`` unchecked therefore turns a solver
+    failure into *silently wrong abundances* — the worst failure mode for a
+    precision BBN code.  Not hypothetical: forcing the stiff MT era onto LSODA
+    makes it fail with "Repeated convergence failures", after which the
+    unchecked final values give YP = 0.434 instead of 0.247.
 
-    BDF converges for every supported configuration, so in normal use this
-    helper never fires; it guards the cases the solver can still meet -- a
-    pathological custom network, an extreme Monte-Carlo rate draw, or a
-    user-tightened ``numerical_precision``.
-
-    Backend parity
-    --------------
-    The C backend already fails loudly here (``primat-c/src/nuclear_network.c``
-    checks ``cpr_ode_bdf``'s return code and propagates an error), and its
-    Python bridge surfaces such failures as ``RuntimeError``
-    (``_primat_c_src/_wrapper.c``'s ``PyErr_Format(PyExc_RuntimeError, ...)``).
-    Raising ``RuntimeError`` here keeps the two backends' error behaviour
-    identical.
+    BDF converges for every supported configuration, so this never fires in
+    normal use; it guards a pathological custom network, an extreme
+    Monte-Carlo rate draw, or a user-tightened ``numerical_precision``. Raising
+    ``RuntimeError`` matches what the C backend already does.
 
     Parameters
     ----------
@@ -350,13 +339,11 @@ class NuclearNetwork:
         #
         # The seed is *added on top of* the HT solution's Yn + Yp = 1 rather
         # than renormalised, so the baryon budget sum_s A_s Y_s steps up by
-        # sum_{A>=2} A_s Y_s^Saha(T_weak) at this handoff.  At T_weak = 1 MeV
-        # every composite is still far below its BBN abundance, so the step is
-        # ~1.6e-12 (measured end-to-end on `large`, amax=8: 1.0 at the start of
-        # HT, 1.000000000001649 at the end of LT) -- ten orders of magnitude
-        # below the last digit any observable is reported to.  Renormalising
-        # here would perturb every reference number for no physical gain, so
-        # the excess is documented rather than removed.
+        # sum_{A>=2} A_s Y_s^Saha(T_weak) at this handoff. At T_weak = 1 MeV
+        # every composite is still far below its BBN abundance, leaving that
+        # excess orders of magnitude below the last digit any observable is
+        # reported to; tests/test_large_network.py pins it. Renormalising here
+        # would perturb every reference number for no physical gain.
         mt_species = nucl._mt_net.species   # e.g. 8 for small, 12 for large/amax=8
         mt_saha = {"n": Yn_HT_f, "p": Yp_HT_f}
         for s in mt_species:
@@ -459,9 +446,9 @@ class NuclearNetwork:
         # nothing there and Y_final reports its true 8 nuclides -- matching
         # abundance_names (=species_L) and the C backend.  Networks that *do*
         # track the heavier He6/Li8/Li6/B8 (large, and large+amax>=8) keep them
-        # because they are already in species_L above; we just no longer force
-        # those four onto networks that don't (which was inflating `small` to a
-        # spurious 12-nuclide Y_final).
+        # because they are already in species_L above; forcing those four onto
+        # networks that don't would inflate `small` to a spurious 12-nuclide
+        # Y_final.
         for s in SPECIES_SMALL:
             finL.setdefault(s, 0.0)
 
@@ -870,13 +857,9 @@ class NuclearNetwork:
         ``Σ_s A_s ΔY_s = 0``.
 
         The gain term is therefore the bare multiplicity ``mult_P``, with **no**
-        ``A_P / A_X`` factor.  A previous version carried such a factor (on the
-        mistaken premise that Y was a mass fraction) *in addition to* ``mult_P``,
-        which broke baryon conservation for every decay whose products differ in
-        mass number from the parent: ``Li8 → α + α`` produced ``+λ`` of He4
-        instead of ``+2λ``, i.e. half the alphas, and ``C9 → α + α + p`` lost 4/9
-        of the baryon number.  The 33 ordinary β decays (``A_P = A_X``, e.g.
-        ``C14 → N14``) were unaffected, which is why the error went unnoticed.
+        ``A_P / A_X`` factor: adding one would break baryon conservation for
+        every decay whose products differ in mass number from the parent, while
+        leaving ordinary β decays (``A_P = A_X``, e.g. ``C14 → N14``) intact.
 
         Photons and leptons (Bm/Bp) are excluded from the ODE state vector; only
         nuclear species (those in ``net.species``) appear in D.
@@ -907,8 +890,7 @@ class NuclearNetwork:
         leptons and photons carry A = 0, so they remove no baryon number, and
         every decay in ``decays.txt`` balances A between its parent and its
         nuclear products.  ``tests/test_nuclear.py`` pins it for the whole
-        ``large`` network — it is the check that would have caught the
-        ``A_P/A_X`` bug described above.
+        ``large`` network.
 
         Example
         -------
@@ -999,17 +981,13 @@ class NuclearNetwork:
 
         where Δt_i = t_i − t_end is the elapsed time since BBN end.
 
-        **Why not ``scipy.sparse.linalg.expm_multiply``?**  The decay matrix has
-        a colossal eigenvalue spread: the fastest decay (B15, T½ ≈ 10 ms) gives
-        an eigenvalue ~70 s⁻¹, while Δt reaches ~1 Gyr ≈ 3×10¹⁶ s, so
-        ‖D·Δt‖ ~ 10¹⁸.  ``expm_multiply`` selects its number of internal
-        matrix–vector products *linearly* in ‖D·Δt‖ (Al-Mohy & Higham 2011,
-        Eq. 3.6), so for this norm it attempts ~10¹⁸ products and effectively
-        hangs.  ``scipy.linalg.expm`` instead uses scaling-and-squaring whose
-        cost grows only *logarithmically* in ‖D·Δt‖ (≈ log₂‖D·Δt‖ ~ 60
-        squarings), so it handles the full 16-decade spread in milliseconds.
-        Since D is small (N ≤ 60), forming the dense exp(D·Δt) is cheap
-        (~3 ms per time point, ~0.1 s for the default 200-point grid).
+        **Why not ``scipy.sparse.linalg.expm_multiply``?**  The eigenvalue
+        spread is colossal — the fastest decay (B15, T½ ≈ 10 ms) against a Δt
+        reaching ~1 Gyr gives ‖D·Δt‖ ~ 10¹⁸ — and ``expm_multiply`` picks its
+        number of matrix–vector products *linearly* in that norm (Al-Mohy &
+        Higham 2011, Eq. 3.6), so it effectively hangs. Scaling-and-squaring
+        costs only ≈ log₂‖D·Δt‖ squarings, and D is small (N ≤ 60), so the
+        dense exponential is cheap.
 
         Parameters
         ----------

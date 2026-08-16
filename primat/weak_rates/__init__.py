@@ -28,10 +28,9 @@ than from GF/Vud/gA directly (Phys. Rep. Eqs. 89–91), giving better precision.
 
 Module layout
 -------------
-This package mirrors the single-file ``weak_rates.py`` it replaced,
-and re-exports every public AND private name the rest of the
-codebase / test suite addresses as ``weak_rates.<name>`` (or ``wr.<name>``),
-so the split is invisible to callers:
+Every public and private name the rest of the codebase and test suite
+addresses as ``weak_rates.<name>`` is re-exported here, so the split into
+submodules is invisible to callers:
 
   integrands.py  — the ~10 Fermi-Dirac kernels (FD_nu3, FD2, FD_nu_e*p*),
                     each written once as a scalar-and-array-capable function

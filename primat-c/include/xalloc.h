@@ -1,40 +1,23 @@
 /* xalloc.h -- checked heap allocation for the primat-c backend.
  *
- * Motivation
- * ----------
- * The solver allocates a few hundred small/medium buffers per run (ODE work
- * vectors, spline coefficient tables, the loaded reaction network, the
- * time-evolution result arrays, ...). The overwhelming majority of these sit
- * in pure numerical kernels (ode_bdf/ode_rk/spline/linalg/network_builder/
- * plasma/qed_pressure/weak_rates result assembly/...) that have *no* graceful
- * recovery path: if the allocation fails, the very next line dereferences the
- * pointer and the process crashes with an uninformative SIGSEGV -- or, worse,
- * silently corrupts memory. For a scientific CLI, aborting on genuine
- * out-of-memory is entirely acceptable; silently dereferencing NULL is not.
- *
- * These helpers centralise the "allocate, and if it fails log where and die"
- * contract in one place, so those unrecoverable call sites become a single
- * self-documenting token (CPR_XMALLOC(...) instead of malloc(...)) and every
- * OOM produces a precise `file:line` diagnostic instead of a bare crash.
+ * Most of the solver's few hundred per-run buffers sit in numerical kernels
+ * (ode_bdf/ode_rk/spline/linalg/network_builder/plasma/qed_pressure/...) with
+ * no graceful recovery path: a failed allocation is dereferenced on the very
+ * next line. For a scientific CLI, aborting on genuine out-of-memory is
+ * acceptable; dereferencing NULL is not. These helpers centralise
+ * "allocate, or log where and die", so every OOM gives a `file:line`
+ * diagnostic instead of a bare SIGSEGV.
  *
  * When NOT to use these
  * ---------------------
- * Call sites that are *meant* to degrade gracefully -- above all the cache
- * writers, which warn and continue when a cache file cannot be produced --
- * must keep their explicit `if (p == NULL) { warn; ... }` handling and use the
- * plain libc malloc/calloc/realloc. `cpr_x*` is for the "there is nothing
- * sensible to do but stop" majority only.
+ * Call sites meant to degrade gracefully -- above all the cache writers,
+ * which warn and continue when a file cannot be produced -- keep their
+ * explicit NULL handling and plain libc malloc/calloc/realloc.
  *
- * Note on the Python extension
- * ----------------------------
- * primat-c is also linked into the CPython extension (primat._primat_c). A
- * failed allocation there will terminate the host interpreter via exit(3)
- * rather than raising a Python exception. That is a deliberate trade-off: a
- * true OOM deep inside the BDF integrator has no clean unwinding path across
- * the C ABI anyway, and a labelled exit is strictly better than the NULL
- * dereference these call sites exhibited before. Functions that already
- * propagate a recoverable error to Python via a `char **errmsg` out-parameter
- * keep doing so (they are in the "graceful" bucket above and are left alone).
+ * In the CPython extension (primat._primat_c) a failed allocation exits the
+ * host interpreter rather than raising: a true OOM inside the BDF integrator
+ * has no clean unwinding path across the C ABI. Functions that already
+ * propagate a recoverable error via `char **errmsg` keep doing so.
  *
  * Usage
  * -----

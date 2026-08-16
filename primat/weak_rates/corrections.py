@@ -64,15 +64,11 @@ from scipy.special import gamma as scipy_gamma, spence
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
 
-# Import the integrands submodule by its absolute path rather than
-# ``from . import integrands``: the latter binds the module by looking it up
-# as an attribute of the *package* (``primat.weak_rates.__init__``), which is
-# still only partially initialised while __init__'s own ``from .corrections
-# import *`` is running -- a benign but real corrections->package->corrections
-# import edge. Going straight to the submodule removes that edge (the package
-# __init__ no longer sits on corrections.py's import path) while keeping the
-# module-object handle the FD_* rebinding convention requires (see this
-# module's use of ``integrands.FD_nu3`` etc. and integrands.py's docstring).
+# Absolute import, not ``from . import integrands``: the latter looks the
+# module up as an attribute of the package, which is still half-initialised
+# while its ``from .corrections import *`` runs. This keeps the module-object
+# handle the FD_* rebinding convention needs (see integrands.py's docstring)
+# without putting the package __init__ on corrections.py's import path.
 import primat.weak_rates.integrands as integrands
 from .integrands import exp_cutoff
 from .cache import n_points_per_decade, _thermal_fingerprint
@@ -374,36 +370,25 @@ def ComputeFn(cfg):
 # integrated over p in [0, p_max(T)] with p_max = max(7, 30/x), x = m_e/(kB T).
 # The integrand is smooth and exponentially damped (the neutrino Fermi-Dirac
 # factor cuts it off at p ~ 30/x by construction of p_max), so a *fixed*
-# Gauss-Legendre rule reproduces the former adaptive `scipy.integrate.quad`
-# results to better than ~1e-6 on the rates while letting us evaluate the whole
-# (n_temperature, n_node) grid in a handful of numpy array operations instead of
-# one Python `quad` call per grid point per correction (the old ~1.8 s cost).
+# Gauss-Legendre rule suffices, and evaluates the whole (n_temperature,
+# n_node) grid in a few numpy operations rather than one `quad` call per grid
+# point per correction.
 #
-# One subtlety: the radiative-correction factor (RadCorrResum) has a
-# log(2y)-type term that is singular-but-integrable exactly at the neutron
-# beta-decay kinematic endpoint E = Q/me (p = p_edge, see _quad_grid).  A
-# single GL rule spanning that point in the interior of its domain cannot
-# resolve it (GL's fast convergence needs the integrand analytic over the
-# *whole* panel) -- as T -> 0 this left a ~1-3e-6 floor in Gamma_{n->p}/tau_n^-1
-# that did not shrink, and could even grow, with more nodes.  _quad_grid
-# therefore places a panel boundary exactly at p_edge and runs two
-# independent GL rules on either side, which restores normal fast convergence:
-# the Born vacuum limit then matches the analytic Fn from ComputeFn to ~6e-12
-# (tests/test_weak_rates.py::test_vacuum_limit_reproduces_tau_n).  With the
-# finite-mass correction on, the T -> 0 approach is instead LINEAR in T
-# (-1.4e-6 at 1e7 K, -1.5e-8 at 1e5 K) -- that residual is physics, not
-# quadrature error: chi_FM carries genuinely thermal 1/x = kB T/m_e pieces
-# (see _chi_func_fm_v), so only the strict T = 0 limit is Fn.
+# One subtlety: RadCorrResum has a log(2y) term, singular-but-integrable
+# exactly at the beta-decay endpoint E = Q/me (p = p_edge). GL's fast
+# convergence needs the integrand analytic over the whole panel, so a single
+# rule spanning that point leaves a low-T floor that more nodes do not remove.
+# _quad_grid therefore puts a panel boundary at p_edge and runs two rules.
+# With the finite-mass correction on, the residual T -> 0 approach is instead
+# linear in T: that is physics, not quadrature error, since chi_FM carries
+# genuinely thermal 1/x = kB T/m_e pieces (see _chi_func_fm_v).
 #
-# _N_GL is pinned by two tests. tests/test_weak_rates.py::test_gauss_legendre_converged
-# checks that doubling the node count moves the rates by <1e-5 over the full BBN
-# temperature range (the residual sits in the low-T free-neutron-decay regime,
-# where the rates no longer matter to BBN -- see that test's docstring).
-# tests/test_weak_rates.py::test_vacuum_limit_reproduces_tau_n pins the absolute
-# accuracy the panel split exists for: the Born vacuum limit reproduces the
-# analytic Fn to ~1e-11.  160 nodes per panel give both margins comfortably (the
-# integrand peak sits near p_max/15, where Gauss-Legendre is sparsest, so we
-# deliberately oversample rather than tune to the edge).
+# Node count pinned by tests/test_weak_rates.py's
+# test_gauss_legendre_converged (doubling the nodes barely moves the rates)
+# and test_vacuum_limit_reproduces_tau_n (the Born vacuum limit against the
+# analytic Fn — the accuracy the panel split exists for). The integrand peak
+# sits near p_max/15, where GL is sparsest, so 160 deliberately oversamples
+# rather than tuning to the edge.
 _N_GL = 160
 _GL_NODES, _GL_WEIGHTS = np.polynomial.legendre.leggauss(_N_GL)
 
@@ -491,72 +476,37 @@ def _quad_grid(ctx, T_arr):
 
     Physical picture
     -----------------
-    The rate integrals are nominally over p in [0, +inf): the electron/positron
-    momentum can in principle be arbitrarily large.  We never integrate to
-    actual infinity -- instead we truncate at a finite p_max(T) and rely on
-    Gauss-Legendre (GL) on the *finite* interval [0, p_max(T)].  This is valid
-    only because the integrand is forced to underflow well before p_max: every
-    term carries a Fermi-Dirac factor integrands.FD2(-E,x) / integrands.FD_nu3(...) that decays like
-    exp(-x p) at large p for T > 0 (x = m_e/(kB T)).  Choosing
-    p_max = max(7, 30/x) keeps exp(-x p_max) <~ exp(-30) ~ 1e-13 at low T,
-    i.e. the tail beyond p_max is below double-precision noise, so replacing
-    [0, +inf) by [0, p_max] introduces no measurable truncation error -- this
-    is the same heuristic the old scalar ``quad`` calls used.  The "max(7, ...)"
-    floor matters at LOW T: there 30/x -> 0 (the thermal cutoff would want to
-    shrink p_max to 0), but the T=0 vacuum-decay phase space itself extends out
-    to p_edge ~ 2.33 (see below) regardless of T, so p_max must never shrink
-    below that physical support; 7 is a safe margin above it.
+    The rate integrals nominally run over p in [0, +inf), but every term
+    carries a Fermi-Dirac factor decaying like exp(-x p) with x = m_e/(kB T),
+    so they are truncated at p_max = max(7, 30/x): exp(-30) puts the discarded
+    tail below double-precision noise. The floor of 7 matters at LOW T, where
+    30/x would shrink p_max towards 0 while the T=0 vacuum-decay phase space
+    still extends to p_edge ~ 2.33 — p_max must never fall below that physical
+    support.
 
-    Why GL needs to be split at p_edge
-    -----------------------------------
-    A *single* Gauss-Legendre rule on [0, p_max] approximates the integrand by
-    one polynomial of degree ~2*_N_GL over the whole interval.  GL's famous
-    spectral (exponentially fast) convergence relies on the integrand being
-    analytic (smooth, no kinks) in a neighbourhood of the *whole* interval --
-    if it has a non-analytic point strictly inside the interval, a single
-    global polynomial cannot track it well no matter how many nodes you add
-    (you may even get WORSE as N grows, since GL nodes then sample closer to
-    the bad point without resolving it, similar in spirit to Runge's
-    phenomenon for naive high-order interpolation).
+    Why GL is split at p_edge
+    -------------------------
+    Gauss-Legendre's spectral convergence requires the integrand to be
+    analytic across the *whole* interval; a non-analytic point strictly inside
+    it defeats any number of nodes, and can make matters worse as nodes crowd
+    the bad point.
 
-    Such a non-analytic point exists here: the radiative-correction factor
-    RadCorrResum (the "Sirlin function", Phys. Rep. Eq. 101) contains a
-    log(2*y) term with y = |sgnq*Q/me -+ E|, which is *exactly* zero when the
-    electron energy E crosses the neutron-decay kinematic endpoint
-    E = Q/me, i.e. p = p_edge = sqrt((Q/me)^2 - 1).  The full integrand stays
-    finite there (the chi function itself vanishes like y^2, faster than
-    log(y) diverges, so the *product* -> 0 and the singularity is integrable),
-    but the function is not analytic across that point: it has a y^2*log(y)
-    profile, which is C^0 but not C^infinity (its higher derivatives blow up
-    as y -> 0).  A 160-node GL rule spanning [0, 7] sees this point sitting in
-    the *middle* of its domain and, empirically, converges to a value that is
-    biased low by O(1e-6) relative to tau_n^-1 in the T -> 0 limit, and does
-    NOT improve monotonically with more nodes (it can get *worse*, then
-    eventually overflow, because nodes start landing pathologically close to
-    the singular point and to the unrelated Coulomb/Gamow singularity at
-    p -> 0, where FermiCoulomb ~ exp(+pi*alpha/b) blows up for b = p/E -> 0).
+    There is such a point here. RadCorrResum (the Sirlin function, Phys. Rep.
+    Eq. 101) contains log(2*y) with y = |sgnq*Q/me -+ E|, vanishing exactly at
+    the neutron-decay kinematic endpoint E = Q/me, i.e.
+    p_edge = sqrt((Q/me)^2 - 1). The integrand stays finite there — chi
+    vanishes like y^2, faster than log(y) diverges — but its profile is
+    y^2 log(y): continuous, not smooth, with higher derivatives blowing up.
 
-    The standard remedy for a known non-analytic interior point is to split
-    the integration domain into sub-intervals with a panel boundary placed
-    exactly AT that point, and run an independent GL rule on each panel.
-    Inside each panel the integrand is then analytic right up to (but not
-    across) the shared boundary, so each panel recovers GL's normal fast
-    convergence; only the panel that has p_edge as one of its *endpoints*
-    still feels the residual log-type endpoint singularity, which is a much
-    milder (algebraic, not interior-blind) source of error that the
-    reference normalisation Fn (see ComputeFn) already handles correctly,
-    since Fn's adaptive `quad` is given the very same edge as an explicit
-    integration bound (E from 1 to Q/me).  Splitting here simply makes the
-    rate integral structurally match what Fn already does.  The payoff is
-    pinned by tests/test_weak_rates.py::test_vacuum_limit_reproduces_tau_n:
-    with the split, the Born vacuum limit reproduces the analytic Fn to
-    ~6e-12, i.e. Gamma_{n->p}(T -> 0) -> 1/tau_n exactly, which is what the
-    whole tau_n normalisation rests on.
-
-    This is conceptually the same fix you would apply to integrate, say,
-    |x| over [-1, 1] with a polynomial rule: a single global polynomial rule
-    struggles with the kink at x=0, but two rules on [-1,0] and [0,1] each see
-    a perfectly smooth (here: linear) integrand and reproduce the exact answer.
+    The remedy is to make that point a panel *boundary* and run an independent
+    GL rule on each side. Each panel is then analytic up to its endpoint, and
+    the residual log-type endpoint singularity is the mild, algebraic kind
+    that the reference normalisation Fn already handles — Fn's adaptive
+    ``quad`` is given the very same edge as an explicit bound (E from 1 to
+    Q/me), so splitting here makes the rate integral structurally match it.
+    That is what lets the Born vacuum limit reproduce the analytic Fn, i.e.
+    Gamma_{n->p}(T -> 0) -> 1/tau_n, which the whole tau_n normalisation rests
+    on (tests/test_weak_rates.py::test_vacuum_limit_reproduces_tau_n).
 
     Returns
     -------

@@ -34,62 +34,23 @@
  * interpolation noise and any genuine sub-floor value are replaced by 0. */
 #define WEAK_RATE_FLOOR 1.0e-28
 
-/* Fixed (not cfg->numerical_precision-derived) tolerance for the
- * background ODE(s) below (the combined a(T)/t(T) 2D ODE, Branch E) --
- * see the first call site's comment for the empirical justification
- * (closes a ~1-3% end-to-end BBN-abundance gap traced to RK45-vs-LSODA
- * discretization at the Python-nominal tolerance).
+/* Fixed tolerance for the combined a(T)/t(T) background ODE below, NOT
+ * derived from cfg->numerical_precision: the BBN abundances are sensitive
+ * enough to a(T)/t(T) discretization that the Python-nominal tolerance
+ * leaves a percent-level end-to-end gap.
  *
- * Historically this had to be set as tight as 1e-15 because the solution
- * at the desired output grid was obtained by *piecewise-linear*
- * interpolation of the accepted RK45 steps: with a loose tolerance the
- * stepper takes large steps, and O(h^2) linear-interpolation error
- * between sparse points corrupted a(T)/t(a) downstream. Forcing rtol/atol
- * to 1e-15 hid that interpolation error at the cost of a hugely
- * oversampled stepper.
- *
- * Branch A: cpr_ode_rk45 now supports dense-output evaluation (ode_rk.h,
- * `dense_cb`/cpr_ode_dense_eval), used by setup_background_and_cosmo's
- * CPRDensePath to evaluate the solution at any query point via the
- * Dormand-Prince continuous extension polynomial -- locally as accurate
- * as the step itself, no separate interpolation error to hide. This lets
- * rtol/atol be loosened by ~5 orders of magnitude: empirically, 1e-7
- * through 1e-12 were tried against the small/large+amax=8 reference
- * numbers (tests/README.md's "Validation reference"); 1e-7 already
- * nudges D/H outside its +-3e-9 bound, while 1e-8 through 1e-12
- * stay comfortably within +-1.2e-9. 1e-10 is chosen as a safety margin
- * below that edge rather than chasing the exact breakeven, since the
- * combined ODE is cheap regardless (2-D, smooth, dense-output already
- * removing the dominant cost) and the BBN-abundance sensitivity to
- * a(T)/t(a) discretization error documented above leaves little room for
- * complacency. Tightened from 1e-10 to 1e-11 (still within the tested
- * 1e-8..1e-12 safe range above) as a small additional safety margin --
- * 1e-12 was also tried but gave no further improvement in the C-vs-Python
- * D/H gap (both 1e-11 and 1e-12 plateau at ~4-5e-10 absolute, i.e. noise
- * level, not a systematic trend with this tolerance).
- *
- * Tightened again, 1e-11 -> 1e-14, for a reason the paragraph above could not
- * see because it only ever looked at the *abundances*: the combined ODE's
- * second component `trel` is a RELATIVE time anchored at T_end, so |trel|
- * grows to ~1.3e6 s at the high-temperature end of the integration -- where
- * the physically meaningful t is only ~4.6e-4 s. ode_rk.c's error scale is
- * atol + rtol*|y_i|, so at T_start_cosmo the controller normalises trel's
- * error by 1.3e6 and simply does not protect the small-t region. Measured
- * against an independent quadrature of the same integrand, t(10 MeV)-t(40 MeV)
- * came out 2.4e-05 relative wrong at rtol=1e-11 and 4.7e-08 at 1e-14.
- *
- * combined_bg_rhs's "Variable choice for y[1]" comment previously argued this
- * away ("no adverse conditioning effect ... each component is normalised by
- * its OWN magnitude independently"). That argument addresses the wrong
- * failure mode: the problem is not a scale shared ACROSS components, it is
- * that trel's own magnitude is set by the far end of the integration and is
- * therefore a poor normaliser for its own early trajectory. The clean fix is
- * to integrate a quantity whose magnitude tracks the local t (as
- * background.py's _integrate_time_over_lnT does, anchoring at T_start_cosmo
- * and marching down); tightening the tolerance is the cheap equivalent and is
- * free here -- the abundances are unchanged to all 8 reported digits, since
- * above ~1 MeV they are weak-equilibrium-determined rather than
- * time-integrated, and the error has decayed to 2.3e-07 by 1 MeV. */
+ * Why as tight as 1e-14. The ODE's second component `trel` is a RELATIVE
+ * time anchored at T_end, so |trel| is enormous at the high-temperature end
+ * of the integration, where the physically meaningful t is tiny. ode_rk.c
+ * scales the error as atol + rtol*|y_i|, so near T_start_cosmo the
+ * controller normalises trel's error by that far-end magnitude and does not
+ * protect the small-t region at all. The structural fix would be to
+ * integrate a quantity whose magnitude tracks the local t, as
+ * background.py's _integrate_time_over_lnT does by anchoring at
+ * T_start_cosmo and marching down; tightening rtol is the cheap equivalent
+ * and is free here — the ODE is 2-D and smooth, cpr_ode_rk45's dense output
+ * already removes the dominant cost, and the abundances do not move, being
+ * weak-equilibrium-determined rather than time-integrated above ~1 MeV. */
 #define BG_ODE_RTOL 1.0e-14
 #define BG_ODE_ATOL 1.0e-11
 
@@ -317,11 +278,10 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
         rho_tot += cpr_cubic_spline_eval(&bg->extra_rho_spline, log10(Tg));
 
     if (bg->has_lcdm) {
-        /* `a` is always supplied exactly by the caller now (Branch E: the
+        /* `a` is always supplied exactly by the caller: the
          * combined a(T)/t(T) ODE below always carries x=ln(a*T) in its own
          * state, so a=exp(x-lnT) is recovered analytically at every RHS
-         * evaluation -- no "not yet built" a(T) to bootstrap around, unlike
-         * the old sequential two-ODE scheme this replaced). */
+         * evaluation -- no "not yet built" a(T) to bootstrap around. */
         rho_tot += bg->rhocdm_a3 / (a * a * a) + bg->rholambda;
     }
     if (bg->has_ede) {
@@ -341,7 +301,7 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
 /* d(ln a)/d(ln T) = -(3 sbar + T dsbar/dT) / (N_NEVO + 3 sbar), the EM
  * entropy-conservation ODE driving a(T_gamma) (Phys. Rep. S2; see
  * background.py's _setup_background_and_cosmo docstring, "minimal mode").
- * Used directly only by combined_bg_rhs below now (Branch E); kept as a
+ * Used directly only by combined_bg_rhs below; kept as a
  * free-standing helper rather than inlined since its formula/derivation
  * comment is referenced from there. */
 static double dlnadlnT_value(CPRBackground *bg, double T)
@@ -355,34 +315,20 @@ static double dlnadlnT_value(CPRBackground *bg, double T)
 }
 
 /* `T_of_a_smooth` is a *local-only* cubic spline over the same
- * (a_sol_asc, T_sol_asc) nodes `cpr_bg_T_of_a` itself interpolates linearly
- * (background.h's docstring: T_of_a is "always a linear interpolant",
- * matching Python's interp1d default `kind='linear'` -- that choice is
- * kept for every *public* query). Using the public, piecewise-linear
- * cpr_bg_T_of_a as this ODE's RHS, however, feeds the 5th-order adaptive
- * RK45 stepper a function with a curvature kink at every one of the
- * ~O(sampling_temperature_per_decade * decades) grid nodes; profiling
- * (a temporary instrumented build counting accepted/rejected steps) showed
- * a ~65% step-rejection rate *uniformly spread across the whole
- * integration range* -- the signature of a stepper repeatedly hitting a
- * kink, not of one genuinely stiff region -- making this single ODE ~40x
- * more expensive (in accepted+rejected RHS evaluations) than the
- * similarly-sized a(T) ODE just above, and the dominant cost (60%+) of
- * cpr_bg_init_standard. Swapping in a not-a-knot cubic spline (smooth
- * second derivative) for *this RHS evaluation only* removes the kinks the
- * stepper was fighting, without touching `cpr_bg_T_of_a`'s own linear
- * behaviour or this ODE's accuracy contract (BG_ODE_RTOL/ATOL, the
- * solution itself, are unchanged -- only how cheaply the same tolerance is
- * reached).
+ * (a_sol_asc, T_sol_asc) nodes `cpr_bg_T_of_a` interpolates linearly —
+ * linear being the public contract, matching Python's interp1d default.
+ * Feeding that piecewise-linear form to this ODE's 5th-order adaptive RK45
+ * stepper would hand it a curvature kink at every grid node, which the
+ * stepper fights with a high step-rejection rate spread uniformly over the
+ * whole range, making this single ODE the dominant cost of
+ * cpr_bg_init_standard. A not-a-knot cubic (smooth second derivative) for
+ * *this RHS only* removes the kinks without touching cpr_bg_T_of_a's own
+ * linear behaviour or this ODE's accuracy contract: the solution is
+ * unchanged, only how cheaply the same tolerance is reached.
  *
- * Branch E note: this dtdlna_rhs/T_of_a_smooth pair is now used ONLY for
- * cfg->external_scale_factor=True, where a(T) is already a closed-form
- * algebraic function of T (no entropy ODE to combine with -- see
- * setup_background_and_cosmo's external_scale_factor branch) so there is
- * no "first ODE" to fold dt/d(ln a) into; the combined 2D ODE below
- * (combined_bg_rhs) replaces this pair for the default (minimal,
- * !external_scale_factor) mode, where both a(T) and t(T) genuinely come
- * from ODEs and can share one integration. */
+ * This pair serves cfg->external_scale_factor=True only, where a(T) is
+ * already a closed-form function of T and there is no entropy ODE to fold
+ * dt/d(ln a) into. The default mode uses combined_bg_rhs below. */
 typedef struct { CPRBackground *bg; const CPRCubicSpline *T_of_a_smooth; } DtDlnaCtx;
 
 /* dt/d(ln a) = 1/H(a), with T(a) read from the just-built a(T) inverse
@@ -401,14 +347,11 @@ static int dtdlna_rhs(double lna, const double *y, double *ydot, void *ctx_)
 }
 
 /* ---------------------------------------------------------------------
- * Branch E: combined a(T)/t(T) 2D ODE (minimal mode, !external_scale_factor).
+ * Combined a(T)/t(T) 2D ODE (minimal mode, !external_scale_factor).
  *
  * State y[0] = x = ln(a*T), y[1] = trel (a *relative*, uncalibrated cosmic
  * time -- see "Boundary condition" below), both integrated over the SAME
- * independent variable lnT -- instead of the old two sequential ODEs
- * (d(ln a)/d(ln T) over lnT, then dt/d(ln a) over lna) bridged by the
- * not-a-knot cubic spline T_of_a_smooth above. This eliminates that spline
- * build/free and the second cpr_ode_rk45 call entirely: `a` is recovered
+ * independent variable lnT, in one cpr_ode_rk45 call. `a` is recovered
  * analytically at every RHS evaluation as a = exp(y[0] - lnT) (no lookup,
  * no spline), so H(T,a) -- needed by the t-component RHS -- is always
  * evaluated exactly (see cpr_bg_Hubble's explicit `a` parameter).
@@ -435,34 +378,24 @@ static int dtdlna_rhs(double lna, const double *y, double *ydot, void *ctx_)
  * that same shortcut would then carry a small systematic error at exactly
  * the boundary condition.
  *
- * Using *raw* t instead sidesteps this: dt/d(ln T) = dt/d(ln a) *
- * d(ln a)/d(ln T) = (1/H) * dlna_dlnT has NO dependence on the current
- * value of t itself (unlike d(ln t)/d(ln T), which divides by t), so this
- * component's ODE is exactly LINEAR in t: any two solutions differing only
- * by their initial condition differ by the SAME additive constant at every
- * lnT. This means y[1] can be integrated from an arbitrary placeholder (0
- * here) anchored at T_end -- the SAME point x is exactly anchored at
- * (a_end, algebraic, N_NEVO(T_end) == 0) -- alongside x in one single ODE
- * call, and the genuinely correct, absolute t(T) recovered AFTERWARDS by a
- * trivial O(1) additive shift: once the pass is solved, a_ini =
- * a(T_start_cosmo) is read off EXACTLY from the just-solved x trajectory
- * (no algebraic approximation needed at T_start_cosmo any more), giving an
- * exact t_ini = 1/(2 H(T_start_cosmo, a_ini)); the shift
- * C = t_ini - trel(T_start_cosmo) then makes t(lnT) = trel(lnT) + C match
- * the original code's t(a) ODE bit-for-bit in its boundary condition (same
- * t_ini formula, same exact a_ini), while still requiring only ONE
- * cpr_ode_rk45 call. See setup_background_and_cosmo for where C is
- * computed and applied.
+ * Using *raw* t instead sidesteps this: dt/d(ln T) = (1/H) * dlna_dlnT has
+ * NO dependence on t itself (unlike d(ln t)/d(ln T), which divides by t),
+ * so this component is exactly LINEAR in t — any two solutions differing
+ * only in initial condition differ by the SAME additive constant at every
+ * lnT. So y[1] is integrated from an arbitrary placeholder (0) anchored at
+ * T_end, the same point where x is exactly anchored, and the absolute t(T)
+ * is recovered afterwards by one additive shift: a_ini = a(T_start_cosmo)
+ * is read off exactly from the solved x trajectory, giving an exact
+ * t_ini = 1/(2 H(T_start_cosmo, a_ini)), and C = t_ini - trel(T_start_cosmo)
+ * makes t(lnT) = trel(lnT) + C. See setup_background_and_cosmo.
  *
- * (The raw-vs-log choice for y[1] DOES have an adverse conditioning effect,
- * contrary to what this comment used to claim. Per-component error scaling
- * (scale_i = atol + rtol*|y_i|) removes any cross-component coupling, but it
- * does not help within trel itself: |trel| grows to ~1.3e6 s at the
- * high-temperature end while the physical t there is ~4.6e-4 s, so relative
- * error control is normalised by a value ~3e9 times too large exactly where
- * accuracy is wanted. This is why BG_ODE_RTOL is 1e-14 rather than the 1e-11
- * the abundance-only tuning above would suggest -- see its comment for the
- * measurement and for the structural alternative.)
+ * (Raw t does cost conditioning. Per-component error scaling
+ * (scale_i = atol + rtol*|y_i|) removes cross-component coupling but not
+ * this: |trel| grows enormous at the high-temperature end while the
+ * physical t there is tiny, so relative error control is normalised by a
+ * value far too large exactly where accuracy is wanted. That is why
+ * BG_ODE_RTOL is 1e-14 rather than the 1e-11 the abundance-only tuning
+ * above would suggest -- see its comment.)
  * ------------------------------------------------------------------- */
 typedef struct { CPRBackground *bg; } CombinedBgCtx;
 
@@ -558,9 +491,8 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
 
     /* Combined-path state, populated and kept alive (across the a_sol_asc/
      * T_sol_asc build below) only in the default (!external_scale_factor)
-     * branch -- see combined_bg_rhs's docstring above for why a single 2D
-     * ODE replaces the old sequential a(T)+t(a) pair. Reused further down
-     * to fill bg->t_vec via dense_path_eval, instead of a second ODE solve. */
+     * branch -- see combined_bg_rhs's docstring above. Reused further down to
+     * fill bg->t_vec via dense_path_eval, sparing a second ODE solve. */
     CPRDensePath combined_path;
     int have_combined_path = 0;
 
@@ -635,8 +567,8 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
      * Sampling on lnT_sol instead makes Tg_vec exact by construction
      * (Tg = exp(lnT_sol[j]), no inversion anywhere) and matches
      * background.py's grid node for node -- Python samples on the same
-     * log-spaced temperature grid after its own Branch E port, so the two
-     * backends now tabulate the weak rates at identical temperatures.
+     * log-spaced temperature grid, so the two backends tabulate the weak
+     * rates at identical temperatures.
      *
      * lnT_sol is T-ascending; the background arrays are contractually
      * time-ascending, i.e. T-DESCENDING (background.h's Tg_asc comment), so

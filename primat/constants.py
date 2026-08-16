@@ -79,24 +79,9 @@ class Constants:
     replacing the :data:`OVERRIDABLE_CONSTANTS` fields with that config's
     values; :data:`CONST` is the all-defaults one.
 
-    Grouped as:
-
-    - CGS base units (all set to 1; natural units throughout)
-    - Fundamental constants: kB, clight, hbar, Mpc, MeV, keV
-    - Electroweak sector: alphaem, GF, mZ
-    - Fermion masses [MeV]: me, mn, mp
-    - CMB: T0CMB
-    - Weak-rate nuclear-structure constants: gA, kappa_p, kappa_n,
-      Vud, radproton
-    - Atomic masses: ma, He4Overma, HOverma
-
-    Each field below carries the edition it came from (CODATA/PDG/AME year, or
-    "SI 2019, exact"); they are not all from one vintage.
-
-    plus derived quantities (unit-conversion factors, fixed temperature
-    eras, electroweak mixing-angle couplings, and the high-T plasma
-    entropy/number-density normalisations) exposed as read-only
-    properties computed from the fields above.
+    Fields are grouped by sector below, each tagged with the edition it came
+    from (CODATA/PDG/AME year, or "SI 2019, exact" — they are not all from one
+    vintage). Quantities derived from them are read-only properties.
     """
 
     # ---- CGS base units (dimensionless by convention: natural units) ----
@@ -105,14 +90,9 @@ class Constants:
     cm:     float = 1.
     gram:   float = 1.
 
-    # ------------------------------------------------------------------
-    # Provenance. These values were assembled over time and are NOT all from
-    # one edition; the per-field tags below record which, so a future refresh
-    # can tell what must move together. All are well within primat's target
-    # precision as they stand -- this is bookkeeping, not a correction list.
-    # The weak-rate sector (gA, Vud, and the two anomalous moments) is the one
-    # to watch: it feeds the n<->p rates directly (primat/weak_rates/).
-    # ------------------------------------------------------------------
+    # The per-field tags below give each value's edition; they are not all
+    # from one. The weak-rate sector (gA, Vud, kappa_p, kappa_n) is the one to
+    # watch on a refresh: it feeds the n<->p rates directly.
 
     # ---- Fundamental constants ----
     # The first four are *exact* by the 2019 SI redefinition (no uncertainty).
@@ -150,15 +130,12 @@ class Constants:
     HOverma:   float = 1.00782503223       # M(H) / u                       (AME2016)
 
     # ---- Standard-model effective neutrino number ----
-    # The Standard Model prediction for N_eff including non-instantaneous
-    # decoupling, finite-temperature QED, and flavour-oscillation effects
-    # (Bennett et al. 2021, arXiv:2012.02726; de Salas & Pastor numerical
-    # value to 3.044 quoted from the more recent re-evaluations of the
-    # Mangano/Miele 3.046 result). Used wherever the *standard*-physics value
-    # of N_eff is needed as an input, rather than the value primat itself
-    # solves for via the NEVO table: numerically only in the EDE-era radiation
-    # normalisation, elsewhere as the reference point of the reported
-    # ``Neff = Neff_SM + DeltaNeff`` relation.
+    # SM prediction including non-instantaneous decoupling, finite-T QED and
+    # flavour oscillations (Bennett et al. 2021, arXiv:2012.02726). Used as an
+    # *input* where standard physics is assumed — numerically in the EDE-era
+    # radiation normalisation, elsewhere as the reference point of the
+    # reported ``Neff = Neff_SM + DeltaNeff``. primat's own Neff comes from
+    # the NEVO table, not from here.
     Neff_SM:   float = 3.044
 
     # ------------------------------------------------------------------
@@ -192,27 +169,14 @@ class Constants:
 
     @property
     def GN_MeV2_to_SI(self) -> float:
-        """Conversion factor: Newton's constant in natural units [MeV^-2] to
-        SI units [m^3 kg^-1 s^-2].
+        """Conversion factor: G in natural units [MeV^-2] to SI [m^3 kg^-1 s^-2].
 
-        Particle physics conventionally expresses ``G`` in the natural-units
-        convention (hbar = c = 1), where it has the dimension of
-        [energy]^-2 (``G = 1/m_Pl^2``, with ``m_Pl`` the Planck mass in MeV).
-        Restoring hbar and c, ``G`` in CGS units [cm^3 g^-1 s^-2] is
-        ``G_natural[MeV^-2] * hbar[erg s] * clight[cm/s]^5 / MeV[erg]^2``
-        (the erg/cm/s factors cancel exactly into CGS's
-        gravitational-constant units); one more factor of ``1e-3`` converts
-        cm^3 g^-1 s^-2 to m^3 kg^-1 s^-2.
+        Restoring hbar and c in ``G = 1/m_Pl^2`` gives CGS
+        ``G[MeV^-2] * hbar * clight^5 / MeV^2``; the trailing 1e-3 takes
+        cm^3 g^-1 s^-2 to m^3 kg^-1 s^-2. ``cfg.GN`` is stored in SI, so this
+        and its inverse :attr:`GN_SI_to_MeV2` convert to the natural units the
+        Friedmann equation is written in.
 
-        ``cfg.GN`` itself is stored and exposed in SI units throughout
-        primat (``DEFAULT_PARAMS["GN"]`` in ``config.py``, the GUI's
-        "Constants" panel); this factor (and its inverse,
-        :attr:`GN_SI_to_MeV2`) is used internally to convert to/from the
-        natural units that the Friedmann equation
-        (``PRIMATConfig.Mpl``/``PRIMATConfig.rhocOverh2``) is written in.
-
-        Example
-        -------
         >>> CONST.GN_MeV2_to_SI * 6.70883e-45   # doctest: +SKIP
         6.674...e-11
         """
