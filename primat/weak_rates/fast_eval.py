@@ -11,7 +11,7 @@ tabulated interpolants built in :mod:`weak_rates.api` /
 
   * the non-thermal rate (Born+FM+CCR+SD), a **cubic** spline in log10-log10
     space (:func:`weak_rates.api._weak_rate_loglog_interp`), and
-  * the finite-temperature CCRTh correction, a **quadratic** spline in linear
+  * the finite-temperature CCRTh correction, a **cubic** spline in linear
     space (:func:`weak_rates.corrections._thermal_correction_interpolants`),
     pinned to 0 below ``T_CCRTH_MIN``.
 
@@ -103,7 +103,7 @@ def _weak_raw_scalar(cx, cc, T_zero_below, has_th, tx, tc, t_min, th_scale, Tq):
       * non-thermal: ``10**cubic(log10 max(Tq, 1e-300))``, forced to 0 below
         ``T_zero_below`` (the backward rate's clamped-to-zero low-T prefix;
         ``-inf`` for the strictly-positive forward rate so the mask never fires);
-      * thermal (only if ``has_th``): ``th_scale × quadratic(Tq)`` (the CCRTh
+      * thermal (only if ``has_th``): ``th_scale × cubic(Tq)`` (the CCRTh
         correction divided by the neutron-decay factor Fn), pinned to 0 below
         ``t_min`` (``T_CCRTH_MIN``) exactly as the scipy closure does.
     """
@@ -196,7 +196,7 @@ class FastWeakRate:
         The check grid is built from the interpolants' own breakpoints so it is
         automatically in the right units (Kelvin): the non-thermal cubic lives
         in ``log10 T`` space, so its knots map to ``10**cx``; the thermal
-        quadratic lives in linear ``T`` space (``tx``).  Interval midpoints are
+        spline lives in linear ``T`` space (``tx``).  Interval midpoints are
         added to catch a between-nodes divergence, not just agreement at nodes.
         """
         T_nt = np.power(10.0, self.cx)

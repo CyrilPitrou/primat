@@ -347,6 +347,20 @@ in this repository is the authoritative source.
   properties), and every observable is bit-identical on both backends.
 
 ### Changed
+- **The pure-Python backend is ~1.6× faster, with every printed digit
+  unchanged.** A warm `small` run goes from 0.750 s to 0.460 s and
+  `large, amax=8` from 1.085 s to 0.684 s (C: 0.040 s / 0.134 s). Three
+  changes, none of them physics: the background's `T_of_t`/`t_of_T`/`a_of_t`
+  lookups now evaluate the same two-node linear formula scipy does without
+  paying `interp1d`'s ~10 µs of per-query input validation; the MT/LT BDF
+  solves call LAPACK's `getrf`/`getrs` directly instead of through
+  `scipy.linalg.lu_factor`/`lu_solve`, whose batch-dispatch and finiteness
+  wrappers cost more than the factorisation itself at ~15k calls per solve;
+  and the n↔p rate floor takes a scalar branch instead of building a 0-d array
+  per query. Both fast paths verify at build time that they reproduce what
+  they replace, and fall back to scipy if they cannot. Observables are
+  identical float-for-float on `small`, `small_parthenope` and
+  `large, amax=8`, so the cross-backend gap is unmoved.
 - **Each cache is now keyed on the constants it actually reads,** rather than
   on all 26 at once: eight for the n↔p rate table, five for the CCRTh thermal
   correction, two for the QED pressure tables, one for the electron

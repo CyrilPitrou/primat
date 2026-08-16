@@ -173,3 +173,76 @@ def test_linear_rate_scalar_and_array():
     f = _LinearRate(np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]))
     assert f(2.0) == pytest.approx(20.0)
     np.testing.assert_allclose(f(np.array([1.5, 2.5])), [15.0, 25.0])
+
+
+# ---------------------------------------------------------------------------
+# speedup — the background's scalar interpolant fast path is bit-exact
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("clamped", [False, True])
+def test_scalar_linear_eval_reproduces_scipy_exactly(clamped):
+    """_scalar_linear_eval matches interp1d(kind='linear') to the last bit.
+
+    It replaces the scipy call on the T_of_t / a_of_t hot path, so "close
+    enough" is not enough: any difference at all would move the BDF step
+    sequence and every observable with it. Checked on the nodes, the
+    midpoints between them and both extrapolation sides, for both fill_value
+    forms the background uses.
+    """
+    from scipy.interpolate import interp1d
+    from primat.background import _scalar_linear_eval
+    rng = np.random.default_rng(0)
+    x = np.sort(rng.uniform(0.0, 10.0, 400))
+    y = rng.uniform(1e-3, 1e3, 400)
+    # The two forms the background builds: T_of_t extrapolates, a_of_t clamps
+    # to its end values.
+    fill_value = (y[0], y[-1]) if clamped else "extrapolate"
+    ref = interp1d(x, y, kind="linear", bounds_error=False, fill_value=fill_value)
+    fast = _scalar_linear_eval(ref)
+    assert fast is not None
+    probe = np.concatenate([x, 0.5 * (x[:-1] + x[1:]), [-1.0, 11.0]])
+    for q in probe:
+        assert float(fast(q)) == float(ref(q))
+
+
+def test_scalar_linear_eval_declines_what_it_cannot_reproduce():
+    """_scalar_linear_eval returns None for a non-linear interp1d.
+
+    The fast path is opt-in per interpolant: whatever it cannot reproduce
+    exactly must fall back to scipy rather than silently interpolate by a
+    different scheme.
+    """
+    from scipy.interpolate import interp1d
+    from primat.background import _scalar_linear_eval
+    x = np.linspace(0.0, 10.0, 40)
+    cubic = interp1d(x, np.exp(-x), kind="cubic", bounds_error=False,
+                     fill_value="extrapolate")
+    assert _scalar_linear_eval(cubic) is None
+
+
+# ---------------------------------------------------------------------------
+# speedup — BDF's direct-LAPACK dense LU changes no digit
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_direct_lapack_bdf_matches_scipy_bdf():
+    """The MT/LT solves give identical observables through scipy's own BDF.
+
+    nuclear_network._BDF hands BDF getrf/getrs directly instead of going
+    through scipy.linalg.lu_factor/lu_solve. Same LAPACK routines, same
+    arguments -- so a run forced back onto plain method="BDF" must reproduce
+    every digit, not merely agree within a tolerance.
+    """
+    import primat.nuclear_network as nn
+    from primat.backend import run_bbn
+    keys = ("Neff", "YPBBN", "DoH", "He3oH", "Li7oH")
+
+    fast = run_bbn(params={"network": "small"}, force_backend="python")
+    saved = nn._BDF
+    try:
+        nn._BDF = "BDF"
+        plain = run_bbn(params={"network": "small"}, force_backend="python")
+    finally:
+        nn._BDF = saved
+    assert [fast[k] for k in keys] == [plain[k] for k in keys]

@@ -45,12 +45,68 @@ observables dict -- ``Neff``, ``YPBBN``, ``YPCMB``, ``He4oH``, ``DoH``, ``He3oH`
 import os
 import sys
 import time
+import warnings
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 from scipy.special import zeta
 
 from .evolution import EvolutionResult, dump_evolution
+
+
+def _bdf_method():
+    """The ``method=`` argument for the MT/LT solves: scipy's BDF with its
+    dense LU calling LAPACK directly.
+
+    ``scipy.linalg.lu_factor``/``lu_solve`` spend ~13 µs per call on batch
+    dispatch and finiteness checks before reaching ``getrf``/``getrs``, and BDF
+    calls them ~15k times per BBN solve.  The subclass below hands BDF the same
+    LAPACK routines with the same arguments, so every digit of every observable
+    is unchanged -- only the Python glue in front of them is gone.  Falls back
+    to plain ``"BDF"`` if scipy's internals ever move (sparse Jacobians keep
+    scipy's ``splu`` path either way).
+
+    Returns:
+        A ``scipy.integrate.OdeSolver`` subclass, or the string ``"BDF"``.
+    """
+    try:
+        from scipy.integrate._ivp.bdf import BDF
+        from scipy.linalg import LinAlgWarning, get_lapack_funcs
+    except Exception:                                   # pragma: no cover
+        return "BDF"
+
+    class _BDFDirectLU(BDF):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            if not isinstance(getattr(self, "I", None), np.ndarray):
+                return                                  # sparse: leave splu alone
+            getrf, getrs = get_lapack_funcs(("getrf", "getrs"), (self.I,))
+
+            def lu(A):
+                self.nlu += 1
+                lu_A, piv, info = getrf(A, overwrite_a=True)
+                if info < 0:
+                    raise ValueError(f"illegal value in {-info}th argument "
+                                     f"of internal getrf")
+                if info > 0:
+                    warnings.warn(f"Diagonal number {info} is exactly zero. "
+                                  f"Singular matrix.", LinAlgWarning, stacklevel=2)
+                return lu_A, piv
+
+            def solve_lu(LU, b):
+                x, info = getrs(LU[0], LU[1], b, overwrite_b=True)
+                if info != 0:
+                    raise ValueError(f"illegal value in {-info}th argument "
+                                     f"of internal getrs")
+                return x
+
+            self.lu = lu
+            self.solve_lu = solve_lu
+
+    return _BDFDirectLU
+
+
+_BDF = _bdf_method()
 
 
 def _check_solver(sol, era, detail):
@@ -353,7 +409,7 @@ class NuclearNetwork:
 
         _t_mt0 = time.time()
         sol_MT = solve_ivp(Y_prime_MT, [t_weak, t_nucl], Yi_MT,
-                           method='BDF', jac=Jacobian_MT,
+                           method=_BDF, jac=Jacobian_MT,
                            rtol=cfg.numerical_precision, atol=1e-15)
         _check_solver(sol_MT, "MT",
                       f"{cfg.network} network, {len(mt_species)} species, "
@@ -421,7 +477,7 @@ class NuclearNetwork:
         # nuclear_network.c (bdf_opts_lt.atol).
         atol = cfg.atol_large_LT
         sol_LT = solve_ivp(Y_prime_LT, [t_nucl, t_end], Yi_LT,
-                           method='BDF', jac=Jacobian_LT,
+                           method=_BDF, jac=Jacobian_LT,
                            rtol=10.*cfg.numerical_precision, atol=atol)
         _check_solver(sol_LT, "LT",
                       f"{cfg.network} network, {len(species_L)} nuclides, "

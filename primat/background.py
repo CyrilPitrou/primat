@@ -70,7 +70,66 @@ def _clamp_raw_weak_rate(rate):
         Same shape as ``rate``, with any value below :data:`_WEAK_RATE_FLOOR`
         (this includes all negative values) replaced by 0.0.
     """
+    if np.ndim(rate) == 0:      # hot path: one scalar per RHS call
+        return 0.0 if rate < _WEAK_RATE_FLOOR else rate
     return np.where(rate < _WEAK_RATE_FLOOR, 0.0, rate)
+
+
+def _scalar_linear_eval(interp):
+    """Fast scalar evaluator for a linear ``interp1d``, or ``None``.
+
+    ``interp1d.__call__`` costs ~10 µs of input validation per query, and
+    ``T_of_t``/``a_of_t`` are queried once per nuclear-network RHS call.  This
+    re-expresses the *evaluation only*, with the same two-node formula scipy
+    uses -- the convex combination of ``_call_linear`` when the interpolant
+    extrapolates, ``np.interp`` when it clamps to a constant ``fill_value``.
+    Which one applies is settled by a build-time check against ``interp``
+    itself on the nodes, the interval midpoints and both extrapolation sides;
+    unless every digit matches, ``None`` is returned and the caller keeps the
+    scipy path.
+
+    Args:
+        interp: a ``scipy.interpolate.interp1d`` built with ``kind='linear'``.
+
+    Returns:
+        Callable float -> float, or ``None`` if neither form reproduces
+        ``interp`` exactly.
+    """
+    try:
+        xs = np.ascontiguousarray(interp.x, dtype=float)
+        ys = np.ascontiguousarray(np.asarray(interp._y, dtype=float).ravel())
+    except Exception:
+        return None
+    n = xs.size
+    if n < 2 or ys.size != n:
+        return None
+    searchsorted = np.searchsorted
+
+    def extrapolating(q):
+        i = int(searchsorted(xs, q))
+        if i < 1:
+            i = 1
+        elif i > n - 1:
+            i = n - 1
+        x_lo, x_hi = xs[i - 1], xs[i]
+        dx = x_hi - x_lo
+        return ((q - x_lo) / dx) * ys[i] + ((x_hi - q) / dx) * ys[i - 1]
+
+    def clamping(q):
+        return float(np.interp(q, xs, ys))
+
+    # Probe the nodes (subsampled -- a background grid has thousands),
+    # the midpoints between them, and one point off each end.
+    step = max(1, n // 128)
+    nodes = xs[::step]
+    probe = np.concatenate([nodes, 0.5 * (nodes[:-1] + nodes[1:]),
+                            [xs[0] - (xs[1] - xs[0]),
+                             xs[-1] + (xs[-1] - xs[-2])]])
+    reference = np.asarray(interp(probe), dtype=float).ravel()
+    for candidate in (extrapolating, clamping):
+        if all(float(candidate(q)) == r for q, r in zip(probe, reference)):
+            return candidate
+    return None
 
 
 def _loglog_interp1d(x, y):
@@ -118,9 +177,13 @@ def _loglog_interp1d(x, y):
     ln_interp = interp1d(np.log(x[order]), np.log(y[order]),
                          bounds_error=False, fill_value="extrapolate",
                          kind='linear')
+    fast = _scalar_linear_eval(ln_interp)      # None if scipy's internals moved
+    log, exp, ndim = np.log, np.exp, np.ndim
 
     def _f(q):
-        return np.exp(ln_interp(np.log(q)))
+        if fast is not None and ndim(q) == 0:
+            return exp(fast(log(q)))
+        return exp(ln_interp(log(q)))
 
     return _f
 
@@ -427,6 +490,8 @@ class StandardBackground(Background):
         appended automatically as the first such plug-in (see
         :meth:`_setup_EDE`); callers do not need to include it.
     """
+
+    _a_of_t_scalar = None       # set by _store_background_arrays; see rhoB_BBN
 
     def __init__(self, cfg, plasma, extra_rho=None):
         super().__init__(cfg, plasma, extra_rho)
@@ -1088,6 +1153,7 @@ class StandardBackground(Background):
                                 fill_value="extrapolate", kind='linear')
         self.a_of_t = interp1d(t_vec, a_arr, bounds_error=False,
                                 fill_value=(a_arr[0], a_arr[-1]))
+        self._a_of_t_scalar = _scalar_linear_eval(self.a_of_t)   # rhoB_BBN hot path
         self.t_of_a = interp1d(a_arr, t_vec, bounds_error=False,
                                 fill_value=(t_vec[0], t_vec[-1]))
         self.has_scale_factor = True
@@ -1340,6 +1406,9 @@ class StandardBackground(Background):
     def rhoB_BBN(self, t):
         """Baryon mass density rho_B(t) [g cm^-3] (see
         :meth:`Background.rhoB_BBN`)."""
+        fast = self._a_of_t_scalar
+        if fast is not None and np.ndim(t) == 0:
+            return self._rhoB_of_a(fast(t))
         return self._rhoB_of_a(self.a_of_t(t))
 
 
