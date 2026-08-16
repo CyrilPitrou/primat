@@ -1300,19 +1300,11 @@ def _qed_nuclear_rescale(name, T9_grid):
     >>> (f > 1.0).all()
     True
     """
-    # Third copy of alpha/me in the tree, and DELIBERATELY not replaced by
-    # cfg.alphaem/cfg.me. See network_data.c's qed_nuclear_rescale (the
-    # `qed_nuclear_rescale` static, around line 551) for the full reasoning:
-    # this factor must reproduce Python's numbers bit-for-bit on both backends,
-    # so both sides carry the same literals verbatim rather than reading a
-    # constants struct that could be edited to a different edition.
-    #
-    # Unlike primat.qed_pressure's module-level _ALPHA_FS/_ME_MEV -- which were
-    # a genuine second source of truth for the *solver* and are now bypassed,
-    # the QED pressure tables taking alpha/me from cfg (plasma.Plasma._load_tables)
-    # -- this pair feeds a rate rescale applied at load time and never written
-    # to a fingerprinted cache file, so there is nothing here for
-    # cache_utils.constants_hash to protect. Do not "fix" this duplication.
+    # Local literals, DELIBERATELY not cfg.alphaem/cfg.me: the Pitrou &
+    # Pospelov rescale below is a fit performed at these values, so it cannot
+    # be re-derived from a user-supplied alpha. Setting --alphaem therefore
+    # does not (and should not) move this factor. Both backends carry the same
+    # literals so the fit reproduces bit-for-bit.
     #
     # Fine structure constant (CODATA 2018)
     ALPHA = 1.0 / 137.035999084
@@ -1690,26 +1682,13 @@ def _select_era_reactions(era, cfg, bare_names):
     """
     era = era.upper()
     if era == "MT":
-        # Intersect with ORDER_MT for *every* network, including "small".
-        #
-        # This used to special-case cfg.network == "small" to intersect with
-        # ORDER_SMALL instead. For the shipped small.txt the two are identical
-        # (its twelve thermonuclear reactions are exactly ORDER_SMALL[1:], a
-        # prefix subsequence of ORDER_MT, so the intersection preserves the
-        # same relative order) -- but they diverge as soon as a custom network
-        # built on "small" adds one of the five reactions in
-        # ORDER_MT \ ORDER_SMALL (Be7_d__a_a_p, Be7_n__a_a, Li6_p__Be7_g,
-        # Li7_p__a_a_g, d_a__Li6_g). The special case then dropped such a
-        # reaction from the MT era while the C backend, which has always
-        # intersected against ORDER_MT unconditionally, kept it: the GUI
-        # "Create custom network" path adding d_a__Li6_g integrated MT with 8
-        # nuclides on Python against 9 on C, for a 1.0e-06 YPBBN divergence.
-        #
-        # Dropping the special case is the principled resolution: a reaction
-        # the user explicitly added, and which IS an MT-era reaction, belongs
-        # in the MT era. Verified to leave the default small run bit-identical.
-        # Keep in lockstep with cpr_load_network's era selection in
-        # primat-c/src/network_data.c.
+        # Intersect with ORDER_MT for *every* network, including "small": a
+        # reaction the user explicitly added, and which IS an MT-era reaction,
+        # belongs in the MT era. Intersecting "small" against ORDER_SMALL
+        # instead would give the same result for the shipped small.txt (its
+        # twelve reactions are ORDER_SMALL[1:], a prefix subsequence of
+        # ORDER_MT) but would silently drop a custom network's addition of any
+        # of the five reactions in ORDER_MT \ ORDER_SMALL.
         allowed = set(bare_names)
         selected = [name for name in ORDER_MT
                     if name not in _WEAK_NTOP_NAMES and name in allowed]
@@ -2147,12 +2126,9 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     # tables themselves stop at T9 = 10 (that is the AC2024 source grid's own
     # ceiling), so the gap is intrinsic, not a grid-resolution choice: rates in
     # T9 in [10, 11.6] are produced by _fill_buffer_core extrapolating linearly
-    # off the last grid cell.  Measured effect for n_p__d_g at T9 = 11.6: +0.4%
-    # against the table's own log-log cubic; on the observables, nothing --
-    # raising rate_grid_T9_max to 12 or 15 (which forces the shipped tables to
-    # be extrapolated instead) moves YP/D/H/He3/Li7 by <= 2e-6 relative, because
-    # the network is still in nuclear statistical equilibrium up there and the
-    # abundances are Saha-determined rather than rate-determined.
+    # off the last grid cell.  That is inert on the observables — up there the
+    # network is still in nuclear statistical equilibrium, so the abundances
+    # are Saha-determined rather than rate-determined.
     grid = np.logspace(np.log10(cfg.rate_grid_T9_min),
                        np.log10(cfg.rate_grid_T9_max),
                        cfg.rate_grid_npts)

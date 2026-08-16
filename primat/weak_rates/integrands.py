@@ -56,10 +56,9 @@ exp_cutoff = 3e+2
 #     _quad_grid and friends) without a separate hand-maintained "_v" twin.
 # Before being squashed by np.where, every exp() argument is clamped with
 # np.minimum so the discarded (masked-out) branch can never overflow --
-# this also makes the functions numba-njit-compatible (numba supports
-# np.where/np.minimum on both scalars and arrays, but not the
-# np.errstate(...) context manager the old hand-written "_v" twins used to
-# silence overflow warnings in the unclamped masked branch).
+# this also makes the functions numba-njit-compatible, since numba supports
+# np.where/np.minimum on scalars and arrays alike but not the
+# np.errstate(...) context manager an unclamped masked branch would need.
 # ---------------------------------------------------------------------------
 
 def FD_nu3(E, phi, x):

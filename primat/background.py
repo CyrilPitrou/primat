@@ -468,15 +468,14 @@ class StandardBackground(Background):
 
             ρ_CDM(Tg) = Ω_c h² · ρ_{crit,100} / a(Tg)³
 
-        where ``a(Tg)`` is not yet known at call time.  We therefore store the
-        *comoving* CDM density amplitude ``rhocdm_a3 = Ω_c h² · ρ_{crit,100}``
-        and wrap it in a closure that calls ``self.a_of_T(Tg)`` at evaluation
-        time.  ``_setup_background_and_cosmo`` publishes ``self.a_of_T`` at the
-        end of its step 2 (the entropy ODE, which is itself ``a``-independent),
-        which is strictly before step 3's time integration -- the first thing
-        to evaluate ``extra_rho`` at all.  The closure is therefore always
-        called with the exact ``a(T)``; evaluating it any earlier raises
-        ``NotImplementedError`` from the base ``a_of_T`` stub rather than
+        where ``a(Tg)`` is not yet known at call time.  The *comoving*
+        amplitude ``rhocdm_a3 = Ω_c h² · ρ_{crit,100}`` is therefore stored and
+        wrapped in a closure calling ``self.a_of_T(Tg)`` at evaluation time.
+        ``_setup_background_and_cosmo`` publishes ``a_of_T`` at the end of its
+        step 2 (the entropy ODE, itself ``a``-independent), strictly before
+        step 3's time integration — the first thing to evaluate ``extra_rho``
+        at all — so the closure always sees the exact ``a(T)``. Evaluating it
+        earlier raises ``NotImplementedError`` from the base stub rather than
         silently substituting an approximation.
 
             ρ_Λ = (h² − Ω_b h² − Ω_c h²) · ρ_{crit,100}
@@ -495,14 +494,6 @@ class StandardBackground(Background):
         TT,TE,EE+lowE+lensing+BAO column): Ω_b h² = 0.02242, Ω_c h² = 0.11933,
         h = 0.6766.
 
-        Example
-        -------
-        With the Planck 2018 fiducial cosmology the matter-radiation equality
-        scale factor is approximately:
-
-            a_eq ≈ Ω_r h² / (Ω_b h² + Ω_c h²) ≈ 4.18e-5 / 0.14166 ≈ 2.95e-4
-
-        (z_eq ≈ 3400), consistent with standard cosmology.
         """
         cfg = self.cfg
 
@@ -738,9 +729,9 @@ class StandardBackground(Background):
         #
         # Minimal mode integrates dt/d(ln T) = dlnadlnT(T)/H(T) straight over
         # ln T (no a(T) inversion anywhere -- see _integrate_time_over_lnT for
-        # the accuracy argument and the C "Branch E" counterpart). Only
-        # external_scale_factor, which has no closed-form d(ln a)/d(ln T),
-        # still needs the historical invert-then-integrate-over-ln-a route.
+        # the accuracy argument). Only external_scale_factor, which has no
+        # closed-form d(ln a)/d(ln T), still needs the
+        # invert-then-integrate-over-ln-a route.
         if dlnadlnT is not None:
             t_vec, Tg_vec, a_arr = self._integrate_time_over_lnT(
                 a_of_T, dlnadlnT, T_sol, Tnue_of_Tg, Tnumu_of_Tg,
@@ -931,7 +922,7 @@ class StandardBackground(Background):
         an inverse lookup.  The output grid is ``T_sol`` itself, so ``Tg_vec``
         is exact too.
 
-        This mirrors ``combined_bg_rhs`` ("Branch E") in
+        This mirrors ``combined_bg_rhs`` in
         ``primat-c/src/background.c``, which integrates the same chain-rule
         right-hand side over ``lnT``; the C co-integrates ``x = ln(aT)`` in the
         same pass to avoid any a(T) lookup, which Python does not need because
@@ -1009,28 +1000,15 @@ class StandardBackground(Background):
         T_grid = T_sol                          # already sampled low→high
         a_grid = a_of_T(T_grid)                  # low a → high a (a_of_T is array-safe)
 
-        # Linear, deliberately -- and deliberately NOT matching the C backend,
-        # which fits a not-a-knot cubic over these same nodes
-        # (background.c's `T_of_a_smooth`) for its own ODE right-hand side.
-        #
-        # That looks like a parity gap and was reviewed as one, but the C's
-        # cubic is a *performance* workaround, not an accuracy improvement: its
-        # RK45 stepper was rejecting ~65% of steps on the curvature kinks at
-        # every node, making that one ODE ~40x more expensive, and its comment
-        # is explicit that "the solution itself [is] unchanged -- only how
-        # cheaply the same tolerance is reached". LSODA here has no such
-        # problem, so there is nothing to buy.
-        #
-        # Importing the cubic anyway was tried and measured WORSE: Python's
-        # external-mode t(T) self-convergence (600 -> 9600 nodes/decade) went
-        # from 5.67e-06 to 7.80e-06. The reason is that in this mode a(T) is
-        # itself a table read (the NEVO `x` column), so these nodes do not
-        # sample a smooth function -- fitting a cubic through them manufactures
-        # curvature the data does not contain. Cross-backend YP also degraded
-        # 2.45e-07 -> 3.83e-06.
-        #
-        # So: the two backends genuinely differ here, and that is the right
-        # outcome. Each uses the interpolant suited to its own integrator.
+        # Linear, deliberately, and deliberately unlike the C backend, which
+        # fits a not-a-knot cubic over these same nodes. That cubic is a
+        # performance workaround for C's RK45 stepper, which otherwise rejects
+        # steps on the curvature kinks at every node; LSODA here does not, so
+        # there is nothing to buy. A cubic would in fact cost accuracy: in
+        # external mode a(T) is a table read (the NEVO `x` column), so fitting
+        # a cubic through these nodes manufactures curvature the data does not
+        # contain. Each backend uses the interpolant suited to its integrator;
+        # tests/backend_divergence.py accounts for the difference.
         T_of_a = interp1d(a_grid, T_grid, bounds_error=False, fill_value="extrapolate")
 
         a_ini = a_of_T(Tstartcosmo)
@@ -1096,21 +1074,16 @@ class StandardBackground(Background):
 
         # Log-log rather than linear: both relations are near power laws over
         # ~4.6 decades, and T_of_t sits in every nuclear-network RHS call.
-        # See _loglog_interp1d for the measured gain (worst case 1.35e-05 ->
-        # 8.8e-07 on t_of_T, typical ~1e-09).
+        # See _loglog_interp1d.
         self.t_of_T = _loglog_interp1d(Tg_vec, t_vec)
         self.T_of_t = _loglog_interp1d(t_vec, Tg_vec)
         self.TnuofT = interp1d(Tg_vec, Tnu_avg_vec, bounds_error=False,
                                 fill_value="extrapolate", kind='linear')
         self.a_of_T = a_of_T   # already vectorised: np.exp(interp1d(log T))
         # Public T(a), rebuilt here from the *final* (a, T) pairs rather than
-        # taken from the time integration. In minimal mode those pairs are
+        # taken from the time integration: in minimal mode those pairs are
         # exact (Tg_vec is step 2's own grid, a_arr = a_of_T(Tg_vec) with the
-        # log-log a_of_T), so this inverse no longer inherits the error that
-        # the historical t(a) route injected -- see
-        # :meth:`_integrate_time_over_lnT`. Kept a linear interpolant, matching
-        # background.h's "T_of_a is always a linear interpolant" contract and
-        # the C backend's cpr_bg_T_of_a.
+        # log-log a_of_T). Linear, matching the C backend's cpr_bg_T_of_a.
         self.T_of_a = interp1d(a_arr, Tg_vec, bounds_error=False,
                                 fill_value="extrapolate", kind='linear')
         self.a_of_t = interp1d(t_vec, a_arr, bounds_error=False,

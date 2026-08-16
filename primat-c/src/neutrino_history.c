@@ -40,13 +40,10 @@ void cpr_resolve_nevo_path(const CPRConfig *cfg, const char *override,
 /* Index i such that asc[i] <= xq <= asc[i+1] (clamped to [0, n-2]); caller
  * has already checked xq is within [asc[0], asc[n-1]].
  *
- * Binary, not the linear scan this used to be. The old comment justified the
- * scan with "called O(1) times per weak-rate/background evaluation", which is
- * true of the thermo tables but not of the one caller that matters:
+ * Binary rather than a linear scan because of the one caller that matters:
  * df_2d_lookup brackets logxNEVO_asc -- the ~600-row NEVO spectral table --
  * once per *integrand* evaluation of the spectral-distortion weak-rate term,
- * i.e. across a whole quadrature grid, so the scan ran up to ~600 iterations
- * per call. Same result, log(n) instead of n. */
+ * i.e. across a whole quadrature grid. */
 static size_t bracket(const double *asc, size_t n, double xq)
 {
     if (n < 2) return 0;   /* degenerate; callers guarantee n >= 1 only */

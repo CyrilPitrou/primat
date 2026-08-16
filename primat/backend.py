@@ -12,89 +12,30 @@ built successfully -- see ``setup.py``'s ``optional_build_ext``, which lets
 ``pip install`` succeed even without a C compiler). :func:`run_bbn` is the
 single dispatch entry point; everything else in this module supports it.
 
-Feature gap (the one remaining C-unsupported ``PRIMAT.__init__``
-extension):
+Every ``PRIMAT.__init__`` feature works on both backends except one:
+``background=`` (a user-supplied :class:`primat.background.Background`
+subclass) cannot cross the C ABI, so it forces Python under
+``force_backend in (None, "auto")`` and raises ``ValueError`` under
+``force_backend="c"``. ``extra_rho`` crosses as a tabulated ``(Tg, rho)``
+handoff (:func:`_tabulate_extra_rho`), the rest as ordinary ``params`` keys.
 
-* ``background=`` (a custom :class:`primat.background.Background` object) --
-  an inherently-Python extension point (arbitrary user Python subclassing the
-  background), with no way to cross the C ABI. A non-``None`` ``background=``
-  always forces the Python backend under ``force_backend in (None, "auto")``,
-  and raises ``ValueError`` under ``force_backend="c"``.
+``data_dir`` is the one params key needing special handling: it must *also*
+go to ``_c_ext.run_bbn``/``run_mc`` positionally, because the extension's
+``cpr_config_init_defaults`` reads ``csv/nuclides.csv`` before any params key
+is applied. :func:`_c_data_dir` takes it from the validated config, so a
+``~`` path arrives already expanded.
 
-The former ``extra_rho`` and ``decay_era`` gaps are now *closed*:
+:func:`run_mc` is the MC counterpart, returning the same
+:class:`primat.main.MCResult` either way. The C path draws from a
+pthread/xoshiro256** stream rather than NumPy's ``default_rng``, so samples
+match only statistically across backends — which is why :func:`run_mc` adds
+one guard to ``mc_uncertainty``'s own: ``prev.backend`` must equal the
+backend about to run, or the ``prev`` is ignored (never an error, never a
+forced switch).
 
-* ``extra_rho`` (extra Friedmann energy-density callables) is supported on
-  the C backend via a tabulated handoff -- :func:`_tabulate_extra_rho`
-  evaluates the summed ``rho(Tg)`` on a dense log-Tg grid and passes the
-  ``(Tg[], rho[])`` arrays to the C extension, which splines them and adds
-  ``rho(Tg)`` inside ``cpr_bg_Hubble`` (see ``primat-c/src/background.c`` and
-  ``config.h``'s ``extra_rho_*`` fields). Both backends agree to the
-  cross-backend tolerance.
-
-* ``decay_era`` (the long-lived-isotope Decay-Time era past ``T_end``) is
-  ported: ``cpr_nuclear_network_decay_era`` (``primat-c/src/nuclear_network.c``)
-  mirrors ``_integrate_decay_era``'s matrix-exponential decay propagation
-  (scaling-and-squaring Padé-13). It changes no result-dict observable on
-  either backend (``Y_final`` is the end-of-LT state); its only output is the
-  optional ``output_decay_evolution`` TSV, which both backends write in the
-  identical schema.
-
-Set ``PRIMAT_BACKEND_LOG=1`` in the environment (or call with
-``log_backend=True``) to print, on every :func:`run_bbn`/:func:`run_mc` call,
-which backend actually ran and why -- chiefly to catch a silent
-``force_backend="auto"`` fallback to Python (e.g. because a C-unsupported
-feature was requested, or the extension failed to build) during development.
-
-``custom_network`` (the GUI "Customise Reactions" override: removed/replaced/
-added reactions plus rate-table overrides) *is* supported on both backends:
-``primat-c``'s ``cprimat_run``/``cpr_mc_uncertainty`` take an optional
-``CPRCustomNetwork*`` (``primat-c/include/network_data.h``), and
-``primat/_primat_c_src/_wrapper.c`` parses the same dict shape
-(``UpdateNuclearRates``/``kept_to_custom_network``, see
-``primat/network_data.py``/``primat/gui/custom_rates.py``) into one. It is no
-longer part of ``python_only_feature`` below.
-
-``output_time_evolution=True`` *is* supported on both backends: the C
-extension's ``cprimat_run`` populates ``CPRResults``'s
-``evol_*`` in-memory arrays (``primat-c/include/api.h``) and
-``primat/_primat_c_src/_wrapper.c`` hands them back as an ``"evolution"`` dict
-key (plain Python lists, no numpy C-API dependency in the extension); this
-module assembles the same :class:`primat.evolution.EvolutionResult` shape
-the Python backend produces, with no disk I/O on either backend's part.
-
-``data_dir``/``user_nuclear_dir`` (see ``docs/howto/data-overlays.md``)
-*are* supported on both backends: ``data_dir`` fully
-replaces the shipped data tree; ``user_nuclear_dir`` is an additive overlay
-for nuclear networks and rate tables.  They are ordinary ``params`` dict keys
-applied generically via ``cpr_config_set_by_name`` on the C side, so no
-special-casing is needed here — except that ``data_dir`` must *also* be
-forwarded as the ``data_dir`` positional argument to ``_c_ext.run_bbn``/
-``_c_ext.run_mc``, because the C extension's ``cpr_config_init_defaults``
-loads ``csv/nuclides.csv`` from that argument before any ``params`` key is
-applied. :func:`_c_data_dir` takes it from the *validated* config rather than
-from the raw dict, so a ``~``-prefixed path reaches C already expanded (the
-Python side expands it via ``config._PATH_PARAMS``).
-
-:func:`run_mc` is the MC counterpart of :func:`run_bbn`: it dispatches between
-``primat._primat_c``'s ``run_mc`` (wrapping ``primat-c/src/mc.c``'s threaded
-``cpr_mc_uncertainty``) and ``primat.main.mc_uncertainty`` (joblib), returning
-the same :class:`primat.main.MCResult` shape either way -- the "common
-language" the two backends share for MC results. The C path uses a
-pthread/xoshiro256** RNG, *not* NumPy's
-``default_rng``, so individual samples are not bit-for-bit comparable across
-backends (only statistically, mean/std convergence -- see ``mc.h``).
-
-``prev`` (incremental sample reuse) *is* supported on the C path, mirroring
-``cpr_mc_uncertainty``'s ``prev_centrals``/``prev_values`` parameters (see
-``mc.h``): :func:`run_mc` checks the same reuse-guard ``mc_uncertainty`` does
-internally (seed/quantities/params/custom_network all matching), plus one
-more condition the C side cannot check for itself -- ``prev.backend`` must
-equal the backend about to compute the extension, since the two backends'
-RNG streams are not interchangeable. A ``prev`` that fails the guard (e.g.
-computed by the other backend) is silently ignored, exactly like
-``mc_uncertainty``'s own fallback -- never an error, and never a forced
-backend switch. ``custom_network`` is supported on both backends, same as
-:func:`run_bbn`.
+Set ``PRIMAT_BACKEND_LOG=1`` (or pass ``log_backend=True``) to print which
+backend ran and why — chiefly to catch a silent ``"auto"`` fallback to Python
+during development.
 """
 from __future__ import annotations
 

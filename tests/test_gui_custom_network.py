@@ -1332,7 +1332,7 @@ def test_reproduction_bundle_matches_gui_bit_for_bit(base, label, mode, backend,
 
 # ---------------------------------------------------------------------------
 # Post-run "Download network (zip)" must export the tables the run ACTUALLY
-# used, not an assumed "<name>_primat.txt" (pass-9 review finding F9.1)
+# used, not an assumed "<name>_primat.txt"
 # ---------------------------------------------------------------------------
 
 def test_export_of_small_parthenope_keeps_its_own_rate_tables():
@@ -1393,9 +1393,10 @@ def test_small_parthenope_export_roundtrips_to_the_same_abundances(tmp_path):
     """GOAL: exporting an unmodified ``small_parthenope`` run and re-running the
     exported overlay must reproduce that run's abundances exactly.
 
-    The physics half of F9.1. Before the fix the round trip silently returned
-    the ``small`` network's numbers instead -- D/H 2.4999622e-05 ->
-    2.4358771e-05 (-2.6%) and Li7/H 4.812238e-10 -> 5.557655e-10 (+15.5%),
+    The physics half of that guarantee. With the wrong tables the round trip
+    silently returns the ``small`` network's numbers instead -- D/H
+    2.4999622e-05 -> 2.4358771e-05 (-2.6%) and Li7/H 4.812238e-10 ->
+    5.557655e-10 (+15.5%),
     against a +-3e-9 same-backend regression pin. The second assertion is the
     one that actually catches the substitution: an equality check alone would
     still pass if *both* sides silently used primat's tables.
@@ -1437,7 +1438,7 @@ def test_small_parthenope_export_roundtrips_to_the_same_abundances(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Upload robustness + export memoisation (pass-9 review findings F9.2, F9.4)
+# Upload robustness + export memoisation
 # ---------------------------------------------------------------------------
 
 def test_binary_upload_raises_a_clean_value_error():
@@ -1475,7 +1476,7 @@ def test_export_zip_cached_matches_export_zip():
     and a 4.3 MB deflate, ~0.47 s per interaction. ``export_zip_cached``
     collapses that to once per distinct input -- it must not change the
     output, and must key on ``cfg.network`` (which decides *which* table an
-    unmodified reaction exports, see F9.1).
+    unmodified reaction exports, see above).
     """
     import re
 

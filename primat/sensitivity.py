@@ -2,9 +2,7 @@
 """
 primat.sensitivity — logarithmic sensitivity of BBN observables to parameters.
 
-This module promotes the ad-hoc finite-difference loop that used to live in
-``notebooks/Sensitivity.ipynb`` into a reusable public API. Referees of BBN
-papers routinely ask for a *sensitivity table*
+Referees of BBN papers routinely ask for a *sensitivity table*
 
 .. math::
 
@@ -81,14 +79,12 @@ Example
 | Omegabh2 | +0.0391 | -1.6501 |
 | $N_{\\rm eff}$ | +0.1647 | +0.4104 |
 
-(Actual output of the default backend; the last digit or two move with the
-backend and the solver tolerances.) Read every row the same way — the last one
-as "1 % more radiation density, measured as :math:`N_{\\rm eff}`, gives 0.16 %
-more helium and 0.41 % more deuterium". The familiar
-:math:`{\\rm D/H} \\propto (\\Omega_b h^2)^{-1.6}` scaling is the ``Omegabh2``
-row. A step of ``0.1`` rather than ``1.0`` keeps the last row a derivative:
-``step=1.0`` is a :math:`\\pm 33\\,\\%` excursion in :math:`N_{\\rm eff}`, whose
-secant (``+0.1666`` / ``+0.4135``) differs from the tangent by ~1 %.
+Read every row the same way — the last one as "1 % more radiation density,
+measured as :math:`N_{\\rm eff}`, gives 0.16 % more helium and 0.41 % more
+deuterium". The familiar :math:`{\\rm D/H} \\propto (\\Omega_b h^2)^{-1.6}`
+scaling is the ``Omegabh2`` row. The ``0.1`` step keeps that row a derivative:
+``step=1.0`` would be a :math:`\\pm 33\\,\\%` excursion in
+:math:`N_{\\rm eff}`, far enough for the secant to depart from the tangent.
 """
 
 from __future__ import annotations

@@ -38,22 +38,14 @@ def _weak_rate_loglog_interp(T, rate):
     The forward (n->p) and backward (p->n) rates span ~5 orders of magnitude
     across the BBN temperature grid and are smooth, nearly power-law functions
     of T, so a cubic spline in ``(log10 T, log10 Gamma)`` space is far more
-    accurate than a spline in linear (T, Gamma) space at a fixed node density
-    (measured: ~1e-6 vs ~1e-5..1e-4 relative around n/p freeze-out for the
-    shipped 80-points/decade grid). Crucially this is the *same* scheme the
-    shipped nuclear rate tables already use (:func:`network_data._resample_rate_table`)
-    and that the C backend uses for the weak rates
-    (``cpr_weak_rate_nTOp``/``cpr_resample_rate_table``, both log10-log10
-    not-a-knot cubic via ``cpr_cubic_spline_fit_notaknot``). Using it here
-    replaces the previous ``interp1d(kind='quadratic')`` in linear space, whose
-    curve between nodes differed from the C backend's local 3-point quadratic
-    by up to ~1e-4 in the freeze-out window and was the dominant cause of the
-    C-vs-Python D/H parity gap (see ``tests/test_backend_parity.py``).
-
-    ``interp1d(kind='cubic')`` is scipy's not-a-knot cubic spline, matching the
-    C ``cpr_cubic_spline_fit_notaknot`` boundary condition, so the two backends
-    now agree to the spline's own accuracy rather than to the ~1e-4 gap between
-    two unrelated "quadratic" schemes.
+    accurate than one in linear (T, Gamma) space at the same node density.
+    This is the scheme the shipped nuclear rate tables use
+    (:func:`network_data._resample_rate_table`) and the one the C backend uses
+    for the weak rates (``cpr_weak_rate_nTOp``). ``interp1d(kind='cubic')`` is
+    scipy's not-a-knot cubic, matching C's ``cpr_cubic_spline_fit_notaknot``
+    boundary condition — the two backends must not differ here, since a
+    weak-rate scheme mismatch dominates every other parity term (see
+    ``tests/test_backend_parity.py``).
 
     Non-positive prefix (backward rate)
     -----------------------------------
@@ -77,9 +69,8 @@ def _weak_rate_loglog_interp(T, rate):
     callable ``f(T_K) -> rate`` accepting a scalar or array of temperatures [K]
     and returning the rate in units of 1/tau_n, log10-log10 cubic-interpolated
     (log10-log10 linear if the positive suffix has fewer than the 4 knots a
-    not-a-knot cubic needs -- an edge case that never arises for the default
-    grids, kept only so a pathologically short custom grid still works and
-    still matches the C backend's identical fallback).
+    not-a-knot cubic needs -- unreachable with the default grids, and matching
+    the C backend's identical fallback).
     """
     T = np.asarray(T, dtype=float)
     rate = np.asarray(rate, dtype=float)
@@ -123,42 +114,27 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
 
     Γ_{n→p} = K × [ (CCR or Born) (+ FMCCR/FMNoCCR) (+ SD_CCR/SD) (+ SD_FMCCR/SD_FM) ]
 
-    The finite-temperature CCRTh correction is NOT included here — it is stored
-    separately (``nTOp_thermal_<hash>.txt``) and recombined at point of use in
-    :func:`RecomputeWeakRates` via :func:`_thermal_correction_interpolants`.
-
-    where::
+    which flag selects which term is :func:`_correction_terms`'s business; the
+    terms themselves are::
 
       _L_BORN    — Born rate ∫ p² [χ₊(E)+χ₊(−E)] dp  (Phys. Rep. Eqs. 77–78).
-                   Active when cfg.radiative_corrections=False.
       _L_CCR     — Born integrand × FermiCoulomb × RadCorrResum (T=0 Coulomb
                    + resummed radiative corrections; Phys. Rep. Eq. 101).
-                   Active when cfg.radiative_corrections=True (replaces Born).
       _L_FMCCR   — Finite-nucleon-mass correction × Coulomb × radiative
                    (Fokker-Planck expansion; Phys. Rep. §III.G).
-                   Active when cfg.finite_mass_corrections=True and
-                   cfg.radiative_corrections=True.
-      _L_FMNoCCR — Finite-nucleon-mass correction without Coulomb/radiative.
-                   Active when cfg.finite_mass_corrections=True and
-                   cfg.radiative_corrections=False.
-      (_L_CCRTh  — Finite-temperature radiative corrections (Brown & Sawyer 2001;
-                   Phys. Rep. §III.F, Eqs. 107–113) are NOT summed here; they are
-                   built separately by _thermal_correction_interpolants and added
-                   in RecomputeWeakRates.)
+      _L_FMNoCCR — Finite-nucleon-mass correction alone.
       _L_SD      — Born-level spectral-distortion correction (deviation of f_ν
-                   from Fermi–Dirac, passed in via dFDneu_func).  Active when
-                   dFDneu_func is supplied and cfg.radiative_corrections=False.
-      _L_SD_CCR  — Same with Coulomb × radiative factor.  Active when
-                   dFDneu_func is supplied and cfg.radiative_corrections=True.
-      _L_SD_FMNoCCR — SD-FM: finite-nucleon-mass correction applied to the
-                   spectral-distortion deviation instead of the plain
-                   Fermi-Dirac (generate_rates/PRIMAT-Main-gray.m's δχFM).
-                   Active when dFDneu_moments is supplied (i.e.
-                   cfg.analytic_distortions=True), cfg.finite_mass_corrections
-                   =True and cfg.radiative_corrections=False.
-      _L_SD_FMCCR — Same with Coulomb × radiative factor.  Active when
-                   dFDneu_moments is supplied, cfg.finite_mass_corrections=
-                   True and cfg.radiative_corrections=True.
+                   from Fermi–Dirac, passed in via dFDneu_func).
+      _L_SD_CCR  — Same with Coulomb × radiative factor.
+      _L_SD_FMNoCCR — Finite-nucleon-mass correction applied to the distortion
+                   instead of the plain Fermi-Dirac
+                   (generate_rates/PRIMAT-Main-gray.m's δχFM).
+      _L_SD_FMCCR — Same with Coulomb × radiative factor.
+
+    The finite-temperature CCRTh correction (Brown & Sawyer 2001; Phys. Rep.
+    §III.F, Eqs. 107–113) is deliberately NOT summed here — see
+    :func:`_correction_terms` for why. It is cached separately
+    (``nTOp_thermal_<hash>.txt``) and recombined in :func:`RecomputeWeakRates`.
 
     The overall rate constant K is normalised via the neutron lifetime::
 

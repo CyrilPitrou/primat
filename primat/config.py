@@ -291,8 +291,7 @@ DEFAULT_PARAMS: dict = {
     # Maximum T9 [GK] on the master grid.  Deliberately *below* the MT era's
     # start (T_weak = 1 MeV = 11.6 GK): the shipped tables' own source data
     # stops at T9 = 10, so rates above it are extrapolated off the last grid
-    # cell either way.  Verified numerically inert (<= 2e-6 on every
-    # observable) -- see load_network's grid comment in network_data.py.
+    # cell either way -- see load_network's grid comment in network_data.py.
     "rate_grid_T9_max":          10.0,
 
     # Network selector.  "small" is the built-in ORDER_SMALL network.  Any other
@@ -1805,8 +1804,7 @@ class PRIMATConfig:
                                   f"x,z,Tnue,Tnumu,Tnutau,N[,extra] thermo table)")
 
         # The shipped spectral table has 86 columns TOTAL = 6 thermo + 80
-        # spectral, so the shipped NEVOGrid.csv has 80 y-nodes.  (Both numbers
-        # used to be quoted as "86", which read as 86 spectral columns.)
+        # spectral, so the shipped NEVOGrid.csv has 80 y-nodes.
         n_grid_nodes = 80  # shipped NEVOGrid.csv length; overridden below if a
                            # custom spectral table declares a different width
         spectral_overridden = self.nevo_spectral_file is not None

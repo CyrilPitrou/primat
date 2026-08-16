@@ -80,8 +80,8 @@ void cpr_decay_table_free(CPRDecayTable *t);
 
 /* One row of data/nuclear/data/detailed_balance.csv: the alpha/beta/gamma
  * detailed-balance coefficients and Q-value [keV] used to derive each
- * reaction's reverse rate (Phys. Rep. detailed-balance formula -- ported
- * with the physics in Phase 4, not here). */
+ * reaction's reverse rate (Phys. Rep. detailed-balance formula, applied by
+ * the physics layer below, not here). */
 typedef struct {
     char reaction[64];
     double Q_keV, alpha, beta, gamma;
@@ -98,7 +98,8 @@ void cpr_detailed_balance_free(CPRDetailedBalanceTable *t);
 
 /* One row of data/nuclear/data/reactions_large.csv: reactants/products as
  * raw "+"-joined strings (e.g. "B10+He3" / "C11+H2") -- left untokenised
- * here; reaction_stoichiometry's "TO"-splitting logic is Phase 4 physics. */
+ * here; reaction_stoichiometry's "TO"-splitting logic belongs to the physics
+ * layer below. */
 typedef struct {
     char name[64];
     char reactants[64];
@@ -117,7 +118,7 @@ int cpr_load_reactions_large(const char *path, CPRReactionTable *out,
 void cpr_reaction_table_free(CPRReactionTable *t);
 
 /* ========================================================================
- * Phase 4 physics layer.
+ * Physics layer.
  * ========================================================================
  */
 
@@ -211,8 +212,7 @@ typedef struct {
      * T9 grid (`grid` above) used by cpr_network_fill_buffer -- T9 decreases
      * monotonically and slowly across the millions of BDF evaluations in a
      * solve, so this turns the fill_buffer grid lookup from an O(log n_grid)
-     * (or worse, previously a full O(n_grid) linear scan) search into an
-     * O(1) one in the common case. Any initial value is a safe starting
+     * search into an O(1) one in the common case. Any initial value is a safe starting
      * guess (0 works). Owned per-CPRNetworkDef, so each MC worker thread's
      * own copy (see mc.c's worker_setup) has independent, race-free state. */
     size_t grid_hint;
@@ -220,10 +220,8 @@ typedef struct {
 
 /* Builds the selected network from its text reaction list -- the master
  * entry point (port of load_network). `era` is "MT" (intersect with the
- * fixed historical ORDER_MT/full-small-list order -- always integrated
- * even for `network="large"`, since the full network is too stiff
- * there) or "LT" (the full selected
- * list). `reaction_names`/`n_reaction_names` mirror load_network's
+ * fixed ORDER_MT list -- always integrated even for `network="large"`, since
+ * the full network is too stiff there) or "LT" (the full selected list). `reaction_names`/`n_reaction_names` mirror load_network's
  * `reaction_names` override parameter: pass NULL/0 to read
  * cfg->network's own file (data/nuclear/networks/<network>.txt, or
  * small.txt's 12 reactions for network="small" -- both are real on-disk

@@ -70,17 +70,11 @@ from .cache_utils import (constants_hash, fingerprint_hash,
 # Bump on any change to the electron-thermo cache's numerical content or
 # layout (see Plasma._build_electron_tables).
 #
-# v2: the four _*_exact quadratures switched from an absolute tolerance
-# (epsabs=1e-12) to a purely relative one (epsabs=0, epsrel=1e-12). At the
-# grid's low-T edge, x = me/Tgamma = 30, the integrals are of order
-# e^-30 ~ 9e-14 -- SMALLER than the old epsabs -- so quad stopped on its very
-# first estimate and the tabulated values there carried no significant digits.
-# Harmless in itself (rho_e/rho_gamma <= 5e-7 in that region, and everything
-# below Tmin = me/30 is hard-zeroed before the interpolant is consulted), but
-# it also meant the Python- and C-written tables disagreed by ~1e-4 on
-# rho_e/p_e while sharing one fingerprint, so whichever backend last recomputed
-# silently became the other's plasma input. Only the tail moves; every row
-# above ~0.05 MeV is unchanged to ~1e-10. Mirrored by
+# v2: the four _*_exact quadratures use a purely relative tolerance
+# (epsabs=0, epsrel=1e-12). An absolute one is useless at the grid's low-T
+# edge, x = me/Tgamma = 30, where the integrals are themselves of order
+# e^-30: quad stops on its first estimate and the tabulated values carry no
+# significant digits. Mirrored by
 # ELECTRON_THERMO_FORMAT_VERSION in primat-c/src/plasma.c and by that file's
 # two-pass elec_integrate.
 #
@@ -480,12 +474,11 @@ class Plasma:
             (and derivatives) are summed to give the total correction.
             Both headers must carry the fingerprint of the current constants
             and grid (:func:`primat.qed_pressure.qed_fingerprint`).
-            (Backward compat: if no two-file pair is on disk at all, falls back
-            to the older single 7-column ``QED_tables.txt``, then to the even
-            older legacy ``QED_P_int.txt`` / ``QED_dP_intdT.txt`` /
-            ``QED_d2P_intdT2.txt`` trio, in that order.  Those layouts predate
-            fingerprinting, so they are used only in the absence of a
-            current-format pair — never in preference to rebuilding a stale one.)
+            (Backward compat: with no two-file pair on disk at all, falls back
+            to the single 7-column ``QED_tables.txt``, then to the
+            ``QED_P_int.txt`` / ``QED_dP_intdT.txt`` / ``QED_d2P_intdT2.txt``
+            trio.  Both predate fingerprinting, so neither is ever preferred
+            to rebuilding a stale current-format pair.)
 
         **Analytic fallback** (``recompute_qed_corrections=False``, no files at
         all, or a pair whose fingerprint does not match):
@@ -510,13 +503,11 @@ class Plasma:
         the tables happen to be on disk cannot shift the answer.
 
         The α and mₑ used are ``cfg.alphaem`` and ``cfg.me``, passed explicitly
-        to :func:`~primat.qed_pressure.compute_qed_pressure_tables` (matching
-        what ``plasma.c`` has always passed from ``g_const``), so the solver has
-        one source of truth for them; :mod:`primat.qed_pressure`'s module-level
-        ``_ALPHA_FS``/``_ME_MEV`` are now only a standalone-use default.  Both
-        constants are covered by the files' fingerprint header, so a table
-        generated with different values is detected and rebuilt rather than
-        loaded silently — which is what it used to do.
+        to :func:`~primat.qed_pressure.compute_qed_pressure_tables`, so the
+        solver has one source of truth for them (that module's ``_ALPHA_FS``/
+        ``_ME_MEV`` are a standalone-use default only).  Both are covered by
+        the files' fingerprint header, so a table generated with different
+        values is rebuilt rather than loaded silently.
 
         The QED pressure decomposition follows PRIMAT-Main.m:
           - δP_a [O(e²)]:  leading one-loop correction (dPa in PRIMAT)
@@ -665,17 +656,12 @@ class Plasma:
             self.d2PQEDdT2 = lambda T, _s=spl_d2P: float(_s(T))
             return
 
-        # Load from the saved file(s).  The interpolant is the SAME
-        # not-a-knot cubic spline the analytic branch above builds, so the
-        # three modes documented in this method's docstring really are
-        # interchangeable.  It used to be a linear interp1d here, on the
-        # reasoning that "linear matches file precision" -- but the limiting
-        # error is the grid spacing, not the stored digits: 500 log-spaced
-        # points over [1e-3, 1e2] MeV is d(lnT) = 0.023, and delta_P ~ T^4, so
-        # linear interpolation carried a ~8e-4 relative error against the same
-        # table read cubically.  Since delta_P/rho_pl ~ 4e-4 during BBN that
-        # displaced Neff in its 6th decimal purely according to whether the
-        # tables happened to be on disk.  Pinned by
+        # Load from the saved file(s), through the SAME not-a-knot cubic the
+        # analytic branch builds, so the three modes documented in this
+        # method's docstring really are interchangeable. Cubic, not linear: the
+        # limiting error is the grid spacing rather than the stored digits, and
+        # a linear read of this table displaces Neff in its 6th decimal purely
+        # according to whether the files happen to be on disk. Pinned by
         # tests/test_qed_pressure.py::test_file_and_analytic_paths_agree.
         if split_present:
             # Current format: two 4-column files, one per order in e
@@ -864,9 +850,9 @@ class Plasma:
         # Hash-named files just accumulate instead -- and `primat --cache-info`
         # / `--cache-clear` now cover plasma/ so they can be pruned.
         #
-        # There is deliberately NO fallback to the old fixed `electron_thermo_
-        # cache.txt` name: a miss costs ~0.7 s of quad calls, which is cheaper
-        # than carrying compatibility code for a file that any run regenerates.
+        # There is deliberately NO fallback to a fixed, unhashed filename: a
+        # miss costs ~0.7 s of quad calls, cheaper than carrying compatibility
+        # code for a file any run regenerates.
         cache_name  = f"electron_thermo_{fp_hash}.txt"
         # Overlay read (cache_dir first, else shipped copy); write to the
         # writable base's plasma/ subdir (cache_dir if set, else package tree).

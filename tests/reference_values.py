@@ -107,9 +107,9 @@ NUCLIDE_REFERENCE = {
 NUCLIDE_COLUMNS = ("small", "large_amax8", "large")
 
 # Relative bound for a live default-precision solve against NUCLIDE_REFERENCE.
-# Measured cross-backend spread is <=2.2e-05 and the drift accumulated across
-# review passes 6-7 was <=6.2e-05, so 1e-4 is the smallest round bound that
-# does not make an ordinary numerics improvement a test failure -- while still
+# Measured cross-backend spread is <=2.2e-05 and the accumulated drift from
+# successive numerics improvements <=6.2e-05, so 1e-4 is the smallest round
+# bound that does not make such an improvement a test failure -- while still
 # catching, say, the ~1750x jump in `n` that a regression of the reverse-rate
 # clamp (primat/network_data.py, "exothermic blow-up") would produce.
 NUCLIDE_REL_TOL = 1e-4

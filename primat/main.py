@@ -109,60 +109,40 @@ class PRIMAT:
     params : dict, optional
         Run-time parameters overriding defaults (see ``config.DEFAULT_PARAMS``).
     extra_rho : list of callable, optional
-        Extra contributions to the total energy density entering the
-        Friedmann equation.  Each element is a function
-        ``rho(Tg) -> MeV^4`` of the photon temperature ``Tg`` [MeV],
-        summed into ``rho_tot`` by :meth:`primat.background.StandardBackground.Hubble`.
-        This is the generic plug-in point for "dark sector" components; Early
-        Dark Energy (``cfg.fEDE > 0``) is implemented as the first such
-        plug-in (see :meth:`primat.background.StandardBackground._setup_EDE`)
-        and is appended automatically -- callers do not need to include it
-        here.
+        Extra contributions to the Friedmann energy density, each a function
+        ``rho(Tg) -> MeV^4`` of the photon temperature [MeV], summed into
+        ``rho_tot`` by :meth:`primat.background.StandardBackground.Hubble`.
+        This is the plug-in point for dark-sector components; Early Dark
+        Energy (``cfg.fEDE > 0``) is appended automatically, so callers need
+        not include it. Ignored with a warning if ``background`` is supplied.
 
         Example: a constant extra radiation density of dRho [MeV^4]::
 
             >>> PRIMAT({"network": "small"}, extra_rho=[lambda Tg: dRho])
 
-        Ignored (with a warning) if ``background`` is supplied: a caller
-        providing a full :class:`~primat.background.Background` instance
-        is expected to fold any extra energy density into it directly.
     background : primat.background.Background, optional
-        A pre-built background instance to drive the nuclear network with,
-        in place of the standard ``cfg.custom_background``-driven dispatch
-        below. This is the seam for a fully custom expansion history (e.g. a
-        non-standard cosmology that needs more than ``extra_rho`` can
-        express): subclass :class:`primat.background.Background` -- whose
-        docstring lists the compulsory (``T_of_t``, ``t_of_T``, ``rhoB_BBN``,
-        ``weak_nTOp_frwrd``/``weak_nTOp_bkwrd``) and optional methods -- and
-        pass an instance here. Since ``Background.__init__`` already takes
-        ``(cfg, plasma, extra_rho)``, ``PRIMAT`` takes ``self.cfg``/``self.plasma``
-        *from the supplied instance* (``background.cfg``/``background.plasma``)
-        rather than building its own, so the nuclear network and the
-        background always agree on which config/plasma drove them -- build
-        the instance with your own ``PRIMATConfig``/``Plasma`` first, then hand
-        it to ``PRIMAT``. ``None`` (default) preserves today's
-        ``cfg.custom_background``-based dispatch (:class:`StandardBackground`
-        or :class:`CustomBackground`) using ``params``/``extra_rho`` as usual.
-        Mutually exclusive with ``params``/``extra_rho``/``cfg.custom_background``,
-        which only make sense for the default dispatch; supplying
-        ``background`` together with ``params`` or ``extra_rho`` emits a
-        warning, and the supplied ``background`` instance wins.
+        A pre-built background driving the nuclear network, for an expansion
+        history beyond what ``extra_rho`` can express: subclass
+        :class:`primat.background.Background` (its docstring lists the
+        compulsory and optional methods) and pass an instance. ``PRIMAT``
+        then takes ``self.cfg``/``self.plasma`` *from that instance*, so
+        network and background always agree on which config drove them —
+        build it with your own ``PRIMATConfig``/``Plasma`` first. Mutually
+        exclusive with ``params``/``extra_rho``/``cfg.custom_background``;
+        supplying both warns and the instance wins.
 
         .. warning::
            **The n<->p weak-rate cache cannot see your background.** It is
            keyed on the config alone
            (:func:`weak_rates.cache._weak_rate_fingerprint`), while the rates
-           themselves are integrated against the ``[Tg_vec, Tnue_vec]`` grid
-           *your* instance builds -- the grid behind the T_nu(T_gamma)
-           interpolant every rate integrand reads. Two Background subclasses
-           with different neutrino histories but the same ``cfg`` therefore
-           hash to the same ``nTOp_<hash>.txt`` file, and whichever runs first
-           defines the rates the other silently reuses. If your background
-           departs from the standard T_nu(T_gamma) history, build its
-           ``PRIMATConfig`` with ``weak_rate_cache=False`` (skip the load) and
-           ``save_nTOp=False`` (skip the write-back). PRIMAT cannot detect
-           this for you, and by the time it sees your instance the rates are
-           already computed inside your constructor.
+           are integrated against the ``[Tg_vec, Tnue_vec]`` grid *your*
+           instance builds. Two subclasses with different neutrino histories
+           and the same ``cfg`` hash to the same ``nTOp_<hash>.txt``, and
+           whichever runs first defines the rates the other silently reuses.
+           If your history departs from the standard T_nu(T_gamma), set
+           ``weak_rate_cache=False`` and ``save_nTOp=False`` on its config:
+           by the time ``PRIMAT`` sees the instance, its constructor has
+           already computed the rates.
 
         Example: drive the network with a hand-built background::
 
@@ -1101,73 +1081,42 @@ def mc_uncertainty(num_mc: int, quantity: str | list[str] | None,
     num_mc : int
         Number of MC samples.
     quantity : str or list of str
-        A key from the result dict ('YPBBN', 'DoH', 'He3oH',
-        'Li7oH', 'Neff', 'YPCMB', ...) or a nuclide name ('H2', 'He4',
-        'Li7', ...) for the final mass fraction Y.  Pass a list to evaluate
-        multiple quantities in one MC pass (more efficient than separate calls).
-        This only controls which quantities are *guaranteed* present and
-        validated strictly (an unknown name raises); the returned
-        :class:`MCResult` always additionally contains every tracked
-        nuclide's final Y and every standard observable in
-        ``_DEFAULT_MC_OBSERVABLES`` that this network/custom_network actually
-        produces (``Neff``, ``YPBBN``, ``YPCMB``, ``He4oH``, ``DoH``,
-        ``He3oH``, ``He3oHe4``, ``Li7oH``, ``Li6oLi7``, ``YCNO``), at no
-        extra solving cost (each MC sample already runs a full solve). This
-        keeps a TSV dump (``primat.backend.dump_mc_samples``) complete even when the
-        caller only asked for one or two quantities for display purposes.
+        A result-dict key ('YPBBN', 'DoH', 'Neff', ...) or a nuclide name
+        ('H2', 'He4', ...) for its final mass fraction Y; a list evaluates
+        several in one pass. This only fixes what is *guaranteed* present and
+        strictly validated (an unknown name raises) — the returned
+        :class:`MCResult` always also carries every tracked nuclide and every
+        observable in ``_DEFAULT_MC_OBSERVABLES`` this network produces, at no
+        extra cost, so a TSV dump is complete whatever was asked for.
     params : dict, optional
         Base parameters for PRIMAT (e.g. Omegabh2, is_small, network).
     n_jobs : int
-        Number of parallel workers passed to joblib.Parallel (-1 = all CPUs).
-        ``n_jobs=1`` runs the samples serially *in-process* and does not import
-        joblib at all, so a lean core install (``pip install primat``, no
-        ``mc``/``recommended`` extra) can still do Monte-Carlo this way; any
-        other value needs joblib and raises an actionable ImportError if it is
-        missing.
+        Parallel workers (-1 = all CPUs). ``n_jobs=1`` runs serially in-process
+        without importing joblib, so a core install can still do Monte-Carlo;
+        any other value needs joblib and raises an actionable ImportError.
     seed : int
-        Base random seed; sample i uses seed + i for reproducibility.
-        When evaluating on a parameter grid (e.g. scanning Ω_b h²), use the
-        **same seed at every grid point** so that sample i draws the same rate
-        vector p_* everywhere.  This correlates the MC noise across the grid,
-        making any finite-sample bias cancel when comparing predictions at
-        different parameter values.
+        Base seed; sample i uses ``seed + i``. On a parameter grid use the
+        **same seed at every point**, so sample i draws the same rate vector
+        everywhere and finite-sample bias cancels between grid points.
     prev : MCResult, optional
-        A previously computed result to *extend* rather than recompute from
-        scratch.  Because sample ``i`` is fully determined by ``seed + i``, the
-        first ``min(len(prev), num_mc)`` samples are identical to ``prev`` as
-        long as the seed, the set/order of quantities, ``params`` and
-        ``custom_network`` all match, so only the missing samples
-        (``seed + n_prev .. seed + num_mc - 1``) are actually solved.  This
-        makes it cheap to refine an estimate -- e.g. going from 30 to 50
-        samples only runs the 20 new ones.  ``prev`` is silently ignored (full
-        recompute) if its ``seed``, quantities, ``params``, ``custom_network``
-        or ``backend`` (this function only reuses a ``prev`` whose ``backend``
-        is ``"python"`` or unset -- a C-backend result has incompatible RNG
-        samples, see ``primat.backend.run_mc``) differ from this call; if
-        ``num_mc`` is *smaller* than ``len(prev)``, the result is just
-        ``prev`` truncated to ``num_mc`` samples (nothing is solved).
+        A previous result to *extend*: since sample ``i`` is determined by
+        ``seed + i``, only samples ``n_prev..num_mc-1`` are solved — going
+        from 30 to 50 runs 20. Silently ignored (full recompute) unless seed,
+        quantities, ``params``, ``custom_network`` and ``backend`` all match;
+        this function reuses only ``"python"`` or unset backends, C samples
+        being from a different RNG stream. A ``num_mc`` below ``len(prev)``
+        just truncates ``prev``, solving nothing.
     custom_network : dict, optional
-        "Customise Reactions" override, forwarded to every ``PRIMAT`` instance
-        built here (see :class:`PRIMAT`'s docstring for the
-        ``{"removed": [...], "replaced": {...}, "added": {...}}`` schema).
-        Reactions listed under ``"removed"`` are excluded from the set of
-        varied rate offsets (``rate_keys``) below, since they no longer exist
-        in the network; reactions listed under ``"replaced"`` stay in
-        ``rate_keys`` and are varied using the *replacement* table's own error
-        column (``UpdateNuclearRates`` builds ``expsigma`` from it), so a
-        custom rate's uncertainty is honoured automatically; reactions listed
-        under ``"added"`` are appended to ``rate_keys`` and varied the same
-        way, since they are genuinely integrated (see
-        :func:`_mc_resolve_rate_keys`).  ``None`` (default) uses the standard,
-        uncustomised network.
+        "Customise Reactions" override, forwarded to every ``PRIMAT`` built
+        here (schema in :class:`PRIMAT`'s docstring). It also selects what is
+        varied: ``"removed"`` reactions drop out of ``rate_keys``, while
+        ``"replaced"`` and ``"added"`` ones stay in and are varied using the
+        custom table's own error column, so a user-supplied uncertainty is
+        honoured automatically (see :func:`_mc_resolve_rate_keys`).
     progress : bool, optional
-        When truthy, print a running ``N/total (XX%)`` counter to stderr as
-        samples complete, so the user can track advancement during long MC
-        runs.  One update per parallel worker chunk -- for ``n_jobs=-1``
-        (all CPUs) this gives roughly ``cpu_count`` updates over the full
-        run.  ``None`` (default) defers to ``params['show_progress']``
-        (``DEFAULT_PARAMS`` default ``True``); pass an explicit
-        ``True``/``False`` to override it for this call.
+        Print a running ``N/total (XX%)`` counter to stderr, one update per
+        worker chunk (so ~``cpu_count`` updates at ``n_jobs=-1``). ``None``
+        (default) defers to ``params['show_progress']``.
 
     Returns
     -------

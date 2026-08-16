@@ -55,22 +55,18 @@ typedef struct {
  * it is never mutated after cpr_mc_uncertainty's caller builds it).
  *
  * `prev_centrals`/`prev_values`/`n_prev` are the incremental-reuse
- * counterpart of Python's `mc_uncertainty(..., prev=...)` (primat's
- * `main.py`): pass `n_prev > 0` to reuse `n_prev` already-computed samples
- * instead of recomputing them. `prev_centrals` (length `n_quantities`,
- * parallel to `quantities`) supplies each quantity's central value (so it
- * is not recomputed); `prev_values[q]` (length `n_prev`) supplies
- * quantity q's first `n_prev` sample values, for sample indices
- * `seed .. seed+n_prev-1` -- the caller is responsible for verifying that
- * `seed`/`base_params`/`custom`/`quantities` are unchanged from the call
- * that produced these values (this function does not check; mirrors
- * Python's `mc_uncertainty` doing that check itself, but here the check is
- * pushed to the caller -- see `primat/backend.py`'s `run_mc`). Only
- * `min(n_prev, num_mc)` samples are actually reused: extra `prev_values`
- * beyond `num_mc` are ignored (truncation, nothing solved), and any
- * shortfall (`n_prev < num_mc`) is filled by solving samples
- * `seed+n_prev .. seed+num_mc-1`. Pass `n_prev=0` (with `prev_centrals`/
- * `prev_values` NULL) for an ordinary from-scratch run.
+ * counterpart of Python's `mc_uncertainty(..., prev=...)`: pass `n_prev > 0`
+ * to reuse that many already-computed samples. `prev_centrals` (length
+ * `n_quantities`) supplies each quantity's central value; `prev_values[q]`
+ * (length `n_prev`) supplies quantity q's samples for indices
+ * `seed .. seed+n_prev-1`. Only `min(n_prev, num_mc)` are reused — a surplus
+ * is truncated, a shortfall filled by solving `seed+n_prev .. seed+num_mc-1`.
+ * Pass `n_prev=0` with both pointers NULL for a from-scratch run.
+ *
+ * Validating that `seed`/`base_params`/`custom`/`quantities` match the call
+ * that produced those values is the CALLER's job — unlike Python's
+ * `mc_uncertainty`, which checks internally. See `primat/backend.py`'s
+ * `run_mc`.
  *
  * Fills `out` (zeroed first; caller must cpr_mc_result_free). Returns 0 on
  * success, nonzero with *errmsg set (caller frees) on any config/init/

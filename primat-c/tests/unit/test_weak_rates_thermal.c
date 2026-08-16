@@ -1,5 +1,5 @@
 /* test_weak_rates_thermal.c -- white-box check of the from-scratch CCRTh
- * thermal correction (Phase 3b, L_CCRTh_compute in weak_rates.c).
+ * thermal correction (L_CCRTh_compute in weak_rates.c).
  *
  * Unlike test_weak_rates.c, this file #includes weak_rates.c directly (not
  * just its header) to call L_CCRTh_compute -- a file-static function --

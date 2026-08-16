@@ -1,4 +1,4 @@
-/* _wrapper.c -- CPython bridge to primat-c's cprimat_run (PRIMAT.md S5.1).
+/* _wrapper.c -- CPython bridge to primat-c's cprimat_run.
  *
  * Exposes a single function, run_bbn(params, data_dir) -> dict, that:
  *   1. builds a CPRConfig with cpr_config_init_defaults(data_dir),
@@ -138,7 +138,7 @@ static double *seq_to_doubles(PyObject *seq_obj, size_t *out_n)
     return arr;
 }
 
-/* Builds the "evolution" sub-dict (PRIMAT.md S7.2/S7.3): plain Python
+/* Builds the "evolution" sub-dict (schema: primat/evolution.py): plain Python
  * lists (not numpy arrays -- this extension carries no numpy C-API
  * dependency), converted to an EvolutionResult Python-side by
  * primat/backend.py via np.asarray. "Y" is itself a sub-dict keyed by
@@ -215,7 +215,7 @@ static PyObject *evolution_to_dict(const CPRResults *r)
 /* Builds a Python dict mirroring PRIMAT.solve()'s result dict (main.py),
  * plus a "Y_final" sub-dict of every tracked nuclide's final mass
  * fraction (mirrors NuclearNetwork.Y_final, used by get_quantity's
- * nuclide-name fallback), and an "evolution" sub-dict (PRIMAT.md S7.3)
+ * nuclide-name fallback), and an "evolution" sub-dict
  * when cfg.output_time_evolution requested it. */
 static PyObject *results_to_dict(const CPRResults *r)
 {

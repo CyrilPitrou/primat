@@ -14,15 +14,15 @@
  * integration path (cache miss) is exercised by neither this test nor the
  * current C port.
  *
- * The from-scratch thermal computation (Phase 3b, L_CCRTh_compute in
- * weak_rates.c) IS ported, but is intentionally not exercised here via
+ * The from-scratch thermal computation (L_CCRTh_compute in weak_rates.c)
+ * is intentionally not exercised here via
  * cpr_weak_rates_init: that path builds a full T-grid up to a *fixed*
  * 10 MeV boundary (cpr_T_start(), independent of any PyPRConfig field),
  * where the (E,k) integration domain genuinely widens to E_max~390 (see
  * L_thermal_2d's docstring) -- a real physics-driven cost that Python's
  * own dblquad-based implementation pays too (multi-minute per from-scratch
  * table, hence this file's "may take a while" stderr notice), not a defect
- * in this port. Phase 3b's correctness is instead checked directly against
+ * in this port. Its correctness is instead checked directly against
  * a faithful Python re-implementation of corrections.py's dblquad/quad
  * formulas (bypassing cpr_weak_rates_init's full-table cost) by
  * test_weak_rates_thermal.c, which calls L_CCRTh_compute itself at a few

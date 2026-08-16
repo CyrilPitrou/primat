@@ -115,9 +115,9 @@ static void change_D(double *D, size_t n, int order, double factor, double *tmp)
     /* newD[i] = sum_k RU[k][i] * oldD[k] (i.e. RU^T applied); buffer the
      * new rows before overwriting, since every new row reads every old
      * row. */
-    /* `tmp` is caller-owned scratch of at least (MAX_ORDER_CAP+1)*n doubles:
-     * change_D runs on every step-size or order change, O(10^4-10^5) times per
-     * LT solve, and used to malloc/free this buffer each time. */
+    /* `tmp` is caller-owned scratch of at least (MAX_ORDER_CAP+1)*n doubles.
+     * change_D runs on every step-size or order change, O(10^4-10^5) times
+     * per LT solve, so it must not allocate. */
     for (int i = 0; i < m; i++)
         for (size_t c = 0; c < n; c++) {
             double s = 0.0;
@@ -272,12 +272,9 @@ int cpr_ode_bdf(CPRODEFunc f, CPRODEJacFunc jac, void *ctx,
     if (max_order < 1) max_order = 1;
     if (max_order > MAX_ORDER_CAP) max_order = MAX_ORDER_CAP;
 
-    /* opts.max_newton_iter was previously declared, defaulted and documented
-     * but never read -- solve_bdf_system hard-coded NEWTON_MAXITER in its loop
-     * bound, its rate-extrapolation exponent and the `safety` factor, so a
-     * caller setting the field got no effect and no diagnostic. Honour it now;
-     * <= 0 keeps scipy's NEWTON_MAXITER, and at the default the behaviour is
-     * bit-identical to before. */
+    /* opts.max_newton_iter feeds solve_bdf_system's loop bound, its
+     * rate-extrapolation exponent and its `safety` factor alike; <= 0 keeps
+     * scipy's NEWTON_MAXITER. */
     int newton_maxiter = (opts.max_newton_iter > 0) ? opts.max_newton_iter : NEWTON_MAXITER;
 
     int dir = (t1 >= t0) ? 1 : -1;

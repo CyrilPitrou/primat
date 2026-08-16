@@ -13,10 +13,10 @@
  * byte-identical numbers -- the strongest possible cross-language
  * compatibility check available for this module.
  *
- * Note that the hash now lives in the FILENAME as well as the header, so a
- * port that got the fingerprint wrong no longer silently overwrites the
- * shipped file with its own numbers: it simply fails to find one, and the
- * "cache hit expected" check below is what notices.
+ * The hash lives in the FILENAME as well as the header, so a port that got
+ * the fingerprint wrong cannot overwrite the shipped file with its own
+ * numbers: it simply finds none, and the "cache hit expected" check below is
+ * what notices.
  */
 #include "plasma.h"
 #include "constants.h"
