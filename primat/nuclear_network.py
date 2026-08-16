@@ -166,6 +166,32 @@ class NuclearNetwork:
         t_end   = t_of_T(cfg.T_end   / cfg.MeV_to_Kelvin)
         return t_start, t_weak, t_nucl, t_end
 
+    def _bg_at_memo(self):
+        """Return a ``t -> (rho_B [g/cm^3], T_gamma [K])`` accessor with a
+        one-slot memo on the cosmic time ``t``.
+
+        BDF evaluates the RHS and the (separately supplied) analytic Jacobian
+        at the *same* ``t`` before advancing the step, so ``rhoB_BBN(t)`` and
+        ``T_of_t(t)`` -- each a scipy interpolant call -- would otherwise be
+        recomputed identically.  Keying on bit-identical ``t`` (no tolerance)
+        keeps the result exact while halving the background-interpolant
+        traffic.  Used by both the MT and LT eras; ``NetworkDefinition.
+        fill_buffer`` uses the same pattern.
+        """
+        cfg        = self.cfg
+        T_of_t     = self.background.T_of_t
+        rhoB_BBN   = self.background.rhoB_BBN
+        state      = {"t": None, "rho": 0.0, "T_K": 0.0}
+
+        def _bg_at(t):
+            if t != state["t"]:
+                state["rho"] = rhoB_BBN(t)
+                state["T_K"] = T_of_t(t) * cfg.MeV_to_Kelvin
+                state["t"]   = t
+            return state["rho"], state["T_K"]
+
+        return _bg_at
+
     def _compute_eta_b_weak(self, t_weak):
         """Baryon-to-photon ratio eta_b = n_B/n_gamma at T = T_weak.
 
@@ -298,28 +324,13 @@ class NuclearNetwork:
         cfg        = self.cfg
         background = self.background
         nucl       = self.nucl
-        T_of_t     = background.T_of_t
-        rhoB_BBN   = background.rhoB_BBN
         nTOp_frwrd = background.weak_nTOp_frwrd
         nTOp_bkwrd = background.weak_nTOp_bkwrd
 
         T_weak_MeV = cfg.T_weak / cfg.MeV_to_Kelvin
         T_nucl_MeV = cfg.T_nucl / cfg.MeV_to_Kelvin
 
-        # One-slot memo on the cosmic time ``t``: BDF evaluates the RHS and the
-        # (separately supplied) analytic Jacobian at the *same* ``t`` before
-        # advancing the step, so ``rhoB_BBN(t)`` and ``T_of_t(t)`` -- each a
-        # scipy interpolant call -- would otherwise be recomputed identically.
-        # Keying on bit-identical ``t`` (no tolerance) keeps the result exact
-        # while halving the background-interpolant traffic. Mirrors the same
-        # pattern already used by ``NetworkDefinition.fill_buffer``.
-        _bg = {"t": None, "rho": 0.0, "T_K": 0.0}
-        def _bg_at(t):
-            if t != _bg["t"]:
-                _bg["rho"] = rhoB_BBN(t)
-                _bg["T_K"] = T_of_t(t) * cfg.MeV_to_Kelvin
-                _bg["t"]   = t
-            return _bg["rho"], _bg["T_K"]
+        _bg_at = self._bg_at_memo()
 
         def Y_prime_MT(t, Y):
             rho, T_K = _bg_at(t)
@@ -383,23 +394,12 @@ class NuclearNetwork:
         cfg        = self.cfg
         background = self.background
         nucl       = self.nucl
-        T_of_t     = background.T_of_t
-        rhoB_BBN   = background.rhoB_BBN
         nTOp_frwrd = background.weak_nTOp_frwrd
         nTOp_bkwrd = background.weak_nTOp_bkwrd
 
         T_nucl_MeV = cfg.T_nucl / cfg.MeV_to_Kelvin
 
-        # One-slot memo on the cosmic time ``t`` (see the identical comment in
-        # ``_solve_MT``): skips the duplicate ``rhoB_BBN``/``T_of_t`` interpolant
-        # calls when BDF evaluates the RHS and Jacobian at the same ``t``.
-        _bg = {"t": None, "rho": 0.0, "T_K": 0.0}
-        def _bg_at(t):
-            if t != _bg["t"]:
-                _bg["rho"] = rhoB_BBN(t)
-                _bg["T_K"] = T_of_t(t) * cfg.MeV_to_Kelvin
-                _bg["t"]   = t
-            return _bg["rho"], _bg["T_K"]
+        _bg_at = self._bg_at_memo()
 
         def Y_prime_LT(t, Y):
             rho, T_K = _bg_at(t)

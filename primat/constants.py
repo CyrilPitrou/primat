@@ -61,12 +61,12 @@ FROZEN_CONSTANTS = (
 
 # The derived properties that depend on at least one OVERRIDABLE_CONSTANTS
 # field, and so must be recomputed whenever a config overrides one. The rest
-# (MeV_to_*, T_start/T_weak/T_nucl, s0bar, erg, HubbleOverh, GN_*_to_*) are
+# (MeV_to_*, T_start/T_weak/T_nucl, s0bar, HubbleOverh, GN_*_to_*) are
 # functions of frozen fields only and never move.
 DERIVED_OVERRIDABLE = (
     'sW2', 'geL', 'geR', 'gmuL', 'gmuR',   # alphaem, GF, mZ
     'deltakappa',                          # kappa_p, kappa_n
-    's0CMB', 'n0CMB',                      # T0CMB
+    'n0CMB',                               # T0CMB
     'mB', 'maOvermB',                      # ma, He4Overma, HOverma
 )
 
@@ -164,19 +164,6 @@ class Constants:
     # ------------------------------------------------------------------
     # Derived quantities (pure functions of the constants above)
     # ------------------------------------------------------------------
-
-    @property
-    def erg(self) -> float:
-        """1 erg in natural units (= gram cm^2 / second^2 with all = 1).
-
-        The ``second`` is squared, as the dimensions require.  This evaluates
-        to exactly 1.0 under the module's natural-units convention (``gram``,
-        ``cm`` and ``second`` are all set to 1 above), so the square is
-        currently inert -- but the whole point of keeping the CGS base units as
-        named symbols is that they could be given real values, and then the
-        exponent would matter.
-        """
-        return self.gram * self.cm**2 / self.second**2
 
     @property
     def MeV_to_Kelvin(self) -> float:
@@ -288,11 +275,6 @@ class Constants:
             s_gamma = (2 pi^2/45) x 2 x T^3 = (4 pi^2/45) T^3  [Phys. Rep. Eq. 24].
         """
         return 4. * np.pi**2 / 45.
-
-    @property
-    def s0CMB(self) -> float:
-        """Present-day CMB photon entropy density [MeV^3]."""
-        return self.s0bar * (self.T0CMB / self.MeV_to_Kelvin)**3
 
     @property
     def n0CMB(self) -> float:

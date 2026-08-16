@@ -801,13 +801,13 @@ static double nonthermal_rate_term(const RateCtx *ctx, double T_K, double sgnq,
  * scipy.integrate.quad for the one 1D sub-integral (Thermal_1). This file
  * mirrors that split: the 2D sub-integrals go through cpr_vegas_integrate
  * (vegas.h, an in-tree port of the Lepage VEGAS algorithm), the 1D one
- * stays on cpr_quad_adaptive via quad_adaptive_relative below. An earlier
+ * stays on cpr_quad_adaptive via quad_adaptive_relative_n below. An earlier
  * version of this file ported scipy's *fallback* dblquad/quad path
  * (deterministic nested adaptive quadrature) for the 2D terms instead --
  * correct, but 100x+ slower than vegas for a from-scratch thermal-table
  * build (multi-minute in Python with vegas vs. tens of minutes or more
  * with nested deterministic quadrature), so it was replaced; that
- * deterministic 2D path is gone, but quad_adaptive_relative/_n and
+ * deterministic 2D path is gone, but quad_adaptive_relative_n and
  * cpr_quad_adaptive remain in use for the 1D terms here and for the
  * non-thermal Fn integrals above. Every helper below is scalar-at-a-time
  * (the Python originals are numpy-vectorised over a Monte-Carlo/quadrature
@@ -867,7 +867,7 @@ static double nonthermal_rate_term(const RateCtx *ctx, double T_K, double sgnq,
  * on a fixed a-priori panel count to not miss a feature -- so it is not
  * vulnerable to a feature narrow enough to fall between two pre-set
  * sample points the way single-pass quadrature is. What remains on
- * quad_adaptive_relative[_n] below (the 1D L_thermal_1 driver, and the
+ * quad_adaptive_relative_n below (the 1D L_thermal_1 driver, and the
  * non-thermal Fn integrals above) is smooth, non-cancelling, and was never
  * implicated in that failure mode; their modest n_panels=8 default is
  * just a safety margin, not a fix for anything diagnosed there. */
@@ -882,12 +882,6 @@ static double quad_adaptive_relative_n(CPRQuadFunc f, void *ctx, double a, doubl
         sum += cpr_quad_adaptive(f, ctx, lo, hi, tol / n_panels, max_depth, NULL);
     }
     return sum;
-}
-
-static double quad_adaptive_relative(CPRQuadFunc f, void *ctx, double a, double b,
-                                       double epsrel, int max_depth)
-{
-    return quad_adaptive_relative_n(f, ctx, a, b, epsrel, max_depth, 8);
 }
 
 static double th_A(double E, double k)
@@ -966,11 +960,11 @@ static double ipen_ccr_diff_brems(const RateCtx *ctx, double E, double k, double
 {
     double q = ctx->Q / ctx->me;
     double pE = sqrt(E * E - 1.0);
-    double logterm = log((E + pE) / (E - pE));
-    double base = (2.0 * E * E + k * k) * logterm - 4.0 * pE * E;
-    double kshift = k * (2.0 * E * logterm - 4.0 * pE);
-    double Fp = base + kshift;
-    double Fm = base - kshift;
+    /* F_+-(E,k) = A(E,k) +- k B(E), Phys. Rep. Eq. B41. */
+    double A_kernel = th_A(E, k);
+    double kB_kernel = k * th_B(E);
+    double Fp = A_kernel + kB_kernel;
+    double Fm = A_kernel - kB_kernel;
 
     double res1_fac = FD2(-E, x) * fermi_stat(ctx, sgnq, 1.0, pE / E);
     double res1 = Fp * th_chitilde(ctx, E + k, znu, sgnq);
@@ -1122,7 +1116,7 @@ static double L_thermal_1(const RateCtx *ctx, double T_K, double x, double znu, 
     double hi = fmax(25.0, 150.0 * (g_const.kB * T_K) / ctx->me);
     double p_hi = sqrt(hi * hi - 1.0);
     C1Ctx c = { ctx, x, znu, sgnq };
-    return quad_adaptive_relative(c1_integrand_p, &c, 0.0, p_hi, 1.0e-2, 15);
+    return quad_adaptive_relative_n(c1_integrand_p, &c, 0.0, p_hi, 1.0e-2, 15, 8);
 }
 
 typedef struct { const RateCtx *ctx; double x, znu, sgnq; } C23VegasCtx;

@@ -334,6 +334,18 @@ in this repository is the authoritative source.
 - No observable changes: with a rebuilt extension both backends reproduce the
   previous D/H, YP and Neff bit-for-bit.
 
+### Removed
+- **Four unused names dropped from the public surface.** `cfg.erg` and
+  `cfg.s0CMB` (with their `primat.constants.Constants` properties and their
+  `cpr_erg`/`cpr_s0CMB` counterparts) took part in no formula on either
+  backend; `s0CMB` was additionally carried in `DERIVED_OVERRIDABLE`, so the
+  per-config constants machinery was maintaining a quantity nothing read.
+  `cpr_cubic_spline_fit_natural` had no caller among the C backend's twenty
+  spline fits and no Python counterpart at all. Nothing else moved: the
+  present-day photon *number* density `n0CMB` is unaffected, no cache is
+  re-keyed (cache fingerprints declare `Constants` fields, never derived
+  properties), and every observable is bit-identical on both backends.
+
 ### Changed
 - **Each cache is now keyed on the constants it actually reads,** rather than
   on all 26 at once: eight for the n↔p rate table, five for the CCRTh thermal

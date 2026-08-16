@@ -786,6 +786,34 @@ def _mc_num_and_seed(mc: "MCResult") -> tuple[int, str]:
     return n, ("None" if seed is None else str(seed))
 
 
+def _dump_mc_matrix(mc: "MCResult", matrix, kind: str, estimator: str) -> str:
+    """Serialise a square per-quantity MC matrix to the two-header-line TSV
+    layout shared by :func:`dump_mc_covariance` and :func:`dump_mc_correlation`.
+
+    Args:
+        mc: primat.main.MCResult.
+        matrix: the square array, in ``mc.quantity_names()`` order.
+        kind: "Covariance" or "Correlation", opening the ``#`` header line.
+        estimator: the sentence naming the estimator convention, closing it.
+
+    Returns:
+        str: TSV text -- line 1 a ``#`` comment naming N, the seed and the
+        estimator; line 2 the tab-separated quantity names; then one labelled
+        row per quantity. Trailing newline included.
+    """
+    import numpy as np
+    names = mc.quantity_names()
+    M = np.atleast_2d(matrix)
+    n, seed = _mc_num_and_seed(mc)
+    lines = [f"# {kind} matrix of the N={n} primat MC samples "
+             f"(seed={seed}): {estimator}",
+             "quantity\t" + "\t".join(names)]
+    for i, nm in enumerate(names):
+        lines.append(nm + "\t" + "\t".join(f"{M[i, j]:.10e}"
+                                           for j in range(len(names))))
+    return "\n".join(lines) + "\n"
+
+
 def dump_mc_covariance(mc: "MCResult") -> str:
     """Serialise an :class:`primat.main.MCResult`'s full sample **covariance**
     matrix (``mc.cov()``; ddof=1, all MC quantities in ``quantity_names``
@@ -814,18 +842,9 @@ def dump_mc_covariance(mc: "MCResult") -> str:
     Returns:
         str: TSV text, with a trailing newline.
     """
-    import numpy as np
-    names = mc.quantity_names()
-    C = np.atleast_2d(mc.cov())
-    n, seed = _mc_num_and_seed(mc)
-    header = (f"# Covariance matrix of the N={n} primat MC samples "
-              f"(seed={seed}): C[i,j] = sample covariance (ddof=1) of "
-              f"quantities i and j.")
-    lines = [header, "quantity\t" + "\t".join(names)]
-    for i, nm in enumerate(names):
-        lines.append(nm + "\t" + "\t".join(f"{C[i, j]:.10e}"
-                                           for j in range(len(names))))
-    return "\n".join(lines) + "\n"
+    return _dump_mc_matrix(
+        mc, mc.cov(), "Covariance",
+        "C[i,j] = sample covariance (ddof=1) of quantities i and j.")
 
 
 def dump_mc_correlation(mc: "MCResult") -> str:
@@ -846,18 +865,10 @@ def dump_mc_correlation(mc: "MCResult") -> str:
     Returns:
         str: TSV text, with a trailing newline.
     """
-    import numpy as np
-    names = mc.quantity_names()
-    R = np.atleast_2d(mc.corr())
-    n, seed = _mc_num_and_seed(mc)
-    header = (f"# Correlation matrix of the N={n} primat MC samples "
-              f"(seed={seed}): R[i,j] = Pearson correlation (ddof=1) of "
-              f"quantities i and j; unit diagonal.")
-    lines = [header, "quantity\t" + "\t".join(names)]
-    for i, nm in enumerate(names):
-        lines.append(nm + "\t" + "\t".join(f"{R[i, j]:.10e}"
-                                           for j in range(len(names))))
-    return "\n".join(lines) + "\n"
+    return _dump_mc_matrix(
+        mc, mc.corr(), "Correlation",
+        "R[i,j] = Pearson correlation (ddof=1) of quantities i and j; "
+        "unit diagonal.")
 
 
 def dump_final_with_sigma(names: list[str], Y: dict[str, float],

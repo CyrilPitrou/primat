@@ -73,7 +73,6 @@ extern CPRConstants g_const;
 void cpr_constants_init(void);
 
 /* ---- Derived from the exact ten only (never move) ---- */
-double cpr_erg(void);
 double cpr_MeV_to_Kelvin(void);
 double cpr_MeV_to_secm1(void);
 double cpr_MeV_to_g(void);
@@ -95,7 +94,6 @@ double cpr_deltakappa(const CPRConstants *c);  /* kappa_p, kappa_n */
 
 /* ---- High-T plasma entropy/number-density normalisations ---- */
 double cpr_s0bar(void);
-double cpr_s0CMB(const CPRConstants *c);  /* T0CMB */
 double cpr_n0CMB(const CPRConstants *c);  /* T0CMB */
 
 /* ---- Mean baryon mass (H + He4 mixture): ma, He4Overma, HOverma ---- */

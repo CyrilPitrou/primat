@@ -37,11 +37,6 @@ if TYPE_CHECKING:
     from .evolution import EvolutionResult
 
 
-# Column order for abundance interpolators; names match PRIMATConfig.Nuclides keys
-_NUC_NAMES_SMALL = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"]
-_NUC_NAMES_FULL  = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7",
-                    "He6", "Li8", "Li6", "B8"]
-
 # Standard derived observables unconditionally merged into every MCResult
 # returned by mc_uncertainty, on top of whatever `quantity` the caller
 # explicitly requested and every tracked nuclide's final Y (see

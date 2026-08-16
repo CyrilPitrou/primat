@@ -497,11 +497,10 @@ static int combined_bg_rhs(double lnT, const double *y, double *ydot, void *ctx_
     return 0;
 }
 
-/* StandardBackground._setup_background_and_cosmo + _setup_derived_cosmo +
- * _setup_weak_rates, folded into one function (no separate eager "derived
- * cosmo" step is needed in C -- cpr_bg_Omeganuh2_relnu/nrnu read
- * bg->Tg_vec/Tnu_vec directly at call time, exactly mirroring Python's
- * closures over the same arrays). */
+/* StandardBackground._setup_background_and_cosmo + _setup_weak_rates, folded
+ * into one function. The relic-neutrino Omegas need no setup step on either
+ * side: cpr_bg_Omeganuh2_relnu/nrnu read bg->Tg_vec/Tnu_vec at call time,
+ * exactly as Python's accessors read self.Tg_vec/Tnu_vec. */
 static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
 {
     const CPRConfig *cfg = bg->cfg;

@@ -48,14 +48,6 @@ void cpr_constants_init(void)
     g_const.HOverma   = 1.00782503223;
 }
 
-double cpr_erg(void)
-{
-    /* gram cm^2 / second^2 -- the second is squared, as the dimensions
-     * require. Exactly 1.0 under the natural-units convention. */
-    return g_const.gram * g_const.cm * g_const.cm
-           / (g_const.second * g_const.second);
-}
-
 double cpr_MeV_to_Kelvin(void) { return g_const.MeV / g_const.kB; }
 double cpr_MeV_to_secm1(void)  { return g_const.MeV / g_const.hbar; }
 double cpr_MeV_to_g(void)      { return g_const.MeV / (g_const.clight * g_const.clight); }
@@ -89,12 +81,6 @@ double cpr_s0bar(void)
     /* Relativistic boson gas, g=2 (photon): s_gamma = (4 pi^2/45) T^3
      * (Phys. Rep. Eq. 24). */
     return 4. * M_PI * M_PI / 45.;
-}
-
-double cpr_s0CMB(const CPRConstants *c)
-{
-    double t = c->T0CMB / cpr_MeV_to_Kelvin();
-    return cpr_s0bar() * t * t * t;
 }
 
 double cpr_n0CMB(const CPRConstants *c)

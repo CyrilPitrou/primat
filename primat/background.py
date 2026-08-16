@@ -438,7 +438,6 @@ class StandardBackground(Background):
         self._setup_background_and_cosmo()
         if cfg.verbose:
             print(f"[bg-py] Background a(T), t(T) ready in {time.time()-_t_bg0:.2f} s")
-        self._setup_derived_cosmo()
         self._setup_weak_rates()
 
     # ======================================================================
@@ -683,7 +682,7 @@ class StandardBackground(Background):
             still included via the spl/PQEDofT tables in both modes.
 
         In both modes the method builds all interpolants used by
-        ``_setup_derived_cosmo``, ``_setup_weak_rates``, and the nuclear
+        ``_setup_weak_rates``, the Omega_nu accessors, and the nuclear
         network's ``solve()``.
 
         Independently of the above, ``cfg.external_scale_factor`` selects how
@@ -1072,8 +1071,8 @@ class StandardBackground(Background):
         """Step 5 of :meth:`_setup_background_and_cosmo`: sample onto the
         common time grid and set the public interpolant/array instance
         attributes (``t_vec``, ``Tg_vec``, ``t_of_T``, ``T_of_t``, ``a_of_T``,
-        ``a_of_t``, ...) consumed by ``_setup_derived_cosmo``,
-        ``_setup_weak_rates``, and the nuclear network's ``solve()``.
+        ``a_of_t``, ...) consumed by ``_setup_weak_rates``, the Omega_nu
+        accessors, and the nuclear network's ``solve()``.
 
         Takes the ``(t_vec, Tg_vec, a_arr)`` triple produced by whichever of
         :meth:`_integrate_time_over_lnT` (minimal mode) or
@@ -1090,7 +1089,7 @@ class StandardBackground(Background):
 
         self.t_vec      = t_vec
         self.Tg_vec     = Tg_vec
-        self.Tnu_vec    = Tnu_avg_vec   # average, used by _setup_derived_cosmo and _setup_weak_rates
+        self.Tnu_vec    = Tnu_avg_vec   # average, used by _Tnu_today and _setup_weak_rates
         self.Tnue_vec   = Tnue_vec
         self.Tnumu_vec  = Tnumu_vec
         self.Tnutau_vec = Tnutau_vec
@@ -1128,29 +1127,11 @@ class StandardBackground(Background):
         # physical information or would just be a column of zeros.
         self.has_heating_table = cfg.incomplete_decoupling
 
-    def _setup_derived_cosmo(self):
-        """Build relic-neutrino Omega functions from the stored background.
-
-        Called after _setup_background_and_cosmo.
-        Requires self.Tg_vec, self.Tnu_vec to be set.
-        """
-        cfg    = self.cfg
-
-        # Relic neutrino abundances, both PER FLAVOUR (nu + nubar) -- there is
-        # deliberately no factor 3 here, see the base-class docstrings.
-        # 7 pi^2/120 * T^4 is plasma.rho_nu(T), i.e. one flavour; and
-        # 3/2 zeta(3)/pi^2 * T^3 is one flavour's number density, the
-        # normalisation behind the standard sum(m_nu)/93.1 eV relation.
-        def Omeganuh2_relnu():
-            Tnu0 = self.Tnu_vec[-1] / self.Tg_vec[-1] * cfg.T0CMB / cfg.MeV_to_Kelvin
-            return (7. * np.pi**2 / 120. * Tnu0**4) / cfg.rhocOverh2
-
-        def Omeganuh2_nrnu():
-            Tnu0 = self.Tnu_vec[-1] / self.Tg_vec[-1] * cfg.T0CMB / cfg.MeV_to_Kelvin
-            return (3. / 2. * zeta(3) / np.pi**2 * Tnu0**3) / cfg.rhocOverh2
-
-        self._Omeganuh2_relnu = Omeganuh2_relnu
-        self._Omeganuh2_nrnu  = Omeganuh2_nrnu
+    def _Tnu_today(self):
+        """Relic neutrino temperature today [MeV], redshifted from the stored
+        final Tnu/Tg ratio. Requires self.Tg_vec, self.Tnu_vec."""
+        cfg = self.cfg
+        return self.Tnu_vec[-1] / self.Tg_vec[-1] * cfg.T0CMB / cfg.MeV_to_Kelvin
 
     def rho_nu_total_final(self):
         """Final-time ``(Tg, rho_nu_tot)`` (see :meth:`Background.rho_nu_total_final`).
@@ -1188,15 +1169,19 @@ class StandardBackground(Background):
 
         return Tg_f, rho_nu_tot_f
 
+    # Both PER FLAVOUR (nu + nubar) -- there is deliberately no factor 3 here,
+    # see the base-class docstrings. 7 pi^2/120 * T^4 is plasma.rho_nu(T), i.e.
+    # one flavour; 3/2 zeta(3)/pi^2 * T^3 is one flavour's number density, the
+    # normalisation behind the standard sum(m_nu)/93.1 eV relation.
     def Omeganuh2_relnu(self):
         """Omega_nu h^2 per flavour, relativistic-neutrino convention (see
         :meth:`Background.Omeganuh2_relnu` for the per-flavour caveat)."""
-        return self._Omeganuh2_relnu()
+        return (7. * np.pi**2 / 120. * self._Tnu_today()**4) / self.cfg.rhocOverh2
 
     def Omeganuh2_nrnu(self):
         """Omega_nu h^2 per flavour per unit mass, non-relativistic-neutrino
         convention (see :meth:`Background.Omeganuh2_nrnu`)."""
-        return self._Omeganuh2_nrnu()
+        return (3. / 2. * zeta(3) / np.pi**2 * self._Tnu_today()**3) / self.cfg.rhocOverh2
 
     # ======================================================================
     # Background time-evolution output
