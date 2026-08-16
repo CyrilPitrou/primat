@@ -509,7 +509,8 @@ int cpr_nuclear_network_write_final_result(const CPRNuclearNetwork *nn, char **e
     for (size_t i = 0; i < nn->n_species; i++)
         fprintf(f, "%-14s%.6e\n", nn->abundance_names[i], nn->Y_final[i]);
     fclose(f);
-    printf("[output] Final abundances (%zu nuclides) written to %s\n", nn->n_species, path);
+    fprintf(stderr, "[output] Final abundances (%zu nuclides) written to %s\n",
+            nn->n_species, path);
     fflush(stdout);
     return 0;
 }
@@ -714,8 +715,10 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     free(t_out); free(T_out); free(a_out);
     free(Tnue_out); free(Tnumu_out); free(Tnutau_out); free(Y_out);
     free(rate_names); free(rate_out);
-    printf("[output] Time-evolution data (%zu rows) written to %s\n", n, path);
-    fflush(stdout);
+    /* stderr, not stdout: the CLI's --json document goes to stdout, and a
+     * progress line ahead of it makes the output unparseable. */
+    fprintf(stderr, "[output] Time-evolution data (%zu rows) written to %s\n", n, path);
+    fflush(stderr);
     return 0;
 }
 
@@ -1025,7 +1028,7 @@ int cpr_nuclear_network_decay_era(const CPRNuclearNetwork *nn, char **errmsg)
         fprintf(f, "\n");
     }
     fclose(f);
-    printf("[output] Decay-era evolution (%d rows) written to %s\n", M, path);
+    fprintf(stderr, "[output] Decay-era evolution (%d rows) written to %s\n", M, path);
     fflush(stdout);
 
     free(D); free(Y0); free(t_grid); free(Y_DT); free(E); free(Ddt);

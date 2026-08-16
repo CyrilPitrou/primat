@@ -63,6 +63,34 @@ _BANNER_TEMPLATE = """
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 """
 
+# ASCII rendition, used when the console's codec cannot carry the box-drawing
+# and block-element characters above -- the Windows default console encoding
+# (cp1252) cannot, and printing to it raises UnicodeEncodeError.
+_BANNER_ASCII = """
++-----------------------------------------------+
+|                                               |
+|                   P R I M A T                 |
+|                                               |
+|  Welcome to PRIMAT (python backend) v{version}    |
+|                                               |
++-----------------------------------------------+
+"""
+
+
+def console_encodable(text: str) -> bool:
+    """True if ``text`` survives a round trip through stdout's own codec.
+
+    Guards the decorative output: a console whose encoding is cp1252 (the
+    Windows default outside UTF-8 mode) raises ``UnicodeEncodeError`` on the
+    banner's box-drawing characters, aborting the run before any physics.
+    """
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        text.encode(enc)
+    except (UnicodeEncodeError, LookupError):
+        return False
+    return True
+
 
 def _banner() -> str:
     """Render the startup banner with the installed package version.
@@ -74,7 +102,9 @@ def _banner() -> str:
     reinstalling an editable checkout).
     """
     from . import __version__
-    return _BANNER_TEMPLATE.format(version=__version__)
+    template = (_BANNER_TEMPLATE if console_encodable(_BANNER_TEMPLATE)
+                else _BANNER_ASCII)
+    return template.format(version=__version__)
 
 
 def _options_recap(cfg: PRIMATConfig, backend: str) -> str:

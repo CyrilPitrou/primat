@@ -17,7 +17,9 @@ moved into `tests/README.md` and `tests/reference_values.py`, where the two
 `*_matches_reference_constants` tests below pin them.
 
 Every test in this module is a static file read -- no solve -- so the whole
-file stays in the fast (`-m "not slow"`) lane.
+file stays in the fast (`-m "not slow"`) lane, with one marked exception at
+the end: the numbers docs/index.md quotes to eight decimals cannot be checked
+against a constant pinned at 1e-5, so that one runs the page's snippet.
 """
 import ast
 import os
@@ -461,3 +463,36 @@ def test_docs_tutorials_gallery_complete():
     for stem in sorted(notebooks - opt_out):
         assert os.path.exists(os.path.join(tutorials_dir, f"{stem}.ipynb")), stem
         assert stem in index, f"{stem} missing from docs/tutorials/index.md"
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_docs_index_quick_start_numbers_match_a_live_run():
+    """docs/index.md's quick-start output must be what the code prints today.
+
+    GOAL: the published landing page quotes YP and D/H to the decimal counts
+    the project reports at, one figure per backend. Nothing checked them, and
+    they went stale twice -- by 8.6e-09 in D/H once, and by 2.1e-07 in YP after
+    that was hand-corrected. This runs the page's own snippet and compares the
+    formatted strings, so a physics change that moves either number fails here
+    instead of quietly mis-documenting the release.
+
+    Unlike the rest of this module, this test solves; it is marked accordingly.
+    """
+    from primat.backend import HAS_C_BACKEND, run_bbn
+
+    text = _read_text(os.path.join(REPO_ROOT, "docs", "index.md"))
+    quoted = {
+        "c": (re.search(r"YPBBN'\]:\.8f\}\"\)\s*#\s*([0-9.]+)", text).group(1),
+              re.search(r"DoH'\]:\.7e\}\"\)\s*#\s*([0-9.e+-]+)", text).group(1)),
+        "python": re.search(
+            r"pure-Python backend gives `([0-9.]+)` / `([0-9.e+-]+)`",
+            text).groups(),
+    }
+
+    for backend, (yp_doc, doh_doc) in quoted.items():
+        if backend == "c" and not HAS_C_BACKEND:
+            continue
+        r = run_bbn({"Omegabh2": 0.02242}, force_backend=backend)
+        assert f"{r['YPBBN']:.8f}" == yp_doc, f"{backend} backend YP"
+        assert f"{r['DoH']:.7e}" == doh_doc, f"{backend} backend D/H"

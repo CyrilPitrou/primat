@@ -43,6 +43,7 @@ import warnings
 
 from . import PRIMAT, __version__
 from .credits import cli_credits_text
+from .main import console_encodable
 from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
                       dump_mc_samples, run_bbn, run_mc)
 from .cache_utils import (clear_cache, list_cache_files, plasma_cache_dir,
@@ -684,7 +685,9 @@ def _dispatch(args, parser):
         print(json.dumps(out, indent=2))
     else:
         T_end_MeV = params.get("T_end_MeV", DEFAULT_PARAMS["T_end_MeV"])
-        sep = "─" * 52
+        # "-" where the console codec cannot carry U+2500 (cp1252, the
+        # Windows default), same guard as main.py's banner.
+        sep = ("─" if console_encodable("─") else "-") * 52
         header = f"PRIMAT results at T = {T_end_MeV:g} MeV"
         print(sep)
         print(f"{header:^52}")
@@ -740,9 +743,11 @@ def _dispatch(args, parser):
                 f.write(writer(mc))
             if label == "samples":
                 sample_word = "sample" if args.mc == 1 else "samples"
-                print(f"[output] MC samples ({args.mc} {sample_word}) written to {out_path}")
+                print(f"[output] MC samples ({args.mc} {sample_word}) written to {out_path}",
+                      file=sys.stderr)
             else:
-                print(f"[output] MC {label} matrix written to {out_path}")
+                print(f"[output] MC {label} matrix written to {out_path}",
+                      file=sys.stderr)
 
     return 0
 

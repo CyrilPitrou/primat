@@ -33,6 +33,7 @@ expansion history) and hand an instance to a future
 
 import io
 import os
+import sys
 import time
 from collections import OrderedDict
 
@@ -468,7 +469,7 @@ class Background(object):
         # (output_background_evolution=True), like the nuclear-network TSV.
         n_rows = text.count("\n") - 1   # minus the header line
         print(f"[output] Background time-evolution data ({n_rows} rows) "
-              f"written to {out_path}")
+              f"written to {out_path}", file=sys.stderr)
 
 
 class StandardBackground(Background):

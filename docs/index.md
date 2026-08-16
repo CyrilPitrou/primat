@@ -23,12 +23,12 @@ from primat.backend import run_bbn
 
 result = run_bbn({"Omegabh2": 0.02242})
 
-print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699928
-print(f"D/H       = {result['DoH']:.7e}")    # 2.4358771e-05
+print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699907
+print(f"D/H       = {result['DoH']:.7e}")    # 2.4358767e-05
 ```
 
 (Those are the C backend's values for the default `small` network; the
-pure-Python backend gives `0.24699894` / `2.4358642e-05`, within the
+pure-Python backend gives `0.24699896` / `2.4358605e-05`, within the
 cross-backend tolerance. The authoritative reference values, with the
 tolerance that applies to each, live in
 [`tests/README.md`](https://github.com/CyrilPitrou/primat/blob/master/tests/README.md)'s

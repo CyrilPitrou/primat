@@ -4,6 +4,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <io.h>       /* _isatty */
+#endif
+
 void cpr_log(const CPRConfig *cfg, const char *tag, const char *fmt, ...)
 {
     if (!cfg->verbose) return;
@@ -14,4 +20,14 @@ void cpr_log(const CPRConfig *cfg, const char *tag, const char *fmt, ...)
     vprintf(fmt, args);
     va_end(args);
     printf("\n");
+}
+
+int cpr_console_takes_utf8(void)
+{
+#if defined(_WIN32)
+    if (!_isatty(_fileno(stdout))) return 1;   /* redirected: raw bytes */
+    return GetConsoleOutputCP() == CP_UTF8;
+#else
+    return 1;
+#endif
 }

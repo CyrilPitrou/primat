@@ -203,7 +203,8 @@ def test_output_files_announce_their_paths(force_backend, capfd, tmp_path):
 
     The time-evolution and final-abundance writers are backend-specific
     (Python and C both implement them), so this checks the shared user-facing
-    console contract for both backends.
+    console contract for both backends: the "[output] ..." line goes to
+    **stderr**, keeping stdout free for `primat --json`'s document.
     """
     out_time = tmp_path / f"evolution_{force_backend}.tsv"
     out_final = tmp_path / f"final_{force_backend}.dat"
@@ -225,10 +226,13 @@ def test_output_files_announce_their_paths(force_backend, capfd, tmp_path):
             capture_output=True,
             text=True,
         )
-        out = proc.stdout
+        out = proc.stderr
+        assert "[output]" not in proc.stdout, proc.stdout
     else:
         run_bbn(params, force_backend=force_backend)
-        out = capfd.readouterr().out
+        captured = capfd.readouterr()
+        out = captured.err
+        assert "[output]" not in captured.out, captured.out
 
     assert "[output] Time-evolution data" in out
     assert str(out_time.resolve()) in out
@@ -244,7 +248,7 @@ def test_python_backend_background_output_announces_path(capfd, tmp_path):
         "output_background_evolution": True,
         "output_background_file": str(out_background),
     }, force_backend="python")
-    out = capfd.readouterr().out
+    out = capfd.readouterr().err
 
     assert "[output] Background time-evolution data" in out
     assert str(out_background.resolve()) in out
@@ -277,14 +281,14 @@ def test_output_background_evolution_both_backends(force_backend, capfd, tmp_pat
             capture_output=True,
             text=True,
         )
-        out = proc.stdout
-        # C backend writes file directly, no [output] announcement yet
-        # (could be added to cpr_bg_write_time_evolution in future)
+        out = proc.stderr
     else:
         run_bbn(params, force_backend=force_backend)
-        out = capfd.readouterr().out
-        assert "[output] Background time-evolution data" in out
-        assert str(out_background.resolve()) in out
+        out = capfd.readouterr().err
+    # Both backends announce the file, on stderr (see
+    # test_output_files_announce_their_paths).
+    assert "[output] Background time-evolution data" in out
+    assert str(out_background.resolve()) in out
 
     # Both backends must produce the file
     assert out_background.exists()
