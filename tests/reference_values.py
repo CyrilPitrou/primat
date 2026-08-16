@@ -118,3 +118,16 @@ NUCLIDE_REL_TOL = 1e-4
 # all three networks (2026-08-05); pinned at 1e-10 so a real stoichiometry
 # leak fails rather than hiding under a decorative bound.
 BARYON_ABS_TOL = 1e-10
+
+# ---------------------------------------------------------------------------
+# 4. Bounds for the numbers docs/index.md quotes
+# ---------------------------------------------------------------------------
+# The landing page's quick start prints YP and D/H for both backends, and
+# tests/test_docs_consistency.py re-runs the snippet to check them. They cannot
+# be compared as strings: the eighth decimal is not portable (macOS/py3.10 and
+# macOS/py3.13 in CI differ by 6.5e-12 in the C backend's D/H on identical
+# sources). These bounds are ~150x above that platform spread and ~10-20x below
+# the staleness the check exists to catch -- the two drifts actually observed in
+# that file were 8.6e-09 in D/H and 2.1e-07 in YP.
+DOCS_YPBBN_ABS_TOL = 1e-8
+DOCS_DOH_ABS_TOL   = 1e-9

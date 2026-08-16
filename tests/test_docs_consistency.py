@@ -477,9 +477,16 @@ def test_docs_index_quick_start_numbers_match_a_live_run():
     formatted strings, so a physics change that moves either number fails here
     instead of quietly mis-documenting the release.
 
+    Compared numerically, not as strings: the eighth decimal is not portable.
+    macOS/py3.10 and macOS/py3.13 in CI differ by 6.5e-12 in the C backend's
+    D/H on identical sources, so exact string equality would fail on a healthy
+    tree. The bounds below sit far above that and far below the staleness this
+    test exists to catch.
+
     Unlike the rest of this module, this test solves; it is marked accordingly.
     """
     from primat.backend import HAS_C_BACKEND, run_bbn
+    from reference_values import DOCS_DOH_ABS_TOL, DOCS_YPBBN_ABS_TOL
 
     text = _read_text(os.path.join(REPO_ROOT, "docs", "index.md"))
     quoted = {
@@ -493,6 +500,11 @@ def test_docs_index_quick_start_numbers_match_a_live_run():
     for backend, (yp_doc, doh_doc) in quoted.items():
         if backend == "c" and not HAS_C_BACKEND:
             continue
+        # The quoted precision is itself part of the contract (CLAUDE.md's
+        # reporting table: 8 decimals for YP, 7 for D/H's mantissa).
+        assert len(yp_doc.split(".")[1]) == 8, f"{backend} YP quoted too coarsely"
+        assert len(doh_doc.split("e")[0].split(".")[1]) == 7, f"{backend} D/H too coarse"
+
         r = run_bbn({"Omegabh2": 0.02242}, force_backend=backend)
-        assert f"{r['YPBBN']:.8f}" == yp_doc, f"{backend} backend YP"
-        assert f"{r['DoH']:.7e}" == doh_doc, f"{backend} backend D/H"
+        assert r["YPBBN"] == pytest.approx(float(yp_doc), abs=DOCS_YPBBN_ABS_TOL)
+        assert r["DoH"] == pytest.approx(float(doh_doc), abs=DOCS_DOH_ABS_TOL)
