@@ -136,7 +136,12 @@ def test_thermal_average_notebook_executes(tmp_path, monkeypatch):
     repo = Path(__file__).resolve().parents[1]
     work_root = tmp_path / "repo"
     (work_root / "generate_rates").mkdir(parents=True)
-    (work_root / "primat").symlink_to(repo / "primat", target_is_directory=True)
+    try:
+        (work_root / "primat").symlink_to(repo / "primat", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        # Windows needs a privilege for symlinks; a copy costs ~24 MB and
+        # works everywhere.
+        shutil.copytree(repo / "primat", work_root / "primat")
     work_dir = work_root / "generate_rates"
     shutil.copy(repo / "generate_rates" / "thermal_average.ipynb", work_dir)
 
