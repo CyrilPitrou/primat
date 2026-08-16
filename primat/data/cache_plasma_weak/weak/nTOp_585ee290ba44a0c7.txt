@@ -1,6 +1,6 @@
 # T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]
-# fingerprint_hash: 27e5d3a048ea93a5
-# fingerprint: {"QED_corrections":true,"T_end_MeV":0.001,"T_start_cosmo_MeV":100.0,"analytic_distortions":false,"constants_hash":"672484f3068a1c59","finite_mass_corrections":true,"format_version":5,"incomplete_decoupling":true,"munuOverTnu":0.0,"nevo_file":null,"nevo_file_prefix":"NEVOPRIMAT","nevo_grid_file":null,"nevo_spectral_file":null,"radiative_corrections":true,"sampling_nTOp_per_decade":125,"sampling_temperature_per_decade":2000,"spectral_distortions":true,"y_SZ":0.0,"y_gray":0.0}
+# fingerprint_hash: 585ee290ba44a0c7
+# fingerprint: {"QED_corrections":true,"T_end_MeV":0.001,"T_start_cosmo_MeV":100.0,"analytic_distortions":false,"constants_hash":"4ab3da329a744f2d","finite_mass_corrections":true,"format_version":6,"incomplete_decoupling":true,"munuOverTnu":0.0,"nevo_file":null,"nevo_file_prefix":"NEVOPRIMAT","nevo_grid_file":null,"nevo_spectral_file":null,"radiative_corrections":true,"sampling_nTOp_per_decade":125,"sampling_temperature_per_decade":2000,"spectral_distortions":true,"y_SZ":0.0,"y_gray":0.0}
 1.160451812155007198e+07 9.999983390280360318e-01 0.000000000000000000e+00
 1.182069857643071562e+07 9.999983080948060543e-01 0.000000000000000000e+00
 1.204090625489644706e+07 9.999982765858963507e-01 0.000000000000000000e+00

@@ -45,6 +45,15 @@ occupation directly. Each exclusion is justified in a comment next to
 `_THERMAL_BG_FIELDS`; if you add a term to the thermal integrand, check
 whether it reads a config field that list does not yet cover.
 
+The physical constants are keyed the same way, through a `constants_hash`
+field: each cache hashes only the constants it reads
+(`cache_utils.CACHE_CONSTANTS`), so `--gA 1.276` or `--me 0.511` re-keys the
+rate table while `--T0CMB 2.7250` — which the integrands cannot see — leaves
+it valid and skips the multi-minute thermal recompute.
+`tests/test_cache_constant_deps.py` proves those lists exact in both
+directions, so a term that starts reading a new constant fails the suite
+rather than serving a stale table.
+
 ## Format version
 
 `WEAK_RATE_FORMAT_VERSION` (`primat/weak_rates/cache.py`, mirrored in

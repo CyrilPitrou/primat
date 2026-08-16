@@ -29,7 +29,6 @@ unparsable one) is reported as having an unknown fingerprint -- the caller
 decides whether that counts as a cache hit or a miss.
 """
 
-import dataclasses
 import functools
 import hashlib
 import json
@@ -94,38 +93,55 @@ def fingerprint_hash(fingerprint: dict) -> str:
     return hashlib.sha256(_canonical_json(fingerprint).encode("utf-8")).hexdigest()[:16]
 
 
-@functools.lru_cache(maxsize=16)
-def _constants_hash_cached(consts: Constants) -> str:
-    return fingerprint_hash(dataclasses.asdict(consts))
+# Physical constants each fingerprinted cache actually reads -- the only ones
+# whose value can change its numbers, and so the only ones it is keyed on.
+# The ten frozen constants (kB, MeV, hbar, clight, ... ) are absent by
+# construction: PRIMATConfig rejects an override of them, so they cannot vary
+# within a process even though the integrands read them. Editing one in the
+# source is a code change like any other, and is covered by bumping the
+# affected caches' FORMAT_VERSION.
+# tests/test_cache_constant_deps.py perturbs every settable constant and
+# asserts each cache's data moves iff it is listed here.
+CACHE_CONSTANTS = {
+    # Stored in units of 1/tau_n, i.e. already divided by ComputeFn, which is
+    # what pulls in gA and the anomalous moments alongside the integrands' own
+    # me/mn/mp/alphaem/radproton.
+    "weak":            ("alphaem", "gA", "kappa_n", "kappa_p",
+                        "me", "mn", "mp", "radproton"),
+    # Stores the RAW L_CCRTh (the 1/Fn division happens at point of use), so
+    # only the integrands' own constants appear: the O(alphaem) prefactor,
+    # Q = mn - mp, and FermiCoulomb's me/radproton.
+    "thermal":         ("alphaem", "me", "mn", "mp", "radproton"),
+    # e+- integrands and the grid's lower edge me/30.
+    "electron_thermo": ("me",),
+    # delta_P_a / delta_P_e3 integrands.
+    "qed":             ("alphaem", "me"),
+}
 
 
-def constants_hash(cfg=None) -> str:
-    """Return the 16-hex-digit hash of a config's *entire* constants struct.
+@functools.lru_cache(maxsize=64)
+def _constants_hash_cached(consts: Constants, cache: str) -> str:
+    return fingerprint_hash({k: getattr(consts, k) for k in CACHE_CONSTANTS[cache]})
 
-    Every fingerprinted cache in primat is a function not only of the run-time
-    flags but also of the physical constants: the n<->p weak rates read m_e,
-    alpha, m_n, m_p, g_A, V_ud, the proton charge radius, the anomalous
-    magnetic moments and G_F; the e+- thermodynamic tables read m_e; the QED
-    plasma-pressure tables read m_e and alpha.  This is the single field that
-    keys all four fingerprints (weak rate, CCRTh thermal, electron thermo, QED
-    pressure) on them, so overriding ``me`` cannot reload rates computed with
-    the previous value.
 
-    All 26 fields are hashed, not a curated per-cache list of the ones each
-    cache consumes: over-invalidation costs a recompute, under-invalidation
-    returns a silently wrong number.  So changing ``Mpc`` -- a pure unit
-    conversion that cannot reach the weak-rate integrands -- does rebuild the
-    weak tables.  That is the intended trade.  Only dataclass *fields* are
-    hashed (:func:`dataclasses.asdict`), never the ``@property``-derived
-    quantities: they add no information, and excluding them keeps the hash
-    free of any float a C compiler might contract differently from CPython.
+def constants_hash(cache: str, cfg=None) -> str:
+    """Return the 16-hex-digit hash of the constants one cache reads.
 
-    The C backend hashes ``cfg->consts`` field for field in the same
-    canonical-JSON form (``cpr_constants_hash``, ``primat-c/src/cache.c``), so
-    both backends key a shared cache file identically;
-    ``tests/test_cache_parity.py`` asserts that equality.
+    Each of the four fingerprinted caches embeds this in place of a hash of
+    the whole ``Constants`` struct, so a constant the cache does not read
+    cannot invalidate it -- ``--T0CMB`` no longer costs a two-minute CCRTh
+    recompute.  The declared sets are :data:`CACHE_CONSTANTS`.  Only dataclass
+    *fields* are hashed, never the ``@property``-derived quantities: they add
+    no information, and excluding them keeps the hash free of any float a C
+    compiler might contract differently from CPython.
+
+    The C backend computes the identical value per cache
+    (``cpr_constants_hash``, ``primat-c/src/cache.c``), so both backends key a
+    shared cache file the same way; ``tests/test_cache_parity.py`` asserts it.
 
     Args:
+        cache: which cache's set to hash -- a key of :data:`CACHE_CONSTANTS`
+            (``"weak"``, ``"thermal"``, ``"electron_thermo"``, ``"qed"``).
         cfg: a ``PRIMATConfig`` (or anything exposing ``.constants``).
             ``None`` uses the all-defaults :data:`primat.constants.CONST`.
 
@@ -133,11 +149,11 @@ def constants_hash(cfg=None) -> str:
         16-hex-character hash string, e.g. ``"6e0c1c4c95a2b6b0"``.
 
     Example:
-        >>> constants_hash(cfg)         # doctest: +SKIP
+        >>> constants_hash("qed", cfg)         # doctest: +SKIP
         '6e0c1c4c95a2b6b0'
     """
     consts = CONST if cfg is None else cfg.constants
-    return _constants_hash_cached(consts)
+    return _constants_hash_cached(consts, cache)
 
 
 def read_cache_fingerprint_hash(path: str):
@@ -328,10 +344,9 @@ def resolve_cache_file(cfg, subdir: str, filename: str) -> str:
 # not reproduce).
 #
 # The QED pressure tables (QED_pressure_correction_e{2,3}.txt) are deliberately
-# NOT swept: they keep fixed filenames, so unlike the two hash-named families
-# they cannot proliferate -- there is never more than one pair, and it is
-# rewritten in place when its fingerprint goes stale. Nothing accumulates,
-# so there is nothing to clean.
+# NOT swept: they keep fixed filenames and are written only when
+# recompute_qed_corrections asks for it, so unlike the two hash-named families
+# they cannot proliferate. Nothing accumulates, so there is nothing to clean.
 # ---------------------------------------------------------------------------
 
 # Cache-file basename prefixes swept by list_cache_files/clear_cache, per

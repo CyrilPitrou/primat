@@ -949,8 +949,9 @@ def _frozen_constant_message(name: str, value) -> str:
         f"({', '.join(OVERRIDABLE_CONSTANTS)}) are ordinary parameters -- pass "
         "them in params, on the CLI or in an INI file. To change one of the "
         "remaining ten, edit BOTH primat/constants.py and "
-        "primat-c/src/constants.c; constants_hash (cache_utils) then "
-        "invalidates every cache computed with the old value.")
+        "primat-c/src/constants.c, and bump the affected caches' "
+        "FORMAT_VERSION -- an edit to an exact constant is a source change, "
+        "and no cache is keyed on one.")
 
 
 def _validate_param_value(key: str, value):
@@ -1521,8 +1522,9 @@ class PRIMATConfig:
         its own compiled-in constant, which no config can reach, so the same
         run would give two different answers depending only on the backend.
         The supported way to change one is to edit *both*
-        ``primat/constants.py`` and ``primat-c/src/constants.c``, which
-        ``constants_hash`` detects, correctly invalidating every cache.
+        ``primat/constants.py`` and ``primat-c/src/constants.c``, and to bump
+        the affected caches' ``FORMAT_VERSION``: no cache is keyed on an exact
+        constant, since none of them can vary at run time.
 
         :meth:`__setattr__` rejects such an assignment as it happens, which is
         where a user normally meets this.  This method is the defence-in-depth

@@ -28,9 +28,10 @@
 
 /* v2: the e+- quadratures moved from an absolute to a relative tolerance
  * (elec_integrate's two-pass scheme below), which changes the tabulated
- * values at the grid's low-T edge. Must stay equal to plasma.py's
+ * values at the grid's low-T edge. v3: constants_hash narrowed to me, the one
+ * constant this table reads. Must stay equal to plasma.py's
  * ELECTRON_THERMO_FORMAT_VERSION -- the two backends share one cache file. */
-#define ELECTRON_THERMO_FORMAT_VERSION 2
+#define ELECTRON_THERMO_FORMAT_VERSION 3
 
 /* Fixed (T_min [MeV], T_max [MeV], n_pts) of the QED plasma-pressure
  * correction tables. Unlike the electron-thermo grid, whose upper edge tracks
@@ -132,13 +133,12 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
 
     /* --- Fingerprint gate on the current two-file format ------------------
      * The tables are a function of alpha and me (through the integrands) and
-     * of the grid; cpr_qed_fingerprint records both, keyed on the whole
-     * constants struct via cfg->consts_hash. QED_T_MIN/QED_T_MAX/QED_N_PTS
+     * of the grid; cpr_qed_fingerprint records both. QED_T_MIN/QED_T_MAX/QED_N_PTS
      * are shared with the cpr_qed_compute_tables call below so the hash always
      * describes the grid actually built. Mirrors plasma.py's _load_tables. */
     CPRFPField qed_fields[5];
     size_t n_qed_fp = cpr_qed_fingerprint(QED_T_MIN, QED_T_MAX, QED_N_PTS,
-                                          cfg->consts_hash, qed_fields);
+                                          cfg->consts_hash[CPR_CONSTS_QED], qed_fields);
     char *qed_fp_hash = cpr_fingerprint_hash(qed_fields, n_qed_fp);
 
     int split_on_disk = file_exists(e2_file) && file_exists(e3_file);
@@ -152,10 +152,11 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
         free(h3);
     }
     /* A current-format pair whose header does not match (different constants,
-     * different grid, or no header at all) is STALE: rebuild and overwrite
-     * rather than use it -- and rather than falling back to one of the
-     * superseded layouts below, which would be staler still. Same policy as
-     * the electron-thermo cache. */
+     * different grid, or no header at all) is STALE: rebuild rather than use
+     * it -- and rather than falling back to one of the superseded layouts
+     * below, which would be staler still. It is NOT overwritten: these files
+     * keep fixed names, so one config's tables would replace another's, and
+     * alphaem/me are ordinary parameters. Mirrors plasma.py. */
     int split_stale = split_on_disk && !split_valid;
 
     /* The superseded layouts (single 7-column QED_tables.txt, and the older
@@ -176,12 +177,12 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
          * build not-a-knot cubic-spline interpolants directly from the
          * computed arrays -- smoother than the linear interpolation used
          * when loading from a file (mirrors Python's choice exactly). */
-        /* Saved when the user asked for a recompute, and also when an existing
-         * current-format pair was found stale -- overwriting a mismatched
-         * cache is the whole point of having fingerprinted it. A plain "files
-         * not found" still computes WITHOUT writing, the documented
-         * fresh-checkout behaviour. Mirrors plasma.py. */
-        int save = recompute || split_stale;
+        /* Written only when the user asked for a recompute: neither a miss
+         * nor a stale pair saves, because any write to these fixed names
+         * replaces whatever configuration's tables are already there.
+         * Redirect cache_dir to keep a second configuration's pair.
+         * Mirrors plasma.py. */
+        int save = recompute;
         cpr_log(cfg, "init", "Computing QED plasma-pressure tables (%s)...",
                  recompute ? "recompute requested"
                            : split_stale ? "cached tables stale (fingerprint mismatch)"
@@ -196,7 +197,7 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
              * and point the user at the cache_dir remedy, do NOT abort. */
             if (cpr_qed_save_tables(&t, plasma_wdir,
                                      QED_T_MIN, QED_T_MAX, QED_N_PTS,
-                                     cfg->consts_hash, errmsg)) {
+                                     cfg->consts_hash[CPR_CONSTS_QED], errmsg)) {
                 cpr_log(cfg, "plasma",
                         "could not write cache to %s: results are unaffected, "
                         "but the next run will recompute. Set the cache_dir "
@@ -455,7 +456,8 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
     /* Physical constants: the e+- integrands and the grid's lower edge
      * (Tmin = me/30 above) are functions of the electron mass, so editing `me`
      * changes every row. Mirrors _build_electron_tables in plasma.py. */
-    fields[3] = (CPRFPField){ "constants_hash", { CPR_STRING, { .s = cfg->consts_hash } } };
+    fields[3] = (CPRFPField){ "constants_hash",
+                              { CPR_STRING, { .s = cfg->consts_hash[CPR_CONSTS_ELEC_THERMO] } } };
     char *fp_hash = cpr_fingerprint_hash(fields, 4);
 
     /* The hash goes in the FILENAME, not just the header, mirroring the weak

@@ -108,13 +108,14 @@ void cpr_qed_tables_free(CPRQEDTables *t);
  * The tables are a function of exactly two things -- the physical constants
  * entering the integrands (alpha, me, covered by consts_hash) and the
  * grid they were evaluated on -- so those are what the fingerprint records.
- * Nothing else about a run changes dP_a/dP_e3, which is also why these two
- * files keep FIXED names rather than hash-named ones: they cannot proliferate
- * the way nTOp_<hash>.txt does. A mismatch makes plasma.c recompute (~0.3 s)
- * and overwrite.
+ * Nothing else about a run changes dP_a/dP_e3. These two files keep FIXED
+ * names rather than hash-named ones, so they cannot hold two configurations
+ * at once: a mismatch makes plasma.c recompute (~0.3 s) in memory and leave
+ * the files alone unless recompute_qed_corrections asked for a rewrite.
  *
  * Field .key pointers are static literals; the constants_hash value is the
- * caller's `consts_hash` (normally cfg->consts_hash). Nothing to free. */
+ * caller's `consts_hash` (normally cfg->consts_hash[CPR_CONSTS_QED]).
+ * Nothing to free. */
 size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
                             const char *consts_hash, CPRFPField *out);
 

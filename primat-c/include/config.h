@@ -37,6 +37,18 @@
 
 #include "constants.h"
 
+/* The four fingerprinted caches. Each is keyed on its own subset of the
+ * physical constants -- the ones it actually reads -- so a constant it does
+ * not read cannot invalidate it. Mirrors cache_utils.CACHE_CONSTANTS; the
+ * subsets themselves live in cpr_constants_hash (cache.c). */
+typedef enum {
+    CPR_CONSTS_WEAK = 0,      /* nTOp_<hash>.txt */
+    CPR_CONSTS_THERMAL,       /* nTOp_thermal_<hash>.txt */
+    CPR_CONSTS_ELEC_THERMO,   /* electron_thermo_<hash>.txt */
+    CPR_CONSTS_QED,           /* QED_pressure_correction_e{2,3}.txt */
+    CPR_CONSTS_N_CACHES
+} CPRConstsCache;
+
 /* ---- Generic tagged-union value, used only at the parsing/CLI/ini
  * boundary (cpr_parse_literal, cpr_config_set_by_name). ---- */
 typedef enum { CPR_NONE, CPR_BOOL, CPR_INT, CPR_DOUBLE, CPR_STRING } CPRType;
@@ -199,12 +211,13 @@ typedef struct {
      * other's values. */
     CPRConstants consts;
 
-    /* 16-hex-digit hash of `consts`, refreshed by
-     * cpr_config_refresh_consts_hash whenever a constant is set. Every
-     * fingerprint builder embeds it, and stores this very pointer in a
-     * CPRFPField -- which is why it lives here, with the config's lifetime,
-     * rather than in a builder-local buffer. */
-    char consts_hash[17];
+    /* One 16-hex-digit hash per fingerprinted cache, each over only the
+     * constants that cache reads (cache_utils.CACHE_CONSTANTS on the Python
+     * side), refreshed by cpr_config_refresh_constants whenever a constant is
+     * set. Every fingerprint builder embeds its own, and stores this very
+     * pointer in a CPRFPField -- which is why they live here, with the
+     * config's lifetime, rather than in a builder-local buffer. */
+    char consts_hash[CPR_CONSTS_N_CACHES][17];
 
     /* ---- background thermodynamics ---- */
     double T_start_cosmo_MeV;
