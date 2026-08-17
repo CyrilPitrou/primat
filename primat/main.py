@@ -312,6 +312,22 @@ class PRIMAT:
         if background is not None:
             self.background = background
         elif cfg.custom_background is not None:
+            # A supplied expansion history leaves nothing for an extra energy
+            # component to change, so both are dropped -- say so, as the
+            # background= branch above already does for extra_rho.
+            if extra_rho:
+                warnings.warn(
+                    "PRIMAT: extra_rho is ignored when custom_background is "
+                    "supplied (the table already fixes the expansion history); "
+                    "its effect is absent from the reported abundances."
+                )
+            if cfg.fEDE > 0.0:
+                warnings.warn(
+                    f"PRIMAT: fEDE = {cfg.fEDE:g} is ignored when "
+                    "custom_background is supplied (Early Dark Energy is only "
+                    "applied in the standard mode); its effect is absent from "
+                    "the reported abundances."
+                )
             self.background = CustomBackground(cfg, self.plasma, cfg.custom_background)
         else:
             self.background = StandardBackground(cfg, self.plasma, extra_rho)

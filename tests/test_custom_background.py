@@ -200,6 +200,41 @@ def test_custom_background_warns_spectral_distortions(ref_run, tmp_path):
     )
 
 
+@pytest.mark.solve
+def test_custom_background_warns_that_extra_rho_is_dropped(ref_run, tmp_path):
+    """An extra energy component cannot act once the expansion history is given.
+
+    Both are silently discarded -- a supplied table already fixes the
+    expansion, so there is nothing for them to change -- and the run used to
+    report its abundances as if they had been included (R21/F4.5). The C
+    backend prints the same two messages from ``api.c``.
+    """
+    from primat.main import PRIMAT
+
+    bg_file = str(tmp_path / "bg_warn_extra.tsv")
+    _write_background_file(ref_run.background, bg_file)
+
+    def my_component(*args, **kwargs):
+        return 1.0e10
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        PRIMAT({"custom_background": bg_file, "network": "small"},
+                extra_rho=[my_component])
+    assert [w for w in caught if "extra_rho is ignored" in str(w.message)], (
+        "Expected a warning that extra_rho is dropped; got "
+        f"{[str(w.message)[:60] for w in caught]}"
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        PRIMAT({"custom_background": bg_file, "fEDE": 0.05, "network": "small"})
+    assert [w for w in caught if "fEDE = 0.05 is ignored" in str(w.message)], (
+        "Expected a warning that fEDE is dropped; got "
+        f"{[str(w.message)[:60] for w in caught]}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Error tests (no solve needed)
 # ---------------------------------------------------------------------------

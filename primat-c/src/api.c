@@ -329,6 +329,23 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
      * docstring requires this be done by the caller before passing `nr` in. */
     cpr_nuclear_rates_apply_variations(&nr, cfg);
 
+    /* A supplied expansion history leaves nothing for an extra energy
+     * component to change, so both are dropped -- say so, mirroring the pair
+     * of warnings in main.py's custom_background branch. */
+    if (cfg->custom_background) {
+        if (cfg->extra_rho_n)
+            fprintf(stderr,
+                     "[warn] extra_rho is ignored when custom_background is "
+                     "supplied (the table already fixes the expansion history); "
+                     "its effect is absent from the reported abundances.\n");
+        if (cfg->fEDE > 0.0)
+            fprintf(stderr,
+                     "[warn] fEDE = %g is ignored when custom_background is "
+                     "supplied (Early Dark Energy is only applied in the "
+                     "standard mode); its effect is absent from the reported "
+                     "abundances.\n", cfg->fEDE);
+    }
+
     CPRBackground bg;
     int bg_rc = cfg->custom_background
         ? cpr_bg_init_custom(&bg, cfg, &pl, cfg->custom_background, errmsg)
