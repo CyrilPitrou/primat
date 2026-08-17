@@ -36,7 +36,7 @@ import streamlit as st
 
 from primat.network_data import (
     reaction_stoichiometry, reaction_display_name,
-    load_reaction_names, _load_decay_table,
+    load_reaction_names, validate_rate_table, _load_decay_table,
 )
 
 
@@ -212,14 +212,10 @@ def show_rate_format_help():
 def _validate_rate_domain(T9, rate, err):
     """Reject a parsed rate table the log-log resampler cannot use.
 
-    :func:`primat.network_data._resample_rate_table` interpolates in
-    log10-log10, so it needs finite entries and a strictly increasing,
-    strictly positive ``T9`` column; scipy's cubic additionally refuses
-    duplicate abscissae. Without this check the bad table reaches the solver,
-    which either fails with a message that never mentions the upload or --
-    for an unsorted ``T9`` or a negative rate -- extrapolates nonsense and
-    reports it as an ordinary result (pinned in
-    ``tests/test_gui_robustness.py``).
+    A thin alias for :func:`primat.network_data.validate_rate_table`, which is
+    the single definition of what a valid table is: the library door (an
+    on-disk table, a ``user_nuclear_dir`` overlay) applies the identical rules,
+    so a table the GUI accepts is one the solver accepts and vice versa.
 
     Parameters
     ----------
@@ -231,35 +227,7 @@ def _validate_rate_domain(T9, rate, err):
     ValueError
         Naming the offending row (1-based, as a text editor counts) and value.
     """
-    for label, col in (("T9", T9), ("rate", rate), ("error", err)):
-        bad = np.flatnonzero(~np.isfinite(col))
-        if bad.size:
-            raise ValueError(
-                f"{label} column has a non-finite value ({col[bad[0]]}) at "
-                f"data row {bad[0] + 1}; every entry must be a finite number."
-            )
-    bad = np.flatnonzero(T9 <= 0.0)
-    if bad.size:
-        raise ValueError(
-            f"T9 must be strictly positive (rates are interpolated in "
-            f"log-log), but data row {bad[0] + 1} has T9 = {T9[bad[0]]:g}."
-        )
-    step = np.diff(T9)
-    bad = np.flatnonzero(step <= 0.0)
-    if bad.size:
-        i = int(bad[0])
-        how = "repeats" if step[i] == 0.0 else "goes backwards"
-        raise ValueError(
-            f"the T9 column must increase strictly down the file, but it "
-            f"{how} at data row {i + 2} ({T9[i]:g} -> {T9[i + 1]:g}). "
-            "Sort the table by ascending T9."
-        )
-    bad = np.flatnonzero(rate < 0.0)
-    if bad.size:
-        raise ValueError(
-            f"the rate column must not be negative, but data row "
-            f"{bad[0] + 1} has rate = {rate[bad[0]]:g}."
-        )
+    validate_rate_table(T9, rate, err)
 
 
 def parse_rate_upload(fh, cfg=None, warn=True):

@@ -78,6 +78,16 @@ typedef struct {
 int cpr_load_decays(const char *path, CPRDecayTable *out, char **errmsg);
 void cpr_decay_table_free(CPRDecayTable *t);
 
+/* Rejects (nonzero return, *errmsg set) a rate table cpr_resample_rate_table
+ * cannot use: it interpolates in log10-log10, so it needs finite entries and a
+ * strictly increasing, strictly positive T9 column, and given anything else it
+ * extrapolates nonsense rather than failing. `err` may be NULL (a two-column
+ * table); `source` names the file or reaction in the message. Mirrors
+ * network_data.py's validate_rate_table, message for message. */
+int cpr_validate_rate_table(const double *T9, const double *rate,
+                             const double *err, size_t n, const char *source,
+                             char **errmsg);
+
 /* One row of data/nuclear/data/detailed_balance.csv: the alpha/beta/gamma
  * detailed-balance coefficients and Q-value [keV] used to derive each
  * reaction's reverse rate (Phys. Rep. detailed-balance formula, applied by
