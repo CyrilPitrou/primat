@@ -1,21 +1,46 @@
-name: C unit tests (ASan/UBSan)
+name: C unit tests
 
 # Cheapest available memory-bug detector for primat-c (~250 manual
 # allocation sites, few NULL checks): builds the unit-test binaries with
 # `make debug-test` (-O0 -g -fsanitize=address,undefined) and runs them,
 # so any out-of-bounds access, use-after-free, leak, or UB trips the job.
+#
+# Two platforms. Linux carries the sanitizers; macOS runs the same suite
+# under clang without them, because the C sources had never been compiled
+# by anything but gcc-on-Linux in CI -- a macOS-only warning or an
+# alignment assumption would have reached a release unseen. Windows is
+# covered differently: primat-c/Makefile is POSIX-only, so the MSVC build
+# is exercised through the Python extension in tests.yml, whose
+# "Assert the compiled C extension is present" step is the Windows C
+# compile check.
 on:
   push:
   pull_request:
 
 jobs:
   sanitizers:
+    name: C unit tests (ubuntu, ASan/UBSan)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: primat-c
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Run unit tests under ASan/UBSan
         run: make debug-test
+
+  macos:
+    name: C unit tests (macos, clang)
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: primat-c
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and run the unit tests
+        run: make test
+
+      - name: Build the standalone CLI, warning-free
+        run: make clean && make CFLAGS_EXTRA=-Werror

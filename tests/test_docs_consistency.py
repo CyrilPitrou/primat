@@ -461,3 +461,34 @@ def test_docs_tutorials_gallery_complete():
     for stem in sorted(notebooks - opt_out):
         assert os.path.exists(os.path.join(tutorials_dir, f"{stem}.ipynb")), stem
         assert stem in index, f"{stem} missing from docs/tutorials/index.md"
+
+
+def test_docs_index_quick_start_numbers_match_the_reference_constants():
+    """docs/index.md's quick start must quote the tracked reference values.
+
+    GOAL: the published landing page prints YP and D/H for both backends, to
+    the decimal counts the project reports at, and nothing checked them -- they
+    went stale twice, by 8.6e-09 in D/H once and by 2.1e-07 in YP after that
+    was hand-corrected. Compared against tests/reference_values.py rather than
+    against a fresh solve, for the same reason the tests/README.md table is:
+    the eighth decimal is not portable. Measured on one commit across the CI
+    matrix, the C backend's YPBBN is 0.24699907 on macOS/arm64 and 0.24699900
+    on Linux and Windows/x86_64 -- a 6.7e-08 spread, only 3x below the drift
+    this test exists to catch, so a live-run bound could not separate the two.
+    The constants themselves are pinned to live solves by test_regression.py.
+    """
+    from reference_values import (DOH_REFERENCE, PY_DOH_REFERENCE,
+                                  PY_YPBBN_REFERENCE, YPBBN_REFERENCE)
+
+    text = _read_text(os.path.join(REPO_ROOT, "docs", "index.md"))
+    yp_c = re.search(r"YPBBN'\]:\.8f\}\"\)\s*#\s*([0-9.]+)", text).group(1)
+    doh_c = re.search(r"DoH'\]:\.7e\}\"\)\s*#\s*([0-9.e+-]+)", text).group(1)
+    yp_py, doh_py = re.search(
+        r"pure-Python backend gives `([0-9.]+)` / `([0-9.e+-]+)`", text).groups()
+
+    # Exact strings, not approx: both sides are tracked files, so a mismatch
+    # means one was edited without the other.
+    assert yp_c == f"{YPBBN_REFERENCE:.8f}"
+    assert doh_c == f"{DOH_REFERENCE:.7e}"
+    assert yp_py == f"{PY_YPBBN_REFERENCE:.8f}"
+    assert doh_py == f"{PY_DOH_REFERENCE:.7e}"

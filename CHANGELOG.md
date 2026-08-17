@@ -12,6 +12,23 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **`primat --json` output is valid JSON again when a file is written
+  alongside it.** All six "[output] … written to …" announcements — time
+  evolution, final abundances, the background TSV, the decay-era table and the
+  two Monte-Carlo matrices — went to stdout on both backends, ahead of the JSON
+  document, so `primat --json --output_time_evolution … | jq` failed. They now
+  go to stderr, where progress messages belong; stdout carries only the
+  results.
+- **The startup banner no longer aborts a run on a Windows console.** Its
+  box-drawing characters cannot be encoded in cp1252, the Windows default, so
+  `print(_banner())` raised `UnicodeEncodeError` before any physics — killing
+  `runfiles/primat_run.py`, the documented validation entry point. Both
+  backends fall back to an ASCII banner and separator when the console codec
+  cannot carry the originals.
+- **The published changelog no longer links to an unrelated commercial site.**
+  A bare `README.md` in one entry was auto-linkified by MyST into
+  `http://README.md` — `.md` being a live top-level domain — and rendered as an
+  outbound link on the documentation site.
 - **A run with a non-default `alphaem` or `me` no longer overwrites the
   shipped QED pressure tables.** Those two files keep fixed names, and a
   fingerprint mismatch used to rebuild *and rewrite* them — harmless while the
@@ -422,7 +439,7 @@ in this repository is the authoritative source.
 
 ### Documented
 - **The two backends' known, deliberate divergences** are recorded in
-  `tests/README.md`'s "Known cross-backend divergences", with README.md's
+  `tests/README.md`'s "Known cross-backend divergences", with `README.md`'s
   "Backend parity contract" stating what parity means and which tests enforce
   it. Two divergences are intentional — the HT-era integrator (`LSODA` vs
   RK45; aligning both on BDF was tried and *degraded* YP parity) and

@@ -16,10 +16,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -29,8 +29,26 @@ jobs:
       - name: Build the C extension wheel
         run: python -m build --wheel
 
+      - name: Check the wheel carries a working C extension
+        # The wheel this job produces is committed and served to every visitor
+        # of primat.streamlit.app. Built without this check, a wheel whose
+        # extension silently failed to compile (setup.py's optional_build_ext
+        # degrades rather than failing the build) would upload, be committed,
+        # and serve the 18x slower pure-Python fallback. Same assertion
+        # wheels.yml makes on every other platform via CIBW_TEST_COMMAND.
+        run: |
+          python -m venv /tmp/whlcheck
+          /tmp/whlcheck/bin/pip install -q dist/*.whl
+          cd /tmp && /tmp/whlcheck/bin/python -c "
+          import primat.backend as b
+          assert b.HAS_C_BACKEND, 'wheel shipped without the C extension'
+          r = b.run_bbn({'network': 'small'})
+          assert abs(r['YPBBN'] - 0.247) < 2e-3, r['YPBBN']
+          print('ok:', r['YPBBN'], r['DoH'])
+          "
+
       - name: Upload the wheel file
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: linux-wheel
           path: dist/*.whl

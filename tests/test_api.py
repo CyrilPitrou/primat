@@ -214,3 +214,29 @@ def test_solve_raises_when_integrator_fails(monkeypatch, failing_era, tag):
     with pytest.raises(RuntimeError) as exc:
         PRIMAT().solve()
     assert tag in str(exc.value)
+
+
+def test_banner_falls_back_to_ascii_on_a_legacy_console(monkeypatch):
+    """The startup banner must not crash a console that cannot encode it.
+
+    GOAL: guard the Windows default console encoding (cp1252), which has no
+    box-drawing or block-element characters. ``print(_banner())`` raised
+    ``UnicodeEncodeError`` there and aborted every verbose run, including
+    ``runfiles/primat_run.py``.
+    """
+    import io
+    import sys
+
+    from primat.main import _banner, console_encodable
+
+    legacy = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", legacy)
+    assert not console_encodable("┏")
+    banner = _banner()
+    banner.encode("cp1252")            # the point: this must not raise
+    assert "PRIMAT" in banner
+
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(),
+                                                        encoding="utf-8"))
+    assert console_encodable("┏")
+    assert "┏" in _banner()

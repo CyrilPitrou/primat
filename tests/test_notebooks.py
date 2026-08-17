@@ -31,9 +31,11 @@ renamed/removed attribute that the notebooks rely on (``r.A``,
 makes one of these cells raise, and papermill re-raises that as a
 ``CellExecutionError`` here.
 
-``Sensitivity.ipynb``, ``AnimatedAbundances.ipynb`` and
-``AbundancesXi``/``AbundancesNrelat``'s plotting/animation cells beyond the
-MC scan itself are out of scope for now.
+``generate_rates/thermal_average.ipynb`` lives outside ``notebooks/`` and
+derives its repo root from ``Path.cwd().parent``, so it is executed from a
+throwaway ``generate_rates/`` directory instead (``_run_thermal_average``).
+Every notebook in the repository is covered; ``AbundancesXi``/
+``AbundancesNrelat``'s MC scans run at reduced sample counts, as above.
 
 Requires ``papermill`` (an optional ``notebooks`` extra, see
 ``pyproject.toml``); skipped if not installed.
@@ -51,6 +53,11 @@ FAST_NOTEBOOKS = [
     "AbundanceEvolution.ipynb",
     "CompareSmallNetworks.ipynb",
     "ReactionRates.ipynb",
+    # No Monte Carlo either, so no parameter override is needed: Sensitivity
+    # runs the derivative scan (~6 s) and AnimatedAbundances builds its frames
+    # from ~20 solves (~13 s).
+    "Sensitivity.ipynb",
+    "AnimatedAbundances.ipynb",
 ]
 
 # Notebook name -> papermill parameter dict overriding its MC sample count
@@ -106,3 +113,41 @@ def test_mc_notebook_executes_with_few_samples(name, tmp_path, monkeypatch):
     """Run an MC demo notebook with its sample count cut to 3, via papermill
     parameter injection into the notebook's tagged "parameters" cell."""
     _run_notebook(name, tmp_path, monkeypatch, parameters=MC_NOTEBOOKS[name])
+
+
+def test_thermal_average_notebook_executes(tmp_path, monkeypatch):
+    """Run ``generate_rates/thermal_average.ipynb``, the rate-generation how-to.
+
+    It is the one notebook outside ``notebooks/``, and the only one whose
+    self-checks are assertions rather than plots: three analytic thermal
+    averages (constant sigma, 1/v, and the two d+d S-factor channels) that fail
+    the cell if the quadrature drifts. It reads primat's shipped rate tables
+    and reruns a small BBN solve with the table it just wrote, so an API rename
+    in ``network_data``/``backend`` breaks it exactly as it breaks the others.
+
+    The notebook derives the repo root from ``Path.cwd().parent`` and writes
+    into ``<root>/generate_rates/rate_tables_out/``, so it is run from a
+    throwaway ``generate_rates/`` whose parent links back to the real package
+    -- output lands in tmp_path, inputs come from the checkout.
+    """
+    papermill = pytest.importorskip("papermill")
+    monkeypatch.setenv("MPLBACKEND", "Agg")
+
+    repo = Path(__file__).resolve().parents[1]
+    work_root = tmp_path / "repo"
+    (work_root / "generate_rates").mkdir(parents=True)
+    try:
+        (work_root / "primat").symlink_to(repo / "primat", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        # Windows needs a privilege for symlinks; a copy costs ~24 MB and
+        # works everywhere.
+        shutil.copytree(repo / "primat", work_root / "primat")
+    work_dir = work_root / "generate_rates"
+    shutil.copy(repo / "generate_rates" / "thermal_average.ipynb", work_dir)
+
+    papermill.execute_notebook(
+        str(work_dir / "thermal_average.ipynb"),
+        str(work_dir / "out_thermal_average.ipynb"),
+        cwd=str(work_dir),
+        progress_bar=False,
+    )

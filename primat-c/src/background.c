@@ -1368,6 +1368,7 @@ int cpr_bg_write_time_evolution(const CPRBackground *bg, const char *path, int n
     free(t_out);
     free(data);
 
-    printf("[output] Background time-evolution data (%d rows) written to %s\n", n_points, path);
+    fprintf(stderr, "[output] Background time-evolution data (%d rows) written to %s\n",
+            n_points, path);
     return 0;
 }

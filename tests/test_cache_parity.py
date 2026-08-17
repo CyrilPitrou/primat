@@ -85,9 +85,19 @@ pytestmark = pytest.mark.skipif(
 NTOP_RTOL = 1e-8
 
 # electron_thermo_<hash>.txt, all four columns (rho_e, p_e, drho_e_dT,
-# dp_e_dT), max relative difference. Measured 8.9e-12: both backends use a
+# dp_e_dT), max relative difference. Measured 1.3e-10: both backends use a
 # quadrature tolerance relative to the integrand's own magnitude.
+#
+# Applied only above ELECTRON_THERMO_TAIL_FRAC of each column's peak. The
+# columns fall ~25 decades into the Boltzmann-suppressed tail, where one
+# backend can underflow to exact 0.0 against the other's ~1e-17 and a
+# pointwise-relative metric reports 1.0 -- seen in CI on one platform at
+# T = 1.70e-02 MeV, 1.1e-17 against a column peak of 5.8e+08. The tail is
+# covered by ELECTRON_THERMO_SCALE_RTOL instead, on the same "could this
+# difference move anything?" argument as QED_SCALE_RTOL below.
 ELECTRON_THERMO_RTOL = 1e-9
+ELECTRON_THERMO_TAIL_FRAC = 1e-15
+ELECTRON_THERMO_SCALE_RTOL = 1e-11   # measured 1.0e-12
 
 # QED_pressure_correction_e{2,3}.txt: max |difference| normalised by the
 # COLUMN'S PEAK MAGNITUDE, not pointwise-relative. Measured 7.3e-20.
@@ -210,6 +220,25 @@ def _max_scale_rel(a, b):
     return worst
 
 
+def _max_rel_above_scale(a, b, frac):
+    """``_max_rel`` restricted to entries above ``frac`` of their column peak.
+
+    A column that decays over ~25 decades ends in a Boltzmann-suppressed tail
+    where one backend's quadrature can underflow to exact ``0.0`` while the
+    other returns a denormal-scale value. Pointwise-relative scores that as
+    1.0 -- a hard failure over a difference that cannot move any observable.
+    Callers pair this with ``_max_scale_rel``, which covers the excluded tail.
+    """
+    worst = 0.0
+    for j in range(b.shape[1]):
+        peak = np.max(np.abs(b[:, j]))
+        keep = np.abs(b[:, j]) > frac * peak
+        if peak == 0.0 or not keep.any():
+            continue
+        worst = max(worst, _max_rel(a[keep, j], b[keep, j]))
+    return worst
+
+
 # ---------------------------------------------------------------------------
 # 1. Hash identity -- the assertion that pins the two fingerprint ports.
 # ---------------------------------------------------------------------------
@@ -327,7 +356,8 @@ def test_electron_thermo_cache_columns_agree(coarse_dirs):
     c = np.loadtxt(dirs["c"] / "plasma" / name)
     p = np.loadtxt(dirs["python"] / "plasma" / name)
     assert c.shape == p.shape
-    assert _max_rel(c, p) < ELECTRON_THERMO_RTOL
+    assert _max_rel_above_scale(c, p, ELECTRON_THERMO_TAIL_FRAC) < ELECTRON_THERMO_RTOL
+    assert _max_scale_rel(c, p) < ELECTRON_THERMO_SCALE_RTOL
 
 
 def test_qed_pressure_tables_agree(qed_dirs):

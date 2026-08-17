@@ -85,7 +85,7 @@ def test_runfile_executes_cleanly(name, tmp_path):
         [sys.executable, str(RUNFILES_DIR / name)],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         timeout=120,
     )
 
@@ -118,7 +118,7 @@ def test_primat_run_matches_the_validation_reference(tmp_path):
     """
     result = subprocess.run(
         [sys.executable, str(RUNFILES_DIR / "primat_run.py")],
-        cwd=tmp_path, capture_output=True, text=True, timeout=120,
+        cwd=tmp_path, capture_output=True, text=True, encoding="utf-8", timeout=120,
     )
     assert result.returncode == 0, result.stderr
 
@@ -143,7 +143,7 @@ def test_primat_mc_runfile_executes_cleanly(tmp_path):
         [sys.executable, str(RUNFILES_DIR / MC_RUNFILE), "--quick"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         timeout=120,
     )
 
@@ -168,7 +168,7 @@ def test_benchmark_runfile_executes_cleanly(tmp_path):
         [sys.executable, str(RUNFILES_DIR / BENCHMARK_RUNFILE), "--quick"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
         timeout=120,
     )
 

@@ -33,9 +33,9 @@ are driven by the same n<->p weak-rate / background machinery.
 # `primat-gui`'s default "Run BBN", and `runfiles/primat_run.py`.
 #
 # Snapshotted on the auto backend (C when available), which is what these tests
-# actually invoke. The pure-Python backend gives YPBBN 0.24699896 /
-# D/H 2.4358605e-05, i.e. 1.1e-07 and 1.6e-10 away, so both backends sit inside
-# the bounds below.
+# actually invoke. The pure-Python backend's own values are PY_YPBBN_REFERENCE /
+# PY_DOH_REFERENCE below -- 1.1e-07 and 1.6e-10 away, so both backends sit
+# inside the bounds below.
 NEFF_REFERENCE  = 3.0439772986
 YPBBN_REFERENCE = 0.24699907   # primat.cli.main() default (auto backend), Omegabh2=0.02242
 DOH_REFERENCE   = 2.4358767e-5  # primat.cli.main() default (auto backend), Omegabh2=0.02242
@@ -45,6 +45,14 @@ DOH_REFERENCE   = 2.4358767e-5  # primat.cli.main() default (auto backend), Omeg
 NEFF_ABS_TOL  = 1e-5
 YPBBN_ABS_TOL = 1e-5
 DOH_ABS_TOL   = 3e-9
+
+# The same run on the pure-Python backend. Quoted alongside the C values in
+# docs/index.md's quick start, which test_docs_consistency.py checks against
+# these constants; pinned to a live solve by test_regression.py's solved_small
+# tier, which runs primat.main.PRIMAT (i.e. the Python backend) against the
+# constants above.
+PY_YPBBN_REFERENCE = 0.24699896
+PY_DOH_REFERENCE   = 2.4358605e-5
 
 # Per-nuclide final mass fractions, small network (primat.cli.main() default,
 # auto backend). Kept as scalars for the two callers that predate

@@ -425,7 +425,7 @@ def test_generate_qed_tables_writes_fingerprinted_tables(tmp_path):
     out.mkdir()
     result = subprocess.run(
         [sys.executable, script, "--n-pts", "8", "--output-dir", str(out)],
-        cwd=tmp_path, capture_output=True, text=True, timeout=300,
+        cwd=tmp_path, capture_output=True, text=True, encoding="utf-8", timeout=300,
     )
     assert result.returncode == 0, result.stderr
     for name in ("QED_pressure_correction_e2.txt",
@@ -459,7 +459,7 @@ def test_convert_ac2024_regenerates_the_shipped_tables_byte_for_byte(tmp_path):
     script = os.path.join(_GEN_DIR, "convert_ac2024_rates.py")
     result = subprocess.run(
         [sys.executable, script, "--input", _AC2024_DAT, "--nubase", _NUBASE],
-        cwd=tmp_path, capture_output=True, text=True, timeout=600,
+        cwd=tmp_path, capture_output=True, text=True, encoding="utf-8", timeout=600,
     )
     assert result.returncode == 0, result.stderr
     # The generator's own checks must pass too -- they are the reason a bad

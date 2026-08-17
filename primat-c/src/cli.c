@@ -1,5 +1,6 @@
 /* cli.c -- see cli.h. */
 #include "cli.h"
+#include "log.h"
 #include "xalloc.h"
 #include "api.h"
 #include "cache.h"
@@ -902,7 +903,11 @@ static void print_mc_matrices(const CPRMCResult *mc, int num_mc)
 static void print_plain(const CPRConfig *cfg, const CPRResults *results,
                         const CPRMCResult *mc, int mc_n, double elapsed_s)
 {
-    const char *sep = "────────────────────────────────────────────────────";
+    /* "-" where the console codec cannot carry U+2500 (cp1252, the Windows
+     * default), same guard as cli.py's separator. */
+    const char *sep = cpr_console_takes_utf8()
+        ? "────────────────────────────────────────────────────"
+        : "----------------------------------------------------";
     char header[80];
     snprintf(header, sizeof(header), "PRIMAT results at T = %g MeV", cfg->T_end_MeV);
     printf("%s\n", sep);
@@ -1383,20 +1388,20 @@ int cpr_cli_main(int argc, char **argv)
             snprintf(rel, sizeof(rel), "%s_samples.tsv", prefix);
             cli_abspath(rel, path, sizeof(path));
             if (mc_write_samples(path, mc, mc_n) == 0)
-                printf("[output] MC samples (%d sample%s) written to %s\n",
+                fprintf(stderr, "[output] MC samples (%d sample%s) written to %s\n",
                        mc_n, mc_n == 1 ? "" : "s", path);
         }
         if (cfg.output_mc_covariance) {
             snprintf(rel, sizeof(rel), "%s_covariance.tsv", prefix);
             cli_abspath(rel, path, sizeof(path));
             if (mc_write_matrix(path, mc, mc_n, mc_seed, 0) == 0)
-                printf("[output] MC covariance matrix written to %s\n", path);
+                fprintf(stderr, "[output] MC covariance matrix written to %s\n", path);
         }
         if (cfg.output_mc_correlation) {
             snprintf(rel, sizeof(rel), "%s_correlation.tsv", prefix);
             cli_abspath(rel, path, sizeof(path));
             if (mc_write_matrix(path, mc, mc_n, mc_seed, 1) == 0)
-                printf("[output] MC correlation matrix written to %s\n", path);
+                fprintf(stderr, "[output] MC correlation matrix written to %s\n", path);
         }
     }
 

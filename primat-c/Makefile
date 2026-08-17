@@ -4,6 +4,9 @@ CC ?= cc
 # every .o that depends on it stale 
 CFLAGS ?= -std=c11 -Wall -Wextra -O2 -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
 LDFLAGS ?= -lm -pthread
+# Appended, not replacing CFLAGS: lets CI add -Werror without having to
+# restate the whole flag list (and drift from it).
+CFLAGS += $(CFLAGS_EXTRA)
 
 BUILD := build
 SRC := $(wildcard src/*.c)

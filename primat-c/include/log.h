@@ -16,4 +16,13 @@
  * "[bg-c] Background a(t,T) ready in 0.42 s"). */
 void cpr_log(const CPRConfig *cfg, const char *tag, const char *fmt, ...);
 
+/* True when stdout can carry the decorative UTF-8 output (banner box, rule).
+ * A Windows console in a legacy code page -- cp1252, the default outside UTF-8
+ * mode -- renders those bytes as mojibake, so callers fall back to ASCII; a
+ * redirected stdout is a plain byte stream and takes UTF-8 unchanged. Mirrors
+ * main.py's console_encodable(), which guards the same two places on the
+ * Python side (where the mismatch raises UnicodeEncodeError rather than
+ * garbling). */
+int cpr_console_takes_utf8(void);
+
 #endif /* CPRIMAT_LOG_H */

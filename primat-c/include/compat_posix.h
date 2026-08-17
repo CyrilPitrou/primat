@@ -57,6 +57,19 @@
 #define getpid _getpid
 #endif
 
+/* POSIX's S_ISDIR/S_ISREG file-type predicates. The MSVC CRT ships the
+ * _S_IFMT/_S_IFDIR/_S_IFREG bits but not these macros, and without them
+ * `S_ISDIR(st.st_mode)` compiles as an implicit *function* call that reaches
+ * the linker as an undefined symbol:
+ *     config.obj : error LNK2001: unresolved external symbol S_ISDIR
+ * which is what kept the extension from building on Windows. */
+#ifndef S_ISDIR
+#define S_ISDIR(mode) (((mode) & _S_IFMT) == _S_IFDIR)
+#endif
+#ifndef S_ISREG
+#define S_ISREG(mode) (((mode) & _S_IFMT) == _S_IFREG)
+#endif
+
 #else /* POSIX (Linux, macOS, ...) */
 
 #include <unistd.h>

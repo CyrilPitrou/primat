@@ -21,15 +21,28 @@ numpy/scipy/joblib (and any optional numba/vegas) are reused --
 this test checks the *primat* packaging, not whether its dependencies can
 be downloaded.
 """
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import venv
+import zipfile
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _venv_python(venv_dir):
+    """Interpreter inside a ``venv.create``d directory, on any platform.
+
+    Windows puts it in ``Scripts/python.exe``, POSIX in ``bin/python``.
+    """
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
 
 
 @pytest.mark.slow
@@ -85,7 +98,7 @@ def test_wheel_install_smoke_solve():
         #    for numpy/scipy/joblib/numba/...).
         # ------------------------------------------------------------
         venv.create(venv_dir, with_pip=True, system_site_packages=True)
-        venv_python = venv_dir / "bin" / "python"
+        venv_python = _venv_python(venv_dir)
         subprocess.run(
             [str(venv_python), "-m", "pip", "install", "--no-deps", "-q",
              str(wheels[0])],
@@ -97,13 +110,24 @@ def test_wheel_install_smoke_solve():
         #    defaults to False, so this does not write into site-packages.
         # ------------------------------------------------------------
         smoke_script = (
+            # Ignore the development checkout's editable import hook, which
+            # would otherwise serve its own primat submodules to this venv --
+            # see test_install_falls_back_to_python_... below.
+            "import sys\n"
+            "sys.meta_path = [f for f in sys.meta_path if not\n"
+            "                 getattr(f, '__module__', '').startswith('__editable__')]\n"
             "from primat import PRIMAT\n"
+            "import primat\n"
+            "assert 'site-packages' in primat.__file__, primat.__file__\n"
             "r = PRIMAT({'network': 'small', 'verbose': False, 'debug': False}).solve()\n"
             "print(r['YPBBN'], r['DoH'])\n"
         )
         result = subprocess.run(
             [str(venv_python), "-c", smoke_script],
-            check=True, capture_output=True, text=True,
+            # cwd outside the checkout: `python -c` puts the working directory
+            # first on sys.path, so running from the repo root would import the
+            # source tree and never touch the wheel this test just installed.
+            cwd=str(tmp_path), check=True, capture_output=True, text=True, encoding="utf-8",
         )
 
     # Same loose tolerances as tests/test_regression.py::test_small_network_*
@@ -174,10 +198,124 @@ def test_core_runs_without_plotly_or_joblib():
     """
     result = subprocess.run(
         [sys.executable, "-c", _NO_OPTIONAL_DEPS_SCRIPT],
-        cwd=str(REPO_ROOT), capture_output=True, text=True,
+        cwd=str(REPO_ROOT), capture_output=True, text=True, encoding="utf-8",
     )
     assert result.returncode == 0, (
         "core solve / serial MC failed without plotly+joblib:\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "OK" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# The documented degradation path: no working compiler -> pure Python
+# ---------------------------------------------------------------------------
+
+# Files a wheel build needs. The whole checkout is ~500 MB (git history, the
+# built docs); these are the build inputs, ~26 MB, which keeps the copy below
+# affordable.
+_BUILD_INPUTS = ("pyproject.toml", "setup.py", "MANIFEST.in", "README.md",
+                 "LICENSE", "primat", "primat-c")
+
+
+@pytest.mark.slow
+@pytest.mark.wheel
+def test_install_falls_back_to_python_when_the_extension_cannot_build():
+    """`pip install` must succeed with a broken C toolchain, minus the extension.
+
+    GOAL: pin the promise setup.py's ``optional_build_ext`` makes and
+    README/docs repeat -- that a missing or broken compiler degrades to the
+    pure-Python backend instead of failing the install. It rests on a broad
+    ``except Exception`` around setuptools' ``build_ext``, which nothing
+    exercised, so a change in how setuptools reports build failures would turn
+    the graceful degradation into a hard install error unnoticed.
+
+    The failure is forced by corrupting the wrapper's C source in a throwaway
+    copy of the build inputs -- a real compiler error, on whichever compiler
+    the platform uses, rather than a simulated one.
+    """
+    with tempfile.TemporaryDirectory(prefix="primat_nocc_") as tmp:
+        tmp_path = Path(tmp)
+        src = tmp_path / "src"
+        src.mkdir()
+        for name in _BUILD_INPUTS:
+            origin = REPO_ROOT / name
+            if not origin.exists():
+                continue
+            if origin.is_dir():
+                # Skip build outputs: an editable checkout has the compiled
+                # extension sitting in primat/, and copying it would leave a
+                # working _primat_c next to the deliberately broken source.
+                shutil.copytree(origin, src / name, symlinks=True,
+                                ignore=shutil.ignore_patterns(
+                                    "*.so", "*.pyd", "*.dll", "*.o",
+                                    "__pycache__", "build", "*.egg-info"))
+            else:
+                shutil.copy(origin, src / name)
+
+        wrapper = src / "primat" / "_primat_c_src" / "_wrapper.c"
+        wrapper.write_text("#error primat test: forced extension build failure\n")
+
+        wheel_dir = tmp_path / "wheel"
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "setuptools>=61"],
+            check=True,
+        )
+        build = subprocess.run(
+            [sys.executable, "-m", "pip", "wheel", str(src), "-w", str(wheel_dir),
+             "--no-deps", "--no-build-isolation"],
+            capture_output=True, text=True, encoding="utf-8",
+        )
+        # The point of the test: a compile error is not an install error.
+        assert build.returncode == 0, build.stdout + build.stderr
+        wheels = list(wheel_dir.glob("*.whl"))
+        assert len(wheels) == 1, f"expected exactly one wheel, got {wheels}"
+
+        venv_dir = tmp_path / "venv"
+        venv.create(venv_dir, with_pip=True, system_site_packages=True)
+        venv_python = _venv_python(venv_dir)
+        subprocess.run(
+            [str(venv_python), "-m", "pip", "install", "--no-deps", "-q",
+             str(wheels[0])],
+            check=True,
+        )
+
+        # The wheel itself is the primary evidence: no compiled extension was
+        # packaged, so the install cannot have one.
+        with zipfile.ZipFile(wheels[0]) as zf:
+            compiled = [n for n in zf.namelist() if n.endswith((".so", ".pyd", ".dll"))]
+        assert compiled == [], f"wheel carries a compiled extension: {compiled}"
+
+        # And it still solves. HAS_C_BACKEND is asserted only when `primat`
+        # actually resolves inside the venv: the venv reuses system site
+        # packages for numpy/scipy, which on a development machine also exposes
+        # the editable checkout (extension included) through its import hook.
+        probe = (
+            # The venv reuses system site packages (for numpy/scipy), which on
+            # a development machine also carries the editable checkout's
+            # import hook -- and that hook resolves primat._primat_c to the
+            # compiled extension in the source tree even when primat itself
+            # comes from the venv. Drop it, or the assertion below tests the
+            # developer's build rather than the wheel just installed.
+            "import sys\n"
+            "sys.meta_path = [f for f in sys.meta_path if not\n"
+            "                 getattr(f, '__module__', '').startswith('__editable__')]\n"
+            "import primat, primat.backend as b\n"
+            "print(primat.__file__)\n"
+            "print(b.HAS_C_BACKEND)\n"
+            "r = b.run_bbn({'network': 'small'})\n"
+            "print(r['YPBBN'], r['DoH'])\n"
+        )
+        result = subprocess.run(
+            [str(venv_python), "-c", probe],
+            cwd=str(tmp_path),      # see test_wheel_install_smoke_solve
+            check=True, capture_output=True, text=True, encoding="utf-8",
+        )
+
+    origin, has_c, values = result.stdout.strip().split("\n")
+    assert "site-packages" in origin, f"probe imported {origin}, not the install"
+    assert has_c == "False", "extension present in a wheel built without it"
+
+    yp, doh = (float(v) for v in values.split())
+    assert yp  == pytest.approx(0.2469983, abs=1e-4)
+    assert doh == pytest.approx(2.43490e-5, rel=2e-3)

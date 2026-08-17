@@ -15,6 +15,11 @@ jobs:
     name: wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      # One platform's failure must not cancel the others: during a release
+      # that leaves no wheels at all for the platforms that were fine, and it
+      # hides whether the failure is platform-specific. (Windows' link error
+      # cancelled all three other builds mid-flight.)
+      fail-fast: false
       matrix:
         # ubuntu-latest/ubuntu-24.04-arm each build natively for their own
         # arch (no QEMU emulation, which previously hung pulling the aarch64
@@ -22,7 +27,7 @@ jobs:
         # arches via Xcode cross-compilation -- macos-13 dropped as redundant.
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-14, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pypa/cibuildwheel@v2.23
         env:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
@@ -55,7 +60,7 @@ jobs:
           # regression).
           CIBW_TEST_COMMAND: >-
             python -c "import primat.backend as b; assert b.HAS_C_BACKEND, 'wheel shipped without C extension'; r=b.run_bbn({'network':'small'}); assert abs(r['YPBBN']-0.247) < 2e-3, r['YPBBN']"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: wheels-${{ matrix.os }}
           path: wheelhouse/*.whl
@@ -64,9 +69,9 @@ jobs:
     name: sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: pipx run build --sdist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sdist
           path: dist/*.tar.gz
@@ -89,7 +94,7 @@ jobs:
     permissions:
       id-token: write       # PyPI Trusted Publishing (OIDC) -- no token to manage/leak
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with: { path: dist, merge-multiple: true }
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -106,7 +111,7 @@ jobs:
     permissions:
       id-token: write       # PyPI Trusted Publishing (OIDC) -- no token to manage/leak
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with: { path: dist, merge-multiple: true }
       - uses: pypa/gh-action-pypi-publish@release/v1
 

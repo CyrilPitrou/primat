@@ -62,6 +62,7 @@ All tests are skipped if the optional ``gui`` extra is not installed, and
 been generated (mirrors ``test_gui.py``).
 """
 import os
+from pathlib import Path
 
 import pytest
 
@@ -72,7 +73,11 @@ from streamlit.testing.v1 import AppTest
 
 pytestmark = [pytest.mark.slow, pytest.mark.solve, pytest.mark.gui]
 
-APP_PATH = "primat/gui/app.py"
+# Absolute, not "primat/gui/app.py": AppTest.from_file resolves a relative path
+# against the *calling file* (i.e. tests/) unless it happens to exist relative
+# to the process cwd, so a cwd-relative path only works on streamlit versions
+# that still probe the cwd first, and only when pytest is run from the repo root.
+APP_PATH = str(Path(__file__).resolve().parents[1] / "primat" / "gui" / "app.py")
 
 _AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "primat",
                            "data", "csv")

@@ -63,6 +63,56 @@ _BANNER_TEMPLATE = """
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 """
 
+# ASCII rendition, used when the console's codec cannot carry the box-drawing
+# and block-element characters above -- the Windows default console encoding
+# (cp1252) cannot, and printing to it raises UnicodeEncodeError.
+_BANNER_ASCII = """
++-----------------------------------------------+
+|                                               |
+|                   P R I M A T                 |
+|                                               |
+|  Welcome to PRIMAT (python backend) v{version}    |
+|                                               |
++-----------------------------------------------+
+"""
+
+
+def configure_console() -> None:
+    """Make this process's stdout/stderr survive characters they cannot encode.
+
+    For **entry points only** (the CLI and the scripts in ``runfiles/``), never
+    on library import: it mutates process-wide state. A Windows console
+    defaults to cp1252, which has no Greek or box-drawing characters, so a
+    plain ``print("Ωνh2 = ...")`` raises ``UnicodeEncodeError`` and aborts the
+    run. Switching the error handler (not the codec) to ``replace`` degrades
+    those characters to ``?`` instead of killing the process, and is a no-op on
+    a console that can encode them.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:          # not a TextIOWrapper (pytest capture)
+            continue
+        try:
+            if not console_encodable("Ω┏"):
+                reconfigure(errors="replace")
+        except (OSError, ValueError):    # detached or unsupported stream
+            pass
+
+
+def console_encodable(text: str) -> bool:
+    """True if ``text`` survives a round trip through stdout's own codec.
+
+    Guards the decorative output: a console whose encoding is cp1252 (the
+    Windows default outside UTF-8 mode) raises ``UnicodeEncodeError`` on the
+    banner's box-drawing characters, aborting the run before any physics.
+    """
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        text.encode(enc)
+    except (UnicodeEncodeError, LookupError):
+        return False
+    return True
+
 
 def _banner() -> str:
     """Render the startup banner with the installed package version.
@@ -74,7 +124,9 @@ def _banner() -> str:
     reinstalling an editable checkout).
     """
     from . import __version__
-    return _BANNER_TEMPLATE.format(version=__version__)
+    template = (_BANNER_TEMPLATE if console_encodable(_BANNER_TEMPLATE)
+                else _BANNER_ASCII)
+    return template.format(version=__version__)
 
 
 def _options_recap(cfg: PRIMATConfig, backend: str) -> str:

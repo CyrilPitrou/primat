@@ -188,6 +188,13 @@ def test_scalar_linear_eval_reproduces_scipy_exactly(clamped):
     sequence and every observable with it. Checked on the nodes, the
     midpoints between them and both extrapolation sides, for both fill_value
     forms the background uses.
+
+    Declining is a valid outcome, not a failure: the fast path reproduces the
+    convex-combination form scipy evaluates today, and on a scipy that
+    evaluates ``slope * (x - x_lo) + y_lo`` instead the build-time probe
+    correctly returns ``None`` and the caller keeps scipy (seen on macOS
+    py3.10 in CI). What must never happen is a fast path that is taken and
+    differs.
     """
     from scipy.interpolate import interp1d
     from primat.background import _scalar_linear_eval
@@ -199,7 +206,8 @@ def test_scalar_linear_eval_reproduces_scipy_exactly(clamped):
     fill_value = (y[0], y[-1]) if clamped else "extrapolate"
     ref = interp1d(x, y, kind="linear", bounds_error=False, fill_value=fill_value)
     fast = _scalar_linear_eval(ref)
-    assert fast is not None
+    if fast is None:
+        pytest.skip("this scipy's interp1d uses a form the fast path declines")
     probe = np.concatenate([x, 0.5 * (x[:-1] + x[1:]), [-1.0, 11.0]])
     for q in probe:
         assert float(fast(q)) == float(ref(q))

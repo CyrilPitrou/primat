@@ -752,7 +752,8 @@ class NuclearNetwork:
             f.write(dump_final_with_sigma(names, self.Y_final))
         # Always announce: this file is written only on explicit request
         # (output_final_result=True), so the user wants to know where it landed.
-        print(f"[output] Final abundances ({len(names)} nuclides) written to {path}")
+        print(f"[output] Final abundances ({len(names)} nuclides) written to {path}",
+              file=sys.stderr)
 
     def _write_time_evolution(self, sol_HT, sol_LT, nucl):
         """Build the unified ``EvolutionResult`` (see :mod:`primat.evolution`)
@@ -881,8 +882,11 @@ class NuclearNetwork:
         out_path = os.path.abspath(cfg.output_file)
         dump_evolution(self.evolution, out_path)
 
-        # Always announce: written only on explicit request (output_time_evolution=True).
-        print(f"[output] Time-evolution data ({len(t_out)} rows) written to {out_path}")
+        # Always announce (the file is written only on explicit request), but on
+        # stderr: `primat --json` writes its document to stdout, and a progress
+        # line ahead of it makes the output unparseable.
+        print(f"[output] Time-evolution data ({len(t_out)} rows) written to {out_path}",
+              file=sys.stderr)
 
     # ======================================================================
     # Decay Time (DT) era helpers
@@ -1115,4 +1119,5 @@ class NuclearNetwork:
         out_data = np.column_stack([t_grid, Y_t])
         out_header = "\t".join(["t"] + nuc_cols)
         np.savetxt(path, out_data, delimiter='\t', header=out_header, comments='')
-        print(f"[output] Decay-era evolution ({len(t_grid)} rows) written to {path}")
+        print(f"[output] Decay-era evolution ({len(t_grid)} rows) written to {path}",
+              file=sys.stderr)

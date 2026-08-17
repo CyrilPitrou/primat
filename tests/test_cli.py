@@ -3,13 +3,17 @@ Tests for the ``primat`` console-script CLI.
 
 ``primat.cli.main()`` is invoked in-process (no subprocess) with an
 explicit ``argv`` list, which is exactly what the ``primat`` console
-script does at startup.  Each invocation runs one full small-network solve
-(~1.2 s), so these tests are marked ``slow``/``solve`` like the other
-single-solve tests in the "solve" tier.
+script does at startup -- except where the test is about what reaches the
+process's own stdout/stderr, which only a subprocess can observe.  Each
+invocation runs one full small-network solve (~1.2 s), so these tests are
+marked ``slow``/``solve`` like the other single-solve tests in the "solve"
+tier.
 """
 import json
 import os
 import re
+import subprocess
+import sys
 
 import pytest
 
@@ -154,6 +158,32 @@ def test_cli_json_with_time_evolution_is_serialisable(capsys, tmp_path):
     assert "time-evolution" in captured.err
 
 
+@pytest.mark.parametrize("backend", ["c", "python"])
+def test_cli_json_stdout_is_pure_json_in_a_subprocess(backend, tmp_path):
+    """`primat --json … | jq` must work: nothing but JSON reaches stdout.
+
+    GOAL: pin the redirection contract that the in-process test above cannot
+    see. ``capsys`` captures Python-level writes only, so the C backend's
+    ``fprintf`` to the underlying file descriptor is invisible to it -- the
+    "[output] Time-evolution data …" progress line went to stdout on both
+    backends and corrupted the JSON document while that test stayed green.
+    """
+    if backend == "c":
+        from primat.backend import HAS_C_BACKEND
+        if not HAS_C_BACKEND:
+            pytest.skip("primat._primat_c C extension is not built")
+    proc = subprocess.run(
+        [sys.executable, "-m", "primat.cli", "--json", "--backend", backend,
+         "--output_time_evolution", "--output_file", str(tmp_path / "evo.tsv")],
+        capture_output=True, text=True, encoding="utf-8", timeout=300,
+    )
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)          # fails if anything else got in
+    assert payload["DoH"] > 0
+    assert "[output]" in proc.stderr           # announced, on the right stream
+    assert "[output]" not in proc.stdout
+
+
 def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
     """Quoted ``~`` paths passed through ``--set`` should resolve to HOME.
 
@@ -285,7 +315,7 @@ def test_cli_mc_output_announces_path(capsys, tmp_path):
     rc = main(["--mc", "1", "--output_mc_samples",
                "--output_mc_file_prefix", str(prefix)])
     assert rc == 0
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err          # [output] lines go to stderr
     assert "[output] MC samples (1 sample) written to" in out
     assert str((tmp_path / "mc_samples.tsv").resolve()) in out
 
@@ -297,7 +327,8 @@ def test_cli_mc_covariance_correlation_files(capsys, tmp_path):
     rc = main(["--mc", "3", "--output_mc_covariance", "--output_mc_correlation",
                "--output_mc_file_prefix", str(prefix)])
     assert rc == 0
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
+    out = captured.err                     # [output] lines go to stderr
     assert "[output] MC covariance matrix written to" in out
     assert "[output] MC correlation matrix written to" in out
     assert (tmp_path / "mc_covariance.tsv").exists()
@@ -308,8 +339,8 @@ def test_cli_mc_covariance_correlation_files(capsys, tmp_path):
     assert "ddof=1" in cov_head
     # The CLI also prints the 4x4 correlation/covariance matrices of the main
     # products after the value +/- sigma block.
-    assert "Correlation matrix (YPBBN, DoH, He3oHe4, Li7oH):" in out
-    assert "Covariance matrix (YPBBN, DoH, He3oHe4, Li7oH):" in out
+    assert "Correlation matrix (YPBBN, DoH, He3oHe4, Li7oH):" in captured.out
+    assert "Covariance matrix (YPBBN, DoH, He3oHe4, Li7oH):" in captured.out
 
 
 def test_cli_mc_output_file_without_enable_flag_does_not_write(capsys, tmp_path):
@@ -317,7 +348,7 @@ def test_cli_mc_output_file_without_enable_flag_does_not_write(capsys, tmp_path)
     prefix = tmp_path / "mc"
     rc = main(["--mc", "1", "--output_mc_file_prefix", str(prefix)])
     assert rc == 0
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "[output] MC samples" not in out
     assert not (tmp_path / "mc_samples.tsv").exists()
 

@@ -119,13 +119,27 @@ myst_heading_anchors = 3
 
 # Do NOT execute notebooks during the ordinary ``-W`` docs build: they are slow
 # and some need optional extras (numba/vegas/papermill). The committed notebooks
-# ship with stored outputs, which myst-nb renders as-is. CI's nightly lane is
-# the place to re-execute them (set ``NB_EXECUTION_MODE=cache`` there).
+# ship with stored outputs, which myst-nb renders as-is. Re-execution is the
+# test suite's job -- ``tests/test_notebooks.py`` runs every notebook in the
+# repository under papermill -- so this stays "off" unless a human sets
+# ``NB_EXECUTION_MODE`` by hand.
 import os as _os
 
 nb_execution_mode = _os.environ.get("NB_EXECUTION_MODE", "off")
 nb_execution_timeout = 900  # seconds, only relevant when execution is enabled
 nb_execution_allow_errors = False
+
+# -- linkcheck ---------------------------------------------------------------
+
+# `sphinx-build -b linkcheck` runs in CI next to the -W HTML build. Retries and
+# a generous timeout keep a slow third-party host from reddening a pull request
+# over something that is not the project's fault; anchors are not checked
+# because fragment identifiers on other projects' pages move independently of
+# anything here. Redirects are reported, not failed, by linkcheck's own
+# convention.
+linkcheck_retries = 3
+linkcheck_timeout = 20
+linkcheck_anchors = False
 
 # -- autodoc / autosummary ---------------------------------------------------
 
