@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int failures = 0;
 
@@ -70,6 +71,30 @@ int main(void)
     CHECK(t.n_cols == 4, "QED_pressure_correction_e3 has 4 columns");
     CHECK(close(t.cols[0][0], 1.0e-3), "QED_pressure_correction_e3 first T == 1e-3");
     cpr_table_free(&t);
+
+    /* An empty (or comments-only) file must be an error even when a column
+     * hint was given: with the hint accepted, cpr_table_read returned success
+     * and n_rows == 0, and every caller then indexes cols[c][0] -- a SIGSEGV
+     * on any rate table read through a user_nuclear_dir overlay. */
+    {
+        const char *empty_path = "test_table_io_empty.tmp";
+        FILE *f = fopen(empty_path, "w");
+        if (f) {
+            fputs("# only a comment\n\n", f);
+            fclose(f);
+            err = NULL;
+            int rc = cpr_table_read(empty_path, 3, &t, &err);
+            CHECK(rc != 0, "comments-only file with a column hint is an error");
+            CHECK(err && strstr(err, "no data rows") != NULL,
+                   "comments-only file says 'no data rows'");
+            free(err);
+            err = NULL;
+            remove(empty_path);
+        } else {
+            printf("FAIL: cannot write %s\n", empty_path);
+            failures++;
+        }
+    }
 
     if (failures) {
         printf("%d failure(s)\n", failures);

@@ -110,10 +110,14 @@ int cpr_table_read(const char *path, size_t n_cols_hint, CPRTable *out,
 
     fclose(f);
 
-    if (out->n_rows == 0 && out->n_cols == 0) {
+    /* No data rows is an error whatever the caller's column hint was. Checking
+     * n_cols too let an empty (or comments-only) file through whenever a hint
+     * was given, and every caller then indexes cols[c][0]. */
+    if (out->n_rows == 0) {
         char buf[4352];
         snprintf(buf, sizeof(buf), "%s: no data rows found", path);
         *errmsg = strdup(buf);
+        cpr_table_free(out);
         return 1;
     }
 

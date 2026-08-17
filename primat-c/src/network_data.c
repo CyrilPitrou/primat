@@ -155,6 +155,72 @@ void cpr_decay_table_free(CPRDecayTable *t)
     t->n = 0;
 }
 
+int cpr_validate_rate_table(const double *T9, const double *rate,
+                             const double *err, size_t n, const char *source,
+                             char **errmsg)
+{
+    char buf[4608];
+    const char *where = source ? source : "rate table";
+
+    /* Two rows are the minimum an interpolant can work with; one point defines
+     * no slope, and an empty table defines nothing at all. */
+    if (n < 2) {
+        snprintf(buf, sizeof(buf),
+                  "%s: the T9 column has %zu data row(s); a rate table needs at "
+                  "least two to be interpolated.", where, n);
+        *errmsg = strdup(buf);
+        return 1;
+    }
+    /* Row indices are 1-based throughout, as a text editor counts them. */
+    const char *names[3] = {"T9", "rate", "error"};
+    const double *cols[3] = {T9, rate, err};
+    for (int c = 0; c < 3; c++) {
+        if (!cols[c]) continue;
+        for (size_t i = 0; i < n; i++) {
+            if (!isfinite(cols[c][i])) {
+                snprintf(buf, sizeof(buf),
+                          "%s: %s column has a non-finite value (%g) at data "
+                          "row %zu; every entry must be a finite number.",
+                          where, names[c], cols[c][i], i + 1);
+                *errmsg = strdup(buf);
+                return 1;
+            }
+        }
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (T9[i] <= 0.0) {
+            snprintf(buf, sizeof(buf),
+                      "%s: T9 must be strictly positive (rates are interpolated "
+                      "in log-log), but data row %zu has T9 = %g.",
+                      where, i + 1, T9[i]);
+            *errmsg = strdup(buf);
+            return 1;
+        }
+    }
+    for (size_t i = 0; i + 1 < n; i++) {
+        if (T9[i + 1] <= T9[i]) {
+            snprintf(buf, sizeof(buf),
+                      "%s: the T9 column must increase strictly down the file, "
+                      "but it %s at data row %zu (%g -> %g). Sort the table by "
+                      "ascending T9.",
+                      where, T9[i + 1] == T9[i] ? "repeats" : "goes backwards",
+                      i + 2, T9[i], T9[i + 1]);
+            *errmsg = strdup(buf);
+            return 1;
+        }
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (rate[i] < 0.0) {
+            snprintf(buf, sizeof(buf),
+                      "%s: the rate column must not be negative, but data row "
+                      "%zu has rate = %g.", where, i + 1, rate[i]);
+            *errmsg = strdup(buf);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* -------------------------------------------------------------------- */
 /* Small CSV helper shared by detailed_balance.csv / reactions_large.csv:
  * both are simple comma-separated, no quoting, fixed field count, one
@@ -881,6 +947,19 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     }
     (void)have_file_list;
 
+    /* A network with no thermonuclear reaction cannot nucleosynthesise, and
+     * nothing downstream said so: this ran to completion reporting YP =
+     * 0.00000000 and He3/He4 = nan with exit status 0. Mirrors
+     * network_data.py's check on `bare_names`. */
+    if (n_bare == 0) {
+        char buf[4352];
+        snprintf(buf, sizeof(buf),
+                  "network '%s' lists no reactions; a network needs at least "
+                  "one thermonuclear reaction.", cfg->network);
+        *errmsg = strdup(buf);
+        CPR_LN_FREE_SCRATCH(); return 1;
+    }
+
     /* ---- 1b. Drop custom->removed names (GUI "Customise Reactions" toggle-
      * off), mirroring UpdateNuclearRates.__init__'s `removed` set filter
      * applied before load_network is even called. ---- */
@@ -970,6 +1049,15 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
             if (nuc && nuc->N + nuc->Z > max_A) max_A = nuc->N + nuc->Z;
         }
         if (max_A <= cfg->amax) snprintf(filtered[n_filtered++], 64, "%s", bare_names[i]);
+    }
+    if (n_filtered == 0) {
+        char buf[4352];
+        snprintf(buf, sizeof(buf),
+                  "amax = %ld drops every reaction of network '%s'; raise it or "
+                  "choose another network.", (long)cfg->amax, cfg->network);
+        *errmsg = strdup(buf);
+        cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
+        CPR_LN_FREE_SCRATCH(); return 1;
     }
 
     /* ---- 4. Era selection. ---- */
@@ -1159,6 +1247,13 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
              * broadcast as a constant (mirrors network_data.py's
              * _build_rate_tables: the custom_tables branch is checked
              * before the is_weak/decay branch). */
+            /* The GUI validates at upload time; a caller passing arrays of its
+             * own through the C ABI has had no such door, and an unsorted T9
+             * column here reaches the solver exactly as it does from disk. */
+            if (cpr_validate_rate_table(ct->T9, ct->rate, ct->err, ct->n,
+                                          sel_name, errmsg)) {
+                load_fail = 1; break;
+            }
             if (cpr_resample_rate_table(ct->T9, ct->rate, ct->n, out->grid, fwd_row, n_grid, errmsg) ||
                 cpr_resample_rate_table(ct->T9, ct->err, ct->n, out->grid, err_row, n_grid, errmsg)) {
                 load_fail = 1; break;
@@ -1197,10 +1292,37 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                      sel_name, sel_table_file[i]);
             cpr_config_resolve_rates_path(cfg, table_relpath, table_path, sizeof(table_path));
             CPRTable tab;
-            if (cpr_table_read(table_path, 3, &tab, errmsg)) { load_fail = 1; break; }
-            if (cpr_resample_rate_table(tab.cols[0], tab.cols[1], tab.n_rows, out->grid, fwd_row, n_grid, errmsg) ||
-                cpr_resample_rate_table(tab.cols[0], tab.cols[2], tab.n_rows, out->grid, err_row, n_grid, errmsg)) {
+            /* Auto-detect the column count (hint 0) and accept two or three:
+             * the third (uncertainty) column is optional, exactly as it is for
+             * a GUI upload, so an exported table can be dropped into a
+             * user_nuclear_dir overlay unchanged. */
+            if (cpr_table_read(table_path, 0, &tab, errmsg)) { load_fail = 1; break; }
+            if (tab.n_cols != 2 && tab.n_cols != 3) {
+                /* Set *errmsg directly rather than through load_errbuf, whose
+                 * 256 bytes would truncate a full table path. */
+                char colbuf[4608];
+                snprintf(colbuf, sizeof(colbuf),
+                          "%s: expected 2 or 3 columns (T9, rate[, error]), got %zu.",
+                          table_path, tab.n_cols);
+                *errmsg = strdup(colbuf);
                 cpr_table_free(&tab); load_fail = 1; break;
+            }
+            const double *tab_err = tab.n_cols == 3 ? tab.cols[2] : NULL;
+            if (cpr_validate_rate_table(tab.cols[0], tab.cols[1], tab_err,
+                                          tab.n_rows, table_path, errmsg)) {
+                cpr_table_free(&tab); load_fail = 1; break;
+            }
+            /* A missing uncertainty column reads as zero uncertainty, matching
+             * network_data.py's _read_rate_table_file. */
+            if (cpr_resample_rate_table(tab.cols[0], tab.cols[1], tab.n_rows, out->grid, fwd_row, n_grid, errmsg)) {
+                cpr_table_free(&tab); load_fail = 1; break;
+            }
+            if (tab_err) {
+                if (cpr_resample_rate_table(tab.cols[0], tab_err, tab.n_rows, out->grid, err_row, n_grid, errmsg)) {
+                    cpr_table_free(&tab); load_fail = 1; break;
+                }
+            } else {
+                for (size_t g = 0; g < n_grid; g++) err_row[g] = 0.0;
             }
             cpr_table_free(&tab);
             read_reaction_source(table_path, out->sources[ridx], sizeof(*out->sources));

@@ -66,6 +66,11 @@ For a reaction you want to keep long-term rather than toggle at runtime, add
 it directly:
 
 1. Drop a rate table under `primat/data/nuclear/tables/<name>/<name>.txt`.
+   Two or three whitespace-separated columns — `T9 [GK]`, rate, and an
+   optional uncertainty — with at least two rows, every entry finite, `T9`
+   strictly positive and strictly increasing, and no negative rate. Rates are
+   interpolated in log10-log10, so a table breaking any of those is refused at
+   load time, naming the file and the offending row, on both backends.
 2. Add `<name>` to the relevant network file under
    `primat/data/nuclear/networks/`.
 3. `reaction_stoichiometry` (`primat.network_data`) auto-derives the

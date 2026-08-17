@@ -5,6 +5,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int failures = 0;
@@ -74,6 +75,43 @@ int main(void)
     CHECK(rx.n == 428, "reactions_large.csv has 428 rows");
     CHECK(strcmp(rx.entries[0].reactants, "B10+He3") == 0, "reactions_large first reactants");
     cpr_reaction_table_free(&rx);
+
+    /* Rate-table domain rules, in lockstep with network_data.py's
+     * validate_rate_table: an unsorted T9 column used to run to completion and
+     * report YP = 0.00000711 against a true 0.24699907. */
+    {
+        double good_T9[4]   = {1.0e-3, 1.0e-2, 1.0e-1, 1.0};
+        double good_rate[4] = {1.0, 2.0, 3.0, 4.0};
+        double good_err[4]  = {1.0, 1.0, 1.0, 1.0};
+        err = NULL;
+        CHECK(cpr_validate_rate_table(good_T9, good_rate, good_err, 4,
+                                        "good", &err) == 0,
+               "a valid rate table passes");
+
+        struct { const char *label; double T9[4]; double rate[4]; const char *want; }
+        bad[] = {
+            {"unsorted T9",   {1.0, 1.0e-3, 1.0e-1, 1.0}, {1.0, 2.0, 3.0, 4.0}, "goes backwards"},
+            {"duplicate T9",  {1.0e-3, 1.0e-3, 1.0e-1, 1.0}, {1.0, 2.0, 3.0, 4.0}, "repeats"},
+            {"zero T9",       {0.0, 1.0e-2, 1.0e-1, 1.0}, {1.0, 2.0, 3.0, 4.0}, "strictly positive"},
+            {"negative rate", {1.0e-3, 1.0e-2, 1.0e-1, 1.0}, {1.0, -2.0, 3.0, 4.0}, "must not be negative"},
+            {"NaN rate",      {1.0e-3, 1.0e-2, 1.0e-1, 1.0}, {1.0, NAN, 3.0, 4.0}, "non-finite"},
+        };
+        for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+            err = NULL;
+            int rc = cpr_validate_rate_table(bad[i].T9, bad[i].rate, NULL, 4,
+                                               bad[i].label, &err);
+            CHECK(rc != 0 && err && strstr(err, bad[i].want) != NULL, bad[i].label);
+            free(err);
+            err = NULL;
+        }
+
+        double one_T9 = 1.0, one_rate = 1.0;
+        err = NULL;
+        CHECK(cpr_validate_rate_table(&one_T9, &one_rate, NULL, 1, "one row", &err) != 0,
+               "a single-row table is refused");
+        free(err);
+        err = NULL;
+    }
 
     if (failures) {
         printf("%d failure(s)\n", failures);

@@ -149,6 +149,106 @@ except Exception:                                       # numba absent/broken
     pass
 
 
+def validate_rate_table(T9, rate, err=None, source=None):
+    """Reject a rate table :func:`_resample_rate_table` cannot use.
+
+    That resampler interpolates in log10-log10, so it needs finite entries and a
+    strictly increasing, strictly positive ``T9`` column; given anything else it
+    extrapolates nonsense instead of complaining, and the solver reports the
+    result as an ordinary abundance. This is the single definition of a valid
+    table, applied to every door one can arrive through
+    (``tests/test_rate_table_domain.py``).
+
+    Args:
+        T9    : 1-D float array, temperatures [GK].
+        rate  : 1-D float array, forward rates on ``T9``.
+        err   : 1-D float array or None, the optional uncertainty column
+            (checked for finiteness only; unlike a rate it has no sign rule).
+        source: str or None, the file path or reaction name to name in the
+            message (omitted when None).
+
+    Raises:
+        ValueError: naming the offending row 1-based, as a text editor counts.
+    """
+    where = f"{source}: " if source else ""
+    cols = [("T9", T9), ("rate", rate)]
+    if err is not None:
+        cols.append(("error", err))
+    for label, col in cols:
+        col = np.asarray(col, dtype=float)
+        # Two rows are the minimum an interpolant can work with; one point
+        # defines no slope, and an empty table defines nothing at all.
+        if col.ndim != 1 or col.size < 2:
+            raise ValueError(
+                f"{where}the {label} column has {col.size} data row(s); a rate "
+                f"table needs at least two to be interpolated.")
+        bad = np.flatnonzero(~np.isfinite(col))
+        if bad.size:
+            raise ValueError(
+                f"{where}{label} column has a non-finite value ({col[bad[0]]}) "
+                f"at data row {bad[0] + 1}; every entry must be a finite number.")
+    T9 = np.asarray(T9, dtype=float)
+    rate = np.asarray(rate, dtype=float)
+    bad = np.flatnonzero(T9 <= 0.0)
+    if bad.size:
+        raise ValueError(
+            f"{where}T9 must be strictly positive (rates are interpolated in "
+            f"log-log), but data row {bad[0] + 1} has T9 = {T9[bad[0]]:g}.")
+    step = np.diff(T9)
+    bad = np.flatnonzero(step <= 0.0)
+    if bad.size:
+        i = int(bad[0])
+        how = "repeats" if step[i] == 0.0 else "goes backwards"
+        raise ValueError(
+            f"{where}the T9 column must increase strictly down the file, but "
+            f"it {how} at data row {i + 2} ({T9[i]:g} -> {T9[i + 1]:g}). "
+            "Sort the table by ascending T9.")
+    bad = np.flatnonzero(rate < 0.0)
+    if bad.size:
+        raise ValueError(
+            f"{where}the rate column must not be negative, but data row "
+            f"{bad[0] + 1} has rate = {rate[bad[0]]:g}.")
+
+
+def _read_rate_table_file(path, label=None):
+    """Read a 2- or 3-column rate table off disk, validated.
+
+    Two columns (``T9``, rate) or three (plus an uncertainty) -- the same shapes
+    an upload may take, so an exported table can be dropped into a
+    ``user_nuclear_dir`` overlay unchanged. A missing third column reads as zero
+    uncertainty.
+
+    Args:
+        path : str, the rate-table file.
+        label: str or None, the reaction name, used in the error message when
+            the path alone would not identify the reaction.
+
+    Returns:
+        (T9, rate, err): three 1-D float arrays of equal length.
+
+    Raises:
+        ValueError: unreadable, wrong column count, or degenerate (see
+            :func:`validate_rate_table`).
+    """
+    who = f"{path}" + (f" (reaction {label!r})" if label else "")
+    try:
+        data = np.loadtxt(path, unpack=True, ndmin=2)
+    except ValueError as exc:
+        raise ValueError(f"{who}: {exc}") from exc
+    if data.size == 0:
+        # An empty or comments-only file: report it as such rather than as the
+        # one column np.loadtxt reports for it (same wording as cpr_table_read).
+        raise ValueError(f"{who}: no data rows found")
+    if data.shape[0] not in (2, 3):
+        raise ValueError(
+            f"{who}: expected 2 or 3 columns (T9, rate[, error]), got "
+            f"{data.shape[0]}.")
+    T9, rate = data[0], data[1]
+    err = data[2] if data.shape[0] == 3 else np.zeros_like(rate)
+    validate_rate_table(T9, rate, err, source=who)
+    return T9, rate, err
+
+
 def _resample_rate_table(T9_src, rate_src, T9_dst, label=None):
     """Resample a rate table from its source T9 grid to the master T9 grid.
 
@@ -1458,12 +1558,23 @@ def _load_decay_table(tables_dir):
     table = {}
     path = os.path.join(tables_dir, "decays.txt")
     with open(path) as fh:
-        for line in fh:
+        for lineno, line in enumerate(fh, start=1):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
             parts = line.split()
-            name, halflife_s, rate_s, f = parts[0], float(parts[1]), float(parts[2]), float(parts[3])
+            try:
+                name = parts[0]
+                halflife_s, rate_s, f = (float(parts[1]), float(parts[2]),
+                                          float(parts[3]))
+            except (IndexError, ValueError) as exc:
+                # Name the file and row: the bare IndexError/ValueError these
+                # raise identifies neither, and decays.txt is user-replaceable
+                # through a data_dir takeover.
+                raise ValueError(
+                    f"{path}:{lineno}: cannot parse decay row {line!r} "
+                    f"(expected 'name halflife_s rate_s uncertainty [ref]')"
+                ) from exc
             ref = parts[4] if len(parts) > 4 else "?"
             table[name] = (rate_s, f, halflife_s, ref)
     return table
@@ -1857,6 +1968,11 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             T9_src, rate_src, err_src = entry[:3]
             custom_filename = entry[3] if len(entry) > 3 else None
             custom_source = entry[4] if len(entry) > 4 else None
+            # The GUI validates at upload time; a direct caller passing arrays
+            # of its own has had no such door, and an unsorted T9 column here
+            # reaches the solver exactly as it does from disk.
+            validate_rate_table(T9_src, rate_src, err_src,
+                                 source=f"custom rate table for {name!r}")
             if is_weak:
                 # A decay's override is the synthetic constant-rate table
                 # from custom_rates.decay_override_table_text -- every row
@@ -1890,6 +2006,10 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             # to point to.
             if decay_table is None:
                 decay_table = _load_decay_table(tables_dir)
+            if name not in decay_table:
+                raise ValueError(
+                    f"decay reaction {name!r} has no entry in "
+                    f"{os.path.join(tables_dir, 'decays.txt')}")
             rate_s, f, halflife_s, ref = decay_table[name]
             sources.append(f"{rate_s:.6e} s⁻¹  (T1/2={halflife_s:.4g} s, {ref})")
             files.append(os.path.join(tables_dir, "decays.txt"))
@@ -1920,14 +2040,13 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             sources.append(_read_reaction_source(table_path))
             files.append(table_path)
 
-            data = np.loadtxt(table_path, unpack=True)
-            T9_src = data[0]
+            T9_src, rate_src, err_src = _read_rate_table_file(table_path, name)
             # Resample from the file's own T9 grid to the master grid.  When
             # all tables share the same grid (the common case) this is nearly
             # a no-op.
-            fwd_median.append(_resample_rate_table(T9_src, data[1], grid,
+            fwd_median.append(_resample_rate_table(T9_src, rate_src, grid,
                                                     label=name))
-            fwd_expsigma.append(_resample_rate_table(T9_src, data[2], grid,
+            fwd_expsigma.append(_resample_rate_table(T9_src, err_src, grid,
                                                       label=name))
 
         # Detailed-balance (reverse-rate) coefficients (alpha, beta, gamma).
@@ -2099,12 +2218,25 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     bare_names, bare_to_file = _parse_network_entries(
         reaction_names, subset_file or cfg.network)
 
+    # A network with no thermonuclear reaction cannot nucleosynthesise, and
+    # nothing downstream says so: Python failed with an array error from the
+    # reverse-rate cap, and C ran to completion reporting YP = 0.00000000 and
+    # He3/He4 = nan with exit status 0.
+    if not bare_names:
+        raise ValueError(
+            f"network {subset_file or cfg.network!r} lists no reactions; a "
+            f"network needs at least one thermonuclear reaction.")
+
     tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg._resolved_data_dir)
 
     rxn_map, db = _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg)
 
     amax = cfg.amax
     bare_names = _apply_amax_filter(bare_names, rxn_map, nuc_NZ, amax)
+    if not bare_names:
+        raise ValueError(
+            f"amax = {amax} drops every reaction of network "
+            f"{subset_file or cfg.network!r}; raise it or choose another network.")
 
     era, selected = _select_era_reactions(era, cfg, bare_names)
 
