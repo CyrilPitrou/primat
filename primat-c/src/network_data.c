@@ -947,6 +947,19 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     }
     (void)have_file_list;
 
+    /* A network with no thermonuclear reaction cannot nucleosynthesise, and
+     * nothing downstream said so: this ran to completion reporting YP =
+     * 0.00000000 and He3/He4 = nan with exit status 0. Mirrors
+     * network_data.py's check on `bare_names`. */
+    if (n_bare == 0) {
+        char buf[4352];
+        snprintf(buf, sizeof(buf),
+                  "network '%s' lists no reactions; a network needs at least "
+                  "one thermonuclear reaction.", cfg->network);
+        *errmsg = strdup(buf);
+        CPR_LN_FREE_SCRATCH(); return 1;
+    }
+
     /* ---- 1b. Drop custom->removed names (GUI "Customise Reactions" toggle-
      * off), mirroring UpdateNuclearRates.__init__'s `removed` set filter
      * applied before load_network is even called. ---- */
@@ -1036,6 +1049,15 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
             if (nuc && nuc->N + nuc->Z > max_A) max_A = nuc->N + nuc->Z;
         }
         if (max_A <= cfg->amax) snprintf(filtered[n_filtered++], 64, "%s", bare_names[i]);
+    }
+    if (n_filtered == 0) {
+        char buf[4352];
+        snprintf(buf, sizeof(buf),
+                  "amax = %ld drops every reaction of network '%s'; raise it or "
+                  "choose another network.", (long)cfg->amax, cfg->network);
+        *errmsg = strdup(buf);
+        cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
+        CPR_LN_FREE_SCRATCH(); return 1;
     }
 
     /* ---- 4. Era selection. ---- */

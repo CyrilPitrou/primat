@@ -2218,12 +2218,25 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     bare_names, bare_to_file = _parse_network_entries(
         reaction_names, subset_file or cfg.network)
 
+    # A network with no thermonuclear reaction cannot nucleosynthesise, and
+    # nothing downstream says so: Python failed with an array error from the
+    # reverse-rate cap, and C ran to completion reporting YP = 0.00000000 and
+    # He3/He4 = nan with exit status 0.
+    if not bare_names:
+        raise ValueError(
+            f"network {subset_file or cfg.network!r} lists no reactions; a "
+            f"network needs at least one thermonuclear reaction.")
+
     tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg._resolved_data_dir)
 
     rxn_map, db = _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg)
 
     amax = cfg.amax
     bare_names = _apply_amax_filter(bare_names, rxn_map, nuc_NZ, amax)
+    if not bare_names:
+        raise ValueError(
+            f"amax = {amax} drops every reaction of network "
+            f"{subset_file or cfg.network!r}; raise it or choose another network.")
 
     era, selected = _select_era_reactions(era, cfg, bare_names)
 

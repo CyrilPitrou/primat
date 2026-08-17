@@ -168,6 +168,34 @@ def test_empty_overlay_table_is_refused_by_both_backends(tmp_path, backend):
 # The loader's other user-supplied inputs (R21.6)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize("backend", ["python",
+    pytest.param("c", marks=pytest.mark.skipif(not HAS_C_BACKEND,
+                                                reason="C extension not built"))])
+def test_empty_network_file_is_refused_by_both_backends(tmp_path, backend):
+    """A network with no reaction cannot nucleosynthesise and must say so.
+
+    Python failed with ``IndexError: too many indices for array`` from the
+    reverse-rate cap; C ran to completion and reported YP = 0.00000000 and
+    He3/He4 = nan with exit status 0.
+    """
+    (tmp_path / "networks").mkdir()
+    (tmp_path / "networks" / "empty_net.txt").write_text("\n# nothing here\n")
+    with pytest.raises((ValueError, RuntimeError), match="lists no reactions"):
+        run_bbn(params={"network": "empty_net",
+                         "user_nuclear_dir": str(tmp_path), "verbose": False},
+                 force_backend=backend)
+
+
+@pytest.mark.parametrize("backend", ["python",
+    pytest.param("c", marks=pytest.mark.skipif(not HAS_C_BACKEND,
+                                                reason="C extension not built"))])
+def test_amax_dropping_every_reaction_is_refused(tmp_path, backend):
+    """The same empty network reached by filtering rather than by an empty file."""
+    with pytest.raises((ValueError, RuntimeError), match="drops every reaction"):
+        run_bbn(params={"network": "large", "amax": 1, "verbose": False},
+                 force_backend=backend)
+
+
 def test_malformed_decay_row_names_the_file_and_line(tmp_path):
     """A short or non-numeric ``decays.txt`` row used to raise a bare IndexError.
 
