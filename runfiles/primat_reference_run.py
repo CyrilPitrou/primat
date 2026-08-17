@@ -48,6 +48,11 @@ if _primat_path not in sys.path:
     sys.path.insert(0, _primat_path)
 
 from primat import backend
+from primat.main import configure_console
+
+# Windows consoles default to cp1252, which cannot encode the Greek
+# letters printed below; degrade those to '?' rather than abort.
+configure_console()
 
 # ---------------------------------------------------------------------------
 # Cosmological parameters (standard values)

@@ -75,6 +75,11 @@ if __name__ == "__main__":
         sys.path.insert(0, repo_root)
 
     from primat import backend
+    from primat.main import configure_console
+
+    # Windows consoles default to cp1252, which cannot encode the Greek
+    # letters printed below; degrade those to '?' rather than abort.
+    configure_console()
     from primat.config import DEFAULT_PARAMS, PRIMATConfig
 
     # ---------------------------------------------------------------------------

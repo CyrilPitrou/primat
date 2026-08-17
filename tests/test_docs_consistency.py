@@ -17,9 +17,7 @@ moved into `tests/README.md` and `tests/reference_values.py`, where the two
 `*_matches_reference_constants` tests below pin them.
 
 Every test in this module is a static file read -- no solve -- so the whole
-file stays in the fast (`-m "not slow"`) lane, with one marked exception at
-the end: the numbers docs/index.md quotes to eight decimals cannot be checked
-against a constant pinned at 1e-5, so that one runs the page's snippet.
+file stays in the fast (`-m "not slow"`) lane.
 """
 import ast
 import os
@@ -465,46 +463,32 @@ def test_docs_tutorials_gallery_complete():
         assert stem in index, f"{stem} missing from docs/tutorials/index.md"
 
 
-@pytest.mark.slow
-@pytest.mark.solve
-def test_docs_index_quick_start_numbers_match_a_live_run():
-    """docs/index.md's quick-start output must be what the code prints today.
+def test_docs_index_quick_start_numbers_match_the_reference_constants():
+    """docs/index.md's quick start must quote the tracked reference values.
 
-    GOAL: the published landing page quotes YP and D/H to the decimal counts
-    the project reports at, one figure per backend. Nothing checked them, and
-    they went stale twice -- by 8.6e-09 in D/H once, and by 2.1e-07 in YP after
-    that was hand-corrected. This runs the page's own snippet and compares the
-    formatted strings, so a physics change that moves either number fails here
-    instead of quietly mis-documenting the release.
-
-    Compared numerically, not as strings: the eighth decimal is not portable.
-    macOS/py3.10 and macOS/py3.13 in CI differ by 6.5e-12 in the C backend's
-    D/H on identical sources, so exact string equality would fail on a healthy
-    tree. The bounds below sit far above that and far below the staleness this
-    test exists to catch.
-
-    Unlike the rest of this module, this test solves; it is marked accordingly.
+    GOAL: the published landing page prints YP and D/H for both backends, to
+    the decimal counts the project reports at, and nothing checked them -- they
+    went stale twice, by 8.6e-09 in D/H once and by 2.1e-07 in YP after that
+    was hand-corrected. Compared against tests/reference_values.py rather than
+    against a fresh solve, for the same reason the tests/README.md table is:
+    the eighth decimal is not portable. Measured on one commit across the CI
+    matrix, the C backend's YPBBN is 0.24699907 on macOS/arm64 and 0.24699900
+    on Linux and Windows/x86_64 -- a 6.7e-08 spread, only 3x below the drift
+    this test exists to catch, so a live-run bound could not separate the two.
+    The constants themselves are pinned to live solves by test_regression.py.
     """
-    from primat.backend import HAS_C_BACKEND, run_bbn
-    from reference_values import DOCS_DOH_ABS_TOL, DOCS_YPBBN_ABS_TOL
+    from reference_values import (DOH_REFERENCE, PY_DOH_REFERENCE,
+                                  PY_YPBBN_REFERENCE, YPBBN_REFERENCE)
 
     text = _read_text(os.path.join(REPO_ROOT, "docs", "index.md"))
-    quoted = {
-        "c": (re.search(r"YPBBN'\]:\.8f\}\"\)\s*#\s*([0-9.]+)", text).group(1),
-              re.search(r"DoH'\]:\.7e\}\"\)\s*#\s*([0-9.e+-]+)", text).group(1)),
-        "python": re.search(
-            r"pure-Python backend gives `([0-9.]+)` / `([0-9.e+-]+)`",
-            text).groups(),
-    }
+    yp_c = re.search(r"YPBBN'\]:\.8f\}\"\)\s*#\s*([0-9.]+)", text).group(1)
+    doh_c = re.search(r"DoH'\]:\.7e\}\"\)\s*#\s*([0-9.e+-]+)", text).group(1)
+    yp_py, doh_py = re.search(
+        r"pure-Python backend gives `([0-9.]+)` / `([0-9.e+-]+)`", text).groups()
 
-    for backend, (yp_doc, doh_doc) in quoted.items():
-        if backend == "c" and not HAS_C_BACKEND:
-            continue
-        # The quoted precision is itself part of the contract (CLAUDE.md's
-        # reporting table: 8 decimals for YP, 7 for D/H's mantissa).
-        assert len(yp_doc.split(".")[1]) == 8, f"{backend} YP quoted too coarsely"
-        assert len(doh_doc.split("e")[0].split(".")[1]) == 7, f"{backend} D/H too coarse"
-
-        r = run_bbn({"Omegabh2": 0.02242}, force_backend=backend)
-        assert r["YPBBN"] == pytest.approx(float(yp_doc), abs=DOCS_YPBBN_ABS_TOL)
-        assert r["DoH"] == pytest.approx(float(doh_doc), abs=DOCS_DOH_ABS_TOL)
+    # Exact strings, not approx: both sides are tracked files, so a mismatch
+    # means one was edited without the other.
+    assert yp_c == f"{YPBBN_REFERENCE:.8f}"
+    assert doh_c == f"{DOH_REFERENCE:.7e}"
+    assert yp_py == f"{PY_YPBBN_REFERENCE:.8f}"
+    assert doh_py == f"{PY_DOH_REFERENCE:.7e}"

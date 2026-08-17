@@ -77,6 +77,28 @@ _BANNER_ASCII = """
 """
 
 
+def configure_console() -> None:
+    """Make this process's stdout/stderr survive characters they cannot encode.
+
+    For **entry points only** (the CLI and the scripts in ``runfiles/``), never
+    on library import: it mutates process-wide state. A Windows console
+    defaults to cp1252, which has no Greek or box-drawing characters, so a
+    plain ``print("Ωνh2 = ...")`` raises ``UnicodeEncodeError`` and aborts the
+    run. Switching the error handler (not the codec) to ``replace`` degrades
+    those characters to ``?`` instead of killing the process, and is a no-op on
+    a console that can encode them.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:          # not a TextIOWrapper (pytest capture)
+            continue
+        try:
+            if not console_encodable("Ω┏"):
+                reconfigure(errors="replace")
+        except (OSError, ValueError):    # detached or unsupported stream
+            pass
+
+
 def console_encodable(text: str) -> bool:
     """True if ``text`` survives a round trip through stdout's own codec.
 

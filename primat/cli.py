@@ -43,7 +43,7 @@ import warnings
 
 from . import PRIMAT, __version__
 from .credits import cli_credits_text
-from .main import console_encodable
+from .main import configure_console, console_encodable
 from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
                       dump_mc_samples, run_bbn, run_mc)
 from .cache_utils import (clear_cache, list_cache_files, plasma_cache_dir,
@@ -493,6 +493,11 @@ def main(argv=None):
         D/H        = 2.4365908e-05
         ...
     """
+    # This function owns the process (console script entry point), so it is
+    # the right place to make stdout survive a console codec that cannot
+    # encode primat's Greek and box-drawing output.
+    configure_console()
+
     parser = _build_parser()
     args = parser.parse_args(argv)
 
