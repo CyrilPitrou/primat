@@ -500,6 +500,13 @@ def _match_shipped_file(cfg, name, raw_text):
 
 
 
+# Fixed timestamp for every zip entry (1980-01-01, the earliest a DOS-format
+# zip can express). Without it zipfile stamps each entry with the wall clock,
+# so two exports of the same network are byte-different and a user cannot
+# checksum a download against a re-export.
+_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
+
 def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
     """Pack a customisation into an in-memory zip mirroring the repo layout.
 
@@ -583,6 +590,18 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Entries are written through _write_entry, which stamps a fixed
+        # timestamp: zipfile defaults each entry to the wall clock, so two
+        # exports of the same network minutes apart differ in bytes and cannot
+        # be checksummed against each other -- which is the whole point of the
+        # verbatim, original-grid export (see this module's docstring on
+        # bit-for-bit round trips).
+        def zf_writestr(name, data):
+            info = zipfile.ZipInfo(name, date_time=_ZIP_TIMESTAMP)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            zf.writestr(info, data)
+
         lines = []
         for name in kept_names:
             if name in decay_table:
@@ -602,7 +621,7 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                     # "primat's own rate"; an already-distinctly-named
                     # alternate (e.g. "*_parthenope3.0.txt") keeps its name.
                     lines.append(f"{name}, {shipped_name}")
-                    zf.writestr(f"tables/{name}/{shipped_name}", raw_text)
+                    zf_writestr(f"tables/{name}/{shipped_name}", raw_text)
                     continue
                 try:
                     T9, rate, err, header = parse_rate_upload(
@@ -629,7 +648,7 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                 fname = (custom_network.get("filenames", {}).get(name)
                           or f"{name}_{network_filename}.txt")
                 lines.append(f"{name}, {fname}")
-                zf.writestr(f"tables/{name}/{fname}", table_text)
+                zf_writestr(f"tables/{name}/{fname}", table_text)
                 continue
             # Unmodified shipped reaction: copy its on-disk table verbatim (no
             # resampling needed, it is already a valid rate file) under its own
@@ -647,8 +666,8 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                 lines.append(name)
                 continue
             lines.append(f"{name}, {fname}")
-            zf.writestr(f"tables/{name}/{fname}", table_text)
-        zf.writestr(f"networks/{network_filename}.txt", "\n".join(lines) + "\n")
+            zf_writestr(f"tables/{name}/{fname}", table_text)
+        zf_writestr(f"networks/{network_filename}.txt", "\n".join(lines) + "\n")
     return buf.getvalue()
 
 
