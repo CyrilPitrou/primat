@@ -50,7 +50,16 @@
  * T_start_cosmo and marching down; tightening rtol is the cheap equivalent
  * and is free here — the ODE is 2-D and smooth, cpr_ode_rk45's dense output
  * already removes the dominant cost, and the abundances do not move, being
- * weak-equilibrium-determined rather than time-integrated above ~1 MeV. */
+ * weak-equilibrium-determined rather than time-integrated above ~1 MeV.
+ *
+ * That structural fix was evaluated against this tolerance and declined —
+ * see tests/README.md's "Known cross-backend divergences", the t(T) row,
+ * which records the decision. Loosening this constant to the 1e-11 the
+ * abundance-only tuning suggests was measured to save a small single-digit
+ * percentage of a whole run while degrading YP and D/H, so the tolerance is
+ * the cheap fix and the rewrite is not worth its cost. Do not tighten it
+ * further either: 1e-14 already sits close enough to double precision that
+ * the step controller has little room left. */
 #define BG_ODE_RTOL 1.0e-14
 #define BG_ODE_ATOL 1.0e-11
 
