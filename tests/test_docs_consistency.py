@@ -492,3 +492,29 @@ def test_docs_index_quick_start_numbers_match_the_reference_constants():
     assert doh_c == f"{DOH_REFERENCE:.7e}"
     assert yp_py == f"{PY_YPBBN_REFERENCE:.8f}"
     assert doh_py == f"{PY_DOH_REFERENCE:.7e}"
+
+
+def test_contributing_only_points_at_files_that_exist():
+    """CONTRIBUTING.md's cross-references must all resolve.
+
+    GOAL: apply that file's own "no unverifiable claims about other files"
+    rule to itself. It routes a new contributor to the test that enforces each
+    project rule, so a renamed or deleted test would send them nowhere -- the
+    exact decay the rule exists to prevent.
+    """
+    text = _read_text(os.path.join(REPO_ROOT, "CONTRIBUTING.md"))
+
+    referenced = set(re.findall(r"`(tests/[\w./]+\.py)`", text))
+    referenced |= set(re.findall(r"`(primat(?:-c)?/[\w./-]+\.(?:py|c|h))`", text))
+    referenced |= {"README.md", "tests/README.md"}
+    assert len(referenced) >= 8, f"suspiciously few references parsed: {referenced}"
+
+    missing = [r for r in sorted(referenced)
+               if not os.path.exists(os.path.join(REPO_ROOT, r))]
+    assert not missing, f"CONTRIBUTING.md points at files that do not exist: {missing}"
+
+    # The two section titles it sends the reader to must still be there.
+    assert "Backend parity contract" in _read_text(
+        os.path.join(REPO_ROOT, "README.md"))
+    assert "Known cross-backend divergences" in _read_text(
+        os.path.join(REPO_ROOT, "tests", "README.md"))
