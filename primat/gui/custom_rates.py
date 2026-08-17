@@ -209,6 +209,59 @@ def show_rate_format_help():
     st.code(RATE_TABLE_FORMAT_EXAMPLE, language=None)
 
 
+def _validate_rate_domain(T9, rate, err):
+    """Reject a parsed rate table the log-log resampler cannot use.
+
+    :func:`primat.network_data._resample_rate_table` interpolates in
+    log10-log10, so it needs finite entries and a strictly increasing,
+    strictly positive ``T9`` column; scipy's cubic additionally refuses
+    duplicate abscissae. Without this check the bad table reaches the solver,
+    which either fails with a message that never mentions the upload or --
+    for an unsorted ``T9`` or a negative rate -- extrapolates nonsense and
+    reports it as an ordinary result (pinned in
+    ``tests/test_gui_robustness.py``).
+
+    Parameters
+    ----------
+    T9, rate, err : np.ndarray
+        The three columns as parsed by :func:`parse_rate_upload`.
+
+    Raises
+    ------
+    ValueError
+        Naming the offending row (1-based, as a text editor counts) and value.
+    """
+    for label, col in (("T9", T9), ("rate", rate), ("error", err)):
+        bad = np.flatnonzero(~np.isfinite(col))
+        if bad.size:
+            raise ValueError(
+                f"{label} column has a non-finite value ({col[bad[0]]}) at "
+                f"data row {bad[0] + 1}; every entry must be a finite number."
+            )
+    bad = np.flatnonzero(T9 <= 0.0)
+    if bad.size:
+        raise ValueError(
+            f"T9 must be strictly positive (rates are interpolated in "
+            f"log-log), but data row {bad[0] + 1} has T9 = {T9[bad[0]]:g}."
+        )
+    step = np.diff(T9)
+    bad = np.flatnonzero(step <= 0.0)
+    if bad.size:
+        i = int(bad[0])
+        how = "repeats" if step[i] == 0.0 else "goes backwards"
+        raise ValueError(
+            f"the T9 column must increase strictly down the file, but it "
+            f"{how} at data row {i + 2} ({T9[i]:g} -> {T9[i + 1]:g}). "
+            "Sort the table by ascending T9."
+        )
+    bad = np.flatnonzero(rate < 0.0)
+    if bad.size:
+        raise ValueError(
+            f"the rate column must not be negative, but data row "
+            f"{bad[0] + 1} has rate = {rate[bad[0]]:g}."
+        )
+
+
 def parse_rate_upload(fh, cfg=None, warn=True):
     """Parse an uploaded rate-table file into raw ``(T9, rate, err, header)``.
 
@@ -246,8 +299,10 @@ def parse_rate_upload(fh, cfg=None, warn=True):
     Raises
     ------
     ValueError
-        If the file is not UTF-8 text (see :func:`decode_upload_text`) or does
-        not parse as 2 or 3 numeric columns.
+        If the file is not UTF-8 text (see :func:`decode_upload_text`), does
+        not parse as 2 or 3 numeric columns, or fails
+        :func:`_validate_rate_domain` (non-finite entry, non-positive or
+        non-increasing ``T9``, negative rate).
 
     Notes
     -----
@@ -275,6 +330,7 @@ def parse_rate_upload(fh, cfg=None, warn=True):
         )
     T9, rate = data[0], data[1]
     err = data[2] if data.shape[0] == 3 else np.zeros_like(rate)
+    _validate_rate_domain(T9, rate, err)
     # Read the grid span off cfg rather than hard-coding it, so the warning
     # stays truthful when rate_grid_T9_min/max are overridden.
     T9_min = getattr(cfg, "rate_grid_T9_min", 1.0e-3)
@@ -468,6 +524,35 @@ def _base_network_filenames(cfg):
     return pinned
 
 
+def _safe_basename(candidate, fallback):
+    """``candidate`` as a bare filename safe to write into a zip, else ``fallback``.
+
+    :func:`export_zip` writes this straight into a ``tables/<name>/<file>``
+    archive path. ``candidate`` may have come from an imported zip, so a value
+    like ``../..`` would make primat author an archive that escapes its own
+    directory on extraction. :func:`sanitize_filename` already collapses path
+    separators, but leaves a pure ``..`` intact -- hence the explicit check.
+
+    Parameters
+    ----------
+    candidate : str or None
+        Preferred basename (the filename agreed at upload time, or an imported
+        zip's own).
+    fallback : str
+        Used when ``candidate`` is empty or does not survive sanitisation.
+
+    Returns
+    -------
+    str
+    """
+    if not candidate:
+        return fallback
+    cleaned = sanitize_filename(candidate)
+    if cleaned in (os.curdir, os.pardir):
+        return fallback
+    return cleaned
+
+
 def _shipped_table_dir(cfg, name):
     return os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name)
 
@@ -645,8 +730,9 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                 # "filenames" entry (e.g. the post-run Reactions-tab export
                 # of an old-style "Customise Reactions" session) fall back
                 # to a generic name suffixed with this network's own title.
-                fname = (custom_network.get("filenames", {}).get(name)
-                          or f"{name}_{network_filename}.txt")
+                fname = _safe_basename(
+                    custom_network.get("filenames", {}).get(name),
+                    f"{name}_{network_filename}.txt")
                 lines.append(f"{name}, {fname}")
                 zf_writestr(f"tables/{name}/{fname}", table_text)
                 continue
@@ -717,6 +803,106 @@ def export_zip_cached(cfg, custom_network, kept_names, network_filename="custom"
         network_filename, cfg.network, cfg._resolved_data_dir, _cfg=cfg)
 
 
+# Budget for an uploaded zip, enforced by _check_zip_budget before anything is
+# decompressed. A zip's compression ratio is unbounded, so without these a
+# small upload can allocate arbitrarily much -- fatal on the ~1 GB public demo
+# at primat.streamlit.app. Each is roughly 4x the corresponding figure for the
+# largest archive primat itself produces (the full large network), so no
+# legitimate export comes close; test_gui_robustness.py pins both directions.
+_ZIP_MAX_TOTAL_BYTES = 64_000_000
+_ZIP_MAX_ENTRY_BYTES = 4_000_000
+_ZIP_MAX_ENTRIES = 2000
+
+
+def _check_zip_budget(zf):
+    """Reject an uploaded zip that would decompress to more than the budget.
+
+    Reads only the central directory (``infolist``), so an over-budget archive
+    is refused *before* a single byte is decompressed. The declared sizes can
+    lie, which is why :func:`_read_zip_text` caps each read as well.
+
+    Raises
+    ------
+    ValueError
+        Quoting the offending size against its limit, in MB.
+    """
+    infos = zf.infolist()
+    if len(infos) > _ZIP_MAX_ENTRIES:
+        raise ValueError(
+            f"the archive has {len(infos)} entries, more than the "
+            f"{_ZIP_MAX_ENTRIES} a network zip may contain."
+        )
+    total = sum(info.file_size for info in infos)
+    if total > _ZIP_MAX_TOTAL_BYTES:
+        raise ValueError(
+            f"the archive expands to {total / 1e6:.1f} MB, more than the "
+            f"{_ZIP_MAX_TOTAL_BYTES / 1e6:.0f} MB a network zip may contain."
+        )
+    for info in infos:
+        if info.file_size > _ZIP_MAX_ENTRY_BYTES:
+            raise ValueError(
+                f"'{info.filename}' expands to {info.file_size / 1e6:.1f} MB, "
+                f"more than the {_ZIP_MAX_ENTRY_BYTES / 1e6:.0f} MB a single "
+                "rate table may occupy."
+            )
+
+
+def _read_zip_text(zf, name):
+    """Read one zip member as UTF-8 text, capped at ``_ZIP_MAX_ENTRY_BYTES``.
+
+    The cap backs up :func:`_check_zip_budget`, which can only trust the
+    central directory's *declared* sizes. Decoding and corruption errors are
+    re-raised naming the member, so the GUI shows "tables/x/y.txt is not UTF-8
+    text" rather than a bare codec message about a byte offset in an unnamed
+    file, or a ``BadZipFile`` that is not a ``ValueError`` at all.
+
+    Raises
+    ------
+    ValueError
+        If the member overruns the cap, is corrupt, or is not UTF-8.
+    """
+    try:
+        with zf.open(name) as f:
+            raw = f.read(_ZIP_MAX_ENTRY_BYTES + 1)
+    except zipfile.BadZipFile as exc:
+        raise ValueError(
+            f"'{name}' is corrupt and could not be read from the archive "
+            f"({exc}). Re-download or re-export the zip."
+        ) from exc
+    if len(raw) > _ZIP_MAX_ENTRY_BYTES:
+        raise ValueError(
+            f"'{name}' is larger than the {_ZIP_MAX_ENTRY_BYTES / 1e6:.0f} MB "
+            "a single entry may occupy (its declared size understated it)."
+        )
+    try:
+        return raw.decode()
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"'{name}' is not UTF-8 text -- a network zip must contain only "
+            f"plain-text rate tables (decoding failed at byte {exc.start})."
+        ) from exc
+
+
+def _check_member_component(component, filename):
+    """Reject a zip member whose path component escapes its own directory.
+
+    ``import_zip`` splits ``tables/<name>/<file>`` on ``/``, so a member named
+    ``tables/../evil.txt`` yields the component ``..``. primat never extracts
+    an upload to disk, but :func:`export_zip` copies that component back into
+    the path it writes, so an unchecked one would leave primat handing the
+    user an archive that escapes its own directory on any naive extractor.
+
+    Raises
+    ------
+    ValueError
+    """
+    if component in ("", os.curdir, os.pardir) or "\\" in component:
+        raise ValueError(
+            f"'{filename}' has an unsafe path component {component!r}; a "
+            "network zip must use plain 'tables/<reaction>/<file>' entries."
+        )
+
+
 def import_zip(fh):
     """Rebuild a ``custom_network`` dict from a zip produced by :func:`export_zip`.
 
@@ -749,6 +935,14 @@ def import_zip(fh):
         filename, not a real on-disk path. ``title`` is the network file's
         basename (without ``.txt``), recovered without needing a separate
         metadata file.
+
+    Raises
+    ------
+    ValueError
+        If the upload is not a zip, is over the size budget (see
+        ``_ZIP_MAX_TOTAL_BYTES``), has no single ``networks/`` file, contains
+        an unsafe member path or a non-UTF-8/corrupt member, or names a rate
+        table it does not carry. Every caller renders this as an ``st.error``.
     """
     replaced = {}
     filenames = {}
@@ -761,6 +955,7 @@ def import_zip(fh):
             "produced by the 'Download network details' button)."
         ) from None
     with zf:
+        _check_zip_budget(zf)
         net_files = [info.filename for info in zf.infolist()
                     if info.filename.startswith("networks/")
                     and info.filename.endswith(".txt")]
@@ -770,8 +965,9 @@ def import_zip(fh):
             )
         net_filename = net_files[0]
         title = os.path.basename(net_filename)[: -len(".txt")]
-        net_text = zf.read(net_filename).decode()
+        net_text = _read_zip_text(zf, net_filename)
         kept_names = []
+        declared = {}
         for line in net_text.splitlines():
             line = line.strip()
             if not line:
@@ -786,14 +982,29 @@ def import_zip(fh):
                 try:
                     decay_overrides[bare] = float(parts[1].strip())
                 except ValueError:
-                    pass  # it's a filename, not a rate; handled below.
+                    declared[bare] = parts[1].strip()  # a filename, not a rate
         for info in zf.infolist():
             if info.filename.startswith("tables/") and info.filename.count("/") == 2:
                 # "tables/<name>/<filename>" -- any per-reaction table file,
                 # default-named, alternate-shipped, or genuinely new.
                 bare, fname = info.filename.split("/")[1:3]
-                replaced[bare] = zf.read(info.filename).decode()
+                _check_member_component(bare, info.filename)
+                _check_member_component(fname, info.filename)
+                replaced[bare] = _read_zip_text(zf, info.filename)
                 filenames[bare] = fname
+        # A line naming a table file the archive does not actually carry is a
+        # corrupt or hand-edited zip. Left unreported, the import succeeds and
+        # the run falls back to *this install's* shipped table -- exactly the
+        # substitution the verbatim, original-grid export exists to prevent.
+        missing = sorted(set(declared) - set(replaced))
+        if missing:
+            shown = ", ".join(f"{n} ({declared[n]})" for n in missing[:3])
+            more = f" (+{len(missing) - 3} more)" if len(missing) > 3 else ""
+            raise ValueError(
+                f"the network file names {len(missing)} rate table(s) that are "
+                f"not in the archive: {shown}{more}. The zip is incomplete -- "
+                "re-export it from the 'Download network details' button."
+            )
     return {"kept": kept_names, "replaced": replaced, "filenames": filenames,
             "decay_overrides": decay_overrides, "title": title}
 
