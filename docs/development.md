@@ -1,4 +1,4 @@
-# Contributing to primat
+# Development notes
 
 primat is a scientific code, read by physicists as much as by programmers, and
 it ships two interchangeable backends that must stay in step. Most of what
@@ -10,8 +10,8 @@ spends a week rediscovering them.
 
 ## Reporting numerical results
 
-When you quote a BBN observable — in a commit message, an issue, a docstring,
-a pull-request description — use at least this many decimals:
+When a BBN observable is quoted — in a commit message, a docstring, a note —
+use at least this many decimals:
 
 | Observable | Minimum decimals | Format specifier |
 |------------|------------------|------------------|

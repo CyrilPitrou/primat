@@ -688,9 +688,9 @@ in MCMC analyses of CMB or other cosmological data.  The wrapper exposes
 theory/likelihood inputs and returns the standard BBN observables (`YPBBN`, `DoH`,
 etc.) for use in a likelihood.
 
-## Contributing
+## Development notes
 
-`CONTRIBUTING.md` covers the conventions this code is written to — the
+`docs/development.md` covers the conventions this code is written to — the
 required precision when quoting observables, the docstring rules, what the
 test suite enforces about backend parity, and the list of decisions that were
 already measured and settled. Read that list before changing numerics.

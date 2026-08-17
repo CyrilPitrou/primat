@@ -93,6 +93,11 @@ exclude_patterns = [
     # implementation history) keeps `sphinx-build -W` warning-clean without
     # touching their content.
     "superpowers",
+    # In-repo notes on how the code is written and which numerical decisions
+    # are already settled. Addressed to whoever edits the source, not to a
+    # reader of the published site, so it stays out of every toctree --
+    # which under ``-W`` means it has to be excluded from the build.
+    "development.md",
 ]
 
 # -- MyST (Markdown) options -------------------------------------------------

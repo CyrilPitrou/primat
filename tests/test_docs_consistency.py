@@ -494,15 +494,15 @@ def test_docs_index_quick_start_numbers_match_the_reference_constants():
     assert doh_py == f"{PY_DOH_REFERENCE:.7e}"
 
 
-def test_contributing_only_points_at_files_that_exist():
-    """CONTRIBUTING.md's cross-references must all resolve.
+def test_development_notes_only_point_at_files_that_exist():
+    """docs/development.md's cross-references must all resolve.
 
     GOAL: apply that file's own "no unverifiable claims about other files"
-    rule to itself. It routes a new contributor to the test that enforces each
+    rule to itself. It routes the reader to the test that enforces each
     project rule, so a renamed or deleted test would send them nowhere -- the
     exact decay the rule exists to prevent.
     """
-    text = _read_text(os.path.join(REPO_ROOT, "CONTRIBUTING.md"))
+    text = _read_text(os.path.join(REPO_ROOT, "docs", "development.md"))
 
     referenced = set(re.findall(r"`(tests/[\w./]+\.py)`", text))
     referenced |= set(re.findall(r"`(primat(?:-c)?/[\w./-]+\.(?:py|c|h))`", text))
@@ -511,7 +511,8 @@ def test_contributing_only_points_at_files_that_exist():
 
     missing = [r for r in sorted(referenced)
                if not os.path.exists(os.path.join(REPO_ROOT, r))]
-    assert not missing, f"CONTRIBUTING.md points at files that do not exist: {missing}"
+    assert not missing, (
+        f"docs/development.md points at files that do not exist: {missing}")
 
     # The two section titles it sends the reader to must still be there.
     assert "Backend parity contract" in _read_text(
