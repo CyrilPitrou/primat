@@ -416,7 +416,7 @@ class NuclearNetwork:
                       f"T = {T_weak_MeV:.4g} -> {T_nucl_MeV:.4g} MeV")
         if cfg.verbose:
             print(f"[nucl-py] [MT] Finished solve_ivp ({cfg.network} network, "
-                  f"{len(mt_species)} species) in {time.time()-_t_mt0:.2f} s",
+                  f"{len(mt_species)} nuclides) in {time.time()-_t_mt0:.2f} s",
                   flush=True)
         if _show:
             print("  LT.", end='', file=sys.stderr, flush=True)

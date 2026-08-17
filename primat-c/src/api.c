@@ -302,10 +302,11 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
         cpr_plasma_free(&pl);
         return 1;
     }
+    /* Order: each era's "network" line immediately followed by its own
+     * nuclide list, as UpdateNuclearRates.__init__ prints them -- the two
+     * streams are compared line for line by tests/test_verbose_parity.py. */
     cpr_log(cfg, "rates", "MT network: %zu reactions over %zu nuclides.",
              nr.mt_net.n_reac - 1, nr.mt_net.n_species);
-    cpr_log(cfg, "rates", "LT network: %zu reactions over %zu nuclides.",
-             nr.lt_net.n_reac - 1, nr.lt_net.n_species);
     if (cfg->verbose) {
         char buf[8192];
         size_t off = 0;
@@ -315,7 +316,12 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
             if (n > 0) off += (size_t)n;
         }
         cpr_log(cfg, "rates", "MT nuclides: %s", buf);
-        off = 0;
+    }
+    cpr_log(cfg, "rates", "LT network: %zu reactions over %zu nuclides.",
+             nr.lt_net.n_reac - 1, nr.lt_net.n_species);
+    if (cfg->verbose) {
+        char buf[8192];
+        size_t off = 0;
         for (size_t i = 0; i < nr.lt_net.n_species && off < sizeof(buf) - 32; i++) {
             int n = snprintf(buf + off, sizeof(buf) - off, "%s%s",
                               i ? ", " : "", nr.lt_net.species[i]);

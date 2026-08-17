@@ -305,7 +305,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
         free(Yi_MT); recorder_free(&rec_ht); recorder_free(&rec_mt);
         return 1;
     }
-    cpr_log(cfg, "nucl", "[MT] Finished solve_ivp (%s network, %zu species) in %.2f s",
+    cpr_log(cfg, "nucl", "[MT] Finished solve_ivp (%s network, %zu nuclides) in %.2f s",
              cfg->network, n_mt, (double)(clock() - _t_mt0) / CLOCKS_PER_SEC);
 
     /* ------------------------------------------------------------------
@@ -345,7 +345,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
         recorder_free(&rec_ht); recorder_free(&rec_mt); recorder_free(&rec_lt);
         return 1;
     }
-    cpr_log(cfg, "nucl", "[LT] Finished solve_ivp (%s network, %zu species) in %.2f s",
+    cpr_log(cfg, "nucl", "[LT] Finished solve_ivp (%s network, %zu nuclides) in %.2f s",
              cfg->network, n_lt, (double)(clock() - _t_lt0) / CLOCKS_PER_SEC);
     if (cfg->show_progress && !cfg->verbose) {
         fprintf(stderr, "  done.\n"); fflush(stderr);
