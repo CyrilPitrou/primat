@@ -555,6 +555,34 @@ static double weak_interp_eval(const CPRWeakInterp *it, double T_K)
     return pow(10.0, ly);
 }
 
+/* Reject a tabulated n<->p rate table containing NaN or infinity, with the
+ * message primat/weak_rates/api.py's validate_weak_rates_finite raises
+ * (message-for-message; tests/test_weak_rate_finiteness.py pins the pair).
+ * `source` is "computed" or a quoted cache-file path. Returns 0 when every
+ * entry is finite, 1 with *errmsg set otherwise. */
+int cpr_validate_weak_rates_finite(const CPRConfig *cfg, const double *T,
+                                    const double *frwrd, const double *bkwrd,
+                                    size_t n, const char *source, char **errmsg)
+{
+    size_t n_bad = 0, first = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (!isfinite(frwrd[i]) || !isfinite(bkwrd[i])) {
+            if (n_bad == 0) first = i;
+            n_bad++;
+        }
+    }
+    if (n_bad == 0) return 0;
+    double Q = cfg->consts.mn - cfg->consts.mp;
+    *errmsg = malloc(512);
+    snprintf(*errmsg, 512,
+             "n<->p weak rates (%s) are not finite: %zu of %zu grid points are "
+             "NaN or infinite, first at T = %.6e K. Q = mn - mp = %.6g MeV "
+             "against me = %.6g MeV: below me the rate integrands' "
+             "sqrt(E^2 - me^2) has no real branch. Check mn, mp and me.",
+             source, n_bad, n, T[first], Q, cfg->consts.me);
+    return 1;
+}
+
 /* Build the log10-log10 interpolant over the contiguous positive suffix of a
  * (T, rate) table. i0 is one past the last non-positive entry (0 if all
  * positive), so the suffix is exactly the tail Python's _weak_rate_loglog_interp
@@ -568,6 +596,18 @@ static int weak_interp_build(CPRWeakInterp *it, const double *T,
     for (size_t i = 0; i < n; i++)
         if (!(rate[i] > 0.0)) i0 = i + 1;   /* one past the last non-positive */
     size_t ns = n - i0;
+    /* i0 == n means every entry was non-positive -- which includes NaN, since
+     * !(NaN > 0) is true. Without this guard T[i0] reads one past the array
+     * (proven under ASan) and the zero-length interpolant left behind makes
+     * cpr_interp_linear evaluate x[n-1] with n == 0. Both halves of that were
+     * reachable from an ordinary mp override; see cpr_validate_weak_rates_finite,
+     * which now rejects such a table earlier and with a message that says why. */
+    if (ns < 2) {
+        *errmsg = strdup(
+            "weak_interp_build: fewer than two positive n<->p rate points "
+            "(the whole table is zero, negative or NaN)");
+        return 1;
+    }
     it->n = ns;
     /* Pin the rate to 0 only below a genuine clamped-to-zero prefix (the
      * backward p->n rate, i0 > 0). A fully-positive grid (the forward n->p
@@ -1255,6 +1295,16 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
         memcpy(wr->frwrd, tab.cols[1], wr->n * sizeof(double));
         memcpy(wr->bkwrd, tab.cols[2], wr->n * sizeof(double));
         cpr_table_free(&tab);
+        /* A NaN table on disk is a legitimate fingerprint hit, so it would be
+         * reloaded on every later run of this configuration. */
+        char src[CPR_PATH_BUF_LEN2 + 2];
+        snprintf(src, sizeof(src), "'%s'", path);   /* Python quotes it with repr() */
+        if (cpr_validate_weak_rates_finite(cfg, wr->T, wr->frwrd, wr->bkwrd,
+                                            wr->n, src, errmsg)) {
+            free(fp_hash); free(Tg_K); free(ratio);
+            cpr_weak_rates_free(wr);
+            return 1;
+        }
     } else {
         if (!forced_recompute && cfg->weak_rate_cache)
             cpr_log(cfg, "weak", "Recomputing n<->p weak rates (no cache for this configuration).");
@@ -1276,6 +1326,15 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             double b = nonthermal_rate_term(&ctx, wr->T[i], -1.0, &tnu_ctx);
             wr->frwrd[i] = (f < 1e-28) ? 0.0 : f / Fn;
             wr->bkwrd[i] = (b < 1e-28) ? 0.0 : b / Fn;
+        }
+        /* Before the cache write: saving a NaN table poisons every later run
+         * of this configuration (mirrors api.py's validate_weak_rates_finite
+         * call site). */
+        if (cpr_validate_weak_rates_finite(cfg, wr->T, wr->frwrd, wr->bkwrd,
+                                            wr->n, "computed", errmsg)) {
+            free(fp_hash); free(Tg_K); free(ratio);
+            cpr_weak_rates_free(wr);
+            return 1;
         }
 
         if (cfg->save_nTOp && !forced_recompute) {

@@ -76,6 +76,7 @@ yet done, so the `solve` tier still runs full three-era solves.
 | File | What it checks |
 |------|----------------|
 | `conftest.py` | Session-scoped fixtures: pre-solved small- and large-network `PRIMAT` instances reused across tests (built once, not per test). |
+| `test_off_default_params.py` | The parameter space away from its defaults: that a configuration whose n<->p rates come out NaN raises on both backends instead of reporting YP = 0.98 (and never caches the NaN table), that a `GN` override reaches `eta0b` identically on both backends and independently of the params dict's key order, that bool and int stay non-interchangeable in both parameter setters (including the standalone C CLI), the `n_electron_table >= 4` and `DeltaNeff >= -3` bounds, that inert overrides (`y_SZ`/`y_gray` in tabulated-distortion mode, a NEVO override naming the default file) do not re-key the caches while the shipped hash still names the shipped file, and that every accepted-but-dangerous value warns while a default run stays silent. |
 | `test_config.py` | `PRIMATConfig`: defaults, user overrides, unknown-key warnings, p_*/delta_* reaction-name typo warnings, the `Nuclides` table, that `eta0b` tracks `Omegabh2`, and that there is exactly one MCMC weight per network reaction. |
 | `test_constants.py` | `primat.constants.CONST`'s derived electroweak values: `sW2` (sin²θ_W) against an independent hand-computation of the on-shell relation, the `geL`/`geR`/`gmuL` effective couplings derived from it, and `T_weak`/`T_nucl` against `MeV_to_Kelvin`. Plus the measured-vs-exact split: the 16 measured constants are `DEFAULT_PARAMS` keys whose overrides reach every derived quantity and change the cache key, the 10 exact ones are rejected on assignment and by the `validate_frozen_constants` re-check. |
 | `test_plasma.py` | Plasma/neutrino thermodynamics: `rho_g`, `rho_e`/`p_e` positivity and the e± cutoff, `spl`/`dspl_dT` self-consistency (combined vs separate evaluation, vs finite differences), `T_nu_decoupling` high- and low-T limits. |
@@ -139,6 +140,17 @@ produced by `runfiles/primat_reference_run.py` — a **high-precision** run with
 stays decoupled from the routine-run defaults. `tests/test_regression.py`'s
 `_REF_PARAMS` must list all of them: the four beyond the first four are
 worth 2.0e-08 in `large, amax=8`'s D/H, 6.6x the ±3e-9 bound below.
+
+### After a cache clear, expect ~1e-6 in D/H
+
+The published numbers were produced against the *shipped* n<->p rate cache.
+Deleting it (`primat --cache-clear`) and recomputing reproduces the rates to
+~1e-8 relative, but the adaptive step sequence amplifies even that into ~1e-6
+of D/H — far above the +/-3e-9 regression bound, which pins one backend
+against its own earlier self with the same cache, not against a fresh
+recompute. The same applies to which backend wrote a shared `cache_dir`: the
+tables agree to 2e-10, the resulting D/H to ~3e-6. Neither is a defect; both
+are the reason the regression bounds are stated for a fixed cache.
 
 ### Which tolerance applies to which command
 

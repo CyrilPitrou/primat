@@ -27,7 +27,8 @@ from .corrections import _build_rate_context, _correction_terms, \
 from ..cache_utils import (fingerprint_hash, write_cache_with_fingerprint,
                            resolve_cache_file, cache_write_dir)
 
-__all__ = ['ComputeWeakRates', 'InterpolateWeakRates', 'RecomputeWeakRates']
+__all__ = ['ComputeWeakRates', 'InterpolateWeakRates', 'RecomputeWeakRates',
+           'validate_weak_rates_finite']
 
 
 def _weak_rate_loglog_interp(T, rate):
@@ -79,6 +80,14 @@ def _weak_rate_loglog_interp(T, rate):
     # a low-T prefix for the backward rate; the forward rate has none).
     nonpos = np.nonzero(rate <= 0.0)[0]
     i0 = int(nonpos[-1]) + 1 if nonpos.size else 0
+    # i0 == len(rate) means no positive suffix at all, so there is nothing to
+    # interpolate: T[i0] below would index one past the end (an IndexError
+    # here, a heap-buffer-overflow read in the C mirror). Reject it in the same
+    # words weak_interp_build uses in primat-c/src/weak_rates.c.
+    if len(rate) - i0 < 2:
+        raise ValueError(
+            "weak_interp_build: fewer than two positive n<->p rate points "
+            "(the whole table is zero, negative or NaN)")
     logT = np.log10(T[i0:])
     logR = np.log10(rate[i0:])
     # Pin the rate to 0 only below a genuine non-positive (clamped-to-zero)
@@ -214,6 +223,40 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
 # Load / dispatch interface
 # ---------------------------------------------------------------------------
 
+def validate_weak_rates_finite(T_all, frwrd, bkwrd, cfg, source):
+    """Raise if any tabulated n<->p rate is NaN or infinite.
+
+    The rate integrands take sqrt(E**2 - me**2) over the electron spectrum
+    between the two nucleon masses, so a configuration with Q = mn - mp below
+    me makes every entry NaN.  Without this check the NaN table was written to
+    the cache, propagated through the solver, and reported as an ordinary
+    abundance (YP = 0.98).  Mirrored message-for-message by
+    ``cpr_validate_weak_rates_finite`` in ``primat-c/src/weak_rates.c``.
+
+    Args:
+        T_all: array, grid temperatures [K].
+        frwrd, bkwrd: arrays, n->p and p->n rates in units of 1/tau_n.
+        cfg: PRIMATConfig (read for mn, mp, me in the diagnosis).
+        source: str, where the table came from -- "computed" or a file path,
+            quoted back in the message.
+
+    Raises:
+        ValueError: naming the number of bad points, the first bad
+            temperature, and Q vs me.
+    """
+    bad = ~(np.isfinite(frwrd) & np.isfinite(bkwrd))
+    if not bad.any():
+        return
+    i = int(np.argmax(bad))
+    Q = cfg.mn - cfg.mp
+    raise ValueError(
+        f"n<->p weak rates ({source}) are not finite: {int(bad.sum())} of "
+        f"{len(bad)} grid points are NaN or infinite, first at "
+        f"T = {T_all[i]:.6e} K. Q = mn - mp = {Q:.6g} MeV against "
+        f"me = {cfg.me:.6g} MeV: below me the rate integrands' "
+        "sqrt(E^2 - me^2) has no real branch. Check mn, mp and me.")
+
+
 def InterpolateWeakRates(cfg):
     """Load n↔p weak rates from the hash-named cache file and return interpolants.
 
@@ -234,6 +277,7 @@ def InterpolateWeakRates(cfg):
     # Overlay read: cache_dir (if set) first, then the shipped package copy.
     path    = resolve_cache_file(cfg, "weak", "nTOp_" + fp_hash + ".txt")
     tab     = np.loadtxt(path)
+    validate_weak_rates_finite(tab[:, 0], tab[:, 1], tab[:, 2], cfg, repr(path))
     # log10-log10 cubic (matching the C backend and the nuclear rate tables);
     # see _weak_rate_loglog_interp for why linear-space quadratic was replaced.
     frwrd   = _weak_rate_loglog_interp(tab[:, 0], tab[:, 1])
@@ -320,6 +364,9 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
             print("[weak-py] Recomputing n<->p weak rates (no cache for this configuration).")
         T_all, frwrd, bkwrd = ComputeWeakRates(Tvec, cfg, dFDneu_func=dFDneu_func,
                                                 dFDneu_moments=dFDneu_moments)
+        # Before the cache write: a NaN table is a legitimate fingerprint hit,
+        # so saving one poisons every later run of this configuration.
+        validate_weak_rates_finite(T_all, frwrd, bkwrd, cfg, "computed")
 
         if not forced_recompute and cfg.save_nTOp:
             # write_cache_with_fingerprint creates the dir and degrades to a

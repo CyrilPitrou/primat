@@ -211,6 +211,41 @@ def n_points_per_decade(per_decade, T_lo, T_hi):
     return max(2, int(round(per_decade * decades)))
 
 
+def _normalise_nevo_override(cfg, field):
+    """Return ``None`` when a NEVO override names the file the default selects.
+
+    ``nevo_file=None`` resolves to ``<prefix>[_NoQED]_col_1_7.csv``; passing
+    that name explicitly is the same physics, but the raw field value used to
+    enter the fingerprint, re-keying the n<->p cache *and* the multi-minute
+    vegas thermal cache for a byte-identical table.
+
+    Args:
+        cfg: PRIMATConfig instance.
+        field: ``"nevo_file"``, ``"nevo_spectral_file"`` or ``"nevo_grid_file"``.
+
+    Returns:
+        ``None`` if the override resolves to the path no override would give,
+        otherwise the override value unchanged.
+    """
+    value = getattr(cfg, field)
+    if value is None:
+        return None
+    from ..neutrino_history import resolve_nevo_path
+    prefix = cfg.nevo_file_prefix
+    suffix = "" if cfg.QED_corrections else "_NoQED"
+    default = {"nevo_file":          f"{prefix}{suffix}_col_1_7.csv",
+               "nevo_spectral_file": f"{prefix}{suffix}.csv",
+               "nevo_grid_file":     "NEVOGrid.csv"}[field]
+    try:
+        same = (os.path.realpath(resolve_nevo_path(cfg, value, default))
+                == os.path.realpath(resolve_nevo_path(cfg, None, default)))
+    except (OSError, ValueError, TypeError):
+        # An unresolvable override is the validator's business, not the
+        # fingerprint's: key on the raw value and let the loader report it.
+        return value
+    return None if same else value
+
+
 def _thermal_fingerprint(cfg):
     """Fingerprint dict for the thermal radiative-correction cache file
     ``nTOp_thermal_<hash>.txt``.
@@ -239,6 +274,7 @@ def _thermal_fingerprint(cfg):
           "constants_hash": constants_hash("thermal", cfg)}
     for key in _THERMAL_BG_FIELDS:
         fp[key] = getattr(cfg, key)
+    fp["nevo_file"] = _normalise_nevo_override(cfg, "nevo_file")
     # Effective ξ_e under the same historical "munuOverTnu" key as
     # _weak_rate_fingerprint, so the two fingerprints name it identically
     # (ξ_μ/ξ_τ gravitate only and never reach these integrands).
@@ -302,6 +338,21 @@ def _weak_rate_fingerprint(cfg):
           "constants_hash":          constants_hash("weak", cfg)}
     for key in _WEAK_RATE_BG_FIELDS:
         fp[key] = getattr(cfg, key)
+    # y_SZ/y_gray shape the ANALYTIC distortion only (neutrino_history.
+    # AnalyticDistortion); with analytic_distortions=False the tabulated NEVO
+    # distortion is used and neither value reaches an integrand. Hash the
+    # effective amplitudes, so setting y_SZ in table mode no longer buys a
+    # ~20 s recompute of a byte-identical table. The default run has both at 0
+    # either way, so every shipped hash is unchanged. Mirrored by
+    # cpr_weak_rate_fingerprint (cache.c).
+    if not cfg.analytic_distortions:
+        fp["y_SZ"] = 0.0
+        fp["y_gray"] = 0.0
+    # A NEVO override naming exactly the file the default would select is the
+    # same physics as leaving it unset, so normalise it back to None rather
+    # than re-keying the weak AND the (multi-minute vegas) thermal cache.
+    for key in ("nevo_file", "nevo_spectral_file", "nevo_grid_file"):
+        fp[key] = _normalise_nevo_override(cfg, key)
     # Neutrino chemical potential in the weak rates: only the electron-neutrino
     # ξ_e matters (n <-> p + e + nu_e). Store the EFFECTIVE ξ_e (per-flavour
     # override munuOverTnu_e, else the common munuOverTnu) under the historical

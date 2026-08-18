@@ -1,5 +1,6 @@
 #include "cache.h"
 #include "constants.h"
+#include "neutrino_history.h"   /* cpr_resolve_nevo_path, for nevo_override_effective */
 #include "xalloc.h"
 
 #include <math.h>
@@ -353,6 +354,30 @@ void cpr_constants_hash(const CPRConstants *c, CPRConstsCache which, char out[17
  * that hash to the constants each table actually reads). */
 #define WEAK_RATE_FORMAT_VERSION 6
 
+/* Return NULL when a NEVO override names the very file the default would
+ * select, so passing "NEVOPRIMAT_col_1_7.csv" by hand no longer re-keys the
+ * n<->p cache and the multi-minute vegas thermal cache for byte-identical
+ * physics. `field` is 0 = nevo_file, 1 = nevo_spectral_file, 2 = nevo_grid_file.
+ * Mirrors _normalise_nevo_override in primat/weak_rates/cache.py. The returned
+ * pointer is either NULL or the config's own string, so it outlives the call. */
+static const char *nevo_override_effective(const CPRConfig *cfg, int field)
+{
+    const char *value = (field == 0) ? cfg->nevo_file
+                      : (field == 1) ? cfg->nevo_spectral_file
+                                      : cfg->nevo_grid_file;
+    if (!value || !value[0]) return NULL;
+    const char *prefix = cfg->nevo_file_prefix ? cfg->nevo_file_prefix : "NEVOPRIMAT";
+    const char *suffix = cfg->QED_corrections ? "" : "_NoQED";
+    char def[CPR_PATH_BUF_LEN];
+    if (field == 0)      snprintf(def, sizeof(def), "%s%s_col_1_7.csv", prefix, suffix);
+    else if (field == 1) snprintf(def, sizeof(def), "%s%s.csv", prefix, suffix);
+    else                 snprintf(def, sizeof(def), "NEVOGrid.csv");
+    char with[CPR_PATH_BUF_LEN2], without[CPR_PATH_BUF_LEN2];
+    cpr_resolve_nevo_path(cfg, value, def, with, sizeof(with));
+    cpr_resolve_nevo_path(cfg, NULL, def, without, sizeof(without));
+    return strcmp(with, without) == 0 ? NULL : value;
+}
+
 size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
 {
     size_t n = 0;
@@ -373,8 +398,13 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"incomplete_decoupling", pb(cfg->incomplete_decoupling)};
     out[n++] = (CPRFPField){"spectral_distortions", pb(cfg->spectral_distortions)};
     out[n++] = (CPRFPField){"analytic_distortions", pb(cfg->analytic_distortions)};
-    out[n++] = (CPRFPField){"y_SZ", pd(cfg->y_SZ)};
-    out[n++] = (CPRFPField){"y_gray", pd(cfg->y_gray)};
+    /* Effective distortion amplitudes: y_SZ/y_gray shape the ANALYTIC
+     * distortion only, so in the default (tabulated NEVO) mode neither value
+     * reaches an integrand and must not re-key the cache. Both are 0 in a
+     * default run either way, so every shipped hash is unchanged. Mirrors
+     * _weak_rate_fingerprint in weak_rates/cache.py. */
+    out[n++] = (CPRFPField){"y_SZ", pd(cfg->analytic_distortions ? cfg->y_SZ : 0.0)};
+    out[n++] = (CPRFPField){"y_gray", pd(cfg->analytic_distortions ? cfg->y_gray : 0.0)};
     out[n++] = (CPRFPField){"T_start_cosmo_MeV", pd(cfg->T_start_cosmo_MeV)};
     out[n++] = (CPRFPField){"T_end_MeV", pd(cfg->T_end_MeV)};
     /* Sets the node spacing of the linear T_nu(T_gamma) interpolant every rate
@@ -383,11 +413,11 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
      * weak_rates/cache.py's _WEAK_RATE_BG_FIELDS. */
     out[n++] = (CPRFPField){"sampling_temperature_per_decade",
                             pi(cfg->sampling_temperature_per_decade)};
-    out[n++] = (CPRFPField){"nevo_file", ps(cfg->nevo_file)};
-    out[n++] = (CPRFPField){"nevo_spectral_file", ps(cfg->nevo_spectral_file)};
+    out[n++] = (CPRFPField){"nevo_file", ps(nevo_override_effective(cfg, 0))};
+    out[n++] = (CPRFPField){"nevo_spectral_file", ps(nevo_override_effective(cfg, 1))};
     /* Pairs with nevo_spectral_file: grid nodes + distortion columns jointly
      * define the dFDneu the spectral-distortion term integrates. */
-    out[n++] = (CPRFPField){"nevo_grid_file", ps(cfg->nevo_grid_file)};
+    out[n++] = (CPRFPField){"nevo_grid_file", ps(nevo_override_effective(cfg, 2))};
     out[n++] = (CPRFPField){"nevo_file_prefix", ps(cfg->nevo_file_prefix)};
     /* custom_background mode takes the Tg grid behind the T_nu(T_gamma)
      * interpolant from the table file's OWN T range (cpr_bg_init_custom), not
@@ -426,7 +456,7 @@ size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"T_start_cosmo_MeV", pd(cfg->T_start_cosmo_MeV)};
     out[n++] = (CPRFPField){"QED_corrections", pb(cfg->QED_corrections)};
     out[n++] = (CPRFPField){"incomplete_decoupling", pb(cfg->incomplete_decoupling)};
-    out[n++] = (CPRFPField){"nevo_file", ps(cfg->nevo_file)};
+    out[n++] = (CPRFPField){"nevo_file", ps(nevo_override_effective(cfg, 0))};
     out[n++] = (CPRFPField){"nevo_file_prefix", ps(cfg->nevo_file_prefix)};
     /* Effective ξ_e, same historical key as the weak-rate fingerprint: the
      * thermal integrands' Chitilde carries exp(znu*(en - sgnq*q) - sgnq*xi_nu)

@@ -153,7 +153,7 @@ DEFAULT_PARAMS: dict = {
     "ma":        CONST.ma,        # unified atomic mass unit [MeV]      (CODATA 2010)
     "He4Overma": CONST.He4Overma, # M(He4) / u                          (AME2020)
     "HOverma":   CONST.HOverma,   # M(H) / u                            (AME2016)
-    "Neff_SM":   CONST.Neff_SM,   # SM prediction for Neff              (Bennett et al. 2021)
+    "Neff_SM":   CONST.Neff_SM,   # SM prediction for Neff (Bennett et al. 2021); read ONLY by background._setup_EDE, to normalise the EDE fraction -- it is not the Neff this run reports, and it is inert when fEDE = 0
 
     # ---- background thermodynamics ----------------------------------------
     "T_start_cosmo_MeV":          40.0, # photon temperature at which the background integration starts [MeV]; must be > T_end_MeV. 40 MeV is well before any BBN-relevant weak or nuclear process (T_weak = 1 MeV), so the initial condition is pure radiation domination.
@@ -800,6 +800,12 @@ _POSITIVE_INT = (lambda v: v >= 1, "must be a positive integer (>= 1)")
 # applies to a source rate table, not to this grid.
 _AT_LEAST_TWO = (lambda v: v >= 2,
                  "must be >= 2 (a one-point grid has no interval to interpolate on)")
+# The electron-thermo tables are fitted with a not-a-knot cubic, which needs
+# four knots. Below that the run used to die inside the spline fitter with a
+# message naming neither the parameter nor the minimum.
+_AT_LEAST_FOUR = (lambda v: v >= 4,
+                  "must be >= 4 (the electron-thermo tables are fitted with a "
+                  "not-a-knot cubic spline, which needs four knots)")
 _NON_NEGATIVE = (lambda v: v >= 0, "must be >= 0")
 _PARAM_RANGE = {
     # ---- strictly positive floats (a physical scale, tolerance, or time) ----
@@ -819,7 +825,7 @@ _PARAM_RANGE = {
     "rate_grid_T9_max":    _POSITIVE,
     "mc_rate_rescale_cap": _POSITIVE,
     # ---- strictly positive counts (grid points, iterations, samplings) ------
-    "n_electron_table":                  _POSITIVE_INT,
+    "n_electron_table":                  _AT_LEAST_FOUR,
     "sampling_temperature_per_decade":   _POSITIVE_INT,
     "sampling_nTOp_per_decade":          _POSITIVE_INT,
     "sampling_nTOp_thermal_per_decade":  _POSITIVE_INT,
@@ -1316,6 +1322,7 @@ class PRIMATConfig:
         self._detect_optional_libraries()
         self._validate_nevo_files()
         self._validate_physics_flag_combos()
+        self._warn_off_default_risks()
         self.validate_frozen_constants()
 
         # Derived constants (sW2, mB, n0CMB, ...) and, through them, the
@@ -1412,6 +1419,12 @@ class PRIMATConfig:
         """
         details = []
         for key in sorted(unknown):
+            if key in FROZEN_CONSTANTS:
+                # Not a typo: one of the ten constants that are exact by
+                # definition. Say so, instead of offering the nearest
+                # DEFAULT_PARAMS name.
+                details.append(_frozen_constant_message(key, "<value>"))
+                continue
             matches = difflib.get_close_matches(key, DEFAULT_PARAMS.keys(), n=3)
             if matches:
                 hint = " or ".join(repr(m) for m in matches)
@@ -1662,6 +1675,18 @@ class PRIMATConfig:
                 f"T_start_cosmo_MeV={self.T_start_cosmo_MeV!r}: the background "
                 "and the nuclear network are integrated from T_start_cosmo_MeV "
                 "down to T_end_MeV."
+            )
+        # Three SM flavours carry rho_nu each, and DeltaNeff adds
+        # DeltaNeff * rho_nu(one flavour): below -3 the neutrino sector's total
+        # energy density is negative, sqrt() in the Friedmann equation returns
+        # NaN, and the failure used to surface as "All components of the initial
+        # state y0 must be finite" from inside the ODE.
+        if self.DeltaNeff < -3.:
+            raise ValueError(
+                f"DeltaNeff={self.DeltaNeff!r} must be >= -3: it adds "
+                "DeltaNeff x rho_nu(one flavour) to the three Standard Model "
+                "neutrinos, so a smaller value makes the total neutrino energy "
+                "density negative and the Hubble rate imaginary."
             )
         if self.mc_rate_rescale_cap is not None and self.mc_rate_rescale_cap < 1.:
             raise ValueError(
@@ -1920,6 +1945,65 @@ class PRIMATConfig:
                         "requires incomplete_decoupling=True (the full NEVO spectrum "
                         "file is only available in the non-instantaneous decoupling mode)."
                     )
+
+    def _warn_off_default_risks(self):
+        """Warn about accepted-but-dangerous parameter values.
+
+        Each case below passes every type and range check yet leaves the run
+        reporting a number that is not what the user is likely to think it is:
+        a grid too coarse to be converged, an rtol that is not a tolerance, a
+        network with no He4 in it (so ``YPBBN`` is structurally 0), a
+        degeneracy the NEVO table does not describe, or a flag that does
+        nothing in the configuration it was set in. All are warnings, not
+        errors -- each is a legitimate thing to ask for deliberately.
+
+        Mirrored by ``cpr_warn_off_default_risks`` in ``primat-c/src/config.c``.
+        """
+        # Grid densities well below their defaults: the tabulation error then
+        # exceeds the ODE tolerance, so the run is a resolution test rather
+        # than a prediction.
+        for field, floor in (("sampling_temperature_per_decade", 20),
+                             ("sampling_nTOp_per_decade", 10),
+                             ("rate_grid_npts", 50)):
+            value = getattr(self, field)
+            if value < floor:
+                warnings.warn(
+                    f"{field}={value} is far below its default "
+                    f"{DEFAULT_PARAMS[field]}: the interpolation error then "
+                    "dominates the ODE tolerance, and the abundances this run "
+                    "reports are not converged.", stacklevel=3)
+
+        # numerical_precision is an rtol handed to every ODE solve.
+        if self.numerical_precision > 1e-5:
+            warnings.warn(
+                f"numerical_precision={self.numerical_precision!r} is a "
+                "relative ODE tolerance: above ~1e-5 the two backends no "
+                "longer agree to the accuracy their parity tests assume, and "
+                "the abundances are not converged.", stacklevel=3)
+
+        # A network with no A >= 4 nuclide cannot make helium, so YPBBN is 0
+        # by construction rather than by physics.
+        if self.amax is not None and self.amax < 4:
+            warnings.warn(
+                f"amax={self.amax} drops every nuclide with A >= 4, so this "
+                "run reports YPBBN = 0 (and Li7/H = 0) because He4 is absent "
+                "from the network, not because none is produced.", stacklevel=3)
+
+        # The NEVO tables are computed at zero neutrino degeneracy.
+        if self.xi_nu_e != 0. and self.incomplete_decoupling:
+            warnings.warn(
+                "munuOverTnu != 0 with incomplete_decoupling=True is not "
+                "self-consistent: the NEVO decoupling table this mode reads "
+                "was computed at zero neutrino chemical potential. Set "
+                "incomplete_decoupling=False to explore a degenerate "
+                "cosmology.", stacklevel=3)
+
+        # decay_era only builds a DT era for the large network.
+        if self.decay_era and self.network != "large":
+            warnings.warn(
+                f"decay_era=True has no effect with network={self.network!r}: "
+                "the post-BBN decay era is only run for the large network.",
+                stacklevel=3)
 
     def __getattr__(self, name: str):
         """Dynamic lookup for nuclear rate variations p_* and delta_*."""

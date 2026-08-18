@@ -1,5 +1,6 @@
 """Tests for weak_rates: Fn integral, Fermi-Coulomb, rate functions."""
 import os
+import shutil
 
 import pytest
 import numpy as np
@@ -343,7 +344,7 @@ def test_thermal_fingerprint_ignores_muon_tau_degeneracy():
         assert fp0 == fp1, f"{key} must not invalidate the thermal cache"
 
 
-def test_fingerprint_changes_with_nevo_grid_file():
+def test_fingerprint_changes_with_nevo_grid_file(tmp_path):
     """GOAL: the distortion's energy grid is part of the weak-rate cache key.
 
     ``nevo_spectral_file`` supplies the distortion columns and
@@ -353,10 +354,17 @@ def test_fingerprint_changes_with_nevo_grid_file():
     only the first, so a custom grid of the same length (which
     ``PRIMATConfig`` accepts -- it validates the length, not the values)
     silently reused rates computed on the shipped grid.
+
+    The override must name a *different* file to count: pointing it at the
+    file the default already selects is the same physics, and is normalised
+    away (see ``test_off_default_params.py``).
     """
     cfg0 = PRIMATConfig({"spectral_distortions": True})
+    shipped = os.path.join(cfg0._resolved_data_dir, "NEVO", "NEVOGrid.csv")
+    custom = tmp_path / "MyGrid.csv"
+    shutil.copyfile(shipped, custom)
     cfg1 = PRIMATConfig({"spectral_distortions": True,
-                         "nevo_grid_file": "NEVOGrid.csv"})
+                         "nevo_grid_file": str(custom)})
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
@@ -457,13 +465,21 @@ def test_fingerprint_changes_with_y_SZ():
 # Custom NEVO table overrides (Item 1: nevo_file/nevo_spectral_file/nevo_grid_file)
 # ---------------------------------------------------------------------------
 
-def test_fingerprint_changes_with_nevo_file():
+def test_fingerprint_changes_with_nevo_file(tmp_path):
     """Pointing nevo_file at a different (even identical-content) filename
     must invalidate the weak-rate cache, since the cached rates were
     integrated against whatever neutrino-temperature history that file
-    encodes -- the cache cannot know two filenames happen to agree."""
+    encodes -- the cache cannot know two filenames happen to agree.
+
+    "Different" is the operative word: an override naming the very file the
+    default resolves to is the same physics and is normalised away, so that it
+    no longer costs a full recompute (see ``test_off_default_params.py``).
+    """
     cfg0 = PRIMATConfig({"network": "small"})
-    cfg1 = PRIMATConfig({"network": "small", "nevo_file": "NEVOPRIMAT_col_1_7.csv"})
+    shipped = os.path.join(cfg0._resolved_data_dir, "NEVO", "NEVOPRIMAT_col_1_7.csv")
+    custom = tmp_path / "MyHistory.csv"
+    shutil.copyfile(shipped, custom)
+    cfg1 = PRIMATConfig({"network": "small", "nevo_file": str(custom)})
 
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))

@@ -64,6 +64,12 @@ cross-platform variation. It is a *default-precision* budget and cannot
 distinguish expected controller noise from a new structural divergence; that
 is what ``test_backend_agreement_at_converged_tolerance`` is for. Loosening
 either should not happen without updating this docstring and re-measuring.
+
+"Default-precision" is meant literally: the budget holds at
+``numerical_precision=1e-7`` and does not survive a loosened tolerance --
+1e-5 already puts the two backends 3.9e-4 apart in D/H, and 1e-1 (accepted,
+with a warning from ``_warn_off_default_risks``) 6.2e-2 apart. A parity claim
+at another tolerance needs its own measurement.
 """
 import numpy as np
 import pytest

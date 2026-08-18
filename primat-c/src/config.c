@@ -183,7 +183,20 @@ static int load_nuclides(CPRConfig *cfg, char **errmsg)
 
     FILE *f = fopen(path, "r");
     if (!f) {
-        *errmsg = strdup("nuclides.csv not found (data_dir misconfigured?)");
+        /* Distinguish "the directory does not exist" from "it exists but has
+         * no csv/nuclides.csv": a typo'd data_dir is by far the common case,
+         * and PRIMATConfig._validate_dir_field reports it in exactly these
+         * words. Without this the same typo produced two different diagnoses
+         * on the two backends. */
+        struct stat st;
+        *errmsg = malloc(CPR_PARAM_VAL_LEN);
+        if (stat(cfg->data_dir, &st) != 0 || !S_ISDIR(st.st_mode))
+            snprintf(*errmsg, CPR_PARAM_VAL_LEN,
+                     "data_dir='%.700s' is not an existing directory",
+                     cfg->data_dir);
+        else
+            snprintf(*errmsg, CPR_PARAM_VAL_LEN,
+                     "data_dir='%.700s' has no csv/nuclides.csv", cfg->data_dir);
         return 1;
     }
 
@@ -890,6 +903,15 @@ void cpr_config_set_GN(CPRConfig *cfg, double GN_SI)
      * natural units (~6.709e-45) is off by ~34 orders of magnitude and
      * produces a meaningless Hubble rate. */
     cfg->GN = GN_SI * GN_SI_to_MeV2();
+    /* eta0b = Omegabh2 * (rhocOverh2 / n0CMB) / (ma / maOvermB), and
+     * rhocOverh2 = 3 H100^2 / (8 pi G): at fixed Omega_b h^2 the baryon
+     * number density goes as 1/G, so the ratio must be rebuilt here. Without
+     * it a GN override left eta0b at the value computed from the default G,
+     * and the answer depended on whether Omegabh2 happened to be set after
+     * GN (which recomputes it as a side effect). Mirrors _update_derived in
+     * primat/config.py, and the same rebuild cpr_config_refresh_constants
+     * does for the measured constants. */
+    cpr_config_set_Omegabh2(cfg, cfg->Omegabh2_);
 }
 
 double cpr_config_get_GN(const CPRConfig *cfg)
@@ -973,21 +995,27 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             continue;
         void *field = (char *)cfg + FIELD_TABLE[i].offset;
         switch (FIELD_TABLE[i].kind) {
+        /* bool and int are NOT interchangeable, matching _KIND_CHECKS in
+         * primat/config.py, which excludes bool from the numeric kinds ("True
+         * where a float is expected is a bug, not the number 1.0"). Taking an
+         * int here let `--set verbose=2` through; taking a bool in F_INT below
+         * turned `--set sampling_nTOp_per_decade=True` into one grid point per
+         * decade and printed a D/H 5.8 % low at exit status 0. */
         case F_BOOL:
-            if (value.type != CPR_BOOL && value.type != CPR_INT) {
+            if (value.type != CPR_BOOL) {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects a bool", name);
                 return CPR_SET_BAD_VALUE;
             }
-            *(int *)field = value.type == CPR_BOOL ? value.v.b : (int)value.v.i;
+            *(int *)field = value.v.b;
             return CPR_SET_OK;
         case F_INT:
-            if (value.type != CPR_INT && value.type != CPR_BOOL) {
+            if (value.type != CPR_INT) {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects an int", name);
                 return CPR_SET_BAD_VALUE;
             }
-            *(int *)field = value.type == CPR_INT ? (int)value.v.i : value.v.b;
+            *(int *)field = (int)value.v.i;
             return CPR_SET_OK;
         case F_INT_OR_NONE:
             if (value.type == CPR_NONE) {
@@ -1073,9 +1101,78 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
         }
     }
 
+    /* The ten constants that are exact by definition are not typos: say so,
+     * rather than letting them read as a misspelled DEFAULT_PARAMS key.
+     * Mirrors _report_unknown_keys in primat/config.py, which routes them to
+     * _frozen_constant_message. */
+    static const char * const frozen[] = {
+        "Kelvin", "second", "cm", "gram", "kB", "clight", "hbar", "MeV", "keV", "Mpc"
+    };
+    for (size_t i = 0; i < sizeof(frozen) / sizeof(frozen[0]); i++) {
+        if (strcmp(name, frozen[i]) == 0) {
+            *errmsg = malloc(256);
+            snprintf(*errmsg, 256,
+                     "%s is exact by definition and is not a run-time "
+                     "parameter: edit BOTH primat/constants.py and "
+                     "primat-c/src/constants.c to change it", name);
+            return CPR_SET_UNKNOWN_KEY;
+        }
+    }
+
     *errmsg = malloc(256);
     snprintf(*errmsg, 256, "unknown parameter key: %s", name);
     return CPR_SET_UNKNOWN_KEY;
+}
+
+/* Warn about accepted-but-dangerous parameter values: a grid too coarse to be
+ * converged, an rtol that is not a tolerance, a network with no He4 in it (so
+ * YPBBN is structurally 0), a degeneracy the NEVO table does not describe, or
+ * a flag that does nothing in the configuration it was set in. Mirrors
+ * _warn_off_default_risks in primat/config.py, message for message. Printed
+ * unconditionally (not via cpr_log, which is gated on cfg->verbose) for the
+ * same reason the Python warnings are not gated. */
+static void cpr_warn_off_default_risks(const CPRConfig *cfg)
+{
+    /* The Python bridge sets this: primat/config.py has already warned about
+     * the same configuration, and printing here too shows every message
+     * twice. */
+    if (cfg->suppress_config_warnings) return;
+    struct { const char *name; int value; int floor; int def; } grids[] = {
+        {"sampling_temperature_per_decade", cfg->sampling_temperature_per_decade, 20, 600},
+        {"sampling_nTOp_per_decade",        cfg->sampling_nTOp_per_decade,        10, 80},
+        {"rate_grid_npts",                  cfg->rate_grid_npts,                 50, 1000},
+    };
+    for (size_t i = 0; i < sizeof(grids) / sizeof(grids[0]); i++) {
+        if (grids[i].value < grids[i].floor)
+            fprintf(stderr,
+                    "warning: %s=%d is far below its default %d: the "
+                    "interpolation error then dominates the ODE tolerance, and "
+                    "the abundances this run reports are not converged.\n",
+                    grids[i].name, grids[i].value, grids[i].def);
+    }
+    if (cfg->numerical_precision > 1e-5)
+        fprintf(stderr,
+                "warning: numerical_precision=%g is a relative ODE tolerance: "
+                "above ~1e-5 the two backends no longer agree to the accuracy "
+                "their parity tests assume, and the abundances are not "
+                "converged.\n", cfg->numerical_precision);
+    if (cfg->amax != -1 && cfg->amax < 4)
+        fprintf(stderr,
+                "warning: amax=%d drops every nuclide with A >= 4, so this run "
+                "reports YPBBN = 0 (and Li7/H = 0) because He4 is absent from "
+                "the network, not because none is produced.\n", cfg->amax);
+    if (cpr_config_xi_nu_e(cfg) != 0.0 && cfg->incomplete_decoupling)
+        fprintf(stderr,
+                "warning: munuOverTnu != 0 with incomplete_decoupling=True is "
+                "not self-consistent: the NEVO decoupling table this mode reads "
+                "was computed at zero neutrino chemical potential. Set "
+                "incomplete_decoupling=False to explore a degenerate "
+                "cosmology.\n");
+    if (cfg->decay_era && strcmp(cfg->network, "large") != 0)
+        fprintf(stderr,
+                "warning: decay_era=True has no effect with network='%s': the "
+                "post-BBN decay era is only run for the large network.\n",
+                cfg->network);
 }
 
 int cpr_config_validate(CPRConfig *cfg, char **errmsg)
@@ -1092,7 +1189,8 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
             *errmsg = strdup("custom_background and external_scale_factor are mutually exclusive");
             return 1;
         }
-        if (cfg->incomplete_decoupling || cfg->spectral_distortions) {
+        if ((cfg->incomplete_decoupling || cfg->spectral_distortions)
+                && !cfg->suppress_config_warnings) {
             fprintf(stderr,
                     "warning: custom_background: forcing %s%s%s "
                     "(custom-background mode uses instantaneous-decoupling "
@@ -1228,8 +1326,13 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
                 "Neff_SM=%.6g is out of range: must be >= 0", cfg->consts.Neff_SM);
 
     /* strictly positive integer counts */
-    CPR_REQUIRE(cfg->n_electron_table >= 1,
-                "n_electron_table=%d is out of range: must be a positive integer (>= 1)", cfg->n_electron_table);
+    /* >= 4, not >= 1: the electron-thermo tables are fitted with a not-a-knot
+     * cubic (cpr_cubic_spline_fit_notaknot), which needs four knots. Below
+     * that both backends died inside the spline fitter with a message naming
+     * neither the parameter nor the minimum. Mirrors _AT_LEAST_FOUR in
+     * primat/config.py. */
+    CPR_REQUIRE(cfg->n_electron_table >= 4,
+                "n_electron_table=%d is out of range: must be >= 4 (the electron-thermo tables are fitted with a not-a-knot cubic spline, which needs four knots)", cfg->n_electron_table);
     CPR_REQUIRE(cfg->sampling_temperature_per_decade >= 1,
                 "sampling_temperature_per_decade=%d is out of range: must be a positive integer (>= 1)", cfg->sampling_temperature_per_decade);
     CPR_REQUIRE(cfg->sampling_nTOp_per_decade >= 1,
@@ -1304,6 +1407,20 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
         return 1;
     }
 
+    /* Three SM flavours carry rho_nu each and DeltaNeff adds DeltaNeff *
+     * rho_nu(one flavour): below -3 the neutrino sector is negative and the
+     * Hubble rate imaginary, which used to surface as a NaN initial state from
+     * inside the ODE. Mirrors _validate_ranges in primat/config.py. */
+    if (cfg->DeltaNeff < -3.0) {
+        *errmsg = malloc(256);
+        snprintf(*errmsg, 256,
+                 "DeltaNeff=%.6g must be >= -3: it adds DeltaNeff x "
+                 "rho_nu(one flavour) to the three Standard Model neutrinos, "
+                 "so a smaller value makes the total neutrino energy density "
+                 "negative and the Hubble rate imaginary", cfg->DeltaNeff);
+        return 1;
+    }
+
     if (cfg->external_scale_factor && !cfg->incomplete_decoupling) {
         *errmsg = strdup("external_scale_factor=True requires incomplete_decoupling=True");
         return 1;
@@ -1333,6 +1450,7 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     /* NEVO override existence/shape checks: deferred to neutrino_history.c
      * which owns resolve_nevo_path() and the CSV column counts. */
 
+    cpr_warn_off_default_risks(cfg);
     return 0;
 }
 

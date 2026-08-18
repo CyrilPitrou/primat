@@ -196,6 +196,13 @@ typedef struct {
     char *custom_background; /* NULL = not set */
 
     /* ---- fundamental constants (overridable) ---- */
+    /* Internal, not a DEFAULT_PARAMS key and not part of any fingerprint:
+     * set by the Python bridge (_wrapper.c) so config warnings are printed
+     * once, by primat/config.py's _warn_off_default_risks, instead of twice
+     * (Python's warning plus this backend's stderr copy). The standalone CLI
+     * leaves it 0 and prints them itself. */
+    int suppress_config_warnings;
+
     double GN; /* natural units [MeV^-2]; set/read via cpr_config_set_GN()/
                 * cpr_config_get_GN(), which convert to/from the SI units
                 * [m^3 kg^-1 s^-2] that DEFAULT_PARAMS["GN"] and

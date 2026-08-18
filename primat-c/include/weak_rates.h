@@ -123,6 +123,14 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
 
 void cpr_weak_rates_free(CPRWeakRates *wr);
 
+/* Reject a tabulated n<->p rate table containing NaN or infinity. `source` is
+ * "computed" or a cache-file path, quoted back in the message, which mirrors
+ * primat/weak_rates/api.py's validate_weak_rates_finite word for word.
+ * Returns 0 if every entry is finite, 1 with *errmsg set (caller frees). */
+int cpr_validate_weak_rates_finite(const CPRConfig *cfg, const double *T,
+                                    const double *frwrd, const double *bkwrd,
+                                    size_t n, const char *source, char **errmsg);
+
 /* Gamma_{n->p}(T)/Gamma_{p->n}(T) in units of 1/tau_n, the sum of the
  * nonthermal rate (log10-log10 cubic-interpolated, see CPRWeakInterp) and,
  * when present, the thermal correction table -- mirrors RecomputeWeakRates's

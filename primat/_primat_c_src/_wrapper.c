@@ -464,6 +464,10 @@ static PyObject *primat_c_run_bbn(PyObject *self, PyObject *args, PyObject *kwar
         free(errmsg);
         return NULL;
     }
+    /* primat/config.py validates the same params dict before dispatch and has
+     * already warned about anything cpr_config_validate would warn about, so
+     * let it own the message; without this every such warning appears twice. */
+    cfg.suppress_config_warnings = 1;
 
     PyObject *key, *value;
     Py_ssize_t pos = 0;
