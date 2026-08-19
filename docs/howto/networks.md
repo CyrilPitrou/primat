@@ -36,9 +36,10 @@ is called "the 12-reaction network" and `large` "~429 reactions" — the same
 two networks, counted the two different ways. Nuclide counts include `n` and
 `p`.
 
-All networks share the HT (n↔p) and MT eras — the MT era always uses a fixed
-18-reaction subset, too stiff to run the full network; only the LT reaction
-set is filtered by `network`/`amax`. The light-element abundances of the
+All networks share the HT (n↔p) and MT eras — the MT era intersects the chosen
+network with a fixed list of 18 reactions, the full network being too stiff to
+run there, so it holds 18 reactions for `large` and 13 for `small`; only the LT
+reaction set is filtered by `network`/`amax`. The light-element abundances of the
 full `large` network match the `amax=8` restriction to ≲1e-4; its
 heavy-nuclide tail (B, C, N, O, …) is approximate (limited by the AC2024
 rate floors). See the {doc}`../tutorials/AbundanceEvolution` notebook for

@@ -158,7 +158,7 @@ DEFAULT_PARAMS: dict = {
     # ---- background thermodynamics ----------------------------------------
     "T_start_cosmo_MeV":          40.0, # photon temperature at which the background integration starts [MeV]; must be > T_end_MeV. 40 MeV is well before any BBN-relevant weak or nuclear process (T_weak = 1 MeV), so the initial condition is pure radiation domination.
     "T_end_MeV":                  1.e-3,  # end temperature for nuclear integration [MeV]; default 0.001 MeV ≈ 11.6 MK
-    "sampling_temperature_per_decade": 600,  # points per decade of T for the background a(T)/t(T) grid
+    "sampling_temperature_per_decade": 600,  # points per decade of T for the background a(T)/t(T) grid. Second accuracy floor beside rate_grid_npts: ~7e-6 in D/H at the default -- see docs/performance.md
 
     # ---- n <--> p weak rates ----------------------------------------------
     # cache_plasma_weak/weak/nTOp_*.txt carry a fingerprint header recording the config
@@ -286,7 +286,7 @@ DEFAULT_PARAMS: dict = {
     # different grids (e.g. via --keep-source-grid in convert_ac2024_rates.py,
     # or from external sources) are all resampled onto this common grid so that
     # fill_buffer's single searchsorted path remains valid.
-    "rate_grid_npts":             1000,       # number of points in the master T9 grid
+    "rate_grid_npts":             1000,       # number of points in the master T9 grid. Also an accuracy floor: at the default the Li7/H it produces sits ~1e-4 from its own npts -> infinity limit (D/H ~6e-6), independent of numerical_precision -- see docs/performance.md
     "rate_grid_T9_min":          1.0e-3,     # minimum T9 [GK] on the master grid
     # Maximum T9 [GK] on the master grid.  Deliberately *below* the MT era's
     # start (T_weak = 1 MeV = 11.6 GK): the shipped tables' own source data

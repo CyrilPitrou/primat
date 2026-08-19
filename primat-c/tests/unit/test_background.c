@@ -73,6 +73,19 @@ static void test_standard(void)
     CHECK(close_rel(cpr_bg_a_of_t(&bg, t01), cpr_bg_a_of_T(&bg, 0.1), 1e-4),
           "a_of_t(t_of_T(T)) == a_of_T(T) self-consistency");
 
+    /* T(a) is a temperature past the last node too: a linear extrapolation of
+     * a decaying T(a) crosses zero at about 2 a_end, so the tail follows the
+     * power law through the last two nodes (T ~ 1/a). Mirrors
+     * tests/test_invariants.py's
+     * test_photon_temperature_stays_positive_past_the_end_of_the_grid. */
+    double a_end = cpr_bg_a_of_T(&bg, cfg.T_end_MeV);
+    double T_end = cpr_bg_T_of_a(&bg, a_end);
+    CHECK(cpr_bg_T_of_a(&bg, 2.0 * a_end) > 0.0 &&
+          cpr_bg_T_of_a(&bg, 1.0e6 * a_end) > 0.0,
+          "T_of_a stays positive past the end of the grid");
+    CHECK(close_rel(cpr_bg_T_of_a(&bg, 10.0 * a_end), T_end / 10.0, 1e-3),
+          "T_of_a continues as T ~ 1/a past the end of the grid");
+
     double Tg_f, rho_nu_f;
     CHECK(cpr_bg_rho_nu_total_final(&bg, &Tg_f, &rho_nu_f) == 0, "rho_nu_total_final succeeds");
     CHECK(close_rel(rho_nu_f, 4.548634316093674e-13, 1e-6), "rho_nu_total_final matches Python");

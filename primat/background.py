@@ -141,6 +141,47 @@ def _scalar_linear_eval(interp):
     return None
 
 
+def _linear_with_powerlaw_tail(x, y):
+    """Linear interpolant on ``(x, y)`` whose upper tail is a power law.
+
+    Linear in ``x`` inside the grid and below it, exactly as
+    ``interp1d(kind='linear', fill_value="extrapolate")``; above the last node
+    it continues the power law through the last two nodes,
+    ``y = y[-1] (x/x[-1])^p`` with ``p = dln y / dln x`` there.  Linear
+    extrapolation of a decaying ``y`` crosses zero a finite distance past the
+    end -- for ``T(a)`` at about ``2 a_end`` -- and a negative temperature is
+    worse than an inaccurate one.
+
+    Both arrays must be strictly positive and ``x`` strictly increasing.
+    Mirrored by ``cpr_bg_T_of_a`` in ``primat-c/src/background.c``.
+
+    Args:
+        x, y : 1-D arrays of the same length (e.g. scale factor, T in MeV).
+
+    Returns:
+        callable ``f(x)`` accepting a scalar or array.
+
+    Example:
+        >>> f = _linear_with_powerlaw_tail(np.array([1., 2.]), np.array([2., 1.]))
+        >>> float(f(4.0))          # 1 * (4/2)^-1, not the linear 0.0
+        0.5
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    lin = interp1d(x, y, bounds_error=False, fill_value="extrapolate",
+                   kind='linear')
+    p = np.log(y[-1] / y[-2]) / np.log(x[-1] / x[-2])
+
+    def _eval(q):
+        qa = np.asarray(q, dtype=float)
+        out = np.where(qa > x[-1],
+                       y[-1] * np.power(np.maximum(qa, 1e-300) / x[-1], p),
+                       lin(qa))
+        return out if out.ndim else float(out)
+
+    return _eval
+
+
 def _loglog_interp1d(x, y):
     """Linear interpolant in (log x, log y), evaluated back in linear space.
 
@@ -1176,8 +1217,13 @@ class StandardBackground(Background):
         # taken from the time integration: in minimal mode those pairs are
         # exact (Tg_vec is step 2's own grid, a_arr = a_of_T(Tg_vec) with the
         # log-log a_of_T). Linear, matching the C backend's cpr_bg_T_of_a.
-        self.T_of_a = interp1d(a_arr, Tg_vec, bounds_error=False,
-                                fill_value="extrapolate", kind='linear')
+        #
+        # Past the last node the linear extrapolation reaches T = 0 at about
+        # 2 a_end and goes negative beyond, so the tail is continued as the
+        # power law through the last two nodes instead (T ~ 1/a in radiation
+        # domination): positive for every a, and the same scheme a_of_T
+        # already uses in the other direction.
+        self.T_of_a = _linear_with_powerlaw_tail(a_arr, Tg_vec)
         self.a_of_t = interp1d(t_vec, a_arr, bounds_error=False,
                                 fill_value=(a_arr[0], a_arr[-1]))
         self._a_of_t_scalar = _scalar_linear_eval(self.a_of_t)   # rhoB_BBN hot path

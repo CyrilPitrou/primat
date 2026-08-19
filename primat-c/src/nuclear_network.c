@@ -201,6 +201,20 @@ static double *find_in(double *raw_vals, char (*raw_names)[16], size_t n_raw, co
     return NULL;
 }
 
+/* Wrap an integrator error with the era, the network and the temperature
+ * range, in the wording primat/nuclear_network.py's _check_solver uses, so the
+ * same failure reads the same on both backends. Takes ownership of *errmsg. */
+static void wrap_era_error(char **errmsg, const char *era, const char *detail)
+{
+    if (!errmsg) return;
+    const char *inner = *errmsg ? *errmsg : "integration failed";
+    char buf[512];
+    snprintf(buf, sizeof(buf), "[%s] nuclear-network integration failed (%s): %s",
+             era, detail, inner);
+    free(*errmsg);
+    *errmsg = strdup(buf);
+}
+
 int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
                                 CPRNuclearRates *nucl, CPRBackground *background,
                                 char **errmsg)
@@ -264,6 +278,10 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     clock_t _t_ht0 = clock();
     if (cpr_ode_rk45(ht_rhs, &ht_ctx, t_start, t_weak, Y_ht, 2, rk_opts,
                       recorder_cb, &rec_ht, errmsg)) {
+        char detail[128];
+        snprintf(detail, sizeof(detail), "T = %.4g -> %.4g MeV",
+                 T_start_MeV, T_weak_MeV);
+        wrap_era_error(errmsg, "HT", detail);
         recorder_free(&rec_ht);
         return 1;
     }
@@ -272,7 +290,8 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     double Yn_HT_f = Y_ht[0], Yp_HT_f = Y_ht[1];
 
     /* ------------------------------------------------------------------
-     * MT era: fixed 18-reaction subset, stiff BDF with analytic Jacobian.
+     * MT era: the network's intersection with CPR_ORDER_MT, stiff BDF with
+     * an analytic Jacobian.
      * ------------------------------------------------------------------ */
     char (*mt_names)[16] = nucl->mt_net.species;
     size_t n_mt = nucl->mt_net.n_species;
@@ -302,6 +321,11 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     clock_t _t_mt0 = clock();
     if (cpr_ode_bdf(mt_rhs, mt_jac, &mt_ctx, t_weak, t_nucl, Yi_MT, n_mt, bdf_opts,
                      recorder_cb, &rec_mt, errmsg)) {
+        char detail[256];
+        snprintf(detail, sizeof(detail),
+                 "%s network, %zu species, T = %.4g -> %.4g MeV",
+                 cfg->network, n_mt, T_weak_MeV, T_nucl_MeV);
+        wrap_era_error(errmsg, "MT", detail);
         free(Yi_MT); recorder_free(&rec_ht); recorder_free(&rec_mt);
         return 1;
     }
@@ -341,6 +365,11 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     clock_t _t_lt0 = clock();
     if (cpr_ode_bdf(lt_rhs, lt_jac, &lt_ctx, t_nucl, t_end, Yi_LT, n_lt, bdf_opts_lt,
                      recorder_cb, &rec_lt, errmsg)) {
+        char detail[256];
+        snprintf(detail, sizeof(detail),
+                 "%s network, %zu nuclides, T = %.4g -> %.4g MeV",
+                 cfg->network, n_lt, T_nucl_MeV, cfg->T_end_MeV);
+        wrap_era_error(errmsg, "LT", detail);
         free(Yi_MT); free(Yi_LT);
         recorder_free(&rec_ht); recorder_free(&rec_mt); recorder_free(&rec_lt);
         return 1;

@@ -50,9 +50,11 @@ end of this file:
 * **The t(T) coordinate** differs structurally -- different integration
   variable and anchor point -- and is what survives at converged tolerance.
 * **The HT-era integrator**, ``LSODA`` (``primat/nuclear_network.py``) vs
-  Dormand-Prince RK45 (``primat-c/src/nuclear_network.c``), is deliberate and
-  contributes ~1e-10 to YP. Aligning the two on BDF was tried and *degraded*
-  YP parity, so it stays as it is.
+  Dormand-Prince RK45 (``primat-c/src/nuclear_network.c``), is deliberate.
+  Running Python's HT era on RK45 too moves YPBBN by 4.5e-09 (absolute) at the
+  default tolerance and by 3e-10 at 1e-11, i.e. it closes 4% of the
+  default-precision YP gap and none of the converged one. Aligning the two on
+  BDF was tried and *degraded* YP parity, so it stays as it is.
 
 The gap grows with network size, which is why the budget is set from the
 largest of the three.
@@ -1036,13 +1038,16 @@ def test_ccrth_interpolation_scheme_spread_is_pinned():
 # converged and ~1e-6 of the gap is step-sequence noise that no parity fix can
 # remove. That budget therefore cannot tell "expected noise" from "a new
 # structural divergence". These do: run both backends converged, where the
-# noise is gone and only structural differences survive. Measured across
-# small / large+amax=8 / full large: D/H 1.2e-07..2.0e-07, YP 4.3e-09..1.1e-08;
-# and with external_scale_factor on, D/H 1.4e-07..1.5e-07, YP 1.0e-08..1.5e-08.
-# That mode was 1.2e-05 out until review pass 23 refined the grid both backends
-# build their T(a) inverse and t(T) on -- see tests/README.md's "Known
+# noise is gone and only structural differences survive.
+#
+# 1e-10, not 1e-9: at 1e-9 half of what survives is still step-sequence noise
+# (D/H gap 1.8e-07..2.0e-07 there against 9.4e-08..1.0e-07 at 1e-10 and 1e-11,
+# where it has settled). Measured at 1e-10 over the four cases below: D/H
+# 9.8e-08..1.7e-07, YP 2.3e-09..1.5e-08 (absolute), Li7/H 7.1e-08..2.4e-07.
+# external_scale_factor was 1.2e-05 out until the grid both backends build
+# their T(a) inverse and t(T) on was refined -- see tests/README.md's "Known
 # cross-backend divergences".
-CONVERGED_PRECISION = 1e-9
+CONVERGED_PRECISION = 1e-10
 CONVERGED_DOH_RTOL = 1e-6
 CONVERGED_YPBBN_ATOL = 1e-7
 

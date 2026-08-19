@@ -310,3 +310,27 @@ def test_small_amax2_collapses_to_deuterium_channel():
     r = PRIMAT({"network": "small", "amax": 2}).primat_results()
     assert r["YPBBN"] == 0.0
     assert r["DoH"] > 0.0
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_default_rate_grid_leaves_a_known_error_in_Li7():
+    """What `rate_grid_npts = 1000` costs, once the ODE tolerance is converged.
+
+    The master T9 grid every rate table is resampled onto is a second-order
+    accuracy floor sitting under `numerical_precision`: refining it 4x still
+    moves `Li7/H` by ~1e-4 and `D/H` by ~6e-6, where one more decade of
+    tolerance moves them by ~5e-9. This is the number `docs/performance.md`'s
+    "What the default grids cost" quotes, and the reason `Li7/H`'s last two
+    reported decimals are grid artefacts. Both backends carry it identically,
+    so no parity test can see it.
+    """
+    from primat.backend import run_bbn
+    base = {"network": "small", "numerical_precision": 1e-10}
+    coarse = run_bbn(dict(base, rate_grid_npts=1000))
+    fine = run_bbn(dict(base, rate_grid_npts=4000))
+    for key, expected in (("DoH", 5.9e-6), ("Li7oH", 9.1e-5)):
+        shift = abs(fine[key] / coarse[key] - 1.0)
+        assert shift == pytest.approx(expected, rel=0.5), f"{key}: {shift:.3e}"
+    # YPBBN is unaffected at the level anything is pinned to.
+    assert abs(fine["YPBBN"] / coarse["YPBBN"] - 1.0) < 1e-7

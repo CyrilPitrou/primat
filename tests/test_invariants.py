@@ -459,3 +459,25 @@ def test_free_neutrons_decay_with_the_neutron_lifetime_after_BBN():
     assert resolvable.sum() > 20
     worst = float(np.abs(Y[resolvable, k] / predicted[resolvable] - 1.0).max())
     assert worst < 1e-6
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_photon_temperature_stays_positive_past_the_end_of_the_grid():
+    """T(a) is a temperature everywhere, including outside its own node range.
+
+    The scale-factor grid ends at T_end_MeV. A linear extrapolation of a
+    decaying T(a) crosses zero a finite distance past the last node, so the
+    tail follows the power law through the last two nodes instead. Checked out
+    to 1e6 times the final scale factor, and against T ~ 1/a, which is what
+    radiation domination requires there.
+    """
+    from primat.main import PRIMAT
+    run = PRIMAT(params={"network": "small"})
+    bg = run.background
+    a_end = float(np.asarray(bg.a_of_T(bg.Tg_vec)).max())
+    T_end = float(bg.T_of_a(a_end))
+    for factor in (1.5, 2.0, 10.0, 1e3, 1e6):
+        T = float(bg.T_of_a(a_end * factor))
+        assert T > 0.0, f"T_of_a({factor} x a_end) = {T}"
+        assert T == pytest.approx(T_end / factor, rel=1e-3)

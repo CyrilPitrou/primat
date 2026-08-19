@@ -2454,8 +2454,8 @@ class UpdateNuclearRates:
         ``(name, equation, source, file)`` tuples.
 
         Thin delegate to :meth:`NetworkDefinition.describe_reactions` for the LT
-        network (the complete selected reaction set; the MT era only uses a fixed
-        18-reaction subset).  The fourth element is the rate-table path (``None``
+        network (the complete selected reaction set; the MT era uses only this
+        network's intersection with ``ORDER_MT``).  The fourth element is the rate-table path (``None``
         for the weak ``n__p`` entry).  Used by the verbose console listing and by
         the GUI reactions table.
         """

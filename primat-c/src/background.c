@@ -1059,7 +1059,19 @@ double cpr_bg_T_of_a(const CPRBackground *bg, double a)
 {
     if (bg->kind == CPR_BG_CUSTOM)
         return cpr_interp_linear(bg->a_sort, bg->T_by_a, bg->n_custom, a, CPR_EXTRAP_LINEAR);
-    return cpr_interp_linear(bg->a_sol_asc, bg->T_sol_asc, bg->n_Tsol, a, CPR_EXTRAP_LINEAR);
+    /* Past the last node the linear extrapolation reaches T = 0 at about
+     * 2 a_end and goes negative beyond, so the tail is continued as the power
+     * law through the last two nodes (T ~ 1/a in radiation domination):
+     * positive for every a, and the same scheme cpr_bg_a_of_T already uses in
+     * the other direction. Mirrors background.py's
+     * _linear_with_powerlaw_tail. */
+    size_t n = bg->n_Tsol;
+    if (a > bg->a_sol_asc[n - 1]) {
+        double p = log(bg->T_sol_asc[n - 1] / bg->T_sol_asc[n - 2])
+                 / log(bg->a_sol_asc[n - 1] / bg->a_sol_asc[n - 2]);
+        return bg->T_sol_asc[n - 1] * pow(a / bg->a_sol_asc[n - 1], p);
+    }
+    return cpr_interp_linear(bg->a_sol_asc, bg->T_sol_asc, n, a, CPR_EXTRAP_LINEAR);
 }
 
 double cpr_bg_a_of_t(const CPRBackground *bg, double t)

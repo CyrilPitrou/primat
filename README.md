@@ -663,8 +663,9 @@ A ≤ amax:
 | `"large"`, `amax=8` | 68 | 12 | the old "medium" network's exact equivalent |
 | `"large"`, `amax=2` | 3 | 3 | the old "deuterium" network's equivalent (n↔p + n_p__d_g + p_p_n__d_p) |
 
-All networks share the HT (n↔p) and MT eras (the MT era always uses a fixed
-18-reaction subset, too stiff to run the full network); only the LT reaction
+All networks share the HT (n↔p) and MT eras (the MT era intersects the chosen
+network with a fixed list of 18 reactions, the full network being too stiff to
+run there — so 18 reactions for `large`, 13 for `small`); only the LT reaction
 set is filtered by `network`/`amax`. The light-element abundances of the full
 large network match the `amax=8` restriction to ≲1e-4; its heavy-nuclide tail
 (B, C, N, O, …) is approximate. See `notebooks/AbundanceEvolution.ipynb` for

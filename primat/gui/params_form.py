@@ -97,8 +97,9 @@ _FORM_METADATA = {
         "'small' (12 reactions), 'small_parthenope' (12 reactions, Parthenope "
         "3.0 rate tables, for comparison runs), or 'large' (~429 reactions, "
         "~59 nuclides, optionally restricted via 'Limit max mass number' "
-        "below). The HT/MT eras are unaffected (always n<->p / fixed "
-        "18-reaction set). Manually changing this clears any active custom "
+        "below). The HT era is unaffected (always n<->p) and the MT era uses "
+        "this network's subset of a fixed 18-reaction list. Manually "
+        "changing this clears any active custom "
         "network built via \"Create custom network\".",
     ),
     "amax": (

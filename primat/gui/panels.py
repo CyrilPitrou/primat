@@ -266,7 +266,7 @@ def render_reactions_panel(run):
     """Render the table of loaded reactions and their data sources.
 
     Lists every reaction integrated by the chosen network's LT solver (the full
-    selected set; the MT era uses only a fixed 18-reaction subset), as produced
+    selected set; the MT era uses only its intersection with ``ORDER_MT``), as produced
     by :meth:`primat.network_data.UpdateNuclearRates.describe_reactions`. Columns:
 
     * **Reaction** -- the readable ``a + b <-> c + d`` form with Unicode isotope
@@ -297,8 +297,8 @@ def render_reactions_panel(run):
 
     st.subheader(f"{len(reactions)} reactions")
     st.caption(
-        "Full reaction set of the low-temperature solver. The MT era uses a "
-        "fixed 18-reaction subset of these."
+        "Full reaction set of the low-temperature solver. The MT era uses the "
+        "subset of these that appears in its own fixed 18-reaction list."
     )
 
     # Content-sized HTML table with collapsed borders -> crisp grid lines and no

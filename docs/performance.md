@@ -80,7 +80,7 @@ particular check.
 | Knob | Default | Effect on speed |
 |------|---------|------------------|
 | `numerical_precision` | `1e-7` | `solve_ivp` `rtol` for every era; raising it (looser tolerance, e.g. `1e-5`) speeds up the LT-era solve roughly linearly in step count but degrades the `D/H`/`YPBBN` precision pinned in `tests/reference_values.py` — do not raise it past the point where results are no longer distinguishable from the reference-run tolerances. |
-| `rate_grid_npts` | 1000 | Master T9 grid size every rate table is resampled onto at load time; this is a fixed one-time cost per solve (not per RHS call), so it matters more for `small`/fast networks than for `large`. |
+| `rate_grid_npts` | 1000 | Master T9 grid size every rate table is resampled onto at load time; this is a fixed one-time cost per solve (not per RHS call), so it matters more for `small`/fast networks than for `large`. It also sets an accuracy floor — see "What the default grids cost" below. |
 | `sampling_nTOp_per_decade` / `sampling_nTOp_thermal_per_decade` | see `primat/config.py` | Only affects *cold-cache* weak-rate computation time (see above); irrelevant once cached. |
 | `amax` | `None` | Filters any named network to reactions with `A <= amax` — the single biggest lever for LT-era solve time on the `large` network (see the `large` vs `large, amax=8` gap above). |
 | `n_jobs` (`run_mc`) | `-1` (all cores) | MC samples are embarrassingly parallel (independent solves); `n_jobs=1` is useful for reproducible profiling of a single sample's cost, not for a production MC run. |
@@ -93,6 +93,43 @@ several minutes of wall time for the extra digits behind the tolerance bands
 in `tests/README.md`'s "Validation reference" — not something to use for
 routine runs or MC sampling. Most of that time is the thermal (CCRTh) `vegas`
 recompute: those settings miss both shipped weak-rate caches.
+
+## What the default grids cost
+
+`numerical_precision` is not the only thing limiting a run's accuracy, and past
+about `1e-8` it stops being the binding one. Two *fixed sampling grids* take
+over: the master T9 grid every rate table is resampled onto (`rate_grid_npts`)
+and the background's photon-temperature grid
+(`sampling_temperature_per_decade`). Both converge at second order, so their
+limits are well defined; the default's distance from them, measured on the
+`small` network at `numerical_precision=1e-10` and identical on both backends:
+
+| Grid | Default | Limit measured at | `YPBBN` | `D/H` | `He3/H` | `Li7/H` |
+|------|---------|-------------------|---------|-------|---------|---------|
+| `rate_grid_npts` | 1000 | 16000 | 1.4e-08 | −6.3e-06 | −1.1e-05 | **+9.7e-05** |
+| `sampling_temperature_per_decade` | 600 | 4800 | +2.9e-07 | −7.2e-06 | −2.7e-06 | +9.7e-06 |
+
+For comparison, one more decade of `numerical_precision` (`1e-10` → `1e-11`)
+moves `D/H` by 8.0e-09 and `Li7/H` by 4.6e-09 — three orders of magnitude less.
+
+What this means in practice:
+
+* `YPBBN` and `D/H` are unaffected at the level anything is pinned to: the two
+  terms together are 1.4e-05 relative in `D/H`, i.e. 3.3e-10 absolute, about
+  a tenth of the ±3e-9 regression tolerance in `tests/README.md`.
+* `Li7/H` is the exception. Its default value carries ~1e-04 of grid error, so
+  the last two of the six decimals it is quoted to are grid artefacts rather
+  than physics. Comparisons *between* runs at the same grid settings are
+  unaffected — the error is systematic, not noise.
+* Both backends carry the same error, so no cross-backend comparison can
+  reveal it. `tests/test_backend_parity.py` is not the check for this.
+* `runfiles/primat_reference_run.py` already sits close to both limits
+  (`rate_grid_npts=4000`, `sampling_temperature_per_decade=2000`), which is
+  part of why its numbers are the ones `tests/reference_values.py` pins.
+
+Raising the defaults to the limit column would cost roughly 16× the rate
+resampling and 8× the background setup for a shift that stays inside the
+existing tolerance bands, which is why the defaults are where they are.
 
 ## Where the Python backend's time goes
 

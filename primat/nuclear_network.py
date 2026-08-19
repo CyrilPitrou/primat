@@ -29,8 +29,9 @@ consumed by the nuclear solve.
 ``solve()`` integrates:
 
 * **HT** (high temperature, T > T_weak ~ 1 MeV): n <-> p only.
-* **MT** (mid temperature, T_weak -> T_nucl ~ 0.1 MeV): the fixed 18-reaction
-  subset (n<->p + 17 reactions), regardless of network size.
+* **MT** (mid temperature, T_weak -> T_nucl ~ 0.1 MeV): the chosen network
+  intersected with the fixed ``ORDER_MT`` list (n<->p + 17 reactions), so 18
+  reactions for ``large`` and 13 for ``small``.
 * **LT** (low temperature, T_nucl -> T_end ~ 0.001 MeV): the chosen network
   (small/large, optionally amax-restricted).
 
@@ -359,7 +360,7 @@ class NuclearNetwork:
         return sol_HT, Yn_HT_f, Yp_HT_f
 
     def _solve_MT(self, t_weak, t_nucl, Yn_HT_f, Yp_HT_f, eta_b_weak, _show):
-        """Integrate the MT era (fixed 18-reaction subset), T = T_weak -> T_nucl.
+        """Integrate the MT era (``ORDER_MT`` subset), T = T_weak -> T_nucl.
 
         Seeds every MT species except n/p (which come from the HT solution)
         at Saha (NSE) equilibrium via :meth:`_saha_YA`.  Returns
@@ -533,7 +534,7 @@ class NuclearNetwork:
         hooks -- it is no longer computed here.
 
         The three eras are delegated to :meth:`_solve_HT`, :meth:`_solve_MT`
-        and :meth:`_solve_LT` (n<->p only / fixed 18-reaction subset / chosen
+        and :meth:`_solve_LT` (n<->p only / ``ORDER_MT`` subset / chosen
         network, see the module docstring); this method is the orchestrator
         that threads their outputs together, builds the combined abundance
         interpolator, and handles the optional outputs and DT (decay) era.

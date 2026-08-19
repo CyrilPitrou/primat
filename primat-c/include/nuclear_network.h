@@ -10,7 +10,9 @@
  *
  * cpr_nuclear_network_solve integrates:
  *   HT  (T > T_weak ~ 1 MeV):        n <-> p only, non-stiff RK45 (ode_rk.h).
- *   MT  (T_weak -> T_nucl ~ 0.11 MeV): the fixed 18-reaction subset
+ *   MT  (T_weak -> T_nucl ~ 0.11 MeV): the network's intersection with
+ *                                       CPR_ORDER_MT -- 18 reactions for
+ *                                       "large", 13 for "small" --
  *                                       (nr->mt_net/mt_compiled), stiff BDF
  *                                       (ode_bdf.h) with the analytic
  *                                       Jacobian.
