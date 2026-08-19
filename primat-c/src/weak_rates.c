@@ -1387,7 +1387,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
      * compute from scratch via L_CCRTh_compute. ---- */
     wr->has_thermal = 0;
     if (cfg->thermal_corrections) {
-        CPRFPField th_fields[12];   /* cpr_thermal_fingerprint fills 9 */
+        CPRFPField th_fields[16];   /* cpr_thermal_fingerprint fills 12 */
         size_t n_th_fp = cpr_thermal_fingerprint(cfg, th_fields);
         char *th_hash = cpr_fingerprint_hash(th_fields, n_th_fp);
         char th_fname[512];

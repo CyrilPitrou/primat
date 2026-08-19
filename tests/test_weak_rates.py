@@ -639,6 +639,32 @@ def test_fingerprint_unaffected_by_external_scale_factor():
     assert fp0 == fp1
 
 
+def test_thermal_accuracy_knobs_rekey_the_ccrth_cache():
+    """Raising the CCRTh accuracy knobs must force a fresh computation.
+
+    GOAL: `vegas_n_eval`, `vegas_n_itn` and `epsrel_thermal` are grouped in
+    DEFAULT_PARAMS under "Thermal correction accuracy knobs", but they were
+    absent from _thermal_fingerprint, and corrections.py consults the cache
+    *before* reading them. All three were therefore silently inert whenever a
+    file existed -- which, for the shipped configurations, is always. A run at
+    vegas_n_eval=200 reproduced the default run digit for digit, while a forced
+    recompute at that setting moves D/H by 1.7e-05, about 5700x the +/-3e-9
+    regression bound. Whichever setting computed a configuration first served
+    every later run of it.
+    """
+    base = PRIMATConfig({"network": "small"})
+    ref = wr.fingerprint_hash(wr._thermal_fingerprint(base))
+    for knob, value in (("vegas_n_eval", 200),
+                        ("vegas_n_itn", 2),
+                        ("epsrel_thermal", 1e-4)):
+        cfg = PRIMATConfig({"network": "small", knob: value})
+        got = wr.fingerprint_hash(wr._thermal_fingerprint(cfg))
+        assert got != ref, f"{knob} does not re-key the thermal cache"
+    # The default configuration must still name the shipped file, so a plain
+    # run does not pay a multi-minute vegas rebuild.
+    assert wr.thermal_cache_exists(base)
+
+
 def test_external_scale_factor_requires_incomplete_decoupling():
     """external_scale_factor reads a(T) from NEVOTable.x_of_Tg, which is only
     built when incomplete_decoupling=True."""

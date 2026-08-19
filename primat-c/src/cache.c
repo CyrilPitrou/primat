@@ -453,6 +453,12 @@ size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     /* The constants the raw L_CCRTh integrals read (cpr_constants_hash's
      * `thermal` subset). Mirrors Python _thermal_fingerprint. */
     out[n++] = (CPRFPField){"constants_hash", ps(cfg->consts_hash[CPR_CONSTS_THERMAL])};
+    /* The three thermal accuracy knobs. They change the stored numbers, and
+     * the cache is consulted before they are read, so leaving them out made
+     * all three inert while any file existed. Mirrors _thermal_fingerprint. */
+    out[n++] = (CPRFPField){"vegas_n_eval", pi(cfg->vegas_n_eval)};
+    out[n++] = (CPRFPField){"vegas_n_itn", pi(cfg->vegas_n_itn)};
+    out[n++] = (CPRFPField){"epsrel_thermal", pd(cfg->epsrel_thermal)};
     out[n++] = (CPRFPField){"T_start_cosmo_MeV", pd(cfg->T_start_cosmo_MeV)};
     out[n++] = (CPRFPField){"QED_corrections", pb(cfg->QED_corrections)};
     out[n++] = (CPRFPField){"incomplete_decoupling", pb(cfg->incomplete_decoupling)};
@@ -464,7 +470,7 @@ size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out)
      * measured ~4e-3 of the base rate at xi_e = 0.3, T = 1e10 K. Mirrors
      * weak_rates/cache.py's _thermal_fingerprint. */
     out[n++] = (CPRFPField){"munuOverTnu", pd(cpr_config_xi_nu_e(cfg))};
-    return n; /* 9 entries */
+    return n; /* 12 entries */
 }
 
 /* ===========================================================================

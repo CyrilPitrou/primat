@@ -47,6 +47,14 @@ from .neutrino_history import make_neutrino_history
 
 __all__ = ["Background", "StandardBackground", "CustomBackground"]
 
+# How many sub-intervals each grid interval is split into in the
+# external_scale_factor mode -- both for the T(a) inverse and for the t(a)
+# output grid t_of_T/T_of_t are built on.  a(T) is an algebraic read of the
+# NEVO `x` column in that mode, so refining costs one table read per node and
+# no extra ODE work, while both interpolants' error is O(h^2): 8 buys a factor
+# ~64.  Mirrored by CPR_EXTERNAL_A_REFINE in primat-c/src/background.c.
+_EXTERNAL_A_REFINE = 8
+
 # Noise floor for the n<->p weak rates, in raw (1/tau_n) units -- i.e. the
 # units returned by weak_nTOp_{frwrd,bkwrd}_raw, *before* multiplying by
 # _norm_weak_rates.  Matches the threshold already used inside
@@ -1063,7 +1071,19 @@ class StandardBackground(Background):
         """
         cfg = self.cfg
 
-        T_grid = T_sol                          # already sampled low→high
+        # Refined against T_sol rather than reusing it. In this mode a(T) is a
+        # closed-form table read (the NEVO `x` column), not an ODE solution, so
+        # it can be sampled as finely as wanted for the price of the read --
+        # while T_sol's density is set by sampling_temperature_per_decade,
+        # which sizes the *ODE output*. Reusing it left this inverse carrying
+        # an O(h^2) error of ~5e-06 in D/H at the default density, and the C
+        # backend's cubic over the same nodes carried ~7e-06 of the opposite
+        # sign, so the two backends sat 1.2e-05 apart at converged tolerance --
+        # 12x the budget test_backend_parity's converged test allows. Both are
+        # second order, so the factor below buys ~64x on each. Mirrored by
+        # background.c, which refines the same way for the same reason.
+        T_grid = np.logspace(np.log10(T_sol[0]), np.log10(T_sol[-1]),
+                              (len(T_sol) - 1) * _EXTERNAL_A_REFINE + 1)
         a_grid = a_of_T(T_grid)                  # low a → high a (a_of_T is array-safe)
 
         # Linear, deliberately, and deliberately unlike the C backend, which
@@ -1073,8 +1093,7 @@ class StandardBackground(Background):
         # there is nothing to buy. A cubic would in fact cost accuracy: in
         # external mode a(T) is a table read (the NEVO `x` column), so fitting
         # a cubic through these nodes manufactures curvature the data does not
-        # contain. Each backend uses the interpolant suited to its integrator;
-        # tests/backend_divergence.py accounts for the difference.
+        # contain. Each backend uses the interpolant suited to its integrator.
         T_of_a = interp1d(a_grid, T_grid, bounds_error=False, fill_value="extrapolate")
 
         a_ini = a_of_T(Tstartcosmo)
@@ -1089,7 +1108,14 @@ class StandardBackground(Background):
         # the a(T) solve above): feeding linspace endpoints straight to t_eval
         # avoids the log(logspace(...)) roundtrip that could land the last
         # point 1 ULP outside [log(a_ini), log(a_fin)].
-        lna_samp = np.linspace(np.log(a_ini), np.log(a_fin), n_T_pts)
+        # Refined by the same factor as the inverse above, and for the same
+        # reason: t_of_T/T_of_t are built directly on this output grid
+        # (_store_background_arrays), so its density -- not the ODE tolerance
+        # -- sets how accurately the nuclear network reads t(T) in this mode.
+        # At the unrefined density the two backends' O(h^2) errors, opposite in
+        # sign, left them 1.2e-05 apart in D/H at converged tolerance.
+        lna_samp = np.linspace(np.log(a_ini), np.log(a_fin),
+                                (n_T_pts - 1) * _EXTERNAL_A_REFINE + 1)
 
         def _dtdlna(lna, t):
             return [1. / Hubble_NEVO(T_of_a(np.exp(lna)))]

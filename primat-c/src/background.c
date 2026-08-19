@@ -439,6 +439,11 @@ static int combined_bg_rhs(double lnT, const double *y, double *ydot, void *ctx_
     return 0;
 }
 
+/* Sub-intervals each background grid interval is split into when
+ * external_scale_factor is on; see setup_background_and_cosmo. Must equal
+ * _EXTERNAL_A_REFINE in primat/background.py. */
+#define CPR_EXTERNAL_A_REFINE 8
+
 /* StandardBackground._setup_background_and_cosmo + _setup_weak_rates, folded
  * into one function. The relic-neutrino Omegas need no setup step on either
  * side: cpr_bg_Omeganuh2_relnu/nrnu read bg->Tg_vec/Tnu_vec at call time,
@@ -452,6 +457,17 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     double Tend = cpr_config_T_end(cfg) / cpr_MeV_to_Kelvin();                 /* [MeV] */
 
     int n_T_pts = n_points_per_decade(cfg->sampling_temperature_per_decade, Tend, Tstartcosmo);
+    /* external_scale_factor refines this grid, and only this mode does. There
+     * a(T) is an algebraic read of the NEVO `x` column rather than an ODE
+     * solution, so every extra node costs one table read and no integration --
+     * while t_of_T/T_of_t, the T(a) inverse and the nuclear network's own
+     * reads are all built on it, each with an O(h^2) error. Unrefined, that
+     * error was ~7e-06 in D/H here and ~5e-06 of the opposite sign on the
+     * Python side, leaving the two backends 1.2e-05 apart at converged
+     * tolerance -- 12x what test_backend_parity's converged budget allows.
+     * Mirrors _EXTERNAL_A_REFINE in primat/background.py. */
+    if (cfg->external_scale_factor)
+        n_T_pts = (n_T_pts - 1) * CPR_EXTERNAL_A_REFINE + 1;
     bg->n_Tsol = (size_t)n_T_pts;
     bg->lnT_sol = CPR_XMALLOC(bg->n_Tsol * sizeof(double));
     bg->lna_sol = CPR_XMALLOC(bg->n_Tsol * sizeof(double));

@@ -12,6 +12,21 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **`external_scale_factor` runs are ~80× more accurate, and the two backends
+  now agree in that mode.** Both built the `T(a)` inverse and the `t(T)` the
+  nuclear network reads on the background ODE's output grid, whose spacing
+  carries a second-order error; the two errors had opposite signs, leaving the
+  backends 1.2e-05 apart in D/H — 12× their converged budget — with the gap
+  *growing* as the tolerance was tightened. Both now refine that grid, which
+  costs nothing in this mode because `a(T)` is a table read rather than an ODE
+  solution. Default-mode results are untouched.
+- **The three thermal-correction accuracy knobs do something again.**
+  `vegas_n_eval`, `vegas_n_itn` and `epsrel_thermal` were not part of the CCRTh
+  cache's name, and that cache is consulted before they are read — so raising
+  them changed nothing whenever a table existed, and whichever setting computed
+  a configuration first served every later run of it. They are now part of the
+  name on both backends; the shipped tables were renamed with their contents
+  untouched, so no published number moves.
 - **`primat --json` output is valid JSON again when a file is written
   alongside it.** All six "[output] … written to …" announcements — time
   evolution, final abundances, the background TSV, the decay-era table and the

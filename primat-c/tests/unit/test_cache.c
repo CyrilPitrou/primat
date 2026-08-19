@@ -25,6 +25,13 @@
  *         constants_hash, so that editing a physical constant invalidates the
  *         caches computed with the old value -- see weak_rates/cache.py's
  *         changelog and cache_utils.constants_hash)
+ *   v6 -> 4a901fa9a22a2694 / 161a90e5f33a626a   (thermal gained the three
+ *         accuracy knobs vegas_n_eval/vegas_n_itn/epsrel_thermal, which set
+ *         how hard the Monte-Carlo works and so change the stored numbers;
+ *         without them all three were inert, since the cache is consulted
+ *         before they are read. The shipped tables were renamed to the new
+ *         hash with their contents untouched, so no published number moved.
+ *         Was 076f987eab9187c6. The weak-rate pin is unchanged.)
  *   v6 -> 4a901fa9a22a2694 / 076f987eab9187c6   (constants_hash narrowed to
  *         the constants each table actually reads, so the eight settable
  *         constants neither of them reads stop re-keying them)
@@ -75,12 +82,12 @@ int main(void)
     free(wjson);
     free(whash);
 
-    CPRFPField tfields[10];
+    CPRFPField tfields[16];   /* cpr_thermal_fingerprint fills 12 */
     size_t nt = cpr_thermal_fingerprint(&cfg, tfields);
     char *tjson = cpr_fingerprint_json(tfields, nt);
     char *thash = cpr_sha256_hex16(tjson);
     printf("thermal json: %s\n", tjson);
-    expect_str_eq("thermal_fingerprint hash", thash, "076f987eab9187c6");
+    expect_str_eq("thermal_fingerprint hash", thash, "161a90e5f33a626a");
     free(tjson);
     free(thash);
 

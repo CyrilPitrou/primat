@@ -83,6 +83,15 @@ int main(void)
      * from-scratch integration instead of the cache-hit path this test is
      * meant to exercise. */
     cfg.sampling_temperature_per_decade = 600;
+    /* Same trap, for the thermal cache: these three are part of the CCRTh
+     * fingerprint (they set how hard the Monte-Carlo works, so they change the
+     * numbers stored), and a memset(0) config hashes them as 0 -- missing the
+     * shipped nTOp_thermal_<hash>.txt and integrating from scratch at
+     * vegas_n_eval=0. has_thermal is still 1 in that case, so the miss shows up
+     * only as wrong rates at the high-T end, where CCRTh actually contributes. */
+    cfg.vegas_n_eval = 20000;
+    cfg.vegas_n_itn = 20;
+    cfg.epsrel_thermal = 1.0e-2;
     cfg.tau_n_normalization = 1;
     cfg.munuOverTnu = 0.0;
 

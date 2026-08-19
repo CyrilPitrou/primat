@@ -1,6 +1,6 @@
 # T[K] L_nTOpCCRTh L_pTOnCCRTh
-# fingerprint_hash: bf153fe851734226
-# fingerprint: {"QED_corrections":true,"T_start_cosmo_MeV":100.0,"constants_hash":"947c354d0bb81d7f","format_version":6,"incomplete_decoupling":true,"munuOverTnu":0.0,"nevo_file":null,"nevo_file_prefix":"NEVOPRIMAT","sampling_nTOp_thermal_per_decade":25}
+# fingerprint_hash: 671d9166fed69b92
+# fingerprint: {"QED_corrections":true,"T_start_cosmo_MeV":100.0,"constants_hash":"947c354d0bb81d7f","epsrel_thermal":0.01,"format_version":6,"incomplete_decoupling":true,"munuOverTnu":0.0,"nevo_file":null,"nevo_file_prefix":"NEVOPRIMAT","sampling_nTOp_thermal_per_decade":25,"vegas_n_eval":100000,"vegas_n_itn":50}
 # provenance: backend=python algorithm=vegas vegas_n_eval=100000 vegas_n_itn=50
 1.584893192461110950e+08 2.184052798275606215e-07 1.923050912888344306e-46
 1.739189323527342081e+08 3.369155165456280938e-07 1.062633720207248637e-42

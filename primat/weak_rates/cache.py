@@ -173,6 +173,10 @@ _WEAK_RATE_BG_FIELDS = [
 # only forced spurious cache misses -- and the multi-minute vegas recompute
 # that goes with them -- whenever a run changed T_end_MeV alone.
 #
+# vegas_n_eval/vegas_n_itn/epsrel_thermal ARE hashed, in _thermal_fingerprint
+# itself rather than here (they are accuracy knobs, not background fields).
+# See the comment there for why.
+#
 # sampling_temperature_per_decade is likewise deliberately NOT listed, even
 # though it IS in _WEAK_RATE_BG_FIELDS: it acts on both tables through the same
 # T_nu(T_gamma) interpolant, but CCRTh is itself only a ~1e-3 correction to the
@@ -271,7 +275,19 @@ def _thermal_fingerprint(cfg):
           # (cache_utils.CACHE_CONSTANTS["thermal"]). gA and the anomalous
           # moments are absent because the 1/Fn division happens at point of
           # use, not before the table is stored.
-          "constants_hash": constants_hash("thermal", cfg)}
+          "constants_hash": constants_hash("thermal", cfg),
+          # The three "Thermal correction accuracy knobs": how hard the vegas
+          # Monte-Carlo works (or, without vegas, the dblquad tolerance). They
+          # change the stored numbers -- 200/2 against the default 20000/20
+          # moves YP by 7.8e-06 and D/H by 1.7e-05 -- so a file computed at one
+          # setting does not describe a run asking for another. Left out, they
+          # were silently inert: the cache is consulted before they are read
+          # (corrections.py's early return), so raising them changed nothing
+          # while any file existed, and whichever setting computed a
+          # configuration first served every later run of it.
+          "vegas_n_eval": cfg.vegas_n_eval,
+          "vegas_n_itn": cfg.vegas_n_itn,
+          "epsrel_thermal": cfg.epsrel_thermal}
     for key in _THERMAL_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     fp["nevo_file"] = _normalise_nevo_override(cfg, "nevo_file")

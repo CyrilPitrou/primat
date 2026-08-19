@@ -1034,7 +1034,11 @@ def test_ccrth_interpolation_scheme_spread_is_pinned():
 # remove. That budget therefore cannot tell "expected noise" from "a new
 # structural divergence". These do: run both backends converged, where the
 # noise is gone and only structural differences survive. Measured across
-# small / large+amax=8 / full large: D/H 1.2e-07..2.0e-07, YP 4.3e-09..1.1e-08.
+# small / large+amax=8 / full large: D/H 1.2e-07..2.0e-07, YP 4.3e-09..1.1e-08;
+# and with external_scale_factor on, D/H 1.4e-07..1.5e-07, YP 1.0e-08..1.5e-08.
+# That mode was 1.2e-05 out until review pass 23 refined the grid both backends
+# build their T(a) inverse and t(T) on -- see tests/README.md's "Known
+# cross-backend divergences".
 CONVERGED_PRECISION = 1e-9
 CONVERGED_DOH_RTOL = 1e-6
 CONVERGED_YPBBN_ATOL = 1e-7
@@ -1044,7 +1048,16 @@ CONVERGED_YPBBN_ATOL = 1e-7
 @pytest.mark.parametrize("params", [
     {"network": "small"},
     {"network": "large", "amax": 8},
-], ids=["small", "large_amax8"])
+    # external_scale_factor is the one mode that reaches a different background
+    # code path on both backends -- a T(a) inverse rather than an entropy ODE --
+    # and it is where the budget below was actually broken: the two backends sat
+    # 1.2e-05 apart in D/H (12x) and 1.4e-05 in Li7/H, with the gap *growing* as
+    # the tolerance tightened, because each side carried an O(h^2) grid error of
+    # opposite sign. Covering only the default mode is why nothing noticed.
+    {"external_scale_factor": True},
+    {"external_scale_factor": True, "network": "large", "amax": 8},
+], ids=["small", "large_amax8", "external_scale_factor",
+        "external_scale_factor_large_amax8"])
 def test_backend_agreement_at_converged_tolerance(params):
     """With both backends' ODEs converged, only structural divergences remain.
 
