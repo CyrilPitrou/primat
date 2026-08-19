@@ -303,11 +303,24 @@ def test_cross_field_ranges_rejected():
         ({"rate_grid_T9_min": 10.0, "rate_grid_T9_max": 1e-3}, "rate_grid_T9_min"),
         ({"T_end_MeV": 100.0}, "T_end_MeV"),                  # > T_start_cosmo_MeV = 40
         ({"mc_rate_rescale_cap": 0.5}, "mc_rate_rescale_cap"),
+        # Q = mn - mp at or below me: sqrt(E^2 - me^2) is imaginary over the
+        # whole n<->p integration range. Rejecting it here is what keeps the C
+        # backend out of a NaN-fed adaptive quadrature that recurses to its
+        # full depth and takes hours per integral.
+        ({"mp": 939.2101}, "mn - mp"),                        # Q = 0.355 MeV
+        ({"mn": 938.6}, "mn - mp"),                           # Q < 0
+        ({"me": 2.0}, "mn - mp"),                             # me above Q
     ]
     for params, expected in cases:
         with pytest.raises(ValueError) as exc:
             PRIMATConfig(params)
         assert expected in str(exc.value)
+    # The boundary is Q = me: just below it the range collapses (and the tau_n
+    # normalisation divides by zero), just above it the run is legal.
+    d = PRIMATConfig()
+    with pytest.raises(ValueError, match="mn - mp"):
+        PRIMATConfig({"mp": d.mn - d.me * 0.999})
+    assert PRIMATConfig({"mp": d.mn - d.me * 1.001}).mn - d.me * 1.001 > 0
     # A cap of exactly 1 ("no variation") and None ("no cap") stay legal.
     assert PRIMATConfig({"mc_rate_rescale_cap": 1.0}).mc_rate_rescale_cap == 1.0
     assert PRIMATConfig({"mc_rate_rescale_cap": None}).mc_rate_rescale_cap is None

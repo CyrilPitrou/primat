@@ -1,4 +1,5 @@
 #include "config.h"
+#include "neutrino_history.h"
 #include "xalloc.h"
 #include "cache.h"
 #include "constants.h"
@@ -919,6 +920,128 @@ double cpr_config_get_GN(const CPRConfig *cfg)
     return cfg->GN / GN_SI_to_MeV2();
 }
 
+/* difflib.SequenceMatcher.ratio() and get_close_matches(), ported so the C
+ * backend can offer the same "did you mean ...?" hint on an unknown parameter
+ * key as PRIMATConfig._report_unknown_keys. A different string metric would
+ * produce a different (or differently ordered) suggestion list, which is what
+ * the hint has to avoid: the two backends must print the same sentence.
+ *
+ * ratio = 2*M/T, M being the total size of the matching blocks that
+ * find_longest_match's recursive decomposition finds. autojunk is irrelevant
+ * here -- it only engages at 200+ elements, and no parameter name is that
+ * long. */
+#define SUGG_MAX_LEN 128
+
+static int longest_match(const char *a, int alo, int ahi,
+                          const char *b, int blo, int bhi,
+                          int *besti, int *bestj)
+{
+    int bestsize = 0;
+    *besti = alo; *bestj = blo;
+    /* j2len[j] = length of the longest match ending at a[i], b[j]. */
+    int j2len[SUGG_MAX_LEN + 1] = {0}, newj2len[SUGG_MAX_LEN + 1];
+    for (int i = alo; i < ahi; i++) {
+        for (int j = 0; j <= SUGG_MAX_LEN; j++) newj2len[j] = 0;
+        for (int j = blo; j < bhi; j++) {
+            if (a[i] != b[j]) continue;
+            int k = (j > 0 ? j2len[j - 1] : 0) + 1;
+            newj2len[j] = k;
+            /* Strictly greater keeps the earliest longest block, which is
+             * difflib's documented tie-break. */
+            if (k > bestsize) { bestsize = k; *besti = i - k + 1; *bestj = j - k + 1; }
+        }
+        for (int j = 0; j <= SUGG_MAX_LEN; j++) j2len[j] = newj2len[j];
+    }
+    return bestsize;
+}
+
+static int matching_total(const char *a, int alo, int ahi,
+                           const char *b, int blo, int bhi)
+{
+    int i, j, k = longest_match(a, alo, ahi, b, blo, bhi, &i, &j);
+    if (k == 0) return 0;
+    return k + matching_total(a, alo, i, b, blo, j)
+             + matching_total(a, i + k, ahi, b, j + k, bhi);
+}
+
+static double seq_ratio(const char *a, const char *b)
+{
+    int la = (int)strlen(a), lb = (int)strlen(b);
+    if (la > SUGG_MAX_LEN || lb > SUGG_MAX_LEN || la + lb == 0) return 0.0;
+    return 2.0 * matching_total(a, 0, la, b, 0, lb) / (double)(la + lb);
+}
+
+/* Appends " (did you mean 'x' or 'y'?)" to `out` when at least one known key
+ * scores >= 0.6, difflib's default cutoff. Up to three, best first; ties broken
+ * by the name descending, as heapq.nlargest does on (score, name). */
+static void append_did_you_mean(char *out, size_t cap, const char *name)
+{
+    const char *best[3] = {NULL, NULL, NULL};
+    double score[3] = {0.0, 0.0, 0.0};
+    size_t n = cpr_config_field_count();
+    for (size_t i = 0; i < n; i++) {
+        const char *cand = cpr_config_field_name(i);
+        double r = seq_ratio(name, cand);
+        if (r < 0.6) continue;
+        for (int k = 0; k < 3; k++) {
+            if (!best[k] || r > score[k]
+                || (r == score[k] && strcmp(cand, best[k]) > 0)) {
+                for (int m = 2; m > k; m--) { best[m] = best[m - 1]; score[m] = score[m - 1]; }
+                best[k] = cand; score[k] = r;
+                break;
+            }
+        }
+    }
+    if (!best[0]) return;
+    /* snprintf returns what it *would* have written, so a truncating call
+     * would push len past cap and make the next cap - len underflow (size_t).
+     * Clamped after every append; the buffer is comfortably large for three
+     * parameter names, so this is a guard, not a working limit. */
+    size_t len = strlen(out);
+    #define SUGG_APPEND(...)                                        \
+        do { int w = snprintf(out + len, cap - len, __VA_ARGS__);   \
+             if (w < 0) return;                                     \
+             len += (size_t)w;                                      \
+             if (len >= cap) return;                                \
+        } while (0)
+    SUGG_APPEND(" (did you mean ");
+    for (int k = 0; k < 3 && best[k]; k++)
+        SUGG_APPEND("%s'%s'", k ? " or " : "", best[k]);
+    SUGG_APPEND("?)");
+    #undef SUGG_APPEND
+}
+
+/* The type-mismatch message both backends print, byte for byte:
+ *
+ *     <name>=<value> has the wrong type: expected <expected>, got <got>
+ *
+ * `expected` is the field's accepted kind(s) in Python's vocabulary
+ * (_KIND_ENGLISH in config.py: bool/int/float/str/None, joined with " or ");
+ * `got` is the Python type name of the literal actually parsed, so a user who
+ * switches backends reads the same sentence. The value is formatted as
+ * config.py's _fmt_value does -- %.6g for a double, quoted for a string. */
+static int set_type_error(char **errmsg, const char *name,
+                          const char *expected, CPRParam value)
+{
+    char val[128], got[16];
+    switch (value.type) {
+    case CPR_BOOL:   snprintf(val, sizeof val, "%s", value.v.b ? "True" : "False");
+                     snprintf(got, sizeof got, "bool"); break;
+    case CPR_INT:    snprintf(val, sizeof val, "%lld", (long long)value.v.i);
+                     snprintf(got, sizeof got, "int"); break;
+    case CPR_DOUBLE: snprintf(val, sizeof val, "%.6g", value.v.d);
+                     snprintf(got, sizeof got, "float"); break;
+    case CPR_STRING: snprintf(val, sizeof val, "'%s'", value.v.s ? value.v.s : "");
+                     snprintf(got, sizeof got, "str"); break;
+    default:         snprintf(val, sizeof val, "None");
+                     snprintf(got, sizeof got, "NoneType"); break;
+    }
+    *errmsg = malloc(320);
+    snprintf(*errmsg, 320, "%s=%s has the wrong type: expected %s, got %s",
+             name, val, expected, got);
+    return CPR_SET_BAD_VALUE;
+}
+
 int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                             char **errmsg)
 {
@@ -940,7 +1063,7 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
         double d = value.type == CPR_DOUBLE ? value.v.d
                  : value.type == CPR_INT ? (double)value.v.i : NAN;
         if (isnan(d)) {
-            *errmsg = strdup("Omegabh2 requires a numeric value");
+            return set_type_error(errmsg, "Omegabh2", "float", value);
             return CPR_SET_BAD_VALUE;
         }
         cpr_config_set_Omegabh2(cfg, d);
@@ -950,8 +1073,7 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
         double d = value.type == CPR_DOUBLE ? value.v.d
                  : value.type == CPR_INT ? (double)value.v.i : NAN;
         if (isnan(d)) {
-            *errmsg = strdup("GN requires a numeric value");
-            return CPR_SET_BAD_VALUE;
+            return set_type_error(errmsg, "GN", "float", value);
         }
         cpr_config_set_GN(cfg, d);
         return CPR_SET_OK;
@@ -974,8 +1096,7 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
         if (value.type == CPR_NONE)
             return CPR_SET_OK;
         if (value.type != CPR_STRING) {
-            *errmsg = strdup("data_dir expects a string or None");
-            return CPR_SET_BAD_VALUE;
+            return set_type_error(errmsg, "data_dir", "str or None", value);
         }
         char previous[CPR_DATA_DIR_LEN];
         snprintf(previous, sizeof(previous), "%s", cfg->data_dir);
@@ -1003,17 +1124,13 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
          * decade and printed a D/H 5.8 % low at exit status 0. */
         case F_BOOL:
             if (value.type != CPR_BOOL) {
-                *errmsg = malloc(128);
-                snprintf(*errmsg, 128, "%s expects a bool", name);
-                return CPR_SET_BAD_VALUE;
+                return set_type_error(errmsg, name, "bool", value);
             }
             *(int *)field = value.v.b;
             return CPR_SET_OK;
         case F_INT:
             if (value.type != CPR_INT) {
-                *errmsg = malloc(128);
-                snprintf(*errmsg, 128, "%s expects an int", name);
-                return CPR_SET_BAD_VALUE;
+                return set_type_error(errmsg, name, "int", value);
             }
             *(int *)field = (int)value.v.i;
             return CPR_SET_OK;
@@ -1023,9 +1140,7 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                 return CPR_SET_OK;
             }
             if (value.type != CPR_INT) {
-                *errmsg = malloc(128);
-                snprintf(*errmsg, 128, "%s expects an int or None", name);
-                return CPR_SET_BAD_VALUE;
+                return set_type_error(errmsg, name, "int or None", value);
             }
             *(int *)field = (int)value.v.i;
             return CPR_SET_OK;
@@ -1033,9 +1148,7 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;
             else if (value.type == CPR_INT) *(double *)field = (double)value.v.i;
             else {
-                *errmsg = malloc(128);
-                snprintf(*errmsg, 128, "%s expects a number", name);
-                return CPR_SET_BAD_VALUE;
+                return set_type_error(errmsg, name, "float", value);
             }
             /* One of the 16 measured constants (an FLD_CONST entry): keep the
              * cached hash in step, so the fingerprints can never describe
@@ -1052,9 +1165,7 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;
             else if (value.type == CPR_INT) *(double *)field = (double)value.v.i;
             else {
-                *errmsg = malloc(128);
-                snprintf(*errmsg, 128, "%s expects a number or None", name);
-                return CPR_SET_BAD_VALUE;
+                return set_type_error(errmsg, name, "float or None", value);
             }
             return CPR_SET_OK;
         case F_DOUBLE_OR_NAN:
@@ -1067,9 +1178,7 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;
             else if (value.type == CPR_INT) *(double *)field = (double)value.v.i;
             else {
-                *errmsg = malloc(128);
-                snprintf(*errmsg, 128, "%s expects a number or None", name);
-                return CPR_SET_BAD_VALUE;
+                return set_type_error(errmsg, name, "float or None", value);
             }
             return CPR_SET_OK;
         case F_STRING: {
@@ -1090,9 +1199,7 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                     return CPR_SET_BAD_VALUE;
                 }
             } else if (value.type != CPR_NONE) {
-                *errmsg = malloc(128);
-                snprintf(*errmsg, 128, "%s expects a string or None", name);
-                return CPR_SET_BAD_VALUE;   /* field untouched */
+                return set_type_error(errmsg, name, "str or None", value);
             }
             free(*(char **)field);
             *(char **)field = newval;       /* NULL for CPR_NONE */
@@ -1119,8 +1226,10 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
         }
     }
 
-    *errmsg = malloc(256);
-    snprintf(*errmsg, 256, "unknown parameter key: %s", name);
+    /* Same sentence as PRIMATConfig._report_unknown_keys, hint included. */
+    *errmsg = malloc(512);
+    snprintf(*errmsg, 512, "unknown parameter key(s): '%s'", name);
+    append_did_you_mean(*errmsg, 512, name);
     return CPR_SET_UNKNOWN_KEY;
 }
 
@@ -1204,14 +1313,29 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     }
 
     /* NOTE: the network-file-existence check (PRIMATConfig.__init__'s
-     * `network must be 'small' or name an existing file...`) and the
      * p_<rxn>/delta_<rxn> typo check against the configured network's
-     * reaction list both need network_data.c to enumerate valid reaction
-     * names, so they are not performed here. Callers reaching the C solver
-     * through primat/backend.py get both checks anyway (it builds a
-     * PRIMATConfig from the same params dict first); the standalone
-     * primat-c CLI instead reports a missing network later, when the list is
-     * opened ("error: cannot open network list '<path>'"). */
+     * reaction list needs network_data.c to enumerate valid reaction names,
+     * so it is not performed here. Callers reaching the C solver through
+     * primat/backend.py get it anyway (it builds a PRIMATConfig from the same
+     * params dict first). */
+
+    /* The network file itself IS checked here, in _validate_network's words,
+     * so both CLIs answer a mistyped --network with the same sentence rather
+     * than C's later "cannot open network list '<path>'", which named the
+     * path but not the parameter. */
+    if (strcmp(cfg->network, "small") != 0) {
+        char relpath[300], path[4300];
+        snprintf(relpath, sizeof(relpath), "nuclear/networks/%s.txt", cfg->network);
+        cpr_config_resolve_rates_path(cfg, relpath, path, sizeof(path));
+        if (!path_exists(path)) {
+            *errmsg = malloc(4600);
+            snprintf(*errmsg, 4600,
+                     "network must be 'small' or name an existing file in "
+                     "data/nuclear/networks; missing '%s' (searched: '%s')",
+                     path, path);
+            return 1;
+        }
+    }
 
     if (cfg->amax != -1 && cfg->amax < 1) {
         *errmsg = strdup("amax must be None (-1) or a positive integer");
@@ -1245,9 +1369,12 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
      * must stay strictly positive (a physical scale, tolerance, count, or
      * time) or non-negative. Emitted here rather than in cpr_config_set_by_name
      * so a value set via any path (INI, --set, wrapper) is caught uniformly. */
+/* 288 bytes: the longest of these carries mc_rate_rescale_cap's explanation
+ * of why a cap below 1 inverts the clamp, which is 216 characters and used to
+ * be cut off mid-sentence at 160. */
 #define CPR_REQUIRE(cond, fmt, val) \
-    do { if (!(cond)) { *errmsg = malloc(160); \
-        snprintf(*errmsg, 160, fmt, val); return 1; } } while (0)
+    do { if (!(cond)) { *errmsg = malloc(288); \
+        snprintf(*errmsg, 288, fmt, val); return 1; } } while (0)
 
     /* strictly positive doubles */
     CPR_REQUIRE(cpr_config_get_Omegabh2(cfg) > 0,
@@ -1284,9 +1411,11 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
      * to cap instead of capping the variation -- see network_data.c's
      * rate-variation clamp and _validate_ranges in primat/config.py. */
     CPR_REQUIRE(cfg->mc_rate_rescale_cap == 0.0 || cfg->mc_rate_rescale_cap >= 1.0,
-                "mc_rate_rescale_cap=%.6g is out of range: must be >= 1 or None "
-                "(it clamps the MC rate factor to [1/cap, cap], whose bounds "
-                "cross below 1)", cfg->mc_rate_rescale_cap);
+                "mc_rate_rescale_cap=%.6g must be >= 1 (or None to disable "
+                "the cap): it clamps the MC rate-variation factor to "
+                "[1/cap, cap], whose bounds cross below 1 -- a cap of 0.5 "
+                "would pin every sampled rate to half its median",
+                cfg->mc_rate_rescale_cap);
     /* Measured physical constants: a mass, a coupling or a temperature that is
      * zero or negative is not a sensitivity study but a typo (the integrands
      * divide by me and take sqrt(E^2 - me^2)). The two anomalous magnetic
@@ -1385,7 +1514,9 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     if (!(cfg->fEDE >= 0.0 && cfg->fEDE < 1.0)) {
         *errmsg = malloc(128);
         snprintf(*errmsg, 128,
-                 "fEDE=%.6g is out of range: must satisfy 0 <= fEDE < 1", cfg->fEDE);
+                 "fEDE=%.6g is out of range: must satisfy 0 <= fEDE < 1 "
+                 "(fEDE is the EDE fraction of the total energy density at its "
+                 "peak)", cfg->fEDE);
         return 1;
     }
 
@@ -1398,12 +1529,16 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
      * fractional) -> NaN below -- and the whole background silently becomes
      * NaN, whereas Python raises. Mirrors _validate_fEDE in config.py. */
     if (cfg->fEDE != 0.0 && !(cfg->wnEDE > 1.0 / 3.0)) {
-        *errmsg = malloc(256);
-        snprintf(*errmsg, 256,
+        *errmsg = malloc(512);
+        snprintf(*errmsg, 512,
                  "wnEDE=%.6g is out of range: must satisfy wnEDE > 1/3 when "
-                 "fEDE > 0 (the EDE peak u^(3(1+wnEDE)) = 4/(3*wnEDE - 1) has "
-                 "no solution otherwise). For V ~ (1 - cos phi)^n use "
-                 "wnEDE = (n-1)/(n+1) with n >= 3.", cfg->wnEDE);
+                 "fEDE > 0. The EDE peak scale factor solves "
+                 "u^(3(1+wnEDE)) = 4/(3*wnEDE - 1), which has no solution for "
+                 "wnEDE <= 1/3 -- such a component dilutes no faster than "
+                 "radiation, so its energy fraction never peaks during radiation "
+                 "domination and fEDE (defined at that peak) is meaningless. "
+                 "For V ~ (1 - cos phi)^n use wnEDE = (n-1)/(n+1) with n >= 3",
+                 cfg->wnEDE);
         return 1;
     }
 
@@ -1421,8 +1556,28 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
         return 1;
     }
 
+    /* Q = mn - mp at or below me makes sqrt(E^2 - me^2) imaginary over the
+     * whole [me, Q] integration range, so every n <-> p rate comes out NaN.
+     * Caught here rather than downstream because cpr_quad_adaptive's stopping
+     * test (quad.c) is false for NaN: the ComputeFn integrals below would
+     * recurse to their full max_depth of 40, i.e. ~5e11 integrand evaluations
+     * -- around an hour each, four of them, with no output. Mirrors
+     * _validate_ranges in primat/config.py, word for word. */
+    if (cfg->consts.mn - cfg->consts.mp <= cfg->consts.me) {
+        *errmsg = malloc(256);
+        snprintf(*errmsg, 256,
+                 "mn - mp = %.6g MeV must be > me = %.6g MeV: the n <-> p "
+                 "integrands run over the electron energy from me up to "
+                 "Q = mn - mp, and below me their sqrt(E^2 - me^2) has no real "
+                 "branch, so every rate on the grid comes out NaN",
+                 cfg->consts.mn - cfg->consts.mp, cfg->consts.me);
+        return 1;
+    }
+
     if (cfg->external_scale_factor && !cfg->incomplete_decoupling) {
-        *errmsg = strdup("external_scale_factor=True requires incomplete_decoupling=True");
+        *errmsg = strdup("external_scale_factor=True requires "
+                          "incomplete_decoupling=True (a(T) is read from the "
+                          "NEVO table, which is only loaded by NEVOTable)");
         return 1;
     }
 
@@ -1447,8 +1602,68 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
         }
     }
 
-    /* NEVO override existence/shape checks: deferred to neutrino_history.c
-     * which owns resolve_nevo_path() and the CSV column counts. */
+    /* NEVO override existence, in _validate_nevo_files' words. The *shape*
+     * checks stay in neutrino_history.c, which owns the CSV column counts;
+     * only the "you named a file that is not there" case is hoisted, because
+     * that is the one a typo produces and the one whose message used to name
+     * the path but not the parameter that carried it. */
+    {
+        const struct { const char *name; const char *value; } nevo[] = {
+            {"nevo_file",          cfg->nevo_file},
+            {"nevo_spectral_file", cfg->nevo_spectral_file},
+            {"nevo_grid_file",     cfg->nevo_grid_file},
+        };
+        for (size_t i = 0; i < sizeof nevo / sizeof nevo[0]; i++) {
+            if (!nevo[i].value) continue;
+            char path[4300];
+            cpr_resolve_nevo_path(cfg, nevo[i].value, "", path, sizeof(path));
+            if (!path_exists(path)) {
+                *errmsg = malloc(4600);
+                snprintf(*errmsg, 4600, "%s='%s' not found (resolved to '%s')",
+                         nevo[i].name, nevo[i].value, path);
+                return 1;
+            }
+        }
+    }
+
+    /* nevo_file_prefix rebuilds the two default filenames at once, so a typo
+     * in it is a missing file the user never named. Report it against the
+     * prefix, as _validate_nevo_files does, rather than against the derived
+     * path alone. Only the files not already overridden individually are
+     * checked, and only when the prefix is off its default and the tables are
+     * read at all. */
+    if (cfg->nevo_file_prefix && strcmp(cfg->nevo_file_prefix, "NEVOPRIMAT") != 0
+            && cfg->incomplete_decoupling) {
+        const char *suffix = cfg->QED_corrections ? "" : "_NoQED";
+        char fname[300], path[4300];
+        if (!cfg->nevo_file) {
+            snprintf(fname, sizeof(fname), "%s%s_col_1_7.csv",
+                     cfg->nevo_file_prefix, suffix);
+            cpr_resolve_nevo_path(cfg, NULL, fname, path, sizeof(path));
+            if (!path_exists(path)) {
+                *errmsg = malloc(4600);
+                snprintf(*errmsg, 4600,
+                         "nevo_file_prefix='%s': derived thermo file '%s' not "
+                         "found (resolved to '%s')",
+                         cfg->nevo_file_prefix, fname, path);
+                return 1;
+            }
+        }
+        if (cfg->spectral_distortions && !cfg->analytic_distortions
+                && !cfg->nevo_spectral_file) {
+            snprintf(fname, sizeof(fname), "%s%s.csv",
+                     cfg->nevo_file_prefix, suffix);
+            cpr_resolve_nevo_path(cfg, NULL, fname, path, sizeof(path));
+            if (!path_exists(path)) {
+                *errmsg = malloc(4600);
+                snprintf(*errmsg, 4600,
+                         "nevo_file_prefix='%s': derived spectral file '%s' not "
+                         "found (resolved to '%s')",
+                         cfg->nevo_file_prefix, fname, path);
+                return 1;
+            }
+        }
+    }
 
     cpr_warn_off_default_risks(cfg);
     return 0;

@@ -156,6 +156,26 @@ int main(void)
     CHECK(cpr_config_validate(&cfg, &verr) == 0, "std_tau_n=0 is accepted (non-negative)");
     free(verr); verr = NULL;
 
+    /* Q = mn - mp at or below me. Without this check the NaN integrand that
+     * follows makes cpr_quad_adaptive recurse to max_depth=40 -- hours per
+     * integral, no output. The boundary is Q = me: just below it is rejected,
+     * just above it passes. Mirrors _validate_ranges in primat/config.py. */
+    {
+        double mn0 = cfg.consts.mn, mp0 = cfg.consts.mp, me0 = cfg.consts.me;
+        cfg.consts.mp = mn0 - 0.999 * me0;
+        CHECK(cpr_config_validate(&cfg, &verr) != 0 && verr && strstr(verr, "mn - mp"),
+              "Q just below me is rejected, naming mn - mp");
+        free(verr); verr = NULL;
+        cfg.consts.mp = mn0 + 1.0;      /* Q < 0 */
+        CHECK(cpr_config_validate(&cfg, &verr) != 0 && verr && strstr(verr, "mn - mp"),
+              "a proton heavier than the neutron is rejected");
+        free(verr); verr = NULL;
+        cfg.consts.mp = mn0 - 1.001 * me0;
+        CHECK(cpr_config_validate(&cfg, &verr) == 0, "Q just above me is accepted");
+        free(verr); verr = NULL;
+        cfg.consts.mn = mn0; cfg.consts.mp = mp0; cfg.consts.me = me0;
+    }
+
     /* ---- Per-flavour neutrino chemical potentials. Defaults are the NAN
      * "inherit munuOverTnu" sentinel, resolved by cpr_config_xi_nu_e/mu/tau;
      * None round-trips back to NAN, a number pins that one flavour. Mirrors

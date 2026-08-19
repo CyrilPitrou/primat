@@ -569,7 +569,9 @@ def save_qed_tables(tables, plasma_dir, verbose=True, cfg=None):
         fp, [T, e3, de3, d2e3], col_header=hdr_e3, fmt="%.6E")
 
     if verbose:
+        # Mirrored by plasma.c's cpr_log(cfg, "QED", ...) block; kept ASCII so
+        # the two streams compare byte for byte on any console.
         print(f"[QED]  Tables written to {plasma_dir}:")
         print(f"       QED_pressure_correction_e2.txt  (4 columns: T, dP_a, derivatives)")
         print(f"       QED_pressure_correction_e3.txt  (4 columns: T, dP_e3, derivatives)")
-        print(f"       T range: {T[0]:.3e}–{T[-1]:.3e} MeV  ({len(T)} points)")
+        print(f"       T range: {T[0]:.3e}-{T[-1]:.3e} MeV  ({len(T)} points)")

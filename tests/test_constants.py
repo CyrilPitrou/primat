@@ -117,6 +117,21 @@ def test_object_setattr_bypass_is_caught_by_validate_frozen_constants():
         cfg.validate_frozen_constants()
 
 
+def _bumped(name, factor=1.01):
+    """A config with constant ``name`` moved by ``factor``, in whichever
+    direction keeps Q = mn - mp above me.
+
+    Raising ``mp`` (or lowering ``mn``) by a percent inverts the nucleon mass
+    ordering, which PRIMATConfig rejects outright -- and rightly, since every
+    n<->p rate integrand is then imaginary. The perturbation below exists to
+    move a hash, not to build an impossible nucleon, so it moves ``mp`` the
+    other way.
+    """
+    if name == "mp":
+        factor = 2.0 - factor
+    return PRIMATConfig({name: getattr(CONST, name) * factor})
+
+
 def test_constants_hash_is_per_config_not_memoised_globally():
     """Two configs with different constants must hash differently.
 
@@ -131,7 +146,7 @@ def test_constants_hash_is_per_config_not_memoised_globally():
         default = constants_hash(cache, PRIMATConfig())
         assert default == constants_hash(cache)     # cfg=None means CONST
         for name in names:
-            bumped = PRIMATConfig({name: getattr(CONST, name) * 1.01})
+            bumped = _bumped(name)
             assert constants_hash(cache, bumped) != default, (cache, name)
 
 
@@ -152,7 +167,7 @@ def test_perturbing_a_constant_changes_the_weak_cache_filename():
 
     base = cache_name(PRIMATConfig())
     for name in OVERRIDABLE_CONSTANTS:
-        bumped = PRIMATConfig({name: getattr(CONST, name) * 1.01})
+        bumped = _bumped(name)
         if name in CACHE_CONSTANTS["weak"]:
             assert cache_name(bumped) != base, name
         else:

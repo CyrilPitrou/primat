@@ -43,6 +43,14 @@
 #define strncasecmp _strnicmp
 #endif
 
+/* POSIX realpath(path, resolved) -> MSVC _fullpath(resolved, path, size):
+ * same job (collapse "..", make absolute), arguments in the other order and
+ * with an explicit buffer size. PATH_MAX is not defined on MSVC; _MAX_PATH is
+ * its equivalent. Both return NULL when the path cannot be resolved.        */
+#ifndef realpath
+#define realpath(path, resolved) _fullpath((resolved), (path), _MAX_PATH)
+#endif
+
 /* POSIX mkdir(path, mode) -> MSVC _mkdir(path): the CRT variant takes no
  * permission-mode argument (Windows ACLs are inherited), so we drop it.    */
 #ifndef mkdir

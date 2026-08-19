@@ -959,6 +959,22 @@ def _frozen_constant_message(name: str, value) -> str:
         "and no cache is keyed on one.")
 
 
+def _fmt_value(value) -> str:
+    """Format a parameter value the way the C backend's ``%.6g`` does.
+
+    Both backends quote the offending value back in their validation
+    messages, and ``repr`` disagrees with ``%.6g`` on any float that is
+    integral (40.0 against 40) -- enough to make two otherwise identical
+    messages differ. Strings keep their quotes, since an unquoted one is
+    ambiguous against a number.
+    """
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return repr(value) if isinstance(value, str) else f"{value}"
+    if isinstance(value, float):
+        return f"{value:.6g}"
+    return f"{value}"
+
+
 def _validate_param_value(key: str, value):
     """Type-, choice-, and range-check one user-supplied ``DEFAULT_PARAMS``
     override, raising an immediate, self-explanatory error on any mismatch.
@@ -982,11 +998,9 @@ def _validate_param_value(key: str, value):
     Example
     -------
         >>> _validate_param_value("Omegabh2", "0.022")   # doctest: +SKIP
-        TypeError: PRIMATConfig: parameter 'Omegabh2' got '0.022' of type str;
-        expected float.
+        TypeError: Omegabh2='0.022' has the wrong type: expected float, got str
         >>> _validate_param_value("Omegabh2", -0.1)      # doctest: +SKIP
-        ValueError: PRIMATConfig: parameter 'Omegabh2' got -0.1, which is out
-        of range: must be > 0.
+        ValueError: Omegabh2=-0.1 is out of range: must be > 0
     """
     kinds = _param_kinds(key)
     if kinds is None:
@@ -994,15 +1008,14 @@ def _validate_param_value(key: str, value):
     if not any(_KIND_CHECKS[k](value) for k in kinds):
         expected = " or ".join(_KIND_ENGLISH[k] for k in kinds)
         raise TypeError(
-            f"PRIMATConfig: parameter {key!r} got {value!r} of type "
-            f"{type(value).__name__}; expected {expected}."
+            f"{key}={_fmt_value(value)} has the wrong type: expected "
+            f"{expected}, got {type(value).__name__}"
         )
     if value is not None and key in _PARAM_RANGE:
         predicate, text = _PARAM_RANGE[key]
         if not predicate(value):
             raise ValueError(
-                f"PRIMATConfig: parameter {key!r} got {value!r}, "
-                f"which is out of range: {text}."
+                f"{key}={_fmt_value(value)} is out of range: {text}"
             )
 
 
@@ -1431,7 +1444,10 @@ class PRIMATConfig:
                 details.append(f"{key!r} (did you mean {hint}?)")
             else:
                 details.append(repr(key))
-        msg = "PRIMATConfig: unknown parameter key(s): " + ", ".join(details)
+        # No "PRIMATConfig:" prefix: the class name means nothing to a CLI
+        # user, and the C backend -- whose struct is CPRConfig -- could not
+        # honestly print it. Mirrored by config.c's append_did_you_mean.
+        msg = "unknown parameter key(s): " + ", ".join(details)
         if strict:
             raise ValueError(msg + " [strict_params=True]")
         warnings.warn(msg, stacklevel=3)
@@ -1443,8 +1459,9 @@ class PRIMATConfig:
         """
         if not (0. <= self.fEDE < 1.):
             raise ValueError(
-                f"fEDE={self.fEDE!r} is out of range: must satisfy 0 ≤ fEDE < 1 "
-                "(fEDE is the EDE fraction of the total energy density at its peak)."
+                f"fEDE={_fmt_value(self.fEDE)} is out of range: must satisfy "
+                "0 <= fEDE < 1 (fEDE is the EDE fraction of the total energy "
+                "density at its peak)"
             )
 
         # wnEDE is only consulted when EDE is switched on at all.
@@ -1473,13 +1490,13 @@ class PRIMATConfig:
         # excluded region; n >= 3 (wn >= 1/2) is the usual EDE regime.
         if self.wnEDE <= 1. / 3.:
             raise ValueError(
-                f"wnEDE={self.wnEDE!r} is out of range: must satisfy wnEDE > 1/3 "
-                "when fEDE > 0. The EDE peak scale factor solves "
-                "u^(3(1+wnEDE)) = 4/(3*wnEDE - 1), which has no solution for "
-                "wnEDE ≤ 1/3 -- such a component dilutes no faster than "
+                f"wnEDE={_fmt_value(self.wnEDE)} is out of range: must "
+                "satisfy wnEDE > 1/3 when fEDE > 0. The EDE peak scale factor "
+                "solves u^(3(1+wnEDE)) = 4/(3*wnEDE - 1), which has no solution "
+                "for wnEDE <= 1/3 -- such a component dilutes no faster than "
                 "radiation, so its energy fraction never peaks during radiation "
                 "domination and fEDE (defined at that peak) is meaningless. "
-                "For V ∝ (1 - cos φ)^n use wnEDE = (n-1)/(n+1) with n ≥ 3."
+                "For V ~ (1 - cos phi)^n use wnEDE = (n-1)/(n+1) with n >= 3"
             )
 
     def _validate_custom_background(self):
@@ -1655,6 +1672,13 @@ class PRIMATConfig:
           factor is pinned to 0.5, i.e. every MC sample divides every rate by
           two.  A cap of exactly 1 means "no variation at all", which is
           allowed (and ``None`` disables the cap).
+        - ``mn - mp <= me`` -- the n <-> p integrands run over the electron
+          energy from ``me`` to ``Q = mn - mp``, so a Q at or below ``me``
+          makes ``sqrt(E^2 - me^2)`` imaginary over the whole interval and
+          every rate on the grid comes out NaN.  Python then rejected the NaN
+          table after the fact; the C backend's adaptive quadrature never
+          converges on a NaN integrand and recursed to its full depth, taking
+          hours per integral.  Both now stop here instead.
 
         Example
         -------
@@ -1664,17 +1688,17 @@ class PRIMATConfig:
         """
         if self.rate_grid_T9_min >= self.rate_grid_T9_max:
             raise ValueError(
-                f"rate_grid_T9_min={self.rate_grid_T9_min!r} must be < "
-                f"rate_grid_T9_max={self.rate_grid_T9_max!r}: they bound the "
-                "log-spaced master T9 grid every nuclear rate table is "
-                "resampled onto, which must be increasing."
+                f"rate_grid_T9_min={_fmt_value(self.rate_grid_T9_min)} must "
+                f"be < rate_grid_T9_max={_fmt_value(self.rate_grid_T9_max)}: "
+                "they bound the log-spaced master T9 grid every nuclear rate "
+                "table is resampled onto, which must be increasing"
             )
         if self.T_end_MeV >= self.T_start_cosmo_MeV:
             raise ValueError(
-                f"T_end_MeV={self.T_end_MeV!r} must be < "
-                f"T_start_cosmo_MeV={self.T_start_cosmo_MeV!r}: the background "
-                "and the nuclear network are integrated from T_start_cosmo_MeV "
-                "down to T_end_MeV."
+                f"T_end_MeV={_fmt_value(self.T_end_MeV)} must be < "
+                f"T_start_cosmo_MeV={_fmt_value(self.T_start_cosmo_MeV)}: the "
+                "background and the nuclear network are integrated from "
+                "T_start_cosmo_MeV down to T_end_MeV"
             )
         # Three SM flavours carry rho_nu each, and DeltaNeff adds
         # DeltaNeff * rho_nu(one flavour): below -3 the neutrino sector's total
@@ -1683,17 +1707,26 @@ class PRIMATConfig:
         # state y0 must be finite" from inside the ODE.
         if self.DeltaNeff < -3.:
             raise ValueError(
-                f"DeltaNeff={self.DeltaNeff!r} must be >= -3: it adds "
-                "DeltaNeff x rho_nu(one flavour) to the three Standard Model "
-                "neutrinos, so a smaller value makes the total neutrino energy "
-                "density negative and the Hubble rate imaginary."
+                f"DeltaNeff={_fmt_value(self.DeltaNeff)} must be >= -3: it "
+                "adds DeltaNeff x rho_nu(one flavour) to the three Standard "
+                "Model neutrinos, so a smaller value makes the total neutrino "
+                "energy density negative and the Hubble rate imaginary"
             )
         if self.mc_rate_rescale_cap is not None and self.mc_rate_rescale_cap < 1.:
             raise ValueError(
-                f"mc_rate_rescale_cap={self.mc_rate_rescale_cap!r} must be >= 1 "
-                "(or None to disable the cap): it clamps the MC rate-variation "
-                "factor to [1/cap, cap], whose bounds cross below 1 -- a cap "
-                "of 0.5 would pin every sampled rate to half its median."
+                f"mc_rate_rescale_cap={_fmt_value(self.mc_rate_rescale_cap)} "
+                "must be >= 1 (or None to disable the cap): it clamps the MC "
+                "rate-variation factor to [1/cap, cap], whose bounds cross "
+                "below 1 -- a cap of 0.5 would pin every sampled rate to half "
+                "its median"
+            )
+        if self.mn - self.mp <= self.me:
+            raise ValueError(
+                f"mn - mp = {self.mn - self.mp:.6g} MeV must be > me = "
+                f"{self.me:.6g} MeV: the n <-> p integrands run over the "
+                "electron energy from me up to Q = mn - mp, and below me their "
+                "sqrt(E^2 - me^2) has no real branch, so every rate on the "
+                "grid comes out NaN"
             )
 
     def _validate_network(self):
@@ -1927,7 +1960,7 @@ class PRIMATConfig:
             raise ValueError(
                 "external_scale_factor=True requires incomplete_decoupling=True "
                 "(a(T) is read from the NEVO table, which is only loaded by "
-                "NEVOTable)."
+                "NEVOTable)"
             )
 
         # Validate spectral-distortion flag combination.

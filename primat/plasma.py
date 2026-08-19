@@ -620,7 +620,7 @@ class Plasma:
                 reason = ("recompute requested" if recompute
                           else "cached tables stale (fingerprint mismatch)" if split_stale
                           else "files not found")
-                print(f"[init-py] Computing QED plasma-pressure tables ({reason})…")
+                print(f"[init-py] Computing QED plasma-pressure tables ({reason})...")
             # alpha/me come from cfg, matching what plasma.c has always passed
             # from g_const: qed_pressure's module-level _ALPHA_FS/_ME_MEV are a
             # standalone-use default only, so the solver has a single source of

@@ -509,10 +509,11 @@ def main(argv=None):
 
     try:
         return _dispatch(args, parser)
-    except (ValueError, TypeError, RuntimeError) as exc:
+    except (ValueError, TypeError, RuntimeError, OSError) as exc:
         # A rejected configuration (unknown --network name, out-of-range value,
-        # inconsistent flag combination) or a failed integration is user-facing
-        # input/run feedback, not a crash: print it the way the C CLI does
+        # inconsistent flag combination), a failed integration, or an output
+        # path that cannot be written is user-facing input/run feedback, not a
+        # crash: print it the way the C CLI does
         # ('error: %s' + non-zero exit, primat-c/src/cli.c) instead of dumping a
         # traceback that reads as an internal error. PRIMATConfig's messages are
         # written to stand alone, so nothing is lost. Set PRIMAT_TRACEBACK=1 to

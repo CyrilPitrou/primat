@@ -204,6 +204,17 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
                         "parameter to redirect the cache to a writable directory.",
                         plasma_wdir);
                 if (errmsg && *errmsg) { free(*errmsg); *errmsg = NULL; }
+            } else {
+                /* Mirrors qed_pressure.py's verbose block: a recompute that
+                 * writes files should say where they went and what is in
+                 * them. Same four lines, same spacing. */
+                cpr_log_raw(cfg, "[QED]  Tables written to %s:", plasma_wdir);
+                cpr_log_raw(cfg, "       QED_pressure_correction_e2.txt  "
+                                 "(4 columns: T, dP_a, derivatives)");
+                cpr_log_raw(cfg, "       QED_pressure_correction_e3.txt  "
+                                 "(4 columns: T, dP_e3, derivatives)");
+                cpr_log_raw(cfg, "       T range: %.3e-%.3e MeV  (%d points)",
+                            t.T[0], t.T[t.n - 1], (int)t.n);
             }
         }
         double *sumP = CPR_XMALLOC(t.n * sizeof(double));

@@ -10,6 +10,7 @@ marked ``slow``/``solve`` like the other single-solve tests in the "solve"
 tier.
 """
 import json
+import pathlib
 import os
 import re
 import subprocess
@@ -98,6 +99,100 @@ def test_cli_network_rejects_unknown_name(capsys):
     """
     assert main(["--network", "no_such_network"]) == 2
     assert "error: network must be" in capsys.readouterr().err
+
+
+def test_cli_unwritable_output_file_is_one_error_line(capsys, tmp_path):
+    """A path that cannot be written is a user error, not a stack trace.
+
+    GOAL: the handler's own comment promises a run failure is printed "the way
+    the C CLI does" -- one ``error:`` line, non-zero exit -- but OSError was
+    missing from the exception tuple, so an unwritable ``--output_file`` came
+    out as an eleven-frame traceback that reads as a crash in primat.
+    """
+    unwritable = tmp_path / "no_such_dir" / "sub" / "evo.tsv"
+    (tmp_path / "no_such_dir").write_text("I am a file, not a directory\n")
+
+    assert main(["--output_time_evolution", "--output_file", str(unwritable)]) == 2
+    err = capsys.readouterr().err
+    assert "error:" in err
+    assert "Traceback" not in err
+
+
+# Inputs both CLIs must reject identically -- same exit status, same words.
+# One per validation path: the per-key range table, each cross-field check, the
+# type checks, the unknown-key report, and every file the config resolves.
+_REJECTED_INPUTS = {
+    "range_Omegabh2":     ["--set", "Omegabh2=-0.1"],
+    "range_tau_n":        ["--set", "tau_n=0"],
+    "range_me":           ["--set", "me=0"],
+    "range_n_electron":   ["--set", "n_electron_table=3"],
+    "range_vegas_n_eval": ["--set", "vegas_n_eval=0"],
+    "cross_T9_grid":      ["--set", "rate_grid_T9_min=20"],
+    "cross_T_end":        ["--set", "T_end_MeV=50"],
+    "cross_DeltaNeff":    ["--set", "DeltaNeff=-10"],
+    "cross_mc_cap":       ["--set", "mc_rate_rescale_cap=0.5"],
+    "cross_mass_gap":     ["--set", "mp=939.2101"],
+    "fEDE_at_one":        ["--set", "fEDE=1.0"],
+    "wnEDE_below_third":  ["--set", "fEDE=0.05", "--set", "wnEDE=0.2"],
+    "esf_needs_nevo":     ["--set", "external_scale_factor=True",
+                           "--set", "incomplete_decoupling=False"],
+    "type_bool_for_int":  ["--set", "sampling_nTOp_per_decade=True"],
+    "type_float_for_int": ["--set", "amax=8.5"],
+    "type_str_for_float": ["--set", "Omegabh2=abc"],
+    "strict_unknown_key": ["--set", "strict_params=True", "--set", "Omegab2h=0.02"],
+    "bad_data_dir":       ["--set", "data_dir=/nonexistent-dir"],
+    "bad_user_nuclear":   ["--set", "user_nuclear_dir=/nonexistent-dir"],
+    "bad_nevo_file":      ["--set", "nevo_file=nosuch.csv"],
+    "bad_nevo_grid":      ["--set", "nevo_grid_file=nosuch.csv"],
+    "bad_nevo_prefix":    ["--set", "nevo_file_prefix=NOSUCH"],
+    "bad_network":        ["--network", "no_such_network"],
+}
+
+_ERROR_LINE = re.compile(r"(?:^|: )((?:error|warning): .*)$")
+
+
+def _rejection(cmd, tmp_path):
+    """(exit status, error/warning lines) from one CLI on one bad input."""
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          encoding="utf-8", timeout=300)
+    lines = []
+    for line in (proc.stderr + proc.stdout).splitlines():
+        m = _ERROR_LINE.search(line)
+        if m:
+            lines.append(m.group(1).strip())
+    return proc.returncode, lines
+
+
+@pytest.mark.parametrize("name", sorted(_REJECTED_INPUTS), ids=sorted(_REJECTED_INPUTS))
+def test_both_clis_reject_with_the_same_status_and_words(name, tmp_path):
+    """A rejected configuration reads the same on either CLI.
+
+    GOAL: the two CLIs are documented as interchangeable, so a user who
+    switches must not have to learn a second vocabulary. They had drifted on
+    both axes -- the Python CLI returned 2 for every rejected configuration
+    while the C CLI returned 1 for everything its validator caught (though a
+    comment in the same C function already named 2 as the convention), and 20
+    of the messages differed in template, punctuation, float formatting or
+    dropped explanation. Subprocesses, because the C CLI's real process status
+    is invisible in-process.
+    """
+    from primat.backend import HAS_C_BACKEND
+    if not HAS_C_BACKEND:
+        pytest.skip("primat._primat_c C extension is not built")
+    c_bin = (pathlib.Path(__file__).resolve().parents[1]
+             / "primat-c" / "build" / "primat-c")
+    if not c_bin.exists():
+        pytest.skip("the standalone primat-c binary is not built")
+
+    bad = _REJECTED_INPUTS[name]
+    cache = ["--set", f"cache_dir={tmp_path}"]
+    py_rc, py_msg = _rejection(
+        [sys.executable, "-m", "primat.cli", "--backend", "python"] + cache + bad,
+        tmp_path)
+    c_rc, c_msg = _rejection([str(c_bin)] + cache + bad, tmp_path)
+
+    assert py_rc == 2 and c_rc == 2, f"python={py_rc} c={c_rc}"
+    assert py_msg == c_msg
 
 
 def test_cli_config_error_traceback_escape_hatch(monkeypatch):

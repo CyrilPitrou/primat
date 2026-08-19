@@ -22,6 +22,17 @@ void cpr_log(const CPRConfig *cfg, const char *tag, const char *fmt, ...)
     printf("\n");
 }
 
+void cpr_log_raw(const CPRConfig *cfg, const char *fmt, ...)
+{
+    if (!cfg->verbose) return;
+
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    printf("\n");
+}
+
 int cpr_console_takes_utf8(void)
 {
 #if defined(_WIN32)

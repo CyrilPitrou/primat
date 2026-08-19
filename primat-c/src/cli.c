@@ -20,6 +20,14 @@
 #include <mach-o/dyld.h>
 #endif
 
+/* Exit status for every rejected configuration or failed run: a bad range, a
+ * wrong type, an unknown key under strict_params, an unreadable data_dir or
+ * ini file, a failed solve. 2, matching cli.py's `return 2` from its
+ * ValueError/TypeError/RuntimeError/OSError handler, so a script sees the same
+ * status whichever CLI it called. Every such exit in this file goes through
+ * this name rather than a literal, which is how the two ends stay together. */
+#define CLI_EXIT_CONFIG 2
+
 /* Matches "<prefix>*.txt" for one of the hash-named cache families, mirroring
  * primat.cache_utils._CACHE_PREFIXES:
  *   weak/   "nTOp_"            (thermal caches are "nTOp_thermal_*.txt" and
@@ -453,6 +461,16 @@ static int path_is_dir(const char *path)
     return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+/* Collapse `buf` to its canonical absolute form in place, leaving it untouched
+ * if the path cannot be resolved (realpath needs every component to exist). */
+static const char *canonical_dir(char *buf, size_t bufsize)
+{
+    char resolved[4096];
+    if (realpath(buf, resolved))
+        snprintf(buf, bufsize, "%s", resolved);
+    return buf;
+}
+
 /* Best-effort absolute path to the running executable's own directory, so
  * the default data dir can be anchored to where `cprimat` itself lives
  * rather than to the caller's CWD (the old ".." default silently broke
@@ -497,11 +515,18 @@ static const char *default_data_dir(char *buf, size_t bufsize)
     if (executable_dir(exe_dir, sizeof(exe_dir)) == 0) {
         /* The binary normally lives in primat-c/build/cprimat, so the
          * sibling primat/ package is two levels up; also try one level up
-         * in case cprimat was copied/symlinked directly into primat-c/. */
+         * in case cprimat was copied/symlinked directly into primat-c/.
+         *
+         * Collapsed with realpath before it is kept: the "..", left in,
+         * reappears verbatim in every path this run prints -- error messages,
+         * the cache-info listing, the overlay notice -- as
+         * "primat-c/build/../../primat/data/...", which no user typed and
+         * which cannot be compared against the path cli.py prints for the
+         * same file. */
         snprintf(buf, bufsize, "%s/../../primat/data", exe_dir);
-        if (path_is_dir(buf)) return buf;
+        if (path_is_dir(buf)) return canonical_dir(buf, bufsize);
         snprintf(buf, bufsize, "%s/../primat/data", exe_dir);
-        if (path_is_dir(buf)) return buf;
+        if (path_is_dir(buf)) return canonical_dir(buf, bufsize);
     }
     snprintf(buf, bufsize, "../primat/data");
     return buf;
@@ -525,7 +550,7 @@ static const char *default_data_dir(char *buf, size_t bufsize)
  * CPR_SET_* contract -- an unknown key is only a warning, and only while
  * strict_params is off). */
 static int apply_param(CPRConfig *cfg, CPRParamList *cp,
-                       const char *key, CPRParam val, const char *flag_label)
+                       const char *key, CPRParam val)
 {
     char *set_err = NULL;
     int rc = cpr_config_set_by_name(cfg, key, val, &set_err);
@@ -533,13 +558,18 @@ static int apply_param(CPRConfig *cfg, CPRParamList *cp,
         /* Warn and ignore, mirroring PRIMATConfig's strict_params=False
          * default (and primat/backend.py's _c_params filter, which drops
          * keys unknown to both sides before they reach the extension). */
-        fprintf(stderr, "%s: warning: %s\n", flag_label,
+        fprintf(stderr, "warning: %s\n",
                 set_err ? set_err : "unknown parameter key");
         free(set_err);
         return 0;
     }
     if (rc != CPR_SET_OK) {
-        fprintf(stderr, "error: %s: %s%s\n", flag_label,
+        /* No `flag_label` prefix: every message cpr_config_set_by_name
+         * produces already opens with the key, so prefixing "<key>=<value>: "
+         * printed the key twice ("data_dir=/nope: data_dir='/nope' is not an
+         * existing directory") and diverged from cli.py, which prints the
+         * message alone. */
+        fprintf(stderr, "error: %s%s\n",
                 set_err ? set_err : "could not set key",
                 rc == CPR_SET_UNKNOWN_KEY ? " [strict_params=True]" : "");
         free(set_err);
@@ -554,10 +584,11 @@ static int apply_param(CPRConfig *cfg, CPRParamList *cp,
  * call site below wants (2 = usage error, as for an unrecognised argument). */
 #define APPLY_OR_FAIL(cfg, cp, key, val, label)                 \
     do {                                                        \
-        if (apply_param((cfg), (cp), (key), (val), (label))) {  \
+        (void)(label);                                          \
+        if (apply_param((cfg), (cp), (key), (val))) {           \
             cpr_paramlist_free(cp);                             \
             cpr_config_free(cfg);                               \
-            return 2;                                           \
+            return CLI_EXIT_CONFIG;                             \
         }                                                       \
     } while (0)
 
@@ -1033,7 +1064,7 @@ int cpr_cli_main(int argc, char **argv)
     if (mc_given && mc_n < 1) {
         fprintf(stderr, "error: --mc must be >= 1 (got %d); a sigma needs at "
                         "least 2 samples.\n", mc_n);
-        return 2;
+        return CLI_EXIT_CONFIG;
     }
 
     if (version) {
@@ -1050,7 +1081,7 @@ int cpr_cli_main(int argc, char **argv)
     if (cpr_config_init_defaults(&cfg, data_dir, &err)) {
         fprintf(stderr, "error: %s\n", err);
         free(err);
-        return 1;
+        return CLI_EXIT_CONFIG;
     }
 
     if (list_params) {
@@ -1108,7 +1139,7 @@ int cpr_cli_main(int argc, char **argv)
             free(err);
             cpr_paramlist_free(&cp);
             cpr_config_free(&cfg);
-            return 1;
+            return CLI_EXIT_CONFIG;
         }
     }
 
@@ -1253,7 +1284,7 @@ int cpr_cli_main(int argc, char **argv)
         free(err);
         cpr_paramlist_free(&cp);
         cpr_config_free(&cfg);
-        return 1;
+        return CLI_EXIT_CONFIG;
     }
 
     if (list_reactions) {
@@ -1266,9 +1297,7 @@ int cpr_cli_main(int argc, char **argv)
     if (check_rate_variation_keys(&cfg)) {
         cpr_paramlist_free(&cp);
         cpr_config_free(&cfg);
-        /* 2, the exit status both CLIs already use for every fatal
-         * configuration error (a bad range, an unknown network). */
-        return 2;
+        return CLI_EXIT_CONFIG;
     }
 
     /* Startup note for an overlay/takeover data directory, byte-identical to
@@ -1292,7 +1321,7 @@ int cpr_cli_main(int argc, char **argv)
         free(err);
         cpr_paramlist_free(&cp);
         cpr_config_free(&cfg);
-        return 1;
+        return CLI_EXIT_CONFIG;
     }
 
     /* ---- Optional Monte-Carlo uncertainty propagation ---- */
@@ -1345,7 +1374,7 @@ int cpr_cli_main(int argc, char **argv)
             cprimat_results_free(&results);
             cpr_paramlist_free(&cp);
             cpr_config_free(&cfg);
-            return 1;
+            return CLI_EXIT_CONFIG;
         }
         mc = &mc_result;
         free(quantities);

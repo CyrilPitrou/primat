@@ -24,10 +24,13 @@ requires_c_backend = pytest.mark.skipif(
 )
 
 # Q = mn - mp = 0.355 MeV, below me: the rate integrands' sqrt(E^2 - me^2) has
-# no real branch, so every entry of the n<->p table comes out NaN. Computing
-# that table takes minutes (every quad call runs to its iteration limit), so
-# the tests below inject it instead -- the guards under test are the ones that
-# see a finished table, whether freshly computed or reloaded from the cache.
+# no real branch, so every entry of the n<->p table comes out NaN. That
+# configuration is now rejected by PRIMATConfig before any integration runs
+# (test_config.py's cross-field checks), which is what keeps the C backend's
+# adaptive quadrature away from an integrand it cannot converge on. The guards
+# below are the second line: a NaN table can still arrive from a cache file
+# written before that check existed, or by any other route, and must stop the
+# run rather than be reported as an abundance.
 _MP_BELOW_ME = 939.2103602481599
 
 
@@ -52,8 +55,14 @@ def _poison_weak_cache(cache_dir):
 def test_non_finite_weak_rates_are_rejected_before_they_are_cached():
     """The validator that stands between a NaN table and the cache: without it
     the table was saved, reloaded by every later run of that configuration, and
-    reported as YP = 0.98."""
-    cfg = PRIMATConfig({"mp": _MP_BELOW_ME})
+    reported as YP = 0.98.
+
+    Driven with a default config and an injected NaN table, because the mass
+    combination that used to produce one no longer reaches this point -- see
+    _MP_BELOW_ME above. The validator is generic: it judges the table it is
+    handed, whatever produced it.
+    """
+    cfg = PRIMATConfig()
     T = np.logspace(7, 11, 8)
     nan = np.full_like(T, np.nan)
     with pytest.raises(ValueError, match="are not finite"):
@@ -130,7 +139,8 @@ def test_c_cli_rejects_a_bool_for_an_int_parameter():
     out = subprocess.run([binary, "--set", "sampling_nTOp_per_decade=True"],
                          capture_output=True, text=True, cwd=root)
     assert out.returncode != 0
-    assert "expects an int" in (out.stdout + out.stderr)
+    assert ("sampling_nTOp_per_decade=True has the wrong type: expected int, "
+            "got bool") in (out.stdout + out.stderr)
 
 
 def test_n_electron_table_needs_four_knots():

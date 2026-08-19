@@ -12,6 +12,12 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **A proton and neutron closer in mass than an electron no longer hangs the C
+  backend.** With `mn - mp` at or below `me` every n↔p rate integrand is
+  imaginary, and the C adaptive quadrature — whose stopping test is false for
+  NaN — recursed to its full depth, running for hours at 100 % CPU with no
+  output, reachable from the default backend. Both backends now reject the
+  combination up front, in the same words.
 - **`external_scale_factor` runs are ~80× more accurate, and the two backends
   now agree in that mode.** Both built the `T(a)` inverse and the `t(T)` the
   nuclear network reads on the background ODE's output grid, whose spacing
@@ -27,6 +33,14 @@ in this repository is the authoritative source.
   a configuration first served every later run of it. They are now part of the
   name on both backends; the shipped tables were renamed with their contents
   untouched, so no published number moves.
+- **Both command-line tools now answer a bad setting identically.** Every
+  rejected configuration exits 2 (the C tool returned 1 for everything its
+  validator caught, against a convention its own source already stated), and
+  all 34 rejected inputs tested produce the same message — the range and type
+  templates, the explanatory notes, the number formatting, the "did you mean
+  …?" suggestion and the paths in file-not-found errors were all divergent.
+  An unwritable `--output_file` is now one `error:` line on the Python side
+  instead of a raw traceback.
 - **`primat --json` output is valid JSON again when a file is written
   alongside it.** All six "[output] … written to …" announcements — time
   evolution, final abundances, the background TSV, the decay-era table and the

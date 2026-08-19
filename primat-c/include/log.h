@@ -16,6 +16,14 @@
  * "[bg-c] Background a(t,T) ready in 0.42 s"). */
 void cpr_log(const CPRConfig *cfg, const char *tag, const char *fmt, ...);
 
+/* Same gate as cpr_log, but prints the formatted line verbatim -- no
+ * "[<tag>-c] " prefix. For the handful of Python lines that carry their own
+ * literal prefix or none at all (qed_pressure.py's "[QED]  Tables written
+ * to ..." block and its indented continuation lines), where adding the -c
+ * suffix would break the byte-for-byte comparison in
+ * tests/test_verbose_parity.py. */
+void cpr_log_raw(const CPRConfig *cfg, const char *fmt, ...);
+
 /* True when stdout can carry the decorative UTF-8 output (banner box, rule).
  * A Windows console in a legacy code page -- cp1252, the default outside UTF-8
  * mode -- renders those bytes as mojibake, so callers fall back to ASCII; a

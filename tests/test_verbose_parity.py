@@ -37,10 +37,33 @@ _SECONDS = re.compile(r"\d+\.\d+ s")
 _BACKEND_LINE = re.compile(r"^\[opts\] backend\s*=.*$")
 
 
-def _message_stream(backend):
+# Off-default configurations the stream is compared over. Each one reaches
+# stages the default point never does -- a bigger network's reaction listing, a
+# different background mode, a decay era, a weak-rate table computed rather
+# than loaded, a QED recompute that writes files. The default point alone left
+# a real divergence unseen: the C backend never printed the four-line "[QED]
+# Tables written to ..." block, and its ellipsis was ASCII where Python's was
+# U+2026.
+OFF_DEFAULT_CONFIGS = {
+    "default": [],
+    "large_amax8": ["--set", "network=large", "--set", "amax=8"],
+    "small_parthenope": ["--set", "network=small_parthenope"],
+    "external_scale_factor": ["--set", "external_scale_factor=True"],
+    "no_QED": ["--set", "QED_corrections=False"],
+    "born_only": ["--set", "radiative_corrections=False",
+                  "--set", "finite_mass_corrections=False",
+                  "--set", "thermal_corrections=False",
+                  "--set", "spectral_distortions=False"],
+    "decay_era": ["--set", "decay_era=True"],
+    "recompute_qed": ["--set", "recompute_qed_corrections=True"],
+}
+
+
+def _message_stream(backend, args=()):
     """The normalised ``[tag] message`` lines a verbose run prints."""
     proc = subprocess.run(
-        [sys.executable, "-m", "primat.cli", "--backend", backend, "--verbose"],
+        [sys.executable, "-m", "primat.cli", "--backend", backend, "--verbose"]
+        + list(args),
         capture_output=True, text=True, encoding="utf-8", timeout=600,
     )
     assert proc.returncode == 0, proc.stderr
@@ -59,16 +82,25 @@ def _message_stream(backend):
 
 
 @pytest.mark.skipif(not HAS_C_BACKEND, reason="primat._primat_c is not built")
-def test_backends_narrate_a_run_identically():
-    """Same stages, same wording, same order on both backends."""
+@pytest.mark.parametrize("config", sorted(OFF_DEFAULT_CONFIGS),
+                          ids=sorted(OFF_DEFAULT_CONFIGS))
+def test_backends_narrate_a_run_identically(config, tmp_path):
+    """Same stages, same wording, same order on both backends.
+
+    Run over OFF_DEFAULT_CONFIGS, not only the default point: the rule is that
+    the two backends narrate *a run*, and a stage only one configuration
+    reaches is exactly where a missing mirror hides.
+    """
+    args = ["--set", f"cache_dir={tmp_path}"] + OFF_DEFAULT_CONFIGS[config]
     # Warm the shared caches first. Both backends announce whether they loaded
     # the electron-thermo/QED tables or computed them, so a cold cache left by
     # an earlier test would make whichever backend ran first say something
     # different -- a failure about cache state, not about parity.
-    _message_stream("python")
+    _message_stream("python", args)
+    _message_stream("c", args)
 
-    py = _message_stream("python")
-    c = _message_stream("c")
+    py = _message_stream("python", args)
+    c = _message_stream("c", args)
 
     if py != c:
         import difflib
