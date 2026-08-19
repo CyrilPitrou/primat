@@ -1080,14 +1080,35 @@ double cpr_bg_t_of_a(const CPRBackground *bg, double a)
     return cpr_interp_linear(bg->a_vec, bg->t_vec, bg->n_bg, a, CPR_EXTRAP_CONSTANT);
 }
 
+/* Linearly interpolate the dimensionless ratio Tnu/Tg on the t grid (linear
+ * extrapolation off either end, which is what cpr_find_segment's clamp gives).
+ * See cpr_bg_Tnu_of_t below for why the ratio and not the temperature is the
+ * interpolated quantity. */
+static double interp_Tnu_ratio(const CPRBackground *bg, const double *Tnu_vec, double t)
+{
+    size_t i = cpr_find_segment(bg->t_vec, bg->n_bg, t);
+    double w = (t - bg->t_vec[i]) / (bg->t_vec[i + 1] - bg->t_vec[i]);
+    double r0 = Tnu_vec[i] / bg->Tg_vec[i];
+    double r1 = Tnu_vec[i + 1] / bg->Tg_vec[i + 1];
+    return r0 * (1.0 - w) + r1 * w;
+}
+
 int cpr_bg_Tnu_of_t(const CPRBackground *bg, double t, double *Tnue, double *Tnumu,
                      double *Tnutau)
 {
     if (bg->kind != CPR_BG_STANDARD)
         return 0;
-    *Tnue   = cpr_interp_linear(bg->t_vec, bg->Tnue_vec,   bg->n_bg, t, CPR_EXTRAP_LINEAR);
-    *Tnumu  = cpr_interp_linear(bg->t_vec, bg->Tnumu_vec,  bg->n_bg, t, CPR_EXTRAP_LINEAR);
-    *Tnutau = cpr_interp_linear(bg->t_vec, bg->Tnutau_vec, bg->n_bg, t, CPR_EXTRAP_LINEAR);
+    /* Interpolate Tnu/Tg and multiply by T_of_t, rather than interpolating the
+     * three temperatures directly: T_of_t is log-log, so a linear T_nu would
+     * sit on a different scheme, and between nodes the two disagree enough to
+     * report T_nu > T_gamma above e+e- annihilation, where the two are
+     * physically equal. Every tabulated ratio is <= 1 and linear interpolation
+     * cannot exceed its endpoints, so going through the ratio makes
+     * T_nu <= T_gamma hold by construction. */
+    double Tg = cpr_bg_T_of_t(bg, t);
+    *Tnue   = interp_Tnu_ratio(bg, bg->Tnue_vec,   t) * Tg;
+    *Tnumu  = interp_Tnu_ratio(bg, bg->Tnumu_vec,  t) * Tg;
+    *Tnutau = interp_Tnu_ratio(bg, bg->Tnutau_vec, t) * Tg;
     return 1;
 }
 

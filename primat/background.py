@@ -1257,16 +1257,26 @@ class StandardBackground(Background):
         """Per-flavour neutrino temperature [MeV] at cosmic time ``t_out``
         [s] (array-safe); see :meth:`Background.Tnu_of_t`.
 
-        Interpolated (linear, extrapolated) on the same time grid as the
-        rest of the stored background (``self.t_vec``).
+        What is interpolated (linear, extrapolated, on ``self.t_vec``) is the
+        dimensionless ratio T_nu/T_gamma, which is then multiplied by
+        ``T_of_t``.  Interpolating the three temperatures directly would put
+        them on a different scheme from ``T_of_t``'s log-log one, and between
+        nodes the two schemes disagree enough to report T_nu > T_gamma above
+        e+e- annihilation, where the two are physically equal.  Going through
+        the ratio makes T_nu <= T_gamma hold by construction, since every
+        tabulated ratio is <= 1 and linear interpolation cannot exceed its
+        endpoints.  :class:`primat.neutrino_history.NEVOTable` interpolates its
+        own T_nu(T_gamma) through the same ratio, for the same reason.
         """
-        Tnue_of_t   = interp1d(self.t_vec, self.Tnue_vec,   bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnumu_of_t  = interp1d(self.t_vec, self.Tnumu_vec,  bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnutau_of_t = interp1d(self.t_vec, self.Tnutau_vec, bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        return {"e": Tnue_of_t(t_out), "mu": Tnumu_of_t(t_out), "tau": Tnutau_of_t(t_out)}
+        Tg_out = self.T_of_t(t_out)
+        ratio_kw = dict(bounds_error=False, fill_value="extrapolate",
+                        kind='linear')
+        out = {}
+        for key, Tnu_vec in (("e", self.Tnue_vec), ("mu", self.Tnumu_vec),
+                             ("tau", self.Tnutau_vec)):
+            ratio = interp1d(self.t_vec, Tnu_vec / self.Tg_vec, **ratio_kw)
+            out[key] = ratio(t_out) * Tg_out
+        return out
 
     def _background_columns(self, t_out):
         """Background output columns (see :meth:`Background._background_columns`).

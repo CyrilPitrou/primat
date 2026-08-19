@@ -997,9 +997,12 @@ def test_background_divergence_is_within_its_attributed_budget():
     assert g["a"]["mean"] == pytest.approx(0.0, abs=BG_SCALE_FACTOR_MEAN_REL)
     # The thermodynamic quantities are shared table lookups, not ODE outputs,
     # and are three orders tighter. Pinning them separately keeps a background
-    # regression from hiding inside the a(T) budget.
-    assert g["H"]["max"] < 1e-8
-    assert g["Tnue"]["max"] < 1e-8
+    # regression from hiding inside the a(T) budget. Both bounds tightened by
+    # 5x once each backend stopped interpolating T_nu on a different scheme
+    # from T_gamma (Background.Tnu_of_t / cpr_bg_Tnu_of_t go through the
+    # dimensionless ratio), which had been giving each side its own wobble.
+    assert g["H"]["max"] < 2e-9
+    assert g["Tnue"]["max"] < 2e-9
 
 
 @requires_c_backend

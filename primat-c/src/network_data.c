@@ -1495,6 +1495,13 @@ const double *cpr_network_fill_buffer(CPRNetworkDef *net, double T_t_K,
     size_t n_thermo = net->n_reac - 1;
     for (size_t k = 0; k < n_thermo; k++) {
         double fwd = net->fwd[k * n_grid + ii] * (1.0 - w) + net->fwd[k * n_grid + ii + 1] * w;
+        /* A reaction rate is physically >= 0, and the edge-cell extrapolation
+         * above has no such bound: far enough outside the grid it continues the
+         * end slope straight through zero. The shipped tables stay positive over
+         * the temperatures the shipped era boundaries reach, but the grid span
+         * and the era's end are both configurable (rate_grid_T9_{min,max},
+         * T_end_MeV), so the guard is not decorative. */
+        if (fwd < 0.0) fwd = 0.0;
         double alpha = net->abg[k * 3], beta = net->abg[k * 3 + 1], gamma = net->abg[k * 3 + 2];
         double bwd = alpha * pow(T9, beta) * exp(fmin(gamma / T9, CPR_EXP_CAP)) * fwd;
         if (fwd <= CPR_REVERSE_FLOOR) bwd = 0.0;

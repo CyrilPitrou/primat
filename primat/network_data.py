@@ -122,6 +122,14 @@ def _fill_buffer_core(T9, grid, fwd_table, abg, bwd_cap, clamp, r):
     m = fwd_table.shape[0]
     for k in range(m):
         fwd = fwd_table[k, i] * (1.0 - w) + fwd_table[k, i + 1] * w
+        # A reaction rate is physically >= 0, and the edge-cell extrapolation
+        # above has no such bound: far enough outside the grid it continues the
+        # end slope straight through zero.  The shipped tables stay positive
+        # over the temperatures the shipped era boundaries reach, but the grid
+        # span and the era's end are both configurable
+        # (rate_grid_T9_{min,max}, T_end_MeV), so the guard is not decorative.
+        if fwd < 0.0:
+            fwd = 0.0
         e = abg[k, 2] / T9
         if e > _EXP_CAP:
             e = _EXP_CAP
