@@ -543,7 +543,7 @@ static const char *default_data_dir(char *buf, size_t bufsize)
  * sigma from another, silently. That is why the ini file (cpr_ini_load's
  * `collect` argument) feeds the same list, and why CPRParamList copies both
  * key and value instead of retaining pointers into argv or into
- * cpr_parse_literal's static scratch buffer.
+ * the caller's parse buffer.
  *
  * Apply the param to cfg and, on success, record it. A failure is fatal:
  * returns nonzero, and the caller exits (see cpr_config_set_by_name's
@@ -1081,6 +1081,7 @@ int cpr_cli_main(int argc, char **argv)
     if (cpr_config_init_defaults(&cfg, data_dir, &err)) {
         fprintf(stderr, "error: %s\n", err);
         free(err);
+        cpr_config_free(&cfg);
         return CLI_EXIT_CONFIG;
     }
 
@@ -1161,7 +1162,8 @@ int cpr_cli_main(int argc, char **argv)
         /* ---- The 16 measured physical constants ---- */
         const char *const_name = constant_flag_name(a);
         if (const_name && has_val) {
-            CPRParam p = cpr_parse_literal(argv[++i]);
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, const_name, p, a);
             continue;
         }
@@ -1171,28 +1173,35 @@ int cpr_cli_main(int argc, char **argv)
             CPRParam p = {CPR_DOUBLE, .v.d = atof(argv[++i])};
             APPLY_OR_FAIL(&cfg, &cp, "Omegabh2", p, "--Omegabh2");
         } else if (strcmp(a, "--DeltaNeff") == 0 && has_val) {
-            CPRParam p = cpr_parse_literal(argv[++i]);
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, "DeltaNeff", p, "--DeltaNeff");
         } else if (strcmp(a, "--network") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
             APPLY_OR_FAIL(&cfg, &cp, "network", p, "--network");
         } else if (strcmp(a, "--amax") == 0 && has_val) {
-            CPRParam p = cpr_parse_literal(argv[++i]);
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, "amax", p, "--amax");
         } else if (strcmp(a, "--numerical_precision") == 0 && has_val) {
-            CPRParam p = cpr_parse_literal(argv[++i]);
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, "numerical_precision", p, "--numerical_precision");
         } else if (strcmp(a, "--munuOverTnu") == 0 && has_val) {
-            CPRParam p = cpr_parse_literal(argv[++i]);
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu", p, "--munuOverTnu");
         } else if (strcmp(a, "--munuOverTnu_e") == 0 && has_val) {
-            CPRParam p = cpr_parse_literal(argv[++i]);
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_e", p, "--munuOverTnu_e");
         } else if (strcmp(a, "--munuOverTnu_mu") == 0 && has_val) {
-            CPRParam p = cpr_parse_literal(argv[++i]);
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_mu", p, "--munuOverTnu_mu");
         } else if (strcmp(a, "--munuOverTnu_tau") == 0 && has_val) {
-            CPRParam p = cpr_parse_literal(argv[++i]);
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_tau", p, "--munuOverTnu_tau");
         } else if (strcmp(a, "--verbose") == 0) {
             CPRParam p = {CPR_BOOL, .v.b = 1};
@@ -1260,7 +1269,8 @@ int cpr_cli_main(int argc, char **argv)
                     if (klen >= sizeof(key)) klen = sizeof(key) - 1;
                     memcpy(key, entry, klen);
                     key[klen] = '\0';
-                    CPRParam p = cpr_parse_literal(eq + 1);
+                    char litbuf[CPR_PARAM_VAL_LEN];
+                    CPRParam p = cpr_parse_literal(eq + 1, litbuf, sizeof litbuf);
                     APPLY_OR_FAIL(&cfg, &cp, key, p, entry);
                 } else {
                     fprintf(stderr, "unrecognized argument: %s\n", a);

@@ -69,13 +69,13 @@ int cpr_ini_load(CPRConfig *cfg, const char *path, CPRParamList *collect,
             return 1;
         }
 
-        CPRParam value = cpr_parse_literal(val);
+        char litbuf[CPR_PARAM_VAL_LEN];
+        CPRParam value = cpr_parse_literal(val, litbuf, sizeof litbuf);
         char *set_err = NULL;
         int rc = cpr_config_set_by_name(cfg, key, value, &set_err);
         if (rc == CPR_SET_OK) {
             /* Retain it for the MC workers (see ini.h); cpr_paramlist_add
-             * copies both halves, so `value` pointing into cpr_parse_literal's
-             * static scratch is fine. */
+             * copies both halves, so `value` pointing into litbuf is fine. */
             if (collect)
                 cpr_paramlist_add(collect, key, value);
         } else if (rc == CPR_SET_UNKNOWN_KEY && !cfg->strict_params) {

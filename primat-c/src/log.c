@@ -22,6 +22,16 @@ void cpr_log(const CPRConfig *cfg, const char *tag, const char *fmt, ...)
     printf("\n");
 }
 
+void cpr_warn(const char *fmt, ...)
+{
+    fputs("warning: ", stderr);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    fputc('\n', stderr);
+}
+
 void cpr_log_raw(const CPRConfig *cfg, const char *fmt, ...)
 {
     if (!cfg->verbose) return;

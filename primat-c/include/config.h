@@ -74,21 +74,20 @@ typedef struct {
  * true/false/none (case-insensitive), else fall back to the literal string
  * (quotes, if any, are stripped).
  *
- * LIFETIME (important): a CPR_STRING result points into a `static` scratch
- * buffer inside cpr_parse_literal, NOT into `s` and NOT into fresh storage.
- * It is therefore valid only until this function is next called on this
- * thread -- two parses in a row alias each other. Any caller that keeps the
- * value beyond the immediately following cpr_config_set_by_name (which
- * strdup's its own copy) must copy it first; cpr_paramlist_add below does
- * exactly that, and is the supported way to retain a parsed value. */
-CPRParam cpr_parse_literal(const char *s);
+ * LIFETIME (important): a CPR_STRING result points into the caller's `buf`
+ * (of `bufsize` bytes), NOT into `s` and NOT into fresh storage, so it is
+ * valid exactly as long as that buffer is. Give each parse whose value you
+ * keep its own buffer. Any caller retaining a value past the immediately
+ * following cpr_config_set_by_name (which strdup's its own copy) must copy
+ * it; cpr_paramlist_add below does exactly that. */
+CPRParam cpr_parse_literal(const char *s, char *buf, size_t bufsize);
 
 /* ---- A retained, self-owning list of (key, value) overrides ----
  *
  * The MC driver re-applies the user's overrides to a *fresh* CPRConfig in
  * every worker thread (mc.c's worker_setup), so the CLI/ini front end has to
  * hand it the complete override set as CPRParamSet[] -- long after argv and
- * cpr_parse_literal's static buffer have been reused. This list copies both
+ * the callers' parse buffers have gone out of scope. This list copies both
  * halves of every pair into its own storage, so a retained entry can never
  * alias argv, an ini line buffer, or the previous parse.
  *

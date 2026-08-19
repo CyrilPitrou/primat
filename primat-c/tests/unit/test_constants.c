@@ -29,7 +29,6 @@ static int close_rel(double a, double b, double rtol)
 
 int main(void)
 {
-    cpr_constants_init();
 
     /* sin^2(theta_W) = 1/2 * (1 - sqrt(1 - 2*sqrt(2)*pi*alphaem/(GF*mZ^2))),
      * the on-shell relation -- see test_constants.py's docstring. */

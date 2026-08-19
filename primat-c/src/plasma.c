@@ -486,10 +486,18 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
 
     if (!cfg->recompute_electron_thermo) {
         char *cached_hash = cpr_cache_read_fingerprint_hash(cache_read);
-        if (cached_hash && strcmp(cached_hash, fp_hash) == 0) {
-            free(cached_hash);
+        int hash_matches = cached_hash && strcmp(cached_hash, fp_hash) == 0;
+        /* Freed exactly once, on every path out of this block: the branch
+         * below can fall through to the recompute, so freeing inside it and
+         * again here would be a double free. */
+        free(cached_hash);
+        if (hash_matches) {
             CPRTable tab;
-            if (cpr_table_read(cache_read, 5, &tab, errmsg) == 0) {
+            /* Read into a local error string: on the fall-through below the
+             * failure is recovered from, so the message must be discarded
+             * rather than handed back to the caller (and must not leak). */
+            char *read_err = NULL;
+            if (cpr_table_read(cache_read, 5, &tab, &read_err) == 0) {
                 int rc = cpr_cubic_spline_fit_notaknot(tab.cols[0], tab.cols[1], tab.n_rows, &pl->rho_e_tab, errmsg)
                       || cpr_cubic_spline_fit_notaknot(tab.cols[0], tab.cols[2], tab.n_rows, &pl->p_e_tab, errmsg)
                       || cpr_cubic_spline_fit_notaknot(tab.cols[0], tab.cols[3], tab.n_rows, &pl->drho_e_dT_tab, errmsg)
@@ -515,8 +523,12 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
             /* Fall through to recompute if the cache file turned out to
              * be unreadable despite a matching fingerprint header
              * (matches Python's try/except warn-and-recompute path). */
+            fprintf(stderr,
+                    "warning: could not read electron-thermo cache '%s' (%s); "
+                    "recomputing. Delete the file to silence this.\n",
+                    cache_read, read_err ? read_err : "unreadable");
+            free(read_err);
         }
-        free(cached_hash);
     }
 
     double *grid = CPR_XMALLOC(npts * sizeof(double));
@@ -559,10 +571,9 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
         }
         if (cpr_cache_write(cache_write, fields, 4, "grid rho_e p_e drho_e_dT dp_e_dT",
                              columns, 5, npts, NULL) != 0) {
-            cpr_log(cfg, "plasma",
-                    "could not write cache to %s: results are unaffected, but "
-                    "the next run will recompute. Set the cache_dir parameter "
-                    "to redirect the cache to a writable directory.", cache_write);
+            cpr_warn("could not write cache to %s: results are unaffected, but "
+                     "the next run will recompute. Set the cache_dir parameter "
+                     "to redirect the cache to a writable directory.", cache_write);
         }
     }
 

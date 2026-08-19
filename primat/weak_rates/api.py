@@ -276,13 +276,63 @@ def InterpolateWeakRates(cfg):
     fp_hash = fingerprint_hash(_weak_rate_fingerprint(cfg))
     # Overlay read: cache_dir (if set) first, then the shipped package copy.
     path    = resolve_cache_file(cfg, "weak", "nTOp_" + fp_hash + ".txt")
-    tab     = np.loadtxt(path)
+    tab     = _read_weak_cache_table(path)
     validate_weak_rates_finite(tab[:, 0], tab[:, 1], tab[:, 2], cfg, repr(path))
     # log10-log10 cubic (matching the C backend and the nuclear rate tables);
     # see _weak_rate_loglog_interp for why linear-space quadratic was replaced.
     frwrd   = _weak_rate_loglog_interp(tab[:, 0], tab[:, 1])
     bkwrd   = _weak_rate_loglog_interp(tab[:, 0], tab[:, 2])
     return [frwrd, bkwrd]
+
+
+def _read_weak_cache_table(path):
+    """Read a three-column n<->p cache file, or raise naming the file and row.
+
+    ``np.loadtxt`` reports a ragged file as "the number of columns changed
+    from 3 to 1 at row 157", which names neither the file nor a cache, and
+    points at a ``usecols`` argument the caller never passed. A truncated
+    cache is the ordinary way this happens, so the row is located here and
+    reported in the same sentence the C backend's ``cpr_table_read`` uses,
+    word for word.
+
+    Args:
+        path : path to the cache file.
+
+    Returns:
+        (n, 3) float array of T [K], Gamma_{n->p}, Gamma_{p->n} [1/tau_n].
+    """
+    try:
+        tab = np.loadtxt(path)
+    except ValueError as exc:
+        located = _first_ragged_row(path)
+        # Word for word what the C backend prints for the same file, so the
+        # two backends report a damaged cache identically.
+        raise ValueError(located if located != path
+                          else f"{path}: {exc}") from None
+    if tab.ndim != 2 or tab.shape[1] != 3:
+        found = 1 if tab.ndim == 1 else (tab.shape[1] if tab.size else 0)
+        raise ValueError(f"{path}: expected 3 columns, found {found}")
+    return tab
+
+
+def _first_ragged_row(path):
+    """Locate the first data row whose column count differs from the first's.
+
+    Returns ``"<path>:<lineno>: expected N columns, found M"`` (1-based line
+    number in the file, comments included, matching the C backend), or just
+    ``path`` if every row is consistent.
+    """
+    width = None
+    with open(path) as fh:
+        for lineno, line in enumerate(fh, 1):
+            if line.lstrip().startswith("#") or not line.strip():
+                continue
+            n = len(line.split())
+            if width is None:
+                width = n
+            elif n != width:
+                return f"{path}:{lineno}: expected {width} columns, found {n}"
+    return path
 
 
 def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):

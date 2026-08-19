@@ -20,7 +20,7 @@
  * ast.literal_eval-equivalent used by primat/cli.py.
  * ===========================================================================
  */
-CPRParam cpr_parse_literal(const char *s)
+CPRParam cpr_parse_literal(const char *s, char *buf, size_t bufsize)
 {
     CPRParam p;
     char *end;
@@ -32,8 +32,7 @@ CPRParam cpr_parse_literal(const char *s)
     /* Quoted string literal: strip matching quotes, return as-is. */
     if (len >= 2 && ((s[0] == '"' && s[len - 1] == '"') ||
                       (s[0] == '\'' && s[len - 1] == '\''))) {
-        static char buf[1024];
-        size_t n = len - 2 < sizeof(buf) - 1 ? len - 2 : sizeof(buf) - 1;
+        size_t n = len - 2 < bufsize - 1 ? len - 2 : bufsize - 1;
         memcpy(buf, s + 1, n);
         buf[n] = '\0';
         p.type = CPR_STRING;
@@ -84,8 +83,7 @@ CPRParam cpr_parse_literal(const char *s)
      * value), so this is reported as an empty *string* the callers reject --
      * see cli.c's --set handler and ini.c. */
     {
-        static char buf[1024];
-        size_t n = len < sizeof(buf) - 1 ? len : sizeof(buf) - 1;
+        size_t n = len < bufsize - 1 ? len : bufsize - 1;
         memcpy(buf, s, n);
         buf[n] = '\0';
         p.type = CPR_STRING;
@@ -608,7 +606,6 @@ static void cpr_config_assign_data_dir(CPRConfig *cfg, const char *data_dir)
 int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg)
 {
     memset(cfg, 0, sizeof(*cfg));
-    cpr_constants_init();
     /* This run's own copy of the physical constants: the 16 measured ones are
      * then settable by name (see FLD_CONST in FIELD_TABLE), the ten exact ones
      * stay at these values. */

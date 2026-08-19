@@ -134,7 +134,6 @@ static void run_and_check(const char *name, const char *network, int amax,
 
 int main(void)
 {
-    cpr_constants_init();
 
     /* tests/README.md "Validation reference" numbers (small
      * network, default config: Omegabh2=0.02242, spectral_distortions=

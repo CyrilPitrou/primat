@@ -142,7 +142,6 @@ static void run_mc_once(void)
 
 int main(void)
 {
-    cpr_constants_init();
 
     const int n_small = 6;
     const int n_large_amax8 = 3;

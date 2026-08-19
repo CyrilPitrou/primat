@@ -766,7 +766,10 @@ int cpr_bg_init_standard(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasm
     setup_lcdm(bg);
     setup_ede(bg);
 
-    if (cpr_neutrino_history_init(&bg->nh, cfg, plasma, errmsg)) return 1;
+    if (cpr_neutrino_history_init(&bg->nh, cfg, plasma, errmsg)) {
+        cpr_background_free(bg);
+        return 1;
+    }
     bg->nh_owned = 1;
 
     /* Tabulated extra_rho (config.h): fit a cubic spline over (log10(Tg),
@@ -779,7 +782,11 @@ int cpr_bg_init_standard(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasm
      * Not-a-knot needs >= 4 nodes; backend.py always sends far more. */
     if (cfg->extra_rho_n >= 4) {
         double *logT = malloc(cfg->extra_rho_n * sizeof(double));
-        if (!logT) { *errmsg = strdup("cpr_bg_init_standard: OOM for extra_rho log-grid"); return 1; }
+        if (!logT) {
+            *errmsg = strdup("cpr_bg_init_standard: OOM for extra_rho log-grid");
+            cpr_background_free(bg);
+            return 1;
+        }
         for (size_t i = 0; i < cfg->extra_rho_n; i++)
             logT[i] = log10(cfg->extra_rho_T[i]);
         char *sp_err = NULL;
@@ -787,6 +794,7 @@ int cpr_bg_init_standard(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasm
                                            &bg->extra_rho_spline, &sp_err)) {
             free(logT);
             *errmsg = sp_err ? sp_err : strdup("cpr_bg_init_standard: extra_rho spline fit failed");
+            cpr_background_free(bg);
             return 1;
         }
         free(logT);
@@ -795,11 +803,20 @@ int cpr_bg_init_standard(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasm
 
     cpr_log(cfg, "bg", "Solving cosmological background: a(T), t(T) relations ...");
     clock_t _t_bg0 = clock();
-    if (setup_background_and_cosmo(bg, errmsg)) return 1;
+    /* Every failure below frees what has already been built. bg was memset
+     * to 0, so cpr_background_free is safe on a partially-built background
+     * and is the only place that knows the full list. */
+    if (setup_background_and_cosmo(bg, errmsg)) {
+        cpr_background_free(bg);
+        return 1;
+    }
     cpr_log(cfg, "bg", "Background a(T), t(T) ready in %.2f s",
              (double)(clock() - _t_bg0) / CLOCKS_PER_SEC);
 
-    if (setup_weak_rates_standard(bg, errmsg)) return 1;
+    if (setup_weak_rates_standard(bg, errmsg)) {
+        cpr_background_free(bg);
+        return 1;
+    }
 
     return 0;
 }

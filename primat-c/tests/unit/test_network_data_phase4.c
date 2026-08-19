@@ -29,7 +29,6 @@ static long find_species(CPRNetworkDef *net, const char *name)
 
 int main(void)
 {
-    cpr_constants_init();
     char *err = NULL;
 
     CPRConfig cfg;

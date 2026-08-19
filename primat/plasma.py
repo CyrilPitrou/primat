@@ -57,6 +57,7 @@ Build an instance explicitly:
     >>> plasma.rho_e(Tg)
 """
 
+import threading
 import os
 import numpy as np
 from scipy.integrate import quad
@@ -202,11 +203,17 @@ _ELEC_INTGD_ORIG = dict(
 # wrapped for; None means "not yet set up".
 _elec_intgd_numba = None
 
+# Serialises the rebinding below. Without it a second thread entering while
+# the first is part-way through sees the flag already set and runs on a
+# half-wrapped module -- or re-wraps an already-jitted function, which numba
+# rejects with a TypeError naming nothing about primat.
+_elec_intgd_lock = threading.Lock()
+
 
 def _setup_electron_integrands(numba_installed):
     """(Re)bind the four module-level e± integrands, optionally njit-compiled.
 
-    Idempotent and process-wide: the first call with ``numba_installed=True``
+    Idempotent, thread-safe and process-wide: the first call with ``numba_installed=True``
     wraps each integrand with ``njit(cache=True)`` (compiled lazily on first
     use, then persisted to numba's on-disk cache); later calls with the same
     value are a no-op, and flipping ``numba_installed`` restores the pristine
@@ -216,25 +223,27 @@ def _setup_electron_integrands(numba_installed):
     """
     global _rho_e_intgd, _drho_e_dT_intgd, _p_e_intgd, _dp_e_dT_intgd, \
            _elec_intgd_numba
-    if _elec_intgd_numba == numba_installed:
-        return
-    _elec_intgd_numba = numba_installed
-    # Always restart from the pristine implementations so this is idempotent
-    # regardless of which way numba_installed flips.
-    _rho_e_intgd     = _ELEC_INTGD_ORIG['_rho_e_intgd']
-    _drho_e_dT_intgd = _ELEC_INTGD_ORIG['_drho_e_dT_intgd']
-    _p_e_intgd       = _ELEC_INTGD_ORIG['_p_e_intgd']
-    _dp_e_dT_intgd   = _ELEC_INTGD_ORIG['_dp_e_dT_intgd']
-    if not numba_installed:
-        return
-    try:
-        from numba import njit
-        _rho_e_intgd     = njit(_rho_e_intgd, cache=True)
-        _drho_e_dT_intgd = njit(_drho_e_dT_intgd, cache=True)
-        _p_e_intgd       = njit(_p_e_intgd, cache=True)
-        _dp_e_dT_intgd   = njit(_dp_e_dT_intgd, cache=True)
-    except ImportError:
-        pass
+    with _elec_intgd_lock:
+        if _elec_intgd_numba == numba_installed:
+            return
+        # Always restart from the pristine implementations so this is idempotent
+        # regardless of which way numba_installed flips.
+        _rho_e_intgd     = _ELEC_INTGD_ORIG['_rho_e_intgd']
+        _drho_e_dT_intgd = _ELEC_INTGD_ORIG['_drho_e_dT_intgd']
+        _p_e_intgd       = _ELEC_INTGD_ORIG['_p_e_intgd']
+        _dp_e_dT_intgd   = _ELEC_INTGD_ORIG['_dp_e_dT_intgd']
+        if numba_installed:
+            try:
+                from numba import njit
+                _rho_e_intgd     = njit(_rho_e_intgd, cache=True)
+                _drho_e_dT_intgd = njit(_drho_e_dT_intgd, cache=True)
+                _p_e_intgd       = njit(_p_e_intgd, cache=True)
+                _dp_e_dT_intgd   = njit(_dp_e_dT_intgd, cache=True)
+            except ImportError:
+                pass
+        # Last, so a thread that finds the flag set also finds the rebinding
+        # finished.
+        _elec_intgd_numba = numba_installed
 
 
 # ---------------------------------------------------------------------------

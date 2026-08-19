@@ -56,6 +56,24 @@ static inline int pthread_mutex_unlock(pthread_mutex_t *m) {
     return 0;
 }
 
+/* --- One-time initialisation ---------------------------------------------
+ * InitOnceExecuteOnce is Win32's pthread_once. The callback signatures
+ * differ, so a trampoline carries the void(void) initialiser through the
+ * Parameter slot.                                                           */
+typedef INIT_ONCE pthread_once_t;
+#define PTHREAD_ONCE_INIT INIT_ONCE_STATIC_INIT
+
+static inline BOOL CALLBACK cpr_once_trampoline(PINIT_ONCE once, PVOID param,
+                                                 PVOID *ctx) {
+    (void)once; (void)ctx;
+    ((void (*)(void))param)();
+    return TRUE;
+}
+static inline int pthread_once(pthread_once_t *once, void (*fn)(void)) {
+    InitOnceExecuteOnce(once, cpr_once_trampoline, (PVOID)fn, NULL);
+    return 0;
+}
+
 /* --- Thread create/join --------------------------------------------------
  * A pthread start routine has signature `void *(*)(void *)`, whereas
  * _beginthreadex expects `unsigned __stdcall (*)(void *)`.  We bridge the two

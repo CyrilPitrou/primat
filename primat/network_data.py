@@ -1297,7 +1297,10 @@ class NetworkDefinition:
         return r
 
 
-@lru_cache(maxsize=None)
+# Bounded: one entry per data root, and a process normally sees one. The cap
+# stops a host that hands out temporary data trees -- a test session, a GUI
+# serving uploads -- from retaining every catalog it ever read.
+@lru_cache(maxsize=8)
 def _reaction_catalog(data_dir: str):
     """Load nuclide metadata, reaction stoichiometry and detailed balance tables.
 

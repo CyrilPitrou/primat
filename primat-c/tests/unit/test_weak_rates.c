@@ -50,7 +50,6 @@ static int close_rel(double a, double b, double rtol)
 
 int main(void)
 {
-    cpr_constants_init();
 
     CPRConfig cfg;
     memset(&cfg, 0, sizeof(cfg));

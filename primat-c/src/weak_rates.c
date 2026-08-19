@@ -7,6 +7,7 @@
  * benefit in C; the formulas are otherwise identical term-for-term.
  */
 #include "weak_rates.h"
+#include "compat_thread.h"  /* pthread_once, portable across POSIX & MSVC */
 #include "xalloc.h"
 #include "constants.h"
 #include "cache.h"
@@ -418,11 +419,13 @@ double cpr_compute_fn(const CPRConfig *cfg)
 
 #define N_GL 160
 static double GL_NODES[N_GL], GL_WEIGHTS[N_GL];
-static int gl_ready = 0;
-static void ensure_gl(void)
-{
-    if (!gl_ready) { cpr_gauss_legendre(N_GL, GL_NODES, GL_WEIGHTS); gl_ready = 1; }
-}
+static pthread_once_t gl_once = PTHREAD_ONCE_INIT;
+static void build_gl(void) { cpr_gauss_legendre(N_GL, GL_NODES, GL_WEIGHTS); }
+/* pthread_once, not a plain flag: MC worker threads and two concurrent
+ * cprimat_run calls can reach the rate integrals at the same time, and an
+ * unsynchronised lazy initialisation lets one thread read the nodes while
+ * another is still filling them. */
+static void ensure_gl(void) { pthread_once(&gl_once, build_gl); }
 
 /* Shared per-call context, mirrors _RateContext (minus my_dir/T_nuOverT,
  * which the caller resolves once per T value instead of via an interp1d
@@ -1223,7 +1226,6 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
                          char **errmsg)
 {
     memset(wr, 0, sizeof(*wr));
-    cpr_constants_init();
 
     /* T_nu(T_gamma)/T_gamma interpolant, ascending in Tg [K] (mirrors
      * _build_rate_context's T_nuOverT). Input arrays may come in either
@@ -1362,11 +1364,10 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             if (cpr_cache_write(wpath, fp_fields, n_fp,
                                  "T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]",
                                  cols, 3, wr->n, NULL) != 0) {
-                cpr_log(cfg, "weak",
-                        "could not write cache to %s: results are unaffected, "
-                        "but the next run will recompute. Set the cache_dir "
-                        "parameter to redirect the cache to a writable directory.",
-                        wpath);
+                cpr_warn("could not write cache to %s: results are unaffected, "
+                         "but the next run will recompute. Set the cache_dir "
+                         "parameter to redirect the cache to a writable directory.",
+                         wpath);
             }
         }
     }
@@ -1459,11 +1460,10 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
                 if (cpr_cache_write(th_wpath, th_fields, n_th_fp,
                                      "T[K] L_nTOpCCRTh L_pTOnCCRTh", th_cols, 3, wr->n_th,
                                      provenance) != 0) {
-                    cpr_log(cfg, "weak",
-                            "could not write cache to %s: results are unaffected, "
-                            "but the next run will recompute. Set the cache_dir "
-                            "parameter to redirect the cache to a writable directory.",
-                            th_wpath);
+                    cpr_warn("could not write cache to %s: results are unaffected, "
+                             "but the next run will recompute. Set the cache_dir "
+                             "parameter to redirect the cache to a writable directory.",
+                             th_wpath);
                 }
             }
             cpr_log(cfg, "weak", "n <--> p thermal corrections computed");

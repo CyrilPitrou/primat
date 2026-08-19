@@ -12,6 +12,41 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **A cache file that could not be written completely is no longer installed,
+  and a damaged one no longer crashes the C backend.** Running out of disk
+  space left a truncated cache carrying a valid header and no data rows: the
+  writing run reported correct numbers and exited 0 in silence, and every
+  later run of that configuration then aborted the process outright — taking
+  the calling Python session with it when reached through the compiled
+  extension. Short writes are now detected and the file discarded with a
+  warning, and a cache that fails to parse despite a matching header is
+  recomputed, as the pure-Python backend already did.
+- **A failed cache write now says so without `--verbose`.** The C backend
+  reported it only in verbose output, and on standard output, where it could
+  corrupt a `--json` pipe; it now warns on standard error like the Python
+  backend, naming the file and how to redirect the cache.
+- **A truncated n↔p cache is reported the same way by both backends**, naming
+  the file and the offending row, instead of a raw numpy message mentioning an
+  argument the caller never passed.
+- **Monte Carlo and concurrent runs no longer race over shared state.** The
+  physical constants every configuration is built from were rewritten by each
+  worker thread rather than read; the Gauss–Legendre integration nodes were
+  built without synchronisation; two threads populating one cache shared a
+  single temporary file; and the progress display's stop flag was read outside
+  its mutex. All four are now safe, and ThreadSanitizer reports nothing where
+  it previously reported 53 races.
+- **Two configurations differing in `numba_installed` can be built from
+  different threads.** The just-in-time kernel rebinding is process-wide and
+  marked itself complete before it was, so a second thread could re-wrap an
+  already-compiled function and die on a numba error naming nothing about
+  primat.
+- **Memory is released on the failure paths too.** An unreadable n↔p cache
+  leaked the background and neutrino-decoupling tables already built (828 KB
+  per attempt, which accumulates in a long-lived server), and a bad
+  `--data_dir` leaked the configuration it had begun to fill.
+- **The caches that outlive a run are bounded.** The reaction-catalog cache and
+  the graphical interface's network-label fallback both grew without limit in a
+  process handing out many data directories or network names.
 - **A proton and neutron closer in mass than an electron no longer hangs the C
   backend.** With `mn - mp` at or below `me` every n↔p rate integrand is
   imaginary, and the C adaptive quadrature — whose stopping test is false for

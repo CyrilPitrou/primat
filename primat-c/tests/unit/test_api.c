@@ -33,7 +33,6 @@ static int failures = 0;
 
 int main(void)
 {
-    cpr_constants_init();
 
     /* ---- Error path: unknown network name ---- */
     {

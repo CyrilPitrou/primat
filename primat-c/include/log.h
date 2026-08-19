@@ -22,6 +22,11 @@ void cpr_log(const CPRConfig *cfg, const char *tag, const char *fmt, ...);
  * to ..." block and its indented continuation lines), where adding the -c
  * suffix would break the byte-for-byte comparison in
  * tests/test_verbose_parity.py. */
+/* An unconditional diagnostic on stderr, whatever cfg->verbose says --
+ * the counterpart of Python's warnings.warn. Results go to stdout, so a
+ * warning must not, or piping --json breaks. */
+void cpr_warn(const char *fmt, ...);
+
 void cpr_log_raw(const CPRConfig *cfg, const char *fmt, ...);
 
 /* True when stdout can carry the decorative UTF-8 output (banner box, rule).

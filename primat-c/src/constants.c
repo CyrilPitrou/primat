@@ -10,43 +10,43 @@
 #  define M_PI  3.141592653589793238462643383279502884
 #endif
 
-CPRConstants g_const;
+/* Every field is a literal, so the whole table is initialised by the loader
+ * before main() runs and is never written afterwards. That is what makes it
+ * safe to read from several threads at once: cpr_config_init_defaults copies
+ * it into each run's own cfg->consts, and MC worker threads build their
+ * configs concurrently. */
+const CPRConstants g_const = {
+    /* CGS base units, natural-units convention */
+    .Kelvin = 1., .second = 1., .cm = 1., .gram = 1.,
 
-void cpr_constants_init(void)
-{
-    g_const.Kelvin = 1.;
-    g_const.second = 1.;
-    g_const.cm     = 1.;
-    g_const.gram   = 1.;
+    .kB     = 1.380649e-16,
+    .clight = 2.99792458e+10,
+    .hbar   = 6.62607015 / (2. * M_PI) * 1e-27,
+    .Mpc    = 3.08567758149e+24,
+    .MeV    = 1.602176634e-6,
+    .keV    = 1.602176634e-9,
 
-    g_const.kB     = 1.380649e-16;
-    g_const.clight = 2.99792458e+10;
-    g_const.hbar   = 6.62607015 / (2. * M_PI) * 1e-27;
-    g_const.Mpc    = 3.08567758149e+24;
-    g_const.MeV    = 1.602176634e-6;
-    g_const.keV    = 1.602176634e-9;
+    .alphaem = 1. / 137.035999084,
+    .GF      = 1.1663787e-5 * 1.e-6,
+    .mZ      = 91.1876e3,
 
-    g_const.alphaem = 1. / 137.035999084;
-    g_const.GF      = 1.1663787e-5 * 1.e-6;
-    g_const.mZ      = 91.1876e3;
+    .me = 0.51099895,
+    .mn = 939.56542052,
+    .mp = 938.27208816,
 
-    g_const.me = 0.51099895;
-    g_const.mn = 939.56542052;
-    g_const.mp = 938.27208816;
+    .T0CMB   = 2.7255,
+    .Neff_SM = 3.044,
 
-    g_const.T0CMB = 2.7255;
-    g_const.Neff_SM = 3.044;
+    .gA        = 1.2756,
+    .kappa_p   = 2.79284734463 - 1.,
+    .kappa_n   = -1.91304273,
+    .Vud       = 0.9738,
+    .radproton = 0.8409e-13,
 
-    g_const.gA        = 1.2756;
-    g_const.kappa_p   = 2.79284734463 - 1.;
-    g_const.kappa_n   = -1.91304273;
-    g_const.Vud       = 0.9738;
-    g_const.radproton = 0.8409e-13;
-
-    g_const.ma        = 931.494061;
-    g_const.He4Overma = 4.0026032541;
-    g_const.HOverma   = 1.00782503223;
-}
+    .ma        = 931.494061,
+    .He4Overma = 4.0026032541,
+    .HOverma   = 1.00782503223,
+};
 
 double cpr_MeV_to_Kelvin(void) { return g_const.MeV / g_const.kB; }
 double cpr_MeV_to_secm1(void)  { return g_const.MeV / g_const.hbar; }

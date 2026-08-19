@@ -509,8 +509,13 @@ int cpr_cache_write(const char *path, const CPRFPField *fields, size_t n_fields,
     char *json = cpr_fingerprint_json(fields, n_fields);
     char *hash = cpr_sha256_hex16(json);
 
+    /* The temporary name carries the pid *and* the address of a per-call
+     * stack object, so two threads of one process populating the same cache
+     * cannot open, truncate and interleave into a single temporary file. */
     char tmp_path[4200];
-    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%d", path, (int)getpid());
+    char uniq;
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.%d.%p", path, (int)getpid(),
+             (void *)&uniq);
 
     FILE *f = fopen(tmp_path, "w");
     if (!f) { free(json); free(hash); return 1; }
@@ -528,11 +533,23 @@ int cpr_cache_write(const char *path, const CPRFPField *fields, size_t n_fields,
         }
         fputc('\n', f);
     }
-    fclose(f);
+    /* A full disk or an exceeded quota shows up only here: stdio buffers the
+     * rows, so ferror after the flush is the first and only chance to see a
+     * short write. Renaming a truncated file into place would install a cache
+     * that keeps its fingerprint header and loses its data rows, which every
+     * later run would then trust. */
+    int bad = ferror(f);
+    if (fclose(f) != 0) bad = 1;
     free(json);
     free(hash);
-
-    if (rename(tmp_path, path) != 0)
+    if (bad) {
+        remove(tmp_path);
         return 1;
+    }
+
+    if (rename(tmp_path, path) != 0) {
+        remove(tmp_path);
+        return 1;
+    }
     return 0;
 }

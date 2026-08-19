@@ -38,7 +38,7 @@ struct CPRProgressCtx {
     pthread_mutex_t mu;
     int n_done;   /* total samples completed so far (starts at n_prev_eff) */
     int total;    /* num_mc: the target count shown to the user */
-    volatile int running; /* set to 0 by cpr_mc_uncertainty to stop the thread */
+    int running;          /* set to 0 by cpr_mc_uncertainty to stop the thread; read and written under mu */
 };
 
 static void *progress_thread_fn(void *arg)
@@ -53,7 +53,11 @@ static void *progress_thread_fn(void *arg)
     fprintf(stderr, "\r[MC] %d/%d samples (%3d%%)", last_done, ctx->total, pct);
     fflush(stderr);
 
-    while (ctx->running) {
+    for (;;) {
+        pthread_mutex_lock(&ctx->mu);
+        int running = ctx->running;
+        pthread_mutex_unlock(&ctx->mu);
+        if (!running) break;
         usleep(250000); /* 250 ms between updates */
         pthread_mutex_lock(&ctx->mu);
         int done = ctx->n_done;
@@ -391,7 +395,9 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
     int cancelled = g_cpr_mc_cancel != 0;
     if (prog_active) {
         int n_done_at_stop = prog_ctx.n_done;
-        prog_ctx.running = 0;
+        pthread_mutex_lock(&prog_ctx.mu);
+    prog_ctx.running = 0;
+    pthread_mutex_unlock(&prog_ctx.mu);
         pthread_join(prog_thr, NULL);
         pthread_mutex_destroy(&prog_ctx.mu);
         if (cancelled)

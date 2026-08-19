@@ -39,7 +39,6 @@ static int close_rel(double a, double b, double rtol)
 
 static void test_standard(void)
 {
-    cpr_constants_init();
     char *err = NULL;
     CPRConfig cfg;
     CHECK(cpr_config_init_defaults(&cfg, "../primat/data", &err) == 0, "config init succeeds");

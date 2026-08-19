@@ -406,7 +406,29 @@ def _available_networks():
 # `st.session_state` -- is populated every time `_network_label` succeeds
 # from a real script run, so a later context-less call still reproduces the
 # exact same label instead of hitting either failure mode.
+#
+# It is one dict per server process, capped and evicted oldest-first so a
+# long-lived server cannot grow it without bound. Being process-wide is
+# forced: the context-less call it exists to serve cannot reach
+# `st.session_state`, so the entry cannot be keyed by session. The cost is
+# that two sessions holding *different* custom networks under the *same*
+# title can read each other's reaction count on that fallback path only --
+# a wrong number in a selectbox label, never in a result.
+_NETWORK_LABEL_CACHE_MAX = 64
 _network_label_cache: dict[str, str] = {}
+
+
+def _remember_network_label(network, label):
+    """Record ``label`` for ``network``, evicting the oldest entry past the cap.
+
+    Args:
+        network : network name as it appears in the selectbox.
+        label   : the ``"<network> (<n>)"`` string to reproduce later.
+    """
+    _network_label_cache.pop(network, None)
+    _network_label_cache[network] = label
+    while len(_network_label_cache) > _NETWORK_LABEL_CACHE_MAX:
+        _network_label_cache.pop(next(iter(_network_label_cache)))
 
 
 def _network_label(network):
@@ -423,12 +445,12 @@ def _network_label(network):
     known = st.session_state.get(SessionKeys.known_custom_networks, {})
     if network in known:
         label = f"{network} ({len(known[network]['kept'])})"
-        _network_label_cache[network] = label
+        _remember_network_label(network, label)
         return label
     active = st.session_state.get(SessionKeys.active_custom_network)
     if active and active["title"] == network:
         label = f"{network} ({len(active['kept'])})"
-        _network_label_cache[network] = label
+        _remember_network_label(network, label)
         return label
     if network in _network_label_cache:
         return _network_label_cache[network]
@@ -437,7 +459,7 @@ def _network_label(network):
     except ValueError:
         return network
     label = f"{network} ({n})"
-    _network_label_cache[network] = label
+    _remember_network_label(network, label)
     return label
 
 

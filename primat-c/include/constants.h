@@ -63,14 +63,11 @@ typedef struct {
     double HOverma;    /* M(H) / u */
 } CPRConstants;
 
-/* The DEFAULT values, populated at startup by cpr_constants_init(). Read it
+/* The DEFAULT values, initialised statically and never written. Read it
  * directly only for the ten exact constants; a run's 16 measured ones live in
- * `cfg->consts`, which cpr_config_init_defaults seeds from here. */
-extern CPRConstants g_const;
-
-/* Fills g_const with the literal values above. Idempotent; call once at
- * program start (or let any module needing g_const call it -- cheap). */
-void cpr_constants_init(void);
+ * `cfg->consts`, which cpr_config_init_defaults seeds from here. Being
+ * immutable is what lets several threads build configurations at once. */
+extern const CPRConstants g_const;
 
 /* ---- Derived from the exact ten only (never move) ---- */
 double cpr_MeV_to_Kelvin(void);
