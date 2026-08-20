@@ -27,6 +27,15 @@ print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699907
 print(f"D/H       = {result['DoH']:.7e}")    # 2.4358767e-05
 ```
 
+```text
+[primat]  HT.  MT.  LT.  done.
+YP  (BBN) = 0.24699907
+D/H       = 2.4358767e-05
+```
+
+New to BBN codes? {doc}`tutorials/first-run` walks through what those two
+numbers mean and how to change them.
+
 (Those are the C backend's values for the default `small` network; the
 pure-Python backend gives `0.24699896` / `2.4358605e-05`, within the
 cross-backend tolerance. The authoritative reference values, with the
@@ -36,8 +45,9 @@ tolerance that applies to each, live in
 
 `run_bbn()` is the main entry point and automatically selects the best
 available backend (fast C engine by default, pure-Python fallback if
-needed). Pass an optional parameter dict to override defaults; all keys are
-optional and drawn from `primat/config.py`'s `DEFAULT_PARAMS`.
+needed). Pass an optional parameter dict to override defaults; {doc}`parameters`
+lists all 96 keys with their defaults, and every one of them can equally be set
+on the command line or in an INI file.
 
 ## Four ways to use primat
 
@@ -56,8 +66,9 @@ in {doc}`api/backend`).
    repeatable `--set KEY=VALUE` escape hatch.
 3. **Graphical interface** — after `pip install "primat[gui]"`, run
    `primat-gui` for a browser-based parameter form, interactive
-   abundance-evolution plot, and final-abundances panel. Supports custom
-   networks (see {doc}`howto/custom-networks`) and either backend.
+   abundance-evolution plot, and final-abundances panel. See {doc}`howto/gui`;
+   it is also the only interface that can build a network interactively
+   ({doc}`howto/custom-networks`).
 4. **Example scripts** (development/source-only) — `python
    runfiles/primat_run.py`, `primat_compare.py`, `primat_reference_run.py`,
    `primat_mc.py`; run from a source checkout's repo root.
@@ -77,6 +88,7 @@ See {doc}`citing` for the BibTeX entry.
 :hidden:
 
 installation
+tutorials/first-run
 tutorials/index
 ```
 
@@ -96,6 +108,7 @@ howto/index
 physics
 extending
 performance
+parameters
 api/index
 cli
 glossary

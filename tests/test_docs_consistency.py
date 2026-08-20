@@ -337,13 +337,17 @@ def test_param_templates_match_generator():
 
 
 def test_param_count_comments_match_default_params():
-    """The two templates' count comments must quote len(DEFAULT_PARAMS)
+    """Every prose copy of the parameter count must quote len(DEFAULT_PARAMS)
     exactly. (Any '(currently NN keys)' count in the untracked CLAUDE.md is
     NOT asserted -- see this module's docstring; keep it updated by hand.)"""
     from primat.config import DEFAULT_PARAMS
     n = len(DEFAULT_PARAMS)
     assert f"All {n} DEFAULT_PARAMS keys are listed" in _read_text(_TEMPLATE_PY)
     assert f"all {n} keys round-trip" in _read_text(_TEMPLATE_INI)
+    # docs/index.md's is the one a reader meets first, and unlike the two
+    # templates it is not regenerated, so nothing else would catch it.
+    index_md = os.path.join(REPO_ROOT, "docs", "index.md")
+    assert f"lists all {n} keys" in _read_text(index_md)
 
 
 def _validation_reference_section():
@@ -463,9 +467,10 @@ def test_docs_tutorials_gallery_complete():
         assert stem in index, f"{stem} missing from docs/tutorials/index.md"
 
 
-@pytest.mark.parametrize("page", ["docs/index.md", "README.md"])
+@pytest.mark.parametrize("page", ["docs/index.md", "README.md",
+                                  "docs/tutorials/first-run.md"])
 def test_quick_start_numbers_match_the_reference_constants(page):
-    """Both landing pages' quick starts must quote the tracked reference values.
+    """Every page quoting the quick start must use the tracked reference values.
 
     GOAL: each prints YP and D/H for both backends, to the decimal counts the
     project reports at. docs/index.md went stale twice, by 8.6e-09 in D/H once
@@ -487,15 +492,21 @@ def test_quick_start_numbers_match_the_reference_constants(page):
     text = _read_text(os.path.join(REPO_ROOT, *page.split("/")))
     yp_c = re.search(r"YPBBN'\]:\.8f\}\"\)\s*#\s*([0-9.]+)", text).group(1)
     doh_c = re.search(r"DoH'\]:\.7e\}\"\)\s*#\s*([0-9.e+-]+)", text).group(1)
-    yp_py, doh_py = re.search(
-        r"pure-Python backend gives `([0-9.]+)` / `([0-9.e+-]+)`", text).groups()
+    m_py = re.search(
+        r"pure-Python backend gives `([0-9.]+)` / `([0-9.e+-]+)`", text)
 
     # Exact strings, not approx: both sides are tracked files, so a mismatch
     # means one was edited without the other.
     assert yp_c == f"{YPBBN_REFERENCE:.8f}"
     assert doh_c == f"{DOH_REFERENCE:.7e}"
-    assert yp_py == f"{PY_YPBBN_REFERENCE:.8f}"
-    assert doh_py == f"{PY_DOH_REFERENCE:.7e}"
+    # The tutorial quotes only the default backend's pair; the two landing
+    # pages quote both, so that they can stand alone.
+    if m_py is not None:
+        yp_py, doh_py = m_py.groups()
+        assert yp_py == f"{PY_YPBBN_REFERENCE:.8f}"
+        assert doh_py == f"{PY_DOH_REFERENCE:.7e}"
+    else:
+        assert page.endswith("first-run.md"), f"{page} lost its Python-backend pair"
 
 
 def test_development_notes_only_point_at_files_that_exist():

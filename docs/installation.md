@@ -7,8 +7,10 @@ pip install primat
 ```
 
 That's it. The package includes a fast C backend compiled for your platform,
-with a pure-Python fallback if no compiled binary is available — both give
-identical results, just different speed. To get started, just type
+with a pure-Python fallback if no compiled binary is available. The two agree
+on every observable to within the cross-backend tolerance
+({doc}`api/backend`); which one you got is `primat --version`. To get started,
+just type
 
 ```bash
 primat --help
@@ -57,7 +59,8 @@ primat-gui
 | `pandas` | **Required for `primat-gui`** — final-abundance table |
 | `plotly` | **Required for `primat-gui`** — the abundance-evolution figures |
 
-See {doc}`howto/custom-networks` for what the GUI adds beyond the CLI/API.
+See {doc}`howto/gui` for what the app offers, and
+{doc}`howto/custom-networks` for the network builder that is unique to it.
 
 ### Notebooks
 

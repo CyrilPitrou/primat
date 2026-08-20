@@ -5,6 +5,7 @@ Task-oriented recipes for common primat workflows.
 ```{toctree}
 :maxdepth: 1
 
+gui
 networks
 custom-networks
 rate-variation-mc

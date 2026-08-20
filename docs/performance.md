@@ -23,22 +23,23 @@ don't match.
 
 | Run | Wall time |
 |-----|-----------|
-| small (c) | 0.040 s |
-| small (python) | 0.460 s |
-| large, amax=8 (c) | 0.134 s |
-| large, amax=8 (python) | 0.684 s |
-| MC-100 (small, c) | 0.906 s |
+| small (c) | 0.033 s |
+| small (python) | 0.381 s |
+| large, amax=8 (c) | 0.115 s |
+| large, amax=8 (python) | 0.577 s |
+| MC-100 (small, c) | 0.724 s |
 
 - **small** — the 12-reaction default network.
 - **large, amax=8** — the large network's reactions filtered to A <= 8 (68
-  reactions, the old "medium" network's exact equivalent); the LT-era
-  solve dominates the extra cost over `small`.
+  reactions, the old "medium" network's exact equivalent); the low-temperature
+  (LT, see the {doc}`glossary`) era's solve dominates the extra cost over
+  `small`.
 - **MC-100** — `run_mc(100, params={"network": "small"}, force_backend="c")`,
   100 samples, default `n_jobs=-1` (parallel across CPU cores); reported as
   a single wall-clock measurement rather than a per-solve minimum, since MC
   parallelism/scheduling overhead is itself part of what the number
   documents.
-- The C backend's advantage grows with network size (~12x for `small`,
+- The C backend's advantage grows with network size (~10x for `small`,
   ~5x for `large, amax=8` here) because the Python solver's per-step
   overhead (mostly `scipy.integrate.solve_ivp` callback/array-marshalling
   cost) is roughly independent of the RHS's cost, so it amortises worse as
@@ -61,7 +62,8 @@ it must be (re)computed rather than loaded — see
 this a one-time cost per distinct configuration:
 
 - Non-thermal rate (Born + finite-mass + Coulomb/radiative + spectral-distortion
-  corrections): ~1.8 s, numerical integration, no external solver.
+  corrections): 0.4 s on the C backend and 8 s on the pure-Python one,
+  numerical integration, no external solver.
 - Finite-temperature radiative correction (`thermal_corrections=True`,
   the default): an additional multi-minute `vegas` Monte-Carlo integration,
   cached separately in `nTOp_thermal_<hash>.txt`.
@@ -133,7 +135,7 @@ existing tolerance bands, which is why the defaults are where they are.
 
 ## Where the Python backend's time goes
 
-The pure-Python backend is ~12× slower than C on a warm `small` run, and that
+The pure-Python backend is ~10× slower than C on a warm `small` run, and that
 gap is *not* the physics: the compiled numba RHS kernel is a few per cent of
 the runtime. The rest is Python-level glue paid once per ODE step, plus the
 one-off background construction.

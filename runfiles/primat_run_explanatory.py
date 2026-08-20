@@ -96,7 +96,7 @@ cfg = dict(
 
     # ---- Caching/saving options ----
     # cache_dir=None,  # writable dir for ALL regenerable caches (weak-rate + plasma); unset = <data_dir>/cache_plasma_weak/. Set on read-only installs: caches are written to <cache_dir>/{weak,plasma}/ and read from there first, falling back to the shipped caches (overlay). Not part of any fingerprint.
-    # weak_rate_cache=True,  # if False, never load the weak-rate cache (always recompute)
+    # weak_rate_cache=True,  # if False, never load the non-thermal weak-rate cache (the thermal one is loaded whenever its file exists)
     # save_nTOp=True,  # save computed n<->p rates to cache_plasma_weak/weak/ (or the cache_dir redirect)
     # sampling_nTOp_per_decade=80,  # points per decade of T in the n<->p rate grid
     # save_nTOp_thermal=True,  # save computed thermal n<->p rates to cache_plasma_weak/weak/ (or the cache_dir redirect)

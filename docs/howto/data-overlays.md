@@ -1,8 +1,8 @@
-# Data overlays: `data_dir` and `user_nuclear_dir`
+# Data overlays: `data_dir`, `user_nuclear_dir` and `cache_dir`
 
 The shipped default `data/` tree lives inside the `primat` package
-(`primat/data/`). Two `DEFAULT_PARAMS` fields let you override where data is
-read from — one full-replacement, one additive:
+(`primat/data/`). Three `DEFAULT_PARAMS` fields let you override where data is
+read from and written to — one full replacement, two additive overlays:
 
 ## `data_dir` — full replacement
 
@@ -49,19 +49,41 @@ the shipped `tables/` tree.
 Not yet routed through either override: NEVO tables (which have their own
 mechanism — see {doc}`nevo-tables`), or the reaction catalog
 (`nuclides.csv`/`reactions_large.csv`/`detailed_balance.csv`/`decays.txt`,
-always read from the data root on both backends). The n↔p weak-rate cache
-and the QED/electron-thermo plasma caches (`cache_plasma_weak/{weak,plasma}/`)
-have their own separate additive overlay, `cache_dir` — see
-{doc}`weak-rate-cache`.
+always read from the data root on both backends). The regenerable caches have
+their own overlay, below.
+
+## `cache_dir` — where the regenerable caches are written
+
+The n↔p weak-rate cache and the QED/electron-thermo plasma caches
+(`cache_plasma_weak/{weak,plasma}/`, see {doc}`weak-rate-cache`) are the only
+data primat *writes*. By default they go into the shipped tree, which fails on
+a read-only install — a system-wide `pip install`, a container image, a
+read-only home. `cache_dir` moves both:
+
+```python
+result = run_bbn({"cache_dir": "~/.cache/primat"})
+```
+
+Caches are then written to `<cache_dir>/{weak,plasma}/` and read from there
+first, falling back to the shipped copies on a miss — so the tables that ship
+with the package are never shadowed, only added to. Unlike the other two
+fields, `cache_dir` is *not* validated at construction: it is a write target,
+created on demand, so a directory that does not exist yet is normal. A failed
+write warns (naming `cache_dir`) rather than raising, since a cache is an
+optimisation and the run can proceed without it.
+
+`cache_dir` is deliberately absent from every cache fingerprint: where a table
+is stored cannot change what is in it.
 
 ## Common ground
 
-- Both fields default to `None` and are eagerly validated as existing
-  directories at construction time. Because it is a *takeover*, `data_dir` is
+- All three default to `None`. `data_dir` and `user_nuclear_dir` are eagerly
+  validated as existing directories at construction time (`cache_dir` is not,
+  for the reason above). Because it is a *takeover*, `data_dir` is
   additionally checked for the `csv/` and `nuclear/` subdirectories — before
   `nuclides.csv` is read from it, so a typo'd path is reported as a bad
-  `data_dir` rather than as a missing CSV. A leading `~` is expanded on both
-  backends.
+  `data_dir` rather than as a missing CSV. A leading `~` is expanded in all
+  three, on both backends.
 - `user_nuclear_dir` is not part of the n↔p weak-rate fingerprint machinery
   (`_WEAK_RATE_BG_FIELDS`/`_THERMAL_BG_FIELDS`) since it only affects
   network/rate-table resolution, not anything those fingerprints cover.

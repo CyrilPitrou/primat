@@ -1,12 +1,14 @@
-# Tutorials
+# Worked examples
 
-The notebooks below are rendered directly from the repository's
+Ten notebooks, each a complete piece of analysis: the standard figures,
+parameter scans, rate plots and uncertainty budgets. They assume you know what
+a BBN run is and what it produces — {doc}`first-run` is the guided
+introduction if you do not.
+
+They are rendered directly from the repository's
 [`notebooks/`](https://github.com/CyrilPitrou/primat/tree/master/notebooks)
-directory (symlinked into this folder so Sphinx can pick them up). They ship
-with stored outputs, so the site renders the plots the notebook author saw —
-`myst-nb` does **not** re-execute them during an ordinary docs build
-(`nb_execution_mode = "off"` in `docs/conf.py`); only CI's nightly lane
-re-executes with `NB_EXECUTION_MODE=cache` to catch drift.
+directory and ship with their stored outputs, so the plots on this site are
+the ones their author saw.
 
 To run any notebook yourself, clone the repo and install the `notebooks`
 extra:

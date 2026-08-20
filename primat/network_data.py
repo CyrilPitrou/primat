@@ -660,7 +660,7 @@ def compute_detailed_balance_coefficients(reactants, products, cfg):
     Physics
     -------
     For a reaction with reactants ``i`` and products ``j``, equilibrium of the
-    forward and backward Saha factors gives
+    forward and backward Saha factors gives::
 
         gamma = -Q / (kB * 1e9 K)         (Q = energy released; gamma < 0 when Q > 0)
         beta  = 3/2 * (n_reactants - n_products)         (thermal-wavelength powers)
@@ -1195,8 +1195,8 @@ class NetworkDefinition:
         This allows Monte Carlo loops to reuse the same network objects while
         refreshing the rates at the start of each solve.
 
-        The effective forward rate for reaction i is:
-            fwd_i = median_i * clamp(exp(p_i * log(sigma_i)) + delta_i)
+        The effective forward rate for reaction i is
+        ``fwd_i = median_i * clamp(exp(p_i * log(sigma_i)) + delta_i)``,
         where p_i=0/delta_i=0 is the no-variation baseline (fwd_i = median_i).
         delta_i is a direct fractional additive shift (delta=0.1 → +10%).
         ``cfg.rescale_nuclear_rates`` is checked but no longer gates delta; it

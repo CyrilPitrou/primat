@@ -251,6 +251,27 @@ class Background(object):
     implementation and sets :attr:`has_scale_factor` to ``False`` (a
     subclass that builds ``a<->t<->T`` relations sets it to ``True``).
 
+    **Compulsory interface** (raise ``NotImplementedError`` here):
+
+    * :meth:`T_of_t`, :meth:`t_of_T`  -- T_gamma(t) <-> t(T_gamma)
+    * :meth:`rhoB_BBN`                -- rho_B(t) [g/cm^3], the prefactor for
+      nuclear reaction rates (rate ~ rho_B)
+    * :meth:`weak_nTOp_frwrd`, :meth:`weak_nTOp_bkwrd` -- normalised n<->p
+      weak rates [s^-1] at photon temperature T [Kelvin]
+
+    **Optional interface** (concrete defaults below):
+
+    * :meth:`a_of_T`/:meth:`T_of_a`/:meth:`a_of_t`/:meth:`t_of_a` -- scale
+      factor relations; raise ``NotImplementedError`` unless
+      :attr:`has_scale_factor` is ``True``.
+    * :meth:`rho_nu_total_final` -- ``None`` unless the background tracks a
+      neutrino sector.
+    * :meth:`Omeganuh2_relnu`/:meth:`Omeganuh2_nrnu` -- ``None`` unless the
+      background tracks a relic neutrino background.
+    * :meth:`N_eff` -- concrete, generic formula (uses :attr:`plasma` only).
+    * :meth:`write_time_evolution`/:meth:`_background_columns` -- concrete;
+      the minimal background writes a two-column (``T``, ``t``) TSV.
+
     Parameters
     ----------
     cfg : PRIMATConfig
@@ -267,27 +288,6 @@ class Background(object):
         append further components (e.g. Early Dark Energy) during their own
         setup.  A minimal background that has no Friedmann/Hubble machinery
         may simply ignore this list.
-
-    Compulsory interface (raise ``NotImplementedError`` here)
-    -----------------------------------------------------------
-    * :meth:`T_of_t`, :meth:`t_of_T`  -- T_gamma(t) <-> t(T_gamma)
-    * :meth:`rhoB_BBN`                -- rho_B(t) [g/cm^3], the prefactor for
-      nuclear reaction rates (rate ~ rho_B)
-    * :meth:`weak_nTOp_frwrd`, :meth:`weak_nTOp_bkwrd` -- normalised n<->p
-      weak rates [s^-1] at photon temperature T [Kelvin]
-
-    Optional interface (concrete defaults below)
-    -----------------------------------------------
-    * :meth:`a_of_T`/:meth:`T_of_a`/:meth:`a_of_t`/:meth:`t_of_a` -- scale
-      factor relations; raise ``NotImplementedError`` unless
-      :attr:`has_scale_factor` is ``True``.
-    * :meth:`rho_nu_total_final` -- ``None`` unless the background tracks a
-      neutrino sector.
-    * :meth:`Omeganuh2_relnu`/:meth:`Omeganuh2_nrnu` -- ``None`` unless the
-      background tracks a relic neutrino background.
-    * :meth:`N_eff` -- concrete, generic formula (uses :attr:`plasma` only).
-    * :meth:`write_time_evolution`/:meth:`_background_columns` -- concrete;
-      the minimal background writes a two-column (``T``, ``t``) TSV.
     """
 
     def __init__(self, cfg, plasma, extra_rho=None):

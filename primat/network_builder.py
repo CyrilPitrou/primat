@@ -85,7 +85,8 @@ class CompiledNetwork:
     kernels into tight machine-code loops.  Indices and integer powers are
     ``int64``; net coefficients and prefactors are ``float64``.
 
-    Fields (``n_rx`` reactions, ``n_sp`` species):
+    Fields (``n_rx`` reactions, ``n_sp`` species)::
+
       reactant monomial : ri_idx (species indices), ri_pow (their multiplicities),
                           ri_len (how many reactant species)
       product  monomial : pi_idx, pi_pow, pi_len   (same, product side)
@@ -98,7 +99,8 @@ class CompiledNetwork:
                           invsp (=1/sym_products)
 
     Worked example -- reaction ``d + d -> He4 + g`` with species order
-    ``[n, p, d, He4]`` (photons are not tracked), as reaction row ``i``:
+    ``[n, p, d, He4]`` (photons are not tracked), as reaction row ``i``::
+
       ri_idx[i] = [2],      ri_pow[i] = [2],   ri_len[i] = 1   # two deuterons
       pi_idx[i] = [3],      pi_pow[i] = [1],   pi_len[i] = 1   # one He4
       af_idx[i] = [2, 3],   af_co[i] = [-2, +1], af_len[i] = 2 # d: -2, He4: +1

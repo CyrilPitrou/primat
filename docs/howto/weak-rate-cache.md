@@ -1,7 +1,9 @@
 # The n↔p weak-rate cache workflow
 
-The n↔p weak rates are the most expensive part of initialisation (~1.8 s).
-The non-thermal rate (Born+FM+CCR+SD) is cached in
+The n↔p weak rates are the most expensive part of initialisation. The
+non-thermal rate — Born plus the finite-mass, radiative and
+spectral-distortion corrections, `FM`/`CCR`/`SD` in the {doc}`../glossary` —
+is cached in
 `data/cache_plasma_weak/weak/nTOp_<hash>.txt` (forward and backward columns
 together); the finite-temperature radiative correction (CCRTh) is cached
 separately in `data/cache_plasma_weak/weak/nTOp_thermal_<hash>.txt`.
@@ -21,8 +23,14 @@ loader, which matches on the *filename* alone. At every run:
 - If `weak_rate_cache=True` (default) and a cache file's fingerprint matches
   the current configuration, the corresponding rates are loaded directly —
   initialisation is effectively instantaneous.
-- Otherwise (fingerprint mismatch, missing file, or `weak_rate_cache=False`),
-  the rates are recomputed from scratch by numerical integration (~1.8 s).
+- Otherwise (fingerprint mismatch or missing file) the rates are recomputed
+  from scratch by numerical integration — 0.4 s on the C backend, 8 s on the
+  pure-Python one.
+- `weak_rate_cache=False` forces that recompute for the **non-thermal** rate
+  only. The thermal (CCRTh) table is loaded whenever a file matching its own
+  fingerprint exists, on both backends, so this flag will not make a run
+  repeat the expensive integration below. To redo that one, change a field its
+  fingerprint covers, or delete the `nTOp_thermal_<hash>.txt` file.
 - `save_nTOp` and `save_nTOp_thermal` (both default **`True`**) write the
   (re)computed rates back to `data/cache_plasma_weak/weak/` with a fresh
   fingerprint header, so future runs with the same configuration load the
@@ -81,6 +89,10 @@ result1 = run_bbn({"save_nTOp": True, "sampling_nTOp_per_decade": 160})
 # the saved tables
 result2 = run_bbn({"sampling_nTOp_per_decade": 160})
 ```
+
+Cache files are written under the shipped `primat/data/` tree by default; on
+a read-only install, point `cache_dir` at a writable directory instead — see
+{doc}`data-overlays`.
 
 See `primat.weak_rates.api.ComputeWeakRates`/`RecomputeWeakRates` for the
 full cache-loading algorithm.

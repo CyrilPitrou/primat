@@ -73,10 +73,13 @@ mc["DoH"].std       # MC uncertainty (1-sigma, sample std/ddof=1) -- "the error"
 mc["DoH"].values    # full array of per-sample values, length 100
 ```
 
-Regardless of which `quantities` you ask for, the result also always
-includes every standard observable (`Neff`, `YPBBN`, `YPCMB`, `DoH`,
-`He4oH`, `He3oH`, `He3oHe4`, `Li7oH`, `Li6oLi7`, `YCNO`) and every tracked nuclide's
-final abundance, at no extra cost.
+Regardless of which `quantities` you ask for, the result also includes every
+standard observable the run produced — `Neff`, `YPBBN`, `YPCMB`, `DoH`,
+`He4oH`, `He3oH`, `He3oHe4`, `Li7oH`, plus `Li6oLi7`/`YCNO` on the networks
+that track those nuclides — and every tracked nuclide's final abundance, at no
+extra cost. `mc.quantity_names()` lists what a given run actually has; on the
+default `small` network that is the eight observables above and eight
+nuclides. See {doc}`output` for which keys are conditional and why.
 
 ### Joint uncertainty (covariance and correlation)
 
@@ -147,20 +150,20 @@ See `runfiles/primat_mc.py` for a runnable end-to-end demo, and the
 {doc}`../tutorials/MonteCarloRates` notebook for the full uncertainty budget
 (nuclear rates + τ_n + Ω_b h² simultaneously) with corner plots.
 
-## Backend parallelization strategies
+## Backend parallelisation strategies
 
 Both backends support MC with parallel acceleration, using different
 strategies:
 
 **Python backend** (`primat.main.mc_uncertainty`):
-- Parallelizes MC samples across worker processes using `joblib.Parallel`.
+- Parallelises MC samples across worker processes using `joblib.Parallel`.
 - `n_jobs`: `-1` uses all available CPU cores, or an explicit integer count.
 - Each worker draws independent rate/τ_n samples and runs a full PRIMAT
   solve; results are aggregated in the main process.
 - Uses NumPy's `default_rng` for the per-sample RNG.
 
 **C backend** (`cpr_mc_uncertainty`):
-- Parallelizes internally using POSIX threads (pthread) within a single
+- Parallelises internally using POSIX threads (pthread) within a single
   process.
 - `n_jobs` is passed to the C extension and controls the thread count.
 - Uses xoshiro256** (a fast parallel RNG) for per-thread sample generation.
