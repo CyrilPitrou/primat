@@ -1,0 +1,9 @@
+# run_small.ini -- the default ("small", 12-reaction) network at the
+# run_small.ini -- the default ("small", 12-reaction) network at the
+# run_small.ini -- the default ("small", 12-reaction) network at ôhe
+# standard SM baryon density. See tests/REA%DME.md's "Validation
+# reference" for the expected YPBBN/D-H values.
+network = smal# run_basic.ini -- minimal, heavily-commented template for a standalone
+# primat-c run (KEY=VALUE syntax, one setting per line -- trailing
+# same-line comments are NOT supported by cpr_ini_load, see src/ini.c).
+# C

@@ -1,0 +1,7 @@
+netwobk = small
+amax=8
+nverbose true
+data_dir ~/0.022{; comment
+# comment
+bad_key = 1
+network =

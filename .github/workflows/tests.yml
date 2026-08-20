@@ -1,13 +1,18 @@
 name: Tests
 
-# Runs the pytest suite (see tests/README.md for the marker tiers). Two
-# lanes:
-#   - "test" (push/PR): the fast + default-precision-solve lane
-#     (`-m "not slow or solve"`), matrixed across OS x Python version so a
-#     platform- or version-specific regression is caught before merge.
+# Runs the pytest suite (see tests/README.md for the marker tiers). Four
+# pytest lanes, all running `-m "not slow or solve"` except the nightly:
+#   - "test" (push/PR): matrixed across OS x Python version so a platform- or
+#     version-specific regression is caught before merge.
+#   - "floor" (push/PR): pyproject.toml's declared numpy/scipy lower bounds,
+#     pinned exactly, on the oldest supported Python. Every other lane
+#     resolves the newest release, so this is the only one that tests what the
+#     dependency line promises.
+#   - "newest" (nightly): the opposite end, pre-releases included, so an
+#     upstream change is seen here before it is seen in a user's install.
 #   - "nightly": the full suite (including the tight `reference` regression
-#     and the `wheel` install smoke test) on a schedule, since those tiers
-#     are too slow (~4 min total) to run on every push.
+#     and the `wheel` install smoke test), since those tiers are too slow
+#     (~4 min total) to run on every push.
 on:
   push:
     branches: [master]
@@ -70,6 +75,52 @@ jobs:
         with:
           name: junit-${{ matrix.os }}-${{ matrix.python-version }}
           path: junit-${{ matrix.os }}-${{ matrix.python-version }}.xml
+
+  floor:
+    # The declared lower bounds in pyproject.toml, pinned exactly and run.
+    # Without this leg the resolver always picks the newest release, so the
+    # floor is the one configuration nothing ever exercises -- and the
+    # dependency line that claims it is unverifiable. Runs on the oldest
+    # supported Python, so this is the floor of the whole matrix.
+    if: github.event_name != 'schedule'
+    name: pytest (dependency floor, py3.10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install primat at the declared floor
+        # The == pins must stay in step with pyproject.toml's >= bounds.
+        run: |
+          python -m pip install -e ".[recommended]" pytest
+          python -m pip install "numpy==1.26.0" "scipy==1.11.2"
+          python -c "import numpy, scipy; print(numpy.__version__, scipy.__version__)"
+      - name: Run fast + solve lane at the floor
+        run: pytest tests/ -m "not slow or solve"
+
+  newest:
+    # The other end: newest releases including pre-releases, so a numpy or
+    # scipy change that breaks primat is seen here rather than in a user's
+    # install. Nightly rather than per-push, because a pre-release regression
+    # upstream is not a reason to block a pull request.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: pytest (newest deps incl. pre-releases, py3.13)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install primat, then upgrade numpy/scipy to the newest pre-release
+        run: |
+          python -m pip install -e ".[recommended]" pytest
+          python -m pip install --upgrade --pre numpy scipy
+          python -c "import numpy, scipy; print(numpy.__version__, scipy.__version__)"
+      - name: Run fast + solve lane on the newest dependencies
+        run: pytest tests/ -m "not slow or solve"
 
   typecheck:
     # Lenient mypy pass (see pyproject.toml's [tool.mypy]) scoped to the

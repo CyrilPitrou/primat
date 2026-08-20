@@ -228,6 +228,90 @@ def test_scalar_linear_eval_declines_what_it_cannot_reproduce():
     assert _scalar_linear_eval(cubic) is None
 
 
+def test_scalar_linear_eval_declines_a_scipy_whose_evaluator_moved():
+    """_scalar_linear_eval returns None when scipy's evaluator raises.
+
+    The build-time probe calls the interpolant itself, so a scipy that has
+    moved far enough for that call to fail must be declined like any other
+    mismatch. It used to propagate the exception out of Background's
+    construction instead, which is the one thing an opt-in fast path may not
+    do.
+    """
+    from scipy.interpolate import interp1d
+    from primat.background import _scalar_linear_eval
+    x = np.linspace(0.0, 10.0, 64)
+    original = interp1d._call_linear
+
+    def moved_away(self, x_new):
+        raise AttributeError("_call_linear moved")
+
+    # Patch before constructing: interp1d binds its evaluator in __init__.
+    interp1d._call_linear = moved_away
+    try:
+        ref = interp1d(x, np.sin(x), kind="linear", bounds_error=False,
+                       fill_value="extrapolate")
+        assert _scalar_linear_eval(ref) is None
+    finally:
+        interp1d._call_linear = original
+
+
+def test_bdf_method_declines_a_scipy_that_restructured_its_lu():
+    """_bdf_method leaves scipy's own LU alone when BDF no longer exposes it.
+
+    The subclass replaces three BDF attributes (``nlu``, ``lu``,
+    ``solve_lu``). Guarding only the import let a scipy that keeps the class
+    but restructures those internals through: the patch was applied anyway
+    and the run died with AttributeError inside the solve, where the
+    docstring promises a fallback.
+    """
+    from scipy.integrate._ivp import bdf as scipy_bdf
+    import primat.nuclear_network as nn
+
+    class RestructuredBDF:
+        """Stand-in for a future scipy BDF with no lu/solve_lu/nlu."""
+
+        def __init__(self, fun, t0, y0, t_bound, **kwargs):
+            self.I = np.identity(np.size(y0))
+
+    original = scipy_bdf.BDF
+    scipy_bdf.BDF = RestructuredBDF
+    try:
+        method = nn._bdf_method()
+        solver = method(lambda t, y: -y, 0.0, np.array([1.0]), 1.0)
+        assert not hasattr(solver, "lu")
+        assert not hasattr(solver, "solve_lu")
+    finally:
+        scipy_bdf.BDF = original
+
+
+def test_bdf_method_declines_when_the_lapack_wrappers_are_gone():
+    """_bdf_method falls back if scipy.linalg cannot supply getrf/getrs.
+
+    The whole point of the subclass is calling those two directly; without
+    them there is nothing to substitute, and scipy's own dense LU must stay.
+    """
+    import scipy.linalg
+    import primat.nuclear_network as nn
+
+    original = scipy.linalg.get_lapack_funcs
+
+    def gone(*args, **kwargs):
+        raise ValueError("getrf is not available")
+
+    scipy.linalg.get_lapack_funcs = gone
+    try:
+        method = nn._bdf_method()
+        if method == "BDF":
+            return                      # declined at import: also correct
+        solver = method(lambda t, y: -y, 0.0, np.array([1.0]), 1.0,
+                        jac=lambda t, y: np.array([[-1.0]]))
+        # scipy's own lu is still in place, and still counts its calls.
+        solver.lu(solver.I)
+        assert solver.nlu == 1
+    finally:
+        scipy.linalg.get_lapack_funcs = original
+
+
 # ---------------------------------------------------------------------------
 # speedup — BDF's direct-LAPACK dense LU changes no digit
 # ---------------------------------------------------------------------------

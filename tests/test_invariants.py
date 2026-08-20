@@ -16,12 +16,18 @@ import numpy as np
 import pytest
 from scipy.special import zeta
 
+from primat.config import DEFAULT_PARAMS
+
 # Baryon number, positivity and charge are exact statements; the bounds here
 # are solver noise floors with two orders of magnitude of slack.
 BARYON_TOL = 1e-10
-# An abundance is never negative. BDF leaves near-extinct nuclides at values
-# this far below zero; anything larger is a real sign error.
-NEGATIVE_FLOOR = -1e-40
+# An abundance is never negative. The floor is the LT integration's own
+# absolute tolerance: below it the solver makes no claim about the value at
+# all, so an excursion smaller than that is noise, while a real sign error
+# lands orders of magnitude above it. Deliberately not a measured number --
+# the previous -1e-40 was one, and it failed on scipy 1.11 (where BDF
+# undershoots to -2.7e-31 on the large network) while passing on scipy 1.18.
+NEGATIVE_FLOOR = -DEFAULT_PARAMS["atol_large_LT"]
 
 
 def _AZ(cfg, names):

@@ -25,6 +25,25 @@ static size_t split_fields(char *line, char **fields, size_t max_fields)
     return n;
 }
 
+int cpr_read_line(FILE *f, char *buf, size_t bufsize)
+{
+    if (!fgets(buf, (int)bufsize, f))
+        return 0;
+    size_t n = strlen(buf);
+    if (n == 0 || buf[n - 1] == '\n')
+        return 1;
+    /* No newline: either the line is longer than the buffer, or the file ends
+     * without one. Only the first is a truncation. */
+    int ch;
+    int truncated = 0;
+    while ((ch = fgetc(f)) != EOF) {
+        truncated = 1;
+        if (ch == '\n')
+            break;
+    }
+    return truncated ? -1 : 1;
+}
+
 int cpr_table_read(const char *path, size_t n_cols_hint, CPRTable *out,
                     char **errmsg)
 {
@@ -45,10 +64,27 @@ int cpr_table_read(const char *path, size_t n_cols_hint, CPRTable *out,
     int lineno = 0;
     char *fields[256];
 
-    while (fgets(line, sizeof(line), f)) {
+    int rc;
+    while ((rc = cpr_read_line(f, line, sizeof(line))) != 0) {
         lineno++;
         char *s = line;
         while (isspace((unsigned char)*s)) s++;
+        if (rc < 0) {
+            /* A comment or blank line may be any length -- numpy.loadtxt reads
+             * the shipped tables that way and skips it whole, so skipping it
+             * here keeps the two backends agreeing. A truncated *data* line
+             * cannot be parsed, and must not be parsed in part. */
+            if (*s == '\0' || *s == '#')
+                continue;
+            char buf[4352];
+            snprintf(buf, sizeof(buf),
+                      "%s:%d: data line longer than %zu characters",
+                      path, lineno, sizeof(line) - 1);
+            *errmsg = strdup(buf);
+            fclose(f);
+            cpr_table_free(out);
+            return 1;
+        }
         if (*s == '\0' || *s == '#')
             continue;
 

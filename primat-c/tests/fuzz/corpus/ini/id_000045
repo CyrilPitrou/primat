@@ -1,0 +1,7 @@
+network = small
+network = smAll
+amax=8
+verbose true
+Omegabh2 = 0.022
+; comment
+# c1

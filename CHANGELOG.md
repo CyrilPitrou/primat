@@ -12,6 +12,35 @@ in this repository is the authoritative source.
 ## [Unreleased]
 
 ### Fixed
+- **A string parameter set to `None` no longer crashes the C backend.**
+  `--set network=None`, or `network = none` in an `.ini` file, left the field
+  empty and the run died on a segmentation fault (exit 139) printing nothing,
+  where the pure-Python backend raises a `TypeError` naming the key. The C
+  backend accepted `None` for every string parameter because most of them —
+  the output and data-directory paths — legitimately take it; the two that do
+  not now reject it in the same words Python uses.
+- **A line longer than a reader's buffer is no longer parsed in pieces.**
+  Reading a data file line by line handed an over-long line back in chunks,
+  each treated as a line of its own, so the tail of a long `#` comment header
+  could arrive without its `#` and be read as a data row — silently, and only
+  for a file that happens to straddle the buffer. Comment and blank lines of
+  any length are now skipped whole, matching what the Python backend's
+  `numpy.loadtxt` does, and an over-long *data* line is an error naming the
+  file, the line and the limit. Applies to rate tables, NEVO tables, cache
+  files, network lists, `decays.txt`, the reaction catalogue CSVs,
+  `nuclides.csv` and `.ini` files.
+- **The two pure-Python fast paths now decline a scipy that has moved, instead
+  of breaking.** Both are opt-in substitutions for a scipy internal and both
+  document a fallback, but only one of the two checks was real: the BDF dense
+  LU replacement guarded its import and not the three solver attributes it
+  patches, so a scipy that keeps the class and restructures those internals
+  failed inside the solve; and the linear-interpolant evaluator let an
+  exception from its own build-time probe escape. Neither changes any number
+  on a scipy where the fast path applies.
+- **The test suite runs on a lean install again.** `joblib` and `pandas` are
+  optional dependencies, but three test modules imported them unconditionally,
+  so `pytest` on a core `pip install primat` failed rather than skipping.
+
 - **A cache file that could not be written completely is no longer installed,
   and a damaged one no longer crashes the C backend.** Running out of disk
   space left a truncated cache carrying a valid header and no data rows: the
@@ -428,6 +457,12 @@ in this repository is the authoritative source.
   properties), and every observable is bit-identical on both backends.
 
 ### Changed
+- **`numpy` and `scipy` now carry tested lower bounds** (`numpy>=1.26`,
+  `scipy>=1.11`), where the dependency list previously declared none at either
+  end. Continuous integration gained two lanes to keep them honest: one that
+  pins exactly those versions on the oldest supported Python, and one that
+  runs against the newest numpy and scipy including pre-releases, so an
+  upstream change is seen here rather than in an install.
 - **The pure-Python backend is ~1.6× faster, with every printed digit
   unchanged.** A warm `small` run goes from 0.750 s to 0.460 s and
   `large, amax=8` from 1.085 s to 0.684 s (C: 0.040 s / 0.134 s). Three

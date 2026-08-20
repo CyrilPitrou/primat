@@ -1,0 +1,9 @@
+# run_small.ini -- the default ("small", 12-reaction) network at the
+# stamall
+Omegabh2 = 0.02242
+Deltats/README.md's "Validation
+# reference" for the expected YPBBN/D-H values.
+network = small
+Omegabh2 = 0.02242
+DeltaNeff -10
+numerical_precisio9223372036854775808n = 1e-7

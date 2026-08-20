@@ -1,0 +1,10 @@
+netwobk = smalë
+amax=8
+verbose true
+Omegabh2 =8
+verbose true
+Omegabname,N,Z,A,Q,mass_excess_keV,spinh2 = 0.022
+; comment
+# comment
+bad_key = 1
+netwwork =

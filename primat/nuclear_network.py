@@ -63,9 +63,10 @@ def _bdf_method():
     dispatch and finiteness checks before reaching ``getrf``/``getrs``, and BDF
     calls them ~15k times per BBN solve.  The subclass below hands BDF the same
     LAPACK routines with the same arguments, so every digit of every observable
-    is unchanged -- only the Python glue in front of them is gone.  Falls back
-    to plain ``"BDF"`` if scipy's internals ever move (sparse Jacobians keep
-    scipy's ``splu`` path either way).
+    is unchanged -- only the Python glue in front of them is gone.  If scipy's
+    internals ever move, both the import and each attribute it replaces are
+    checked, and scipy's own path is left in place (sparse Jacobians keep
+    ``splu`` either way).
 
     Returns:
         A ``scipy.integrate.OdeSolver`` subclass, or the string ``"BDF"``.
@@ -81,7 +82,18 @@ def _bdf_method():
             super().__init__(*args, **kwargs)
             if not isinstance(getattr(self, "I", None), np.ndarray):
                 return                                  # sparse: leave splu alone
-            getrf, getrs = get_lapack_funcs(("getrf", "getrs"), (self.I,))
+            # Decline unless BDF still owns all three attributes replaced
+            # below, and scipy still offers the two LAPACK wrappers.  The
+            # import above only proves ``BDF`` exists; a scipy that keeps the
+            # class but renames its LU bookkeeping used to raise
+            # AttributeError from inside the solve instead of falling back,
+            # which is what this function promises not to do.
+            if not all(hasattr(self, a) for a in ("nlu", "lu", "solve_lu")):
+                return
+            try:
+                getrf, getrs = get_lapack_funcs(("getrf", "getrs"), (self.I,))
+            except Exception:
+                return
 
             def lu(A):
                 self.nlu += 1

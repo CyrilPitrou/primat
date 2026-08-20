@@ -8,6 +8,12 @@ from primat.main import mc_uncertainty, MCResult, MCQuantityResult, _mc_run_batc
 # several full PRIMAT().solve() calls -- squarely in the "solve" tier.
 pytestmark = [pytest.mark.slow, pytest.mark.solve]
 
+# mc_uncertainty defaults to n_jobs=-1, which needs joblib -- an *optional*
+# dependency (the ``mc``/``recommended`` extras). On a lean core install these
+# tests have nothing to test, and must skip rather than fail the suite.
+pytest.importorskip("joblib", reason="parallel Monte-Carlo needs joblib "
+                                     '(pip install "primat[mc]")')
+
 _BASE = {"network": "small"}
 _NUM_MC = 8
 

@@ -1,0 +1,7 @@
+network = small
+amax=8
+verbose true
+Omegabh2 = 0.022
+; comment
+# co€mentDbad_key = 1
+network =2

@@ -1,0 +1,40 @@
+name,reactants,products,source,ref
+B10_He3__C11_d,B10+He3,C11+H2,tabulated,TALYS2
+B10_He3__C12_p,B10+He3,C12+p,tabulated,TALYS2
+B10_He3__N12_n,B10+He3,N12+n,tabulated,TALYS2
+B10_He3__N13_g,B10+He3,N13+g,tabulated,TALYS2
+B10_a__C12_d,B10+He4,C12+H2,tabulated,TALYS2
+B10_a__C13_p,B10+He4,C13+p,tabulated,TALYS2
+B10_a__N13_n,B10+He4,N13+n,analytic,CF88
+B10_a__N14_g,B10+He4,N14+g,tabulated,TALYS2
+B10_d__B11_p,B10+H2,B11+p,tabulated,TALYS2
+B10_d__C11_n,B10+H2,C11+n,tabulated,TALYS2
+B10_d__C12_g,B10+H2,C12+g,tabulated,TALYS2
+B10_d__a_a_a,B10+H2,He4+He4+He4,tabulated,TALYS2
+B10_n__B11_g,B10+n,B11+g,tabulated,TALYS2
+B10_n__Be10_p,B10+n,Be10+p,tabulated,TALYS2
+B10_n__a_a_t,B10+n,He4+He4+H3,tabulated,TALYS2
+B10_p__Be7_a,B10+p,Be7+He4,tabulated,NACRE II
+B10_p__C11_g,B10+p,C11+g,tabulated,NACRE II
+B10_p__a_a_He3,B10+p,He4+He4+He3,tabulated,TALYS2
+B10_t__B11_d,B10+H3,B11+H2,tabulated,TALYS2
+B10_t__B12_p,B10+H3,B12+p,tabulated,TALYS2
+B10_t__Be9_a,B10+H3,Be9+He4,tabulated,TALYS2
+B10_t__C12_n,B10+H3,C12+n,tabulated,TALYS2
+B10_t__C13_g,B10+H3,C13+g,tabulated,TALYS2
+B11_He3__B10_a,B11+He3,B10+He4,tabulated,TALYS2
+B11_He3__C12_d,B11+He3,C12+H2,tabulated,TALYS2
+B11_He3__C13_p,B11+He3,C13+p,tabulated,TALYS2
+B11_He3__N13_n,B11+He3,N13+n,tabulated,TALYS2
+B11_He3__N14_g,B11+He3,N14+g,tabulated,TALYS2
+B11_a__C14_p,B11+He4,C14+p,analytic,Wan91
+B11_a__N14_n,B11+He4,N14+n,tabulated,NACRE II
+B11_a__N15_g,B11+He4,N15+g,analytic,Wan91
+B11_d__B12_p,B11+H2,B12+p,tabulated,CGXSV12
+B11_d__Be9_a,B11+H2,Be9+He4,tabulated,TALYS2
+B11_d__C12_n,B11+H2,C12+n,tabulated,CGXSV12
+B11_d__C13_g,B11+H2,C13+g,tabulated,TALYS2
+B11_n__B12_g,B11+n,B12+g,tabulated,CGXSV12
+B11_p__C11_n,B11+p,C11+n,analytic,NACRE
+B11_p__C12_g,B11+p,C12+g,tabulated,NACRE II
+B11_p__a_a_a,B11+p,He4+He4+He4,tabulated,NACRE II

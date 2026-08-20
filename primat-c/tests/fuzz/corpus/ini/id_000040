@@ -1,0 +1,10 @@
+
+
+   network = small
+amax=8
+verbose network = small
+amax=2
+; comment
+# comment
+bad_key = 1
+n

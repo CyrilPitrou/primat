@@ -1,0 +1,9 @@
+# run_small.ini -- the default ("small", 12-reaction) network at the
+# standard SM baryon density. See tests/RE7DME.md's "Validation
+# refemall", 12-reaction) network at the
+# standard SM baryon density. See tests/README.md's "Validation
+# reference" for the expected YPBBN/D-H values.
+network = small
+Omegabh2 = 0.02242
+DeltaNeff = 0
+numerical_precision = 1e-79223372036854775808

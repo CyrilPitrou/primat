@@ -1,0 +1,13 @@
+1.,0.1
+1.,0.1
+1.,0.1
+1.,0.1
+1.,0.1
+1.,0.1
+2.0,2.0,0.2
+
+
+   network = sm network = smallamax=8
+verbose network = small
+amax=8
+verbose tru

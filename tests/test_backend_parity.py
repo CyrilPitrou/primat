@@ -771,6 +771,11 @@ def test_backend_mc_cov_corr_parity():
     """
     from primat.backend import (run_mc, dump_mc_covariance, dump_mc_correlation)
 
+    # run_mc defaults to n_jobs=-1, which needs joblib -- an optional
+    # dependency, so a lean core install skips rather than fails here.
+    pytest.importorskip("joblib", reason="parallel Monte-Carlo needs joblib "
+                                         '(pip install "primat[mc]")')
+
     params = {"network": "small"}
     n = 120
     mc_c = run_mc(n, params=params, force_backend="c", seed=0)

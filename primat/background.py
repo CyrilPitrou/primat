@@ -94,8 +94,8 @@ def _scalar_linear_eval(interp):
     extrapolates, ``np.interp`` when it clamps to a constant ``fill_value``.
     Which one applies is settled by a build-time check against ``interp``
     itself on the nodes, the interval midpoints and both extrapolation sides;
-    unless every digit matches, ``None`` is returned and the caller keeps the
-    scipy path.
+    unless every digit matches -- or that check cannot even be run -- ``None``
+    is returned and the caller keeps the scipy path.
 
     Args:
         interp: a ``scipy.interpolate.interp1d`` built with ``kind='linear'``.
@@ -134,7 +134,12 @@ def _scalar_linear_eval(interp):
     probe = np.concatenate([nodes, 0.5 * (nodes[:-1] + nodes[1:]),
                             [xs[0] - (xs[1] - xs[0]),
                              xs[-1] + (xs[-1] - xs[-2])]])
-    reference = np.asarray(interp(probe), dtype=float).ravel()
+    try:
+        reference = np.asarray(interp(probe), dtype=float).ravel()
+    except Exception:
+        # The probe is the check; a scipy whose evaluator has moved far enough
+        # to raise on it has to be declined, not propagated to the caller.
+        return None
     for candidate in (extrapolating, clamping):
         if all(float(candidate(q)) == r for q, r in zip(probe, reference)):
             return candidate

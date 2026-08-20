@@ -1,0 +1,9 @@
+network = small
+network = small
+amax=8
+verbose true
+Omegabh2 = 0.022
+; comment
+# comment
+bad_key = 1
+network =1e-9223372036854775808999

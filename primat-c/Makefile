@@ -118,3 +118,73 @@ leak-test: $(LEAKCHECK_BUILD)/test_memory_stress
 
 clean:
 	rm -rf $(BUILD)
+
+# ---------------------------------------------------------------------------
+# Fuzzing (tests/fuzz)
+#
+# Apple's Command Line Tools clang instruments with -fsanitize-coverage but
+# ships no libFuzzer runtime, so tests/fuzz/fuzz_engine.c supplies the loop
+# (see its header). Targets keep libFuzzer's LLVMFuzzerTestOneInput signature.
+# Everything under test is built with ASan+UBSan and edge instrumentation; the
+# engine itself is not instrumented, so its own edges stay out of the map.
+FUZZ_BUILD := $(BUILD)/fuzz
+FUZZ_SAN := -fsanitize=address,undefined -fno-sanitize-recover=undefined
+FUZZ_CFLAGS := -std=c11 -Wall -Wextra -O1 -g $(FUZZ_SAN) -Iinclude -Itests/fuzz \
+               -MMD -MP -pthread -D_GNU_SOURCE
+FUZZ_COV := -fsanitize-coverage=trace-pc-guard
+FUZZ_SRC := $(wildcard tests/fuzz/fuzz_*.c)
+FUZZ_TARGET_SRC := $(filter-out tests/fuzz/fuzz_engine.c,$(FUZZ_SRC))
+FUZZ_BIN := $(patsubst tests/fuzz/%.c,$(FUZZ_BUILD)/%,$(FUZZ_TARGET_SRC))
+FUZZ_OBJ := $(patsubst src/%.c,$(FUZZ_BUILD)/obj/%.o,$(SRC))
+
+$(FUZZ_BUILD)/obj/%.o: src/%.c
+	@mkdir -p $(FUZZ_BUILD)/obj
+	$(CC) $(FUZZ_CFLAGS) $(FUZZ_COV) -c $< -o $@
+
+$(FUZZ_BUILD)/engine.o: tests/fuzz/fuzz_engine.c
+	@mkdir -p $(FUZZ_BUILD)
+	$(CC) $(FUZZ_CFLAGS) -c $< -o $@
+
+-include $(FUZZ_OBJ:.o=.d)
+
+$(FUZZ_BUILD)/%: tests/fuzz/%.c $(FUZZ_BUILD)/engine.o $(filter-out $(FUZZ_BUILD)/obj/main.o,$(FUZZ_OBJ))
+	@mkdir -p $(FUZZ_BUILD)
+	$(CC) $(FUZZ_CFLAGS) $(FUZZ_COV) $< $(FUZZ_BUILD)/engine.o \
+	    $(filter-out $(FUZZ_BUILD)/obj/main.o,$(FUZZ_OBJ)) -o $@ -lm -pthread $(FUZZ_SAN)
+
+.PHONY: fuzz fuzz-build
+fuzz-build: $(FUZZ_BIN)
+
+# RUNS is per target; override on the command line (make fuzz RUNS=200000).
+RUNS ?= 20000
+fuzz: fuzz-build
+	python3 tests/fuzz/run_fuzz.py --runs $(RUNS)
+
+# Line/region coverage each fuzz target reached, measured by replaying its
+# evolved corpus (-runs=0 runs the corpus and stops) through a second build
+# instrumented with -fprofile-instr-generate instead of the sanitizers.
+COV_BUILD := $(BUILD)/fuzzcov
+COV_CFLAGS := -std=c11 -Wall -Wextra -O0 -g -fprofile-instr-generate \
+              -fcoverage-mapping -Iinclude -Itests/fuzz -MMD -MP -pthread -D_GNU_SOURCE
+COV_OBJ := $(patsubst src/%.c,$(COV_BUILD)/obj/%.o,$(SRC))
+COV_BIN := $(patsubst tests/fuzz/%.c,$(COV_BUILD)/%,$(FUZZ_TARGET_SRC))
+
+$(COV_BUILD)/obj/%.o: src/%.c
+	@mkdir -p $(COV_BUILD)/obj
+	$(CC) $(COV_CFLAGS) -c $< -o $@
+
+$(COV_BUILD)/engine.o: tests/fuzz/fuzz_engine.c
+	@mkdir -p $(COV_BUILD)
+	$(CC) $(COV_CFLAGS) -c $< -o $@
+
+-include $(COV_OBJ:.o=.d)
+
+$(COV_BUILD)/%: tests/fuzz/%.c $(COV_BUILD)/engine.o $(filter-out $(COV_BUILD)/obj/main.o,$(COV_OBJ))
+	@mkdir -p $(COV_BUILD)
+	$(CC) $(COV_CFLAGS) $< $(COV_BUILD)/engine.o \
+	    $(filter-out $(COV_BUILD)/obj/main.o,$(COV_OBJ)) -o $@ -lm -pthread \
+	    -fprofile-instr-generate
+
+.PHONY: fuzz-coverage
+fuzz-coverage: $(COV_BIN)
+	python3 tests/fuzz/fuzz_coverage.py

@@ -42,9 +42,21 @@ int cpr_load_network_list(const char *path, CPRNetworkList *out, char **errmsg)
 
     char line[512];
     int lineno = 0;
-    while (fgets(line, sizeof(line), f)) {
+    int rc;
+    while ((rc = cpr_read_line(f, line, sizeof(line))) != 0) {
         lineno++;
         char *s = trim(line);
+        if (rc < 0) {
+            /* fgets would have handed the tail back as a second entry, so an
+             * over-long line quietly became two truncated reaction names. */
+            char buf[4352];
+            snprintf(buf, sizeof(buf), "%s:%d: line longer than %zu characters",
+                      path, lineno, sizeof(line) - 1);
+            *errmsg = strdup(buf);
+            fclose(f);
+            cpr_network_list_free(out);
+            return 1;
+        }
         if (*s == '\0' || *s == '#')
             continue;
 
@@ -113,9 +125,19 @@ int cpr_load_decays(const char *path, CPRDecayTable *out, char **errmsg)
 
     char line[512];
     int lineno = 0;
-    while (fgets(line, sizeof(line), f)) {
+    int rc;
+    while ((rc = cpr_read_line(f, line, sizeof(line))) != 0) {
         lineno++;
         char *s = trim(line);
+        if (rc < 0) {
+            char buf[4352];
+            snprintf(buf, sizeof(buf), "%s:%d: line longer than %zu characters",
+                      path, lineno, sizeof(line) - 1);
+            *errmsg = strdup(buf);
+            fclose(f);
+            cpr_decay_table_free(out);
+            return 1;
+        }
         if (*s == '\0' || *s == '#')
             continue;
 
@@ -287,9 +309,19 @@ int cpr_load_detailed_balance(const char *path, CPRDetailedBalanceTable *out,
     char line[512];
     int lineno = 0;
     int have_header = 0;
-    while (fgets(line, sizeof(line), f)) {
+    int rc;
+    while ((rc = cpr_read_line(f, line, sizeof(line))) != 0) {
         lineno++;
         char *s = trim(line);
+        if (rc < 0) {
+            char buf[4352];
+            snprintf(buf, sizeof(buf), "%s:%d: line longer than %zu characters",
+                      path, lineno, sizeof(line) - 1);
+            *errmsg = strdup(buf);
+            fclose(f);
+            cpr_detailed_balance_free(out);
+            return 1;
+        }
         if (*s == '\0') continue;
         if (!have_header) { have_header = 1; continue; } /* "reaction,Q_keV,alpha,beta,gamma" */
 
@@ -343,9 +375,19 @@ int cpr_load_reactions_large(const char *path, CPRReactionTable *out, char **err
     char line[512];
     int lineno = 0;
     int have_header = 0;
-    while (fgets(line, sizeof(line), f)) {
+    int rc;
+    while ((rc = cpr_read_line(f, line, sizeof(line))) != 0) {
         lineno++;
         char *s = trim(line);
+        if (rc < 0) {
+            char buf[4352];
+            snprintf(buf, sizeof(buf), "%s:%d: line longer than %zu characters",
+                      path, lineno, sizeof(line) - 1);
+            *errmsg = strdup(buf);
+            fclose(f);
+            cpr_reaction_table_free(out);
+            return 1;
+        }
         if (*s == '\0') continue;
         if (!have_header) { have_header = 1; continue; } /* "name,reactants,products,source,ref" */
 

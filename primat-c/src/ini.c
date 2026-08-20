@@ -1,4 +1,5 @@
 #include "ini.h"
+#include "table_io.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -27,9 +28,20 @@ int cpr_ini_load(CPRConfig *cfg, const char *path, CPRParamList *collect,
 
     char line[4096];
     int lineno = 0;
-    while (fgets(line, sizeof(line), f)) {
+    int lrc;
+    while ((lrc = cpr_read_line(f, line, sizeof(line))) != 0) {
         lineno++;
         char *s = trim(line);
+        if (lrc < 0) {
+            /* fgets split the line and offered its tail as a second KEY=VALUE
+             * pair, which was applied. */
+            char buf[CPR_PARAM_VAL_LEN];
+            snprintf(buf, sizeof(buf), "%s:%d: line longer than %zu characters",
+                     path, lineno, sizeof(line) - 1);
+            *errmsg = strdup(buf);
+            fclose(f);
+            return 1;
+        }
         if (*s == '\0' || *s == '#' || *s == ';')
             continue;
 

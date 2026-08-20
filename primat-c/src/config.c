@@ -1,4 +1,5 @@
 #include "config.h"
+#include "table_io.h"
 #include "neutrino_history.h"
 #include "xalloc.h"
 #include "cache.h"
@@ -238,7 +239,16 @@ static int load_nuclides(CPRConfig *cfg, char **errmsg)
 
     size_t cap = 64, n = 0;
     CPRNuclide *items = CPR_XMALLOC(cap * sizeof(CPRNuclide));
-    while (fgets(line, sizeof(line), f)) {
+    int rc;
+    while ((rc = cpr_read_line(f, line, sizeof(line))) != 0) {
+        if (rc < 0) {
+            /* fgets handed the tail back as a row of its own, so an over-long
+             * line silently added a nuclide with a truncated name. */
+            fclose(f);
+            free(items);
+            *errmsg = strdup("nuclides.csv has a line longer than 511 characters");
+            return 1;
+        }
         if (line[0] == '\0' || line[0] == '\n') continue;
         char row[512];
         strncpy(row, line, sizeof(row) - 1);
@@ -280,7 +290,12 @@ static int load_nuclides(CPRConfig *cfg, char **errmsg)
  * used for the per-flavour munuOverTnu_e/mu/tau overrides where NAN is the
  * "inherit munuOverTnu" sentinel (0.0 is a legitimate value there, so it cannot
  * double as the sentinel the way F_DOUBLE_OR_NONE's 0.0 does for the MC cap). */
-typedef enum { F_BOOL, F_INT, F_INT_OR_NONE, F_DOUBLE, F_DOUBLE_OR_NONE, F_DOUBLE_OR_NAN, F_STRING } FieldKind;
+/* F_STRING accepts a string only; F_STRING_OR_NONE also accepts None, which
+ * leaves the field NULL. The split mirrors _PARAM_TYPESPEC in primat/config.py:
+ * a field absent from it is a plain ``str`` there and must be rejected here
+ * too, or the NULL reaches a strcmp with no message. */
+typedef enum { F_BOOL, F_INT, F_INT_OR_NONE, F_DOUBLE, F_DOUBLE_OR_NONE, F_DOUBLE_OR_NAN,
+               F_STRING, F_STRING_OR_NONE } FieldKind;
 
 typedef struct {
     const char *name;
@@ -310,12 +325,12 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(analytic_distortions, F_BOOL),
     FLD(y_SZ, F_DOUBLE),
     FLD(y_gray, F_DOUBLE),
-    FLD(nevo_file, F_STRING),
-    FLD(nevo_spectral_file, F_STRING),
-    FLD(nevo_grid_file, F_STRING),
+    FLD(nevo_file, F_STRING_OR_NONE),
+    FLD(nevo_spectral_file, F_STRING_OR_NONE),
+    FLD(nevo_grid_file, F_STRING_OR_NONE),
     FLD(nevo_file_prefix, F_STRING),
     FLD(external_scale_factor, F_BOOL),
-    FLD(custom_background, F_STRING),
+    FLD(custom_background, F_STRING_OR_NONE),
     /* The 16 measured physical constants (constants.OVERRIDABLE_CONSTANTS).
      * The exact ten are deliberately absent: they cannot be set by name on
      * either backend (Python's PRIMATConfig rejects them too). */
@@ -355,15 +370,15 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(output_time_evolution, F_BOOL),
     FLD(output_rates_time_evolution, F_BOOL),
     FLD(output_n_points, F_INT),
-    FLD(output_file, F_STRING),
+    FLD(output_file, F_STRING_OR_NONE),
     FLD(output_final_result, F_BOOL),
-    FLD(output_final_file, F_STRING),
+    FLD(output_final_file, F_STRING_OR_NONE),
     FLD(output_background_evolution, F_BOOL),
-    FLD(output_background_file, F_STRING),
+    FLD(output_background_file, F_STRING_OR_NONE),
     FLD(output_mc_samples, F_BOOL),
     FLD(output_mc_covariance, F_BOOL),
     FLD(output_mc_correlation, F_BOOL),
-    FLD(output_mc_file_prefix, F_STRING),
+    FLD(output_mc_file_prefix, F_STRING_OR_NONE),
     FLD(rate_grid_npts, F_INT),
     FLD(rate_grid_T9_min, F_DOUBLE),
     FLD(rate_grid_T9_max, F_DOUBLE),
@@ -373,8 +388,8 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(rescale_nuclear_rates, F_BOOL),
     FLD(mc_rate_rescale_cap, F_DOUBLE_OR_NONE),
     FLD(nuclear_qed_corrections, F_BOOL),
-    FLD(user_nuclear_dir, F_STRING),
-    FLD(cache_dir, F_STRING),
+    FLD(user_nuclear_dir, F_STRING_OR_NONE),
+    FLD(cache_dir, F_STRING_OR_NONE),
     FLD(Omegach2, F_DOUBLE),
     FLD(h, F_DOUBLE),
     FLD(DeltaNeff, F_DOUBLE),
@@ -387,7 +402,7 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(t_decay_end, F_DOUBLE),
     FLD(decay_n_points, F_INT),
     FLD(output_decay_evolution, F_BOOL),
-    FLD(output_decay_file, F_STRING),
+    FLD(output_decay_file, F_STRING_OR_NONE),
     FLD(fEDE, F_DOUBLE),
     FLD(zcEDE, F_DOUBLE),
     FLD(wnEDE, F_DOUBLE),
@@ -484,6 +499,7 @@ int cpr_config_format_value(const CPRConfig *cfg, const char *name,
             else snprintf(out, outsize, "%g", *(const double *)field);
             return 0;
         case F_STRING:
+        case F_STRING_OR_NONE:
             snprintf(out, outsize, "%s",
                      *(char * const *)field ? *(char * const *)field : "None");
             return 0;
@@ -1178,7 +1194,8 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                 return set_type_error(errmsg, name, "float or None", value);
             }
             return CPR_SET_OK;
-        case F_STRING: {
+        case F_STRING:
+        case F_STRING_OR_NONE: {
             /* Build the replacement FIRST, and only then release the old
              * value. The obvious ordering (free, then switch on the type)
              * leaves the field holding a freed pointer whenever the value is
@@ -1196,7 +1213,14 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                     return CPR_SET_BAD_VALUE;
                 }
             } else if (value.type != CPR_NONE) {
-                return set_type_error(errmsg, name, "str or None", value);
+                return set_type_error(errmsg, name,
+                                      FIELD_TABLE[i].kind == F_STRING ? "str" : "str or None",
+                                      value);
+            } else if (FIELD_TABLE[i].kind == F_STRING) {
+                /* None on a non-nullable string. Left unchecked, the NULL
+                 * reached cpr_config_validate's strcmp(cfg->network, "small")
+                 * and the process died on SIGSEGV printing nothing. */
+                return set_type_error(errmsg, name, "str", value);
             }
             free(*(char **)field);
             *(char **)field = newval;       /* NULL for CPR_NONE */
@@ -1669,7 +1693,8 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
 void cpr_config_free(CPRConfig *cfg)
 {
     for (size_t i = 0; i < FIELD_TABLE_N; i++) {
-        if (FIELD_TABLE[i].kind == F_STRING) {
+        if (FIELD_TABLE[i].kind == F_STRING
+            || FIELD_TABLE[i].kind == F_STRING_OR_NONE) {
             void *field = (char *)cfg + FIELD_TABLE[i].offset;
             free(*(char **)field);
             *(char **)field = NULL;

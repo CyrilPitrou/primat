@@ -202,6 +202,10 @@ def test_to_markdown_and_dataframe():
     assert len(lines) == 2 + len(tab.row_labels)
     assert "tau_n" in md and "n_p__d_g" in md
 
+    # to_dataframe needs pandas, an optional dependency (the ``gui``/
+    # ``notebooks`` extras); the markdown view above is the pandas-free one.
+    pytest.importorskip("pandas", reason="to_dataframe needs pandas "
+                                         '(pip install "primat[notebooks]")')
     df = tab.to_dataframe()
     assert list(df.index) == tab.row_labels
     assert df.shape == (2, 2)

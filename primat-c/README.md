@@ -37,6 +37,9 @@ This produces the `primat-c` executable in the `build/` directory.
 - `make test` - Build and run the unit test suite
 - `make bench` - Build and run the timing benchmark
 - `make leak-test` - Build and run the memory-leak check under a sanitizer
+- `make fuzz RUNS=N` - Fuzz every parser that reads a user-supplied file, under
+  AddressSanitizer and UndefinedBehaviorSanitizer (see `tests/fuzz/README.md`)
+- `make fuzz-coverage` - Report what each fuzz target actually reached
 
 ### Platform-specific notes
 

@@ -47,9 +47,14 @@ requires-python = ">=3.10"
 # (``mc`` / ``plots`` / ``gui``) -- see [project.optional-dependencies].  A
 # core install can still run MC serially (``n_jobs=1``) or via the C backend
 # without joblib, and everything except the GUI works without plotly.
+# Tested lower bounds, not guessed ones: the "floor" leg of
+# .github/workflows/tests.yml pins exactly these and runs the same lane as the
+# default leg. They are floors, not the version any given install gets --
+# newer Pythons have no wheels this old, so pip resolves upward on its own.
+# Raise a bound only together with that CI leg.
 dependencies = [
-    "numpy",
-    "scipy",
+    "numpy>=1.26",
+    "scipy>=1.11",
 ]
 
 [project.urls]
