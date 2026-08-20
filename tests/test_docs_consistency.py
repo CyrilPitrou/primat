@@ -463,24 +463,28 @@ def test_docs_tutorials_gallery_complete():
         assert stem in index, f"{stem} missing from docs/tutorials/index.md"
 
 
-def test_docs_index_quick_start_numbers_match_the_reference_constants():
-    """docs/index.md's quick start must quote the tracked reference values.
+@pytest.mark.parametrize("page", ["docs/index.md", "README.md"])
+def test_quick_start_numbers_match_the_reference_constants(page):
+    """Both landing pages' quick starts must quote the tracked reference values.
 
-    GOAL: the published landing page prints YP and D/H for both backends, to
-    the decimal counts the project reports at, and nothing checked them -- they
-    went stale twice, by 8.6e-09 in D/H once and by 2.1e-07 in YP after that
-    was hand-corrected. Compared against tests/reference_values.py rather than
-    against a fresh solve, for the same reason the tests/README.md table is:
-    the eighth decimal is not portable. Measured on one commit across the CI
-    matrix, the C backend's YPBBN is 0.24699907 on macOS/arm64 and 0.24699900
-    on Linux and Windows/x86_64 -- a 6.7e-08 spread, only 3x below the drift
-    this test exists to catch, so a live-run bound could not separate the two.
-    The constants themselves are pinned to live solves by test_regression.py.
+    GOAL: each prints YP and D/H for both backends, to the decimal counts the
+    project reports at. docs/index.md went stale twice, by 8.6e-09 in D/H once
+    and by 2.1e-07 in YP after that was hand-corrected; the README carried the
+    same 8.6e-09 error for longer, because only one of the two was checked.
+    The two pages quote the same numbers on purpose -- the README is meant to
+    stand alone -- so both are pinned here. Compared against
+    tests/reference_values.py rather than a fresh solve, for the same reason
+    the tests/README.md table is: the eighth decimal is not portable. Measured
+    on one commit across the CI matrix, the C backend's YPBBN is 0.24699907 on
+    macOS/arm64 and 0.24699900 on Linux and Windows/x86_64 -- a 6.7e-08 spread,
+    only 3x below the drift this test exists to catch, so a live-run bound
+    could not separate the two. The constants themselves are pinned to live
+    solves by test_regression.py.
     """
     from reference_values import (DOH_REFERENCE, PY_DOH_REFERENCE,
                                   PY_YPBBN_REFERENCE, YPBBN_REFERENCE)
 
-    text = _read_text(os.path.join(REPO_ROOT, "docs", "index.md"))
+    text = _read_text(os.path.join(REPO_ROOT, *page.split("/")))
     yp_c = re.search(r"YPBBN'\]:\.8f\}\"\)\s*#\s*([0-9.]+)", text).group(1)
     doh_c = re.search(r"DoH'\]:\.7e\}\"\)\s*#\s*([0-9.e+-]+)", text).group(1)
     yp_py, doh_py = re.search(
