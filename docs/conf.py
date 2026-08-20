@@ -85,14 +85,6 @@ exclude_patterns = [
     "Thumbs.db",
     ".DS_Store",
     "**.ipynb_checkpoints",
-    # Development-process artifacts (plans/specs written by the "superpowers"
-    # Claude Code skill while implementing a feature) that got committed
-    # under docs/ by mistake -- they document the *process*, not the
-    # product, and were never meant to be toctree pages. Excluding the
-    # directory (rather than deleting the files, which are still useful
-    # implementation history) keeps `sphinx-build -W` warning-clean without
-    # touching their content.
-    "superpowers",
     # In-repo notes on how the code is written and which numerical decisions
     # are already settled. Addressed to whoever edits the source, not to a
     # reader of the published site, so it stays out of every toctree --

@@ -108,8 +108,8 @@ of the four main products (`YPBBN`, `DoH`, `He3oHe4`, `Li7oH`):
 
 ```bash
 primat --Omegabh2 0.02242 --mc 300 --mc-seed 0
-# YP (BBN)   = 0.24698590 +/- 0.00010631
-# D/H        = 2.4345885e-05 +/- 2.6358371e-07
+# YP (BBN)   = 0.24699907 +/- 0.00010631
+# D/H        = 2.4358767e-05 +/- 2.6358624e-07
 # ...
 # Correlation matrix (YPBBN, DoH, He3oHe4, Li7oH):
 #             YPBBN      DoH  He3oHe4    Li7oH
@@ -123,7 +123,9 @@ Those numbers are a real run (300 samples, `seed=0`, C backend, default
 `small` network), not an illustration — but they are still a *finite* sample:
 with N = 300 each σ carries ~4 % statistical error of its own and the
 off-diagonal correlations rather more, so expect the last digits to move
-between seeds. Raise `--mc` for anything you intend to quote.
+between seeds. The value before each `+/-` is the unperturbed (central)
+solve, so it depends on neither N nor the seed. Raise `--mc` for anything you
+intend to quote.
 
 `--mc-seed` sets the random seed (use the same seed to reproduce a run) and
 `--mc-jobs` the number of parallel workers. The three MC output files share

@@ -56,7 +56,7 @@ typedef struct {
     int has_OneOverOmeganunr;
     double OneOverOmeganunr;
 
-    /* ---- Per-nuclide final mass-fraction abundances Y (mirrors
+    /* ---- Per-nuclide final abundances per baryon Y (mirrors
      * PRIMAT.nuclear.Y_final / get_quantity's nuclide-name fallback).
      * Owned; freed by cprimat_results_free. ---- */
     char (*nuclide_names)[16];

@@ -7,8 +7,6 @@ wheels
 doc
 results
 notebooks
-FASTER.md
-SPEED.md
 *.md
 *.pdf
 *.rst

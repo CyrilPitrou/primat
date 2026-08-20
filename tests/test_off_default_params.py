@@ -1,10 +1,10 @@
 """Guards for parameter values that are accepted but dangerous.
 
-Round-3 pass 22 moved every ``DEFAULT_PARAMS`` key off its default on both
-backends. These are the regressions for what it found: a configuration whose
-weak rates come out NaN, a ``GN`` override that must reach the baryon-to-photon
-ratio, the bool/int strictness the two parameter setters have to share, and the
-two caches that were re-keyed by values that cannot change their contents.
+A sweep of every ``DEFAULT_PARAMS`` key off its default, on both backends,
+turned these up. Guarded here: a configuration whose weak rates come out NaN,
+a ``GN`` override that must reach the baryon-to-photon ratio, the bool/int
+strictness the two parameter setters have to share, and the two caches that
+were re-keyed by values that cannot change their contents.
 """
 import os
 import warnings

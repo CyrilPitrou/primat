@@ -54,7 +54,7 @@ DOH_ABS_TOL   = 3e-9
 PY_YPBBN_REFERENCE = 0.24699896
 PY_DOH_REFERENCE   = 2.4358605e-5
 
-# Per-nuclide final mass fractions, small network (primat.cli.main() default,
+# Per-nuclide final abundances per baryon, small network (primat.cli.main() default,
 # auto backend). Kept as scalars for the two callers that predate
 # NUCLIDE_REFERENCE below; they are the same numbers as its "small" column.
 P_REFERENCE   = 7.529408e-01
@@ -92,8 +92,10 @@ ROUTINE_RUN_YPBBN_ABS_TOL = 1e-5
 # ---------------------------------------------------------------------------
 # 3. Per-nuclide final abundances (default precision, auto backend)
 # ---------------------------------------------------------------------------
-# Final mass-fraction abundances Y_s of the small-network nuclides at the end
-# of BBN, for the three networks tests/README.md tabulates. Quoted to 7
+# Final abundances Y_s = n_s/n_b of the small-network nuclides at the end of
+# BBN, for the three networks tests/README.md tabulates. These are abundances
+# per baryon, not mass fractions: the mass fraction is A_s Y_s, so YPBBN is
+# 4 * Y_He4. Quoted to 7
 # significant figures; the two backends agree on them to <=2.2e-05 relative,
 # so NUCLIDE_REL_TOL below is what a check should actually use -- the last two
 # quoted digits are backend-dependent.

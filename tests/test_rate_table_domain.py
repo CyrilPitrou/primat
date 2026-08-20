@@ -35,7 +35,7 @@ def _overlay(tmp_path, text, reaction="n_p__d_g"):
 
 
 # ---------------------------------------------------------------------------
-# The rules themselves (R21.1)
+# The rules themselves
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("label,T9,rate,expected", [
@@ -93,7 +93,7 @@ def test_every_shipped_table_passes(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# The loader path (R21.1, R21.2, R21.4)
+# The loader path
 # ---------------------------------------------------------------------------
 
 def test_two_column_table_loads(tmp_path):
@@ -152,7 +152,7 @@ def test_unsorted_overlay_table_is_refused_by_both_backends(tmp_path, backend):
     pytest.param("c", marks=pytest.mark.skipif(not HAS_C_BACKEND,
                                                 reason="C extension not built"))])
 def test_empty_overlay_table_is_refused_by_both_backends(tmp_path, backend):
-    """An empty table file crashed the C backend with SIGSEGV (R21.2).
+    """An empty table file crashed the C backend with SIGSEGV.
 
     ``cpr_table_read`` treated "no data rows" as an error only when the column
     count was also unknown, and rate tables are read with a column hint, so the
@@ -165,7 +165,7 @@ def test_empty_overlay_table_is_refused_by_both_backends(tmp_path, backend):
 
 
 # ---------------------------------------------------------------------------
-# The loader's other user-supplied inputs (R21.6)
+# The loader's other user-supplied inputs
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("backend", ["python",

@@ -83,3 +83,10 @@ pip install -e ".[recommended]"
 For users who prefer to work directly with the C code, `primat-c/` is a
 standalone C99 implementation that builds independently via `make` — see
 `primat-c/README.md` in the repository for compilation instructions.
+
+If you intend to change the code rather than only run it, read
+[`docs/development.md`](https://github.com/CyrilPitrou/primat/blob/master/docs/development.md)
+in the repository: the conventions this code is written to, what the test
+suite enforces, and the list of numerical decisions already measured and
+settled. It is addressed to whoever edits the source, so it is not part of
+this site.

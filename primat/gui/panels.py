@@ -103,8 +103,8 @@ def render_results_panel(run, mc=None, run_params=None, backend_used=None):
        directly under the standard-ratios table it reproduces.
     3. A table of every tracked nuclide (``run.abundance_names``), with the
        nuclide name in standard isotope LaTeX notation (``nuclide_latex``),
-       its mass number ``A``, charge ``Z``, and final mass-fraction abundance
-       ``Y`` (``run.get_quantity(name)``).
+       its mass number ``A``, charge ``Z``, and final abundance per baryon
+       ``Y = n/n_b`` (``run.get_quantity(name)``).
 
     The ``output_final.txt``-format download for this table is provided
     separately by :func:`final_abundances_text`, rendered by
@@ -203,7 +203,7 @@ def final_abundances_text(run, mc=None):
     Same two-/three-column format as ``PRIMAT._write_final_result``
     (``output_final_result=True``), via :func:`primat.backend.dump_final_with_sigma`,
     built from the in-memory results so that flag is not needed just to
-    export this table. ``Y`` is the final mass-fraction abundance of every
+    export this table. ``Y`` is the final abundance per baryon of every
     nuclide in ``run.abundance_names`` (8 / ~59 for the large network, fewer
     with an amax cutoff).
 

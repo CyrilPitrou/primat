@@ -37,7 +37,7 @@ def _zip(entries, compression=zipfile.ZIP_DEFLATED):
 
 
 # ---------------------------------------------------------------------------
-# Rate-table domain validation (R20.1, R20.2)
+# Rate-table domain validation
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("label,text,expected", [
@@ -82,7 +82,7 @@ def test_rate_table_error_message_points_at_the_offending_row():
 
 
 # ---------------------------------------------------------------------------
-# Zip budget (R20.3)
+# Zip budget
 # ---------------------------------------------------------------------------
 
 def test_zip_bomb_is_refused_before_decompression():
@@ -137,7 +137,7 @@ def test_truncated_archive_surfaces_as_a_clean_error():
 
 
 # ---------------------------------------------------------------------------
-# Manifest vs contents (R20.4)
+# Manifest vs contents
 # ---------------------------------------------------------------------------
 
 def test_manifest_naming_an_absent_table_is_refused():
@@ -170,7 +170,7 @@ def test_decay_override_line_is_not_mistaken_for_a_missing_table():
 
 
 # ---------------------------------------------------------------------------
-# Zip slip (R20.5)
+# Zip slip
 # ---------------------------------------------------------------------------
 
 def test_traversal_member_is_refused():
@@ -215,7 +215,7 @@ def test_safe_basename(candidate, expected):
 
 
 # ---------------------------------------------------------------------------
-# Non-UTF-8 members (R20.6)
+# Non-UTF-8 members
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("member", ["networks/x.txt", "tables/n_p__d_g/t.txt"])

@@ -32,7 +32,7 @@ static const CPRNuclide *find_nuclide(const CPRConfig *cfg, const char *name)
     return NULL;
 }
 
-/* Saha (Nuclear Statistical Equilibrium) mass-fraction abundance of
+/* Saha (Nuclear Statistical Equilibrium) abundance per baryon of
  * nuclide `name`, in equilibrium with free neutrons/protons at
  * temperature T_K [Kelvin] and baryon-to-photon ratio eta_b (port of
  * solve()'s local YA closure). Phys. Rep. SS V.A:

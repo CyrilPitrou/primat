@@ -5,6 +5,6 @@ include primat/_primat_c_src/_wrapper.c
 
 # Include the standalone primat-c build/usage material -- useful to sdist
 # consumers (e.g. debian/conda packagers) who want to build primat-c
-# independently of the Python extension (see CLAUDE.md's primat-c section).
+# independently of the Python extension (see primat-c/README.md).
 include primat-c/Makefile
 recursive-include primat-c/examples *.ini

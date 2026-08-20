@@ -10,7 +10,9 @@ readme = "README.md"
 # SPDX license expression (PEP 639) -- the LICENCE file states GPLv3 "or (at
 # your option) any later version".
 license = "GPL-3.0-or-later"
-license-files = ["LICENCE"]
+# Both: LICENCE is primat's own notice and grant, COPYING the verbatim GPLv3
+# text it tells the recipient they should have received alongside it.
+license-files = ["LICENCE", "COPYING"]
 authors = [
     { name = "Cyril Pitrou", email = "pitrou@iap.fr" },
 ]
@@ -130,15 +132,15 @@ gui = [
     "plotly",
 ]
 # Everything (physics perf + MC + plotting + GUI + notebooks) in one shot.
+# Self-referential rather than a hand-copied union, so it cannot drift from
+# the extras it claims to contain -- it once omitted ipykernel, which made
+# ``pip install "primat[all]"`` unable to execute a notebook.
 all = [
-    "numba",
-    "vegas",
-    "joblib",
-    "plotly",
-    "streamlit",
-    "pandas",
-    "matplotlib",
-    "papermill",
+    "primat[recommended]",
+    "primat[mc]",
+    "primat[plots]",
+    "primat[gui]",
+    "primat[notebooks]",
 ]
 
 [tool.setuptools]

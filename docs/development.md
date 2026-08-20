@@ -30,6 +30,10 @@ No example values are given here on purpose: they would go stale. The live
 ones are in `tests/reference_values.py`, the single source that both
 `tests/README.md` and the tests read.
 
+Mind the abundance convention when quoting a per-nuclide number: `Y_i` is the
+abundance *per baryon*, `n_i/n_b`, so `sum(A_i Y_i) = 1`. The mass fraction
+is `A_i Y_i` — `YP` is `4 Y_He4`, four times the `He4` entry of `Y_final`.
+
 ## Comments and docstrings
 
 Comments exist to make the physics legible, which means they must be short
@@ -71,6 +75,14 @@ silently. State each cross-file requirement once — here or in
 
 **The test suite is documentation too.** Every test says what its goal is, and
 `tests/README.md` explains every test file, under the same 15-second rule.
+
+**Shorthand is expanded at first use.** `docs/glossary.md` holds one line per
+term this project uses on a reader — `HT`/`MT`/`LT`, `CCR`, `FM`, `SD`,
+`CCRTh`, `NEVO`, `T9`, `YP`, `expsigma`, `p_<reaction>`, `amax` — with units
+where there are units. The rule in every file, source or prose: expand a term
+the first time that file uses it, or link to the glossary; a file that uses
+one term many times links once rather than repeating the expansion. Add the
+entry to the glossary before using a new abbreviation anywhere else.
 
 ## What the tests enforce
 

@@ -98,6 +98,7 @@ extending
 performance
 api/index
 cli
+glossary
 ```
 
 ```{toctree}

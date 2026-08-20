@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Seed each fuzz corpus from the shipped data of the matching kind.
 
-Every corpus also gets the degenerate shapes passes 20 and 21 collected by
-hand -- empty, comments-only, unsorted, negative, NaN, duplicate, truncated --
+Every corpus also gets the degenerate shapes collected by hand -- empty,
+comments-only, unsorted, negative, NaN, duplicate, truncated --
 so the fuzzer starts from the boundary rather than having to rediscover it.
 """
 from __future__ import annotations

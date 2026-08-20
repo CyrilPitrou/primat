@@ -3,7 +3,7 @@
 [![Documentation](https://readthedocs.org/projects/primat/badge/?version=latest)](https://primat.readthedocs.io/en/latest/?badge=latest)
 <!-- DOI badge placeholder: replace with the real
      https://zenodo.org/badge/DOI/<concept-doi>.svg badge once Zenodo–GitHub
-     archival is enabled (see PyPiGuide.md Step 7) and the first release has
+     archival is enabled (see PyPiGuide.md Step 6) and the first release has
      minted a DOI. -->
 <!-- [![DOI](https://zenodo.org/badge/DOI/PLACEHOLDER.svg)](https://doi.org/PLACEHOLDER) -->
 
@@ -26,6 +26,12 @@ identical results, just different speed. To get started, just type
 
 ```
 primat --help
+```
+
+`primat --version` reports which of the two you got:
+
+```
+primat 0.3.2 (C backend: available)
 ```
 
 **For development, examples, and notebooks:**
@@ -96,9 +102,15 @@ from primat.backend import run_bbn
 
 result = run_bbn({"Omegabh2": 0.02242})
 
-print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699911
-print(f"D/H = {result['DoH']:.7e}")          # 2.4350167e-05
+print(f"YP  (BBN) = {result['YPBBN']:.8f}")  # 0.24699907
+print(f"D/H       = {result['DoH']:.7e}")    # 2.4358767e-05
 ```
+
+(Those are the C backend's values for the default `small` network; the
+pure-Python backend gives `0.24699896` / `2.4358605e-05`, within the
+cross-backend tolerance. The authoritative reference values, with the
+tolerance that applies to each, live in
+[`tests/README.md`](tests/README.md)'s "Validation reference".)
 
 `run_bbn()` is the main entry point and automatically selects the best available
 backend (fast C engine by default, pure-Python fallback if needed). Pass an optional
@@ -107,7 +119,8 @@ parameter dict to override defaults; all keys are optional and drawn from
 
 ## Using primat
 
-There are four ways to use primat, all of which produce identical results:
+There are four ways to use primat, all of which produce the same results to
+the cross-backend tolerance described under "Backend parity contract" below:
 
 ### 1. Python API (recommended)
 
@@ -133,16 +146,19 @@ primat --Omegabh2 0.02242 --network large --amax 8
 
 Output:
 ```
+────────────────────────────────────────────────────
+          PRIMAT results at T = 0.001 MeV
+────────────────────────────────────────────────────
 Neff       = 3.04397730
-YP (BBN)   = 0.24700068
-YP (CMB)   = 0.24567436
-He4/H      = 8.2012164e-02
-D/H        = 2.4365872e-05
-He3/H      = 1.0397390e-05
-He3/He4    = 1.2677863e-04
-Li7/H      = 5.500349e-10
-Li6/Li7    = 1.419389e-05
---- running time: 3.67 seconds ---
+YP (BBN)   = 0.24700238
+YP (CMB)   = 0.24567606
+He4/H      = 8.2012915e-02
+D/H        = 2.4365482e-05
+He3/H      = 1.0397350e-05
+He3/He4    = 1.2677698e-04
+Li7/H      = 5.500473e-10
+Li6/Li7    = 1.419348e-05
+--- running time: 0.20 seconds ---
 ```
 
 | Flag | Description |
@@ -504,8 +520,14 @@ individual σ's. `MCResult` exposes both matrices (sample estimators,
 mc.cov()                  # full (n_q, n_q) covariance matrix, quantity_names() order
 mc.corr()                 # full correlation matrix (unit diagonal)
 mc.cov("YPBBN", "DoH")    # scalar covariance between two named quantities
-mc.corr("YPBBN", "DoH")   # scalar correlation, e.g. ~ -0.5 (YP and D/H anti-correlate)
+mc.corr("YPBBN", "DoH")   # scalar correlation, e.g. -0.13 (mildly anti-correlated)
 ```
+
+The `YPBBN`–`DoH` correlation is *weak* because the two are set by largely
+different physics: `YPBBN` is fixed by the n/p ratio at freeze-out (τ_n, the
+weak rates) while `D/H` is fixed by the deuterium-burning reactions. The
+strongly correlated pairs are the ones sharing a burning chain — e.g.
+`DoH`–`He3oHe4` at about −0.4.
 
 A quantity identical in every sample (zero variance) gives `NaN` off-diagonal
 correlations (never a warning storm).
@@ -515,19 +537,27 @@ correlation and covariance matrices of the four main products
 (`YPBBN`, `DoH`, `He3oHe4`, `Li7oH`):
 
 ```bash
-primat --Omegabh2 0.02242 --mc 100
-# YP (BBN)   = 0.24700028 +/- 0.00003123
-# D/H        = 2.4350000e-05 +/- 1.2000000e-07
+primat --Omegabh2 0.02242 --mc 300 --mc-seed 0
+# YP (BBN)   = 0.24699907 +/- 0.00010631
+# D/H        = 2.4358767e-05 +/- 2.6358624e-07
 # ...
 # Correlation matrix (YPBBN, DoH, He3oHe4, Li7oH):
 #             YPBBN      DoH  He3oHe4    Li7oH
-#    YPBBN    1.000    0.057   -0.238   -0.161
-#      DoH    0.057    1.000   -0.811   -0.377
-#  He3oHe4   -0.238   -0.811    1.000    0.226
-#    Li7oH   -0.161   -0.377    0.226    1.000
+#    YPBBN    1.000   -0.129   -0.064    0.071
+#      DoH   -0.129    1.000   -0.421   -0.388
+#  He3oHe4   -0.064   -0.421    1.000    0.460
+#    Li7oH    0.071   -0.388    0.460    1.000
 # Covariance matrix (YPBBN, DoH, He3oHe4, Li7oH):
 #  ...
 ```
+
+Those are a real run (300 samples, `--mc-seed 0`, C backend, default `small`
+network), not an illustration — but still a *finite* sample: at N = 300 each
+σ carries a few per cent of statistical error of its own and the off-diagonal
+correlations rather more, so expect the last digits to move between seeds.
+The value printed before each `+/-` is the unperturbed (central) solve, so it
+does not depend on N or on the seed. Raise `--mc` for anything you intend to
+quote.
 
 `--mc-seed` sets the random seed (use the same seed to reproduce a run) and
 `--mc-jobs` the number of parallel workers. The three MC output files share
@@ -560,7 +590,7 @@ writers are `primat.backend.dump_mc_samples` / `dump_mc_covariance` /
 | `Neff` | Effective number of neutrino species |
 | `Omeganurel` | Ω_ν h² × 10⁶ (relativistic) |
 | `OneOverOmeganunr` | 1 / (Ω_ν h² × 10⁻⁶) (non-relativistic) |
-| `Y_final` | dict of final mass-fraction abundances, one entry per tracked nuclide (e.g. `Y_final["He4"]`) |
+| `Y_final` | dict of final abundances `Y_i = n_i/n_b` (number per baryon, **not** mass fractions), one entry per tracked nuclide (e.g. `Y_final["He4"]`); the mass fraction is `A_i Y_i`, so `YPBBN == 4 * Y_final["He4"]` |
 
 With `output_time_evolution=True` the dict also carries an `"evolution"` key
 (`primat.evolution.EvolutionResult`).
@@ -573,7 +603,7 @@ e.g. `sigma_DoH` alongside `DoH`, `sigma_YPBBN` alongside `YPBBN`.
 When `output_time_evolution=True`, the time evolution data is made available. If `output_file` is set to a path, a TSV file is written in the unified time-evolution schema, with columns:
 `t_s` (cosmic time [s]), `a` (scale factor), `T_gamma_MeV`, `T_nue_MeV`,
 `T_numu_MeV`, `T_nutau_MeV` (photon and per-flavour neutrino temperatures
-[MeV]), then one `Y_<nuclide>` mass-fraction column per tracked nuclide of
+[MeV]), then one `Y_<nuclide>` abundance column per tracked nuclide of
 the chosen network (8 for small/small_parthenope, ~59 for large, fewer with
 an `amax` cutoff). Both backends write the identical schema, loadable with
 `primat.evolution.load_evolution()`. The n↔p weak rates are not duplicated
@@ -599,6 +629,32 @@ columns, in memory as `run["evolution"].rates` (a dict keyed by column name,
 `primat.evolution.load_evolution()` round-trips them.
 
 ## Architecture
+
+### What is in this repository
+
+| Entry | What it is |
+|-------|------------|
+| `primat/` | the Python package — solver, CLI, GUI, and the shipped `data/` tree |
+| `primat-c/` | the standalone C99 port, also compiled as the default fast backend |
+| `tests/` | the test suite; `tests/README.md` explains every file and holds the validation reference |
+| `docs/` | the published documentation site ([primat.readthedocs.io](https://primat.readthedocs.io)) |
+| `manual/` | the LaTeX physics + usage manual and its committed PDF |
+| `notebooks/` | worked examples, rendered on the docs site as the tutorials |
+| `runfiles/` | ready-to-run example scripts (`primat_run.py` and friends) |
+| `generate_rates/` | offline generators for the shipped rate tables; run once, not at solve time |
+| `biblio/` | the reference papers the code's equations cite |
+| `wheels/` | one committed Linux wheel — load-bearing for the public Streamlit demo, see `wheels/README.md` |
+| `CHANGELOG.md` | one line per user-visible change, newest first |
+| `CITATION.cff` | citation metadata; drives GitHub's "Cite this repository" button |
+| `LICENCE` | primat's own copyright notice and its GPLv3-or-later grant |
+| `COPYING` | the verbatim GNU GPL v3 text that `LICENCE` refers to |
+| `PyPiGuide.md` | for the maintainer: the release checklist, with every irreversible step flagged |
+| `requirements.txt` | for the Streamlit demo only — **not** how you install primat |
+| `pyproject.toml`, `setup.py`, `MANIFEST.in` | packaging; `setup.py` exists only to declare the optional C extension |
+| `pytest.ini` | test markers (`slow`, `solve`, `reference`, `gui`, ...) |
+| `.readthedocs.yaml` | documentation-site build configuration |
+
+### Package layout
 
 ```
 primat/                    Core Python package
@@ -673,11 +729,13 @@ evolution plots.
 
 ### Custom networks (GUI)
 
-The `primat-gui` sidebar's "Nuclear reactions" group offers **"Create
-custom network"** (a popup to start from any named network, toggle reactions
-in/out by mass-number category, and substitute or upload alternate rate
-tables) and **"Import custom network"** (re-load a previously saved
-`.zip`).
+The `primat-gui` sidebar's "Nuclear reactions" group offers a single
+**"Manage networks"** button. It is the one gateway to every network action:
+list, select, remove or rename a network built this session, load one from a
+`.zip`, or open **"Create new network"** — which starts from any named
+network and lets you toggle reactions in/out by mass-number category,
+substitute or upload an alternate rate table per reaction, override a decay
+rate, and add brand-new reactions.
 
 ## Cobaya / MCMC interface
 
@@ -695,6 +753,17 @@ etc.) for use in a likelihood.
 required precision when quoting observables, the docstring rules, what the
 test suite enforces about backend parity, and the list of decisions that were
 already measured and settled. Read that list before changing numerics.
+
+Run the tests from the repository root:
+
+```bash
+pytest tests/ -m "not slow"   # fast lane, well under a minute
+pytest tests/                 # everything, around twenty minutes
+```
+
+`docs/glossary.md` expands the shorthand this project uses — `HT`/`MT`/`LT`,
+`CCR`, `FM`, `SD`, `CCRTh`, `NEVO`, `T9`, `YP`, `expsigma`, `amax` and the
+rest — one line each, with units.
 
 ## Citation
 

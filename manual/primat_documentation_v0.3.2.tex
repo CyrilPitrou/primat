@@ -148,14 +148,14 @@ which prints a short summary:
           PRIMAT results at T = 0.001 MeV
 ----------------------------------------------------
 Neff       = 3.04397730
-YP (BBN)   = 0.24700285
-YP (CMB)   = 0.24567653
-He4/H      = 8.2013121e-02
-D/H        = 2.4356967e-05
-He3/H      = 1.0396057e-05
-He3/He4    = 1.2676090e-04
-Li7/H      = 5.502881e-10
-Li6/Li7    = 1.418238e-05
+YP (BBN)   = 0.24700459
+YP (CMB)   = 0.24567826
+He4/H      = 8.2013888e-02
+D/H        = 2.4356594e-05
+He3/H      = 1.0396011e-05
+He3/He4    = 1.2675916e-04
+Li7/H      = 5.503013e-10
+Li6/Li7    = 1.418195e-05
 --- running time: 0.69 seconds ---
 \end{lstlisting}
 The main named flags are \code{-{}-Omegabh2}, \code{-{}-DeltaNeff},
@@ -178,13 +178,13 @@ variation (\S\ref{sec:nuclear}), can be set with the generic escape hatch
 
 \subsection{Python API}
 For full control, build a parameter dictionary and call \code{PRIMAT}
-directly; every key of \code{config.DEFAULT\_PARAMS} (73 keys) is accepted.
+directly; every key of \code{config.DEFAULT\_PARAMS} (96 keys) is accepted.
 \begin{lstlisting}[style=py]
 from primat import PRIMAT
 
 result = PRIMAT({"Omegabh2": 0.022425, "network": "large", "amax": 8}).solve()
-print(f"YP  (BBN) = {result['YPBBN']:.8f}")   # 0.24700624
-print(f"D/H       = {result['DoH']:.7e}")      # 2.4350575e-05
+print(f"YP  (BBN) = {result['YPBBN']:.8f}")   # 0.24700444
+print(f"D/H       = {result['DoH']:.7e}")      # 2.4356398e-05
 print(f"Neff      = {result['Neff']:.8f}")     # 3.04397730
 \end{lstlisting}
 \code{solve()} (equivalently \code{primat\_results()}, kept for backwards
@@ -220,16 +220,19 @@ which picks the compiled C extension (\code{primat.\_primat\_c}, wrapping the
 standalone \code{primat-c/} C99 port) when it built successfully
 (\code{primat.backend.HAS\_C\_BACKEND}), falls back silently to Python
 otherwise, and returns the identical result-dict shape either way (the two
-backends are validated to agree to $\lesssim3\times10^{-9}$ on $\DoH$ for the
-same inputs, up to one known $\sim1.7\times10^{-8}$ small-network gap awaiting
-root-causing, see \code{tests/test\_backend\_parity.py}). Pass
+backends are held to a relative $5\times10^{-5}$ budget on $\DoH$ for the same
+inputs, against a measured gap of $6.6\times10^{-6}$; that residual is each
+backend's own ODE-tolerance error, and $\Neff$ agrees to every digit --- see
+\code{tests/test\_backend\_parity.py}). Pass
 \code{force\_backend="c"} to require the compiled engine (raises if it is
 unavailable or if a Python-only feature is requested) or
 \code{force\_backend="python"} to force the reference implementation. Custom
-reaction networks (\S\ref{sec:custom-networks}) and the full time-evolution
-schema (below) are supported identically on both backends; incremental MC
-sample reuse (\code{prev=}, \S\ref{sec:mc-usage}) and \code{extra\_rho}/
-\code{background=}/\code{decay\_era} remain Python-only.
+reaction networks (\S\ref{sec:custom-networks}), the full time-evolution
+schema (below), \code{extra\_rho} and \code{decay\_era} are supported
+identically on both backends, and incremental MC sample reuse
+(\code{prev=}, \S\ref{sec:mc-usage}) works within either backend --- but not
+across the two, whose random streams differ. Only \code{background=} (a custom
+\code{Background} object, which cannot cross the C ABI) is Python-only.
 
 \paragraph{Monte-Carlo rate-uncertainty propagation.}\label{sec:mc-usage}
 Every tabulated reaction rate and $\tau_n$ carries a $1\sigma$ uncertainty
@@ -260,8 +263,8 @@ result as a re-importable \code{.zip}.
 
 \paragraph{Output files and the unified time-evolution schema.}
 \code{output\_time\_evolution=True} populates (in memory, on both backends)
-an \code{EvolutionResult} with the unified schema of
-\code{primat.evolution}/\code{PRIMAT.md} \S7 -- \code{t\_s}, \code{a},
+an \code{EvolutionResult} with the unified schema documented in
+\code{primat/evolution.py}'s module docstring -- \code{t\_s}, \code{a},
 \code{T\_gamma\_MeV}, the three flavour neutrino temperatures, and every
 tracked nuclide's \code{Y\_<nuclide>} column, one row per output time step --
 and additionally writes it to \code{output\_file} (default
@@ -275,8 +278,9 @@ MC-samples TSV dumps.
 \paragraph{Rates directory resolution.}
 Two \code{PRIMATConfig} fields let a run substitute alternate data without
 touching the installed package: \code{data\_dir} (a full replacement of the
-shipped \code{primat/data/} tree -- must contain \code{NEVO/}, \code{weak/},
-\code{plasma/}, \code{nuclear/} and \code{csv/}) and \code{user\_nuclear\_dir}
+shipped \code{primat/data/} tree -- must contain \code{NEVO/},
+\code{nuclear/}, \code{csv/} and
+\code{cache\_plasma\_weak/\{weak,plasma\}/}) and \code{user\_nuclear\_dir}
 (an \emph{additive} overlay for nuclear networks and rate tables only,
 checked before the shipped tree so built-in networks like \code{small}
 remain available). Both are validated as existing directories at
@@ -293,12 +297,14 @@ streamlit run primat/gui/app.py     # from a source checkout
 \end{lstlisting}
 It exposes the parameters as form fields, shows the final abundances and an
 interactive abundance-evolution plot, and additionally offers, in the
-``Nuclear reactions'' sidebar group, two popups -- \textbf{Import custom
-network} and \textbf{Create custom network} -- that let a user start from any
-named network, toggle reactions in/out grouped by mass-number category,
-substitute or upload an alternate rate table per reaction, add brand-new
-reactions, then either save the result as a re-importable \code{.zip} or run
-BBN with it directly (\S\ref{sec:custom-networks}); a results tab exposes the
+``Nuclear reactions'' sidebar group, a single \textbf{Manage networks} button
+-- the one gateway to listing, selecting, removing or renaming a network built
+this session, loading one from a \code{.zip}, or opening \textbf{Create new
+network}, which lets a user start from any named network, toggle reactions
+in/out grouped by mass-number category, substitute or upload an alternate rate
+table per reaction, override a decay rate and add brand-new reactions, then
+save the result as a re-importable \code{.zip} or run BBN with it
+(\S\ref{sec:custom-networks}); a results tab exposes the
 same Monte-Carlo uncertainty propagation as \code{-{}-mc}
 (\S\ref{sec:mc-usage}).
 
@@ -307,7 +313,7 @@ Several physical corrections shift $\Neff$ at the $10^{-2}$--$10^{-3}$ level, so
 abundances should be reported with enough significant figures: at least 8
 decimals for $\Neff$ and $\YP$, 7 for $\DoH$, and 6 for $^{7}$Li/H. A standard
 small-network run with $\Omega_b h^2 = 0.022425$ gives $\YP \simeq 0.24700$,
-$\DoH \simeq 2.4349\times10^{-5}$ and $\Neff \simeq 3.04398$.
+$\DoH \simeq 2.4350\times10^{-5}$ and $\Neff \simeq 3.04398$.
 
 % =====================================================================
 \section{Plasma thermodynamics}\label{sec:plasma}

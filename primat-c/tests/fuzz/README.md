@@ -1,8 +1,8 @@
 # Fuzzing the C parsers
 
 Every C function that reads a user-supplied file has a fuzz target here. The
-point is the class of failure nobody thinks to write a test for: pass 21 found
-that an empty or comments-only rate table segfaulted the C backend by trying
+point is the class of failure nobody thinks to write a test for: that an empty
+or comments-only rate table segfaulted the C backend was found by trying
 inputs one at a time, and a fuzzer finds that whole class without being told
 what to look for.
 
@@ -55,7 +55,7 @@ so it never crashed at all.
 |---|---|
 | `fuzz_engine.c` | the coverage-guided loop, corpus and mutator |
 | `fuzz_<kind>.c` | one target per parser |
-| `corpus/<kind>/` | seeds (shipped data + the degenerate shapes passes 20/21 collected) and the inputs the campaign evolved |
+| `corpus/<kind>/` | seeds (shipped data + the degenerate shapes collected by hand) and the inputs the campaign evolved |
 | `regressions/<kind>/` | minimised reproducers for defects found |
 | `artifacts/<kind>/` | crash inputs and sanitizer logs from a local run (untracked) |
 | `seed_corpus.py` | regenerates the seeds from the shipped data tree |

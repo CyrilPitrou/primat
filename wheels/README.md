@@ -18,7 +18,7 @@ public demo at [primat.streamlit.app](https://primat.streamlit.app)**.
 None of these three pieces (this wheel, the `requirements.txt` line, or
 `build_linux.yml`) is legacy or redundant with the PyPI `wheels.yml`
 publishing workflow — deleting any of them breaks the website. See
-`CLAUDE.md`'s "Streamlit Cloud deployment chain" section for the full
+`docs/development.md`'s "Decisions already made" section for the full
 picture.
 
 ## Keeping this in sync with a version bump

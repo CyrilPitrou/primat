@@ -194,13 +194,15 @@ A result outside the applicable bound indicates a regression.
 
 ### Per-nuclide final abundances (small / large+amax=8 / large)
 
-Final mass-fraction abundances `Y` of the small-network nuclides at the end of
+Final abundances `Y_i = n_i/n_b` (per baryon, **not** mass fractions — the
+mass fraction is `A_i Y_i`) of the small-network nuclides at the end of
 BBN, from the **default** run (`numerical_precision=1e-7`) on the auto backend
 (C when built). Snapshotted 2026-08-05.
 
 **Read these to 5 significant figures, not 7.** The two backends agree on them
 to ≤2.2e-5 relative, and an ordinary numerics improvement moves them at the
-1e-5 level (review passes 6–7 moved `n` by 6.2e-5). The pinned bound is
+1e-5 level (the electron-thermo and `t(T)` corrections moved `n` by 6.2e-5).
+The pinned bound is
 therefore **1e-4 relative** — see `NUCLIDE_REL_TOL` in
 `tests/reference_values.py`, which holds these same numbers as the single
 source and is checked live by
@@ -264,13 +266,13 @@ decisions without quoting numbers that go stale.
 | **Background ODE tolerance.** Python solves a(T) and t(T) at tolerances derived from `numerical_precision`; C uses a fixed, much tighter `BG_ODE_RTOL`. | **Open, and the dominant term at the default `numerical_precision`.** It is Python's own discretisation error rather than a disagreement about physics: it vanishes as `numerical_precision` is tightened, and forcing Python's background ODE to C's fixed tolerance removes ~98 % of the He3/H and Li7/H gaps. Aligning them was measured to cost 1.6–3× the pure-Python runtime while leaving ~1e-6 of D/H disagreement that is nuclear-side step-sequence noise at the default tolerance, so it was left open rather than paid for. |
 | **t(T) coordinate.** Python solves a(T) and t(T) in two passes, integrating `dt/d(lnT)` forward from `T_start_cosmo`; C solves both in one combined pass over `lnT`, integrating a relative time anchored at `T_end` and shifting it afterwards. | **Open by decision — do not "align" these without re-reading this row.** Survives at converged tolerance and is what remains once the two above are aligned; largest near e± annihilation. Neither design dominates. C's single pass avoids handing an interpolated a(T) into a second solve; Python's forward-from-the-start time is the better-conditioned variable (C's relative time is huge where the physical time is tiny, which is why `BG_ODE_RTOL` is fixed and tight) and is the only one verified against an integrator outside primat. Both anchor a(T) at `T_end`, so that is not a difference. Adopting either side's method wholesale was measured and declined: it buys a small single-digit percentage of runtime on each backend, costs a rewrite of the core background solver on both, and would move every published reference number. The best design is the hybrid neither has — C's combined pass with Python's forward time variable — and it is worth the same small amount. |
 | **HT-era integrator.** Python integrates the n↔p-only HT era with `LSODA`, C with Dormand-Prince RK45. | **Intentional, and now a negligible term.** Pass 7 measured this as the whole YP gap; re-measured after that pass's own `t(T)` fix it accounts for ~1e-10 of it. Aligning both on BDF was tried and *degraded* YP parity, so the two methods stay as they are. |
-| **`external_scale_factor` interpolant.** Python reads T(a) linearly inside its time-integration RHS; C fits a not-a-knot cubic over the same nodes. | **Intentional, and now negligible.** The C cubic is a performance workaround — its RK45 stepper rejected ~65 % of steps on the kinks — and LSODA has no such problem; making Python match was tried and measured *worse*, because in this mode a(T) is itself a table read (NEVO's `x` column), so a cubic through those nodes manufactures curvature the data does not contain. The *scheme* difference was never the expensive part. What was, until review pass 23 measured it: both backends built that inverse — and the t(T) grid the network reads — on the ODE output grid, whose spacing carries an O(h²) error. The two errors had opposite signs, so the backends sat 1.2e-05 apart in D/H at converged tolerance, 12× the budget, with the gap *growing* as the tolerance tightened. Both now refine that grid by `_EXTERNAL_A_REFINE`/`CPR_EXTERNAL_A_REFINE` (8), which costs nothing — a(T) is an algebraic table read here, not an ODE — and the gap is 1.5e-07, in line with the default mode. Pinned by `test_backend_agreement_at_converged_tolerance`'s `external_scale_factor` cases. |
+| **`external_scale_factor` interpolant.** Python reads T(a) linearly inside its time-integration RHS; C fits a not-a-knot cubic over the same nodes. | **Intentional, and now negligible.** The C cubic is a performance workaround — its RK45 stepper rejected ~65 % of steps on the kinks — and LSODA has no such problem; making Python match was tried and measured *worse*, because in this mode a(T) is itself a table read (NEVO's `x` column), so a cubic through those nodes manufactures curvature the data does not contain. The *scheme* difference was never the expensive part. What was: both backends built that inverse — and the t(T) grid the network reads — on the ODE output grid, whose spacing carries an O(h²) error. The two errors had opposite signs, so the backends sat 1.2e-05 apart in D/H at converged tolerance, 12× the budget, with the gap *growing* as the tolerance tightened. Both now refine that grid by `_EXTERNAL_A_REFINE`/`CPR_EXTERNAL_A_REFINE` (8), which costs nothing — a(T) is an algebraic table read here, not an ODE — and the gap is 1.5e-07, in line with the default mode. Pinned by `test_backend_agreement_at_converged_tolerance`'s `external_scale_factor` cases. |
 
 Ruled out as sources, and pinned as such: the nuclear rate tables (both
 backends resample the same shipped tables onto the same master T9 grid), the
 weak-rate tables (including the CCRTh thermal correction, whose interpolation
-scheme the two backends shared as of review pass 13 — the largest structural
-term until then), and every thermodynamic quantity — `Neff` is bit-identical.
+scheme the two backends now share — the largest structural term until they
+did), and every thermodynamic quantity — `Neff` is bit-identical.
 
 Everything else that round-1 review found divergent between the two backends
 was closed rather than documented; `git log` is the record of those.

@@ -13,6 +13,7 @@ rate-uncertainty propagation, and the `data_dir`/`user_nuclear_dir` overlay).
 | `figures/` | PDF figures included by the `.tex` (one per `\includegraphics`). |
 | `tab_reactions.tex`, `tab_nuclides.tex` | Generated reaction-list and nuclide-data tables, `\input` by the document. |
 | `primat_documentation_v0.3.2.pdf` | Compiled output. |
+| `EXTENDING.md` | The long form of the three extension points (`extra_rho`, `custom_background`, `background=`), with worked examples. The published short version is `docs/extending.md`, which delegates to the how-to guides. |
 
 ## Rebuilding
 

@@ -79,7 +79,7 @@ print(" ")
 
 # Print the full per-nuclide abundance table for any network beyond "small".
 if MyOptions.get("network", "small") != "small":
-    print(" Final nuclide mass-fraction abundances Y_i:")
+    print(" Final nuclide abundances Y_i = n_i/n_b (mass fraction = A_i Y_i):")
     print(f"  {'Nuclide':<10}  {'Y_i':>14}")
     print("  " + "-" * 26)
     for name in res['Y_final']:

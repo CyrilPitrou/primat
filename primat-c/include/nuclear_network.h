@@ -83,7 +83,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
                                 char **errmsg);
 void cpr_nuclear_network_free(CPRNuclearNetwork *nn);
 
-/* Final mass-fraction abundance Y of nuclide `name` (mirrors Y_final.get(name, 0.0)
+/* Final abundance per baryon Y of nuclide `name` (mirrors Y_final.get(name, 0.0)
  * via PRIMAT's __getitem__); 0.0 if `name` is not tracked by the active network. */
 double cpr_nuclear_network_get(const CPRNuclearNetwork *nn, const char *name);
 

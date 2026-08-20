@@ -11,7 +11,53 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+### Added
+- **A glossary.** `docs/glossary.md` gives one line to each piece of shorthand
+  the project uses on a reader — HT/MT/LT, CCR, FM, SD, CCRTh, NEVO, T9, YP,
+  Neff, D/H, expsigma, `p_<reaction>`, amax, and the rest — with units where
+  there are units. Linked from the documentation site's Reference section and
+  from the README.
+- **A map of the repository.** The README now explains every top-level file
+  and directory in one line each, including which of the two licence files is
+  which and who `PyPiGuide.md` is for.
+
+### Removed
+- **Development-process artifacts under `docs/`.** Four implementation plans
+  and specs written by a coding assistant had been committed into the
+  documentation tree and then excluded from the build rather than removed.
+  They are in the repository's history where such material belongs.
+
 ### Fixed
+- **The distribution now carries the GNU GPL text.** `LICENCE` tells every
+  recipient that a copy of the licence accompanies the program and names
+  `COPYING` as the file; only `LICENCE` was being packaged. Both are now
+  included.
+- **`pip install "primat[all]"` can execute a notebook again.** The `all`
+  extra was a hand-copied union of the others and had fallen a package behind
+  — it omitted `ipykernel`, without which papermill fails with
+  `NoSuchKernel`. It now refers to the other extras instead of copying them,
+  so it cannot drift again.
+- **The README's three worked examples print what the code prints.** The
+  quick start's deuterium value was stale by 8.6e-09 (2900x the tolerance the
+  same number is pinned at elsewhere), the command-line summary was stale in
+  eight of its nine numbers, and the Monte-Carlo summary was an invention
+  whose uncertainties were understated 2-3x and whose stated correlation
+  contradicted its own table. All three are now measured, and the abundance
+  and correlation prose around them says what the run says.
+- **`Y` is an abundance per baryon, not a mass fraction.** The README, both
+  public API docstrings, the time-evolution schema and the test suite's
+  reference table all described `Y_final` and the `Y_<nuclide>` columns as
+  mass fractions. They hold `Y_i = n_i/n_b`; the mass fraction is `A_i Y_i`,
+  so a reader comparing `Y_final["He4"]` against a published helium mass
+  fraction was out by a factor of four. Documentation only — no number
+  changed.
+- **The LaTeX manual's usage chapter matches the code again.** It listed
+  `extra_rho` and `decay_era` as Python-only (both run on the C backend),
+  counted 73 configuration keys (96), described a data directory layout that
+  has moved, cited a design note that no longer exists, described a
+  two-button graphical interface that is now one, and quoted a cross-backend
+  agreement figure superseded by measurement.
+
 - **A string parameter set to `None` no longer crashes the C backend.**
   `--set network=None`, or `network = none` in an `.ini` file, left the field
   empty and the run died on a segmentation fault (exit 139) printing nothing,

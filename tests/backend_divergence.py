@@ -52,7 +52,7 @@ def observable_gap(params, precision=None):
 
     Returns ``{"observables": {name: rel}, "observables_value": {name: python
     value}, "nuclides": {name: rel}}``. Per-nuclide entries below ``1e-25``
-    mass fraction are skipped as noise.
+    abundance per baryon are skipped as noise.
     """
     p = dict(params)
     if precision is not None:

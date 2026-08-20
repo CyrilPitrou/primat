@@ -108,7 +108,7 @@ def test_backend_result_dict_shape_matches():
     assert {"Neff", "Omeganurel", "OneOverOmeganunr"} <= r_c.keys()
     assert {"Neff", "Omeganurel", "OneOverOmeganunr"} <= r_py.keys()
     # Both backends must expose the same keys, including the "Y_final"
-    # sub-dict of final nuclide mass fractions (the parity contract's "same
+    # sub-dict of final nuclide abundances (the parity contract's "same
     # result-dict keys"). The C wrapper adds it in _wrapper.c's
     # results_to_dict; the Python run_bbn mirrors it in backend._python_solve.
     assert r_c.keys() == r_py.keys()

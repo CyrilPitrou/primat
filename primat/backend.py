@@ -108,7 +108,7 @@ def _python_solve(params: dict[str, Any] | None, extra_rho: list | None,
     """Run the pure-Python backend and return PRIMAT.solve()'s result dict.
 
     Backend-parity note: the C backend's ``run_bbn`` attaches a ``"Y_final"``
-    sub-dict of every tracked nuclide's final mass fraction
+    sub-dict of every tracked nuclide's final abundance per baryon
     (``primat/_primat_c_src/_wrapper.c``). ``PRIMAT.solve()`` itself does not
     include it -- an in-process Python caller would query
     ``inst.get_quantity(...)`` / ``inst.nuclear.Y_final`` instead -- but
@@ -379,7 +379,7 @@ def run_bbn(params: dict[str, Any] | None = None, force_backend: str | None = No
 
     Returns:
         dict: the BBN result dict (``YPBBN``, ``DoH``, ``Neff``, ..., plus a
-        ``Y_final`` sub-dict of every tracked nuclide's final mass fraction).
+        ``Y_final`` sub-dict of every tracked nuclide's final abundance per baryon).
 
     Example:
         >>> run_bbn({"network": "small"})["YPBBN"]
@@ -830,7 +830,7 @@ def dump_final_with_sigma(names: list[str], Y: dict[str, float],
 
     Args:
         names: list of str. Nuclide names, in the order to write them.
-        Y: dict, name -> final mass-fraction abundance.
+        Y: dict, name -> final abundance per baryon Y_i = n_i/n_b.
         sigma: dict, name -> 1-sigma MC uncertainty on ``Y[name]``, optional.
         num_mc: int, required when ``sigma`` is given -- the MC sample count,
             recorded in the header (e.g. ``sigma_N50``).

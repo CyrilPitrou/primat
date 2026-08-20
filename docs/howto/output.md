@@ -57,6 +57,8 @@ assuming a column count.
   current directory); set it to `None` to skip the disk write entirely — the
   time-evolution data is still accessible via `result["evolution"]` either
   way, on both backends (see `primat.backend`).
+- Each `Y_<nuclide>` is an abundance per baryon, `Y_i = n_i/n_b`, not a mass
+  fraction: the mass fraction is `A_i Y_i`, so `YPBBN` is `4 * Y_He4`.
 - The `Y_<nuclide>` block is one column per nuclide of the chosen network —
   8 for `small`/`small_parthenope`, ~59 for `large`, fewer with an `amax`
   cutoff.

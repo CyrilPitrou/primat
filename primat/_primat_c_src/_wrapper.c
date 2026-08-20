@@ -922,7 +922,7 @@ static PyMethodDef primat_c_methods[] = {
      "run_bbn(params: dict, data_dir: str, custom_network: dict|None = None) -> dict\n\n"
      "Run one cprimat_run-equivalent BBN computation and return the result "
      "dict (same keys as primat.PRIMAT.solve()), plus a 'Y_final' sub-dict "
-     "of every tracked nuclide's final mass fraction. `custom_network` is "
+     "of every tracked nuclide's final abundance per baryon. `custom_network` is "
      "the GUI 'Customise Reactions' override ({'removed': [...], "
      "'replaced': {...}, 'added': {...}}, see network_data.h's CPRCustomNetwork). "
      "`extra_rho_T`/`extra_rho_val` (both optional, given together) are the "

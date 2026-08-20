@@ -30,5 +30,5 @@ distinct from the physics methods paper above), the repository ships a
 [`CITATION.cff`](https://github.com/CyrilPitrou/primat/blob/master/CITATION.cff)
 at its root, which GitHub renders as a "Cite this repository" button on the
 repo page. Once Zenodo–GitHub archival is enabled (see `PyPiGuide.md` Step
-7), each tagged release also gets its own archival DOI through Zenodo.
+6), each tagged release also gets its own archival DOI through Zenodo.
 

@@ -405,7 +405,7 @@ class PRIMAT:
         # abundance normalised so sum_s A_s Y_s = 1).
         YPBBN = 4. * Ya_f
         # CMB-convention helium fraction n_He/(n_He+n_H) by mass (used by CMB
-        # codes' "Y_He"): convert the BBN Y_p (mass fraction) via the He4/H
+        # codes' "Y_He"): convert the BBN Y_p (nucleon fraction) via the He4/H
         # mass ratios cfg.He4Overma/cfg.HOverma.
         YPCMB = ((cfg.He4Overma / 4.) * YPBBN
                  / ((cfg.He4Overma / 4.) * YPBBN + cfg.HOverma * (1. - YPBBN)))
@@ -599,7 +599,7 @@ class PRIMAT:
 
         Accepts any key from the result dict ('YPBBN', 'DoH', 'He3oH',
         'Li7oH', 'Neff', 'YPCMB', ...) or a nuclide name from
-        cfg.Nuclides ('H2', 'He4', 'Li7', ...) for the final mass fraction Y.
+        cfg.Nuclides ('H2', 'He4', 'Li7', ...) for the final abundance Y = n/n_b.
         """
         self._ensure_solved()
         results = cast(dict, self.results)
@@ -1150,7 +1150,7 @@ def mc_uncertainty(num_mc: int, quantity: str | list[str] | None,
         Number of MC samples.
     quantity : str or list of str
         A result-dict key ('YPBBN', 'DoH', 'Neff', ...) or a nuclide name
-        ('H2', 'He4', ...) for its final mass fraction Y; a list evaluates
+        ('H2', 'He4', ...) for its final abundance Y = n/n_b; a list evaluates
         several in one pass. This only fixes what is *guaranteed* present and
         strictly validated (an unknown name raises) — the returned
         :class:`MCResult` always also carries every tracked nuclide and every

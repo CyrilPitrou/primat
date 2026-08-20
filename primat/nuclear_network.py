@@ -185,7 +185,7 @@ class NuclearNetwork:
     Attributes (populated by :meth:`solve`)
     ----------------------------------------
     Y_final : dict or None
-        Final mass-fraction abundance ``Y`` of every nuclide in
+        Final abundance per baryon ``Y`` of every nuclide in
         ``abundance_names``.
     abundance_names : list of str or None
         Tracked nuclide names, in abundance-vector order (LT species list).
@@ -266,7 +266,7 @@ class NuclearNetwork:
         return nB_weak / ngamma_weak
 
     def _saha_YA(self, name, Yn, Yp, T, eta_b_weak):
-        """Saha equilibrium mass-fraction abundance of nuclide `name`.
+        """Saha equilibrium abundance per baryon of nuclide `name`.
 
         At high temperature each nuclide is maintained in Nuclear Statistical
         Equilibrium (NSE) with free neutrons and protons via photo-dissociation.
@@ -284,15 +284,15 @@ class NuclearNetwork:
 
         Args:
             name : nuclide name string (key into cfg.Nuclides/NuclExcessMass).
-            Yn   : free neutron mass fraction.
-            Yp   : free proton mass fraction.
+            Yn   : free neutron abundance per baryon.
+            Yp   : free proton abundance per baryon.
             T    : photon temperature in Kelvin (= cfg.T_weak at every
                    call site).
             eta_b_weak : baryon-to-photon ratio at T = T_weak (see
                    :meth:`_compute_eta_b_weak`).
 
         Returns:
-            Y_A  : dimensionless mass fraction (≪ 1 at T ≫ BBN onset).
+            Y_A  : dimensionless abundance per baryon (≪ 1 at T ≫ BBN onset).
         """
         cfg = self.cfg
         x     = cfg.Nuclides[name]
@@ -321,7 +321,7 @@ class NuclearNetwork:
         """Integrate the HT era (n <-> p only), T = T_start -> T_weak.
 
         Returns ``(sol_HT, Yn_HT_f, Yp_HT_f)``: the ``solve_ivp`` result and
-        the final neutron/proton mass fractions, which seed the MT era.
+        the final neutron/proton abundances, which seed the MT era.
         """
         cfg        = self.cfg
         background = self.background
@@ -377,7 +377,7 @@ class NuclearNetwork:
         Seeds every MT species except n/p (which come from the HT solution)
         at Saha (NSE) equilibrium via :meth:`_saha_YA`.  Returns
         ``(sol_MT, mt_final_raw)``: the ``solve_ivp`` result and a dict of
-        final mass fractions by nuclide name, which seed the LT era.
+        final abundances by nuclide name, which seed the LT era.
         """
         cfg        = self.cfg
         background = self.background
@@ -442,7 +442,7 @@ class NuclearNetwork:
 
         Seeds the LT vector from ``mt_final_raw`` (filling any extra species
         absent from MT with 0).  Returns ``(sol_LT, finL)``: the ``solve_ivp``
-        result and the final mass fractions by nuclide name (clamped to >= 0
+        result and the final abundances by nuclide name (clamped to >= 0
         and zero-filled for any standard light species the chosen network
         does not track).
         """
@@ -540,7 +540,7 @@ class NuclearNetwork:
 
         Populates ``self.Y_final``, ``self.abundance_names`` and
         ``self.Y_of_t`` and returns ``self.Y_final`` (the dict of final
-        mass-fraction abundances by nuclide name).  The BBN observables dict
+        abundances per baryon by nuclide name).  The BBN observables dict
         (``Neff``, ``YPBBN``, ``DoH``, ...) is built by ``PRIMAT.solve()`` from
         ``self.Y_final`` and from ``background``'s optional neutrino-sector
         hooks -- it is no longer computed here.
@@ -725,7 +725,7 @@ class NuclearNetwork:
         """Write a two-column ``nuclide  Y`` table of final abundances.
 
         Dumps every tracked nuclide of the active network and its final
-        mass-fraction abundance ``Y`` at the end of BBN to
+        abundance per baryon ``Y`` at the end of BBN to
         ``cfg.output_final_file``.  ``Y`` is normalised so that
         ``sum_s A_s Y_s = 1`` (A = mass number), i.e. it is the per-baryon
         abundance weighted by A.  The rows are exactly the species of the
@@ -784,7 +784,7 @@ class NuclearNetwork:
         Columns (see :mod:`primat.evolution` for the exact schema): cosmic
         time ``t_s``, scale factor ``a``, photon temperature
         ``T_gamma_MeV``, the three flavour neutrino temperatures, and one
-        ``Y_<species>`` column per tracked nuclide (mass-fraction
+        ``Y_<species>`` column per tracked nuclide (abundance-per-baryon
         abundance). ``a``/the neutrino temperatures come from
         ``self.background`` (``np.nan`` if it tracks no scale factor/
         neutrino sector, e.g. a minimal custom background).
@@ -921,9 +921,8 @@ class NuclearNetwork:
             D[P_idx, X_idx] += rate_X × mult_P        (gain term per product P)
 
         **Convention (important).**  ``Y`` is the *number* abundance per baryon,
-        ``Y_s = n_s / n_B``, normalised so that ``Σ_s A_s Y_s = 1`` — it is
-        **not** a mass fraction, despite the loose "mass fraction" wording used
-        elsewhere in this file.  That is the convention the LT/MT right-hand
+        ``Y_s = n_s / n_B``, normalised so that ``Σ_s A_s Y_s = 1`` — the mass
+        fraction is ``A_s Y_s``.  That is the convention the LT/MT right-hand
         side itself uses: ``network_builder._rhs_kernel`` applies the bare
         integer stoichiometry ``af_co = c_prod − c_react`` with no mass
         weighting, and ``network_builder.check_conservation`` verifies exactly

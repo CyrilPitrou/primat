@@ -4,9 +4,7 @@ A short guide to the three supported extension points. For the full physics
 formalism (rate evaluation, background equations, weak-rate corrections),
 the primary reference is `biblio/Pitrou_etal_PhysReptArxivVersion.pdf`
 (Pitrou, Coc, Uzan, Vangioni, *Physics Reports* 04 (2018) 005); see also the
-other PDFs in `biblio/`. Internal planning docs (`FUTURE.md`, `CPLAN.md`) are
-deliberately not cited here — they describe in-progress refactors, not
-physics, and rot once the work lands.
+other PDFs in `biblio/`.
 
 ## (a) Add a nuclear reaction
 

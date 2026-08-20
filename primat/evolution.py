@@ -79,7 +79,7 @@ class EvolutionResult:
         ``"tau"`` (``np.nan`` arrays if the background tracks no neutrino
         sector).
     Y : dict of str -> np.ndarray
-        Per-nuclide mass-fraction abundance, keyed by nuclide name, in
+        Per-nuclide abundance per baryon Y_i = n_i/n_b, keyed by nuclide name, in
         network order (``n``/``p`` first).
     rates : dict of str -> np.ndarray, optional
         Optional per-reaction forward-rate columns (populated when

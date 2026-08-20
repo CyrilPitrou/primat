@@ -44,7 +44,7 @@ def test_MeV_to_Kelvin_round_trips_T_weak_and_T_nucl():
 
 
 # ---------------------------------------------------------------------------
-# The 16 measured constants are ordinary parameters (pass 14). Goal of this
+# The 16 measured constants are ordinary parameters. Goal of this
 # group: an override must reach every consumer -- the derived quantities, the
 # cache key, and both backends -- and the ten exact constants must stay
 # unsettable, since no config can carry them across the C ABI.
