@@ -21,15 +21,14 @@ each instance.
 
 Checkpointing / resuming (IMPORTANT)
 ------------------------------------
-The full grid is ~130k ODE integrations and takes hours.  Earlier versions kept
-*every* result in memory and wrote the table only at the very end, so any
-interruption -- the OS out-of-memory (OOM) killer reaping the long-lived joblib
-worker pool, a single solver failure, a reboot -- threw away the whole run.  (The
-"it runs but at some point it stops" symptom is most often the OOM killer; see
-the mitigations below.)
+The full grid is ~130k ODE integrations and takes hours, so an interruption --
+the OS out-of-memory (OOM) killer reaping the long-lived joblib worker pool, a
+single solver failure, a reboot -- must not cost the whole run.  (The "it runs
+but at some point it stops" symptom is most often the OOM killer; see the
+mitigations below.)
 
-The computation is now **checkpointed per DeltaN**.  After each DeltaN block is
-finished its results are written atomically to
+The computation is therefore **checkpointed per DeltaN**.  After each DeltaN
+block is finished its results are written atomically to
 
     results/checkpoints_MC<N_MC>/dN_<i>.npz
 

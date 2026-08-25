@@ -61,7 +61,7 @@ test: $(UNIT_BIN)
 # the ratio against the recorded Python baseline
 # -- examples/baseline_timings.txt, captured once via
 # `time python runfiles/primat_run.py`-equivalent calls (see that file's
-# header for how/when to refresh it). `--data-dir ../primat/data` matches
+# header for how/when to refresh it). `--data_dir ../primat/data` matches
 # every other CPRIMAT invocation in this repo (tests, examples/*.ini);
 # `mkdir -p results` only matters on a fresh checkout (cpr_nuclear_network_
 # write_final_result's own mkdir_p creates it too, but cfg->output_final_
@@ -71,12 +71,12 @@ bench: $(BUILD)/primat-c
 	@echo "== CPRIMAT benchmark (small, large+amax=8) vs. Python baseline =="
 	@echo "-- small --"; \
 	 start=$$(date +%s.%N); \
-	 ./$(BUILD)/primat-c --data-dir ../primat/data --ini examples/run_small.ini >/dev/null; \
+	 ./$(BUILD)/primat-c --data_dir ../primat/data --ini examples/run_small.ini >/dev/null; \
 	 end=$$(date +%s.%N); \
 	 awk -v s=$$start -v e=$$end 'BEGIN { printf "primat-c: %.3f s\n", e - s }'
 	@echo "-- large, amax=8 --"; \
 	 start=$$(date +%s.%N); \
-	 ./$(BUILD)/primat-c --data-dir ../primat/data --ini examples/run_large_amax8.ini >/dev/null; \
+	 ./$(BUILD)/primat-c --data_dir ../primat/data --ini examples/run_large_amax8.ini >/dev/null; \
 	 end=$$(date +%s.%N); \
 	 awk -v s=$$start -v e=$$end 'BEGIN { printf "primat-c: %.3f s\n", e - s }'
 	@echo "Python baseline timings (recorded once, see examples/baseline_timings.txt):"

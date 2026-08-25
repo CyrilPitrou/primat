@@ -2,14 +2,22 @@
 """
 primat_run.py
 =============
-Standard run script for PRIMAT.
+Standard run script for primat: one ``large, amax=8`` solve at the default
+cosmology, printing the observables and the per-nuclide final abundances.
+All run-time options are passed as a plain dict to ``run_bbn``.
 
-All run-time options are passed as a plain dict to ``PRIMAT``.
-No ``primat_init.py`` singleton is needed or used.
+Prints Neff, both YP conventions and the light-element ratios, then the
+final Y_i of all 12 tracked nuclides. Also writes three files under
+``results/``: ``output_tables.tsv`` (abundances vs time),
+``output_background.tsv`` (the cosmological background vs time) and
+``output_final.dat`` (the final abundances, two columns).
 
-Usage::
+Takes under a second on a warm cache; the first run ever on a machine pays
+a one-time weak-rate/electron-thermo build (see docs/howto/weak-rate-cache).
 
-    python primat_run.py
+Run from the repo root so that the shipped ``data/`` data resolve correctly::
+
+    python runfiles/primat_run.py
 """
 
 import sys

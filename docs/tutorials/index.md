@@ -26,8 +26,8 @@ jupyter lab notebooks/
   η_b with 1σ nuclear-rate uncertainty bands and observational constraints
   (YP, D/H, ³He/⁴He, ⁷Li/H).
 - **{doc}`AbundanceEvolution`** — time evolution of `A_i Y_i(t)` for every
-  nuclide from 1 s to 10⁵ s, for both the small (12-reaction) and large
-  (~429-reaction) networks.
+  nuclide from 1 s to 10⁶ s, for the small (12-reaction), `large, amax=8`
+  (68-reaction) and large (~429-reaction) networks.
 - **{doc}`CompareSmallNetworks`** — `small` vs. `small_parthenope` head to
   head.
 - **{doc}`AnimatedAbundances`** — animated GIFs of the small-network
@@ -35,10 +35,10 @@ jupyter lab notebooks/
 
 ## Nuclear rates
 
-- **{doc}`ReactionRates`** — plots the tabulated rate ⟨σv⟩(T9) of any
-  reaction in the network, with the master-grid reinterpolation overlaid,
-  alongside the n↔p weak rates, all compared against the Hubble rate H(T)
-  to show freeze-out.
+- **{doc}`ReactionRates`** — the weak n↔p rates and the `small` network's
+  main nuclear channels, all converted to inverse times [s⁻¹] and plotted
+  against the Hubble rate H(T): where a curve crosses H is where that
+  reaction freezes out.
 
 ## Parameter scans
 
@@ -48,7 +48,8 @@ jupyter lab notebooks/
 - **{doc}`AbundancesNrelat`** — abundances vs. ΔNeff: scans
   ΔNeff ∈ [−2, +2] to show how extra relativistic species shift YP and D/H.
 - **{doc}`AbundancesXi`** — abundances vs. neutrino degeneracy
-  ξ = μ_ν/T_ν: scans ξ ∈ [−0.05, +0.05].
+  ξ = μ_ν/T_ν: scans ξ ∈ [−0.05, +0.05], in the instantaneous-decoupling
+  limit (the NEVO tables the default mode reads assume ξ = 0).
 
 ## Uncertainty analysis
 
@@ -66,7 +67,7 @@ Common conventions across the parameter-scan notebooks: a fixed MC seed
 the grid; observational constraints shown as grey bands; the baryon
 density Ω_b h² = 0.02242 ± 0.00014 (Planck 2018 + BAO) shown as a red vertical band; and
 `num_mc = 500`+ for publication-quality uncertainty bands (the notebooks
-default to 50 for speed).
+default to 100).
 :::
 
 ```{toctree}

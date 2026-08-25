@@ -32,6 +32,9 @@ Run from the repo root::
 
     python runfiles/generate_weak_rate_caches.py
 
+Expect tens of minutes: each combination's thermal (CCRTh) table is a vegas
+Monte-Carlo integration, and there are five of them.
+
 The cache filenames embed a hash of the weak-rate / thermal fingerprint
 (``weak_rates/cache.py``: ``_weak_rate_fingerprint`` / ``_thermal_fingerprint``
 and their ``_WEAK_RATE_BG_FIELDS`` / ``_THERMAL_BG_FIELDS`` field lists).

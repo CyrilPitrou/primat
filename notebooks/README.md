@@ -1,8 +1,19 @@
 # PRIMAT — Python Notebooks
 
-This folder contains demonstration notebooks for PRIMAT.
-Each notebook is self-contained and can be run from this directory.
-Figures are saved to `plots/`.
+This folder contains demonstration notebooks for PRIMAT. Each is a complete
+worked example: it opens by stating the question it answers, and the parameter
+you would change to ask your own version of it is near the top of the code.
+
+Run them from this directory (`jupyter lab notebooks/`). Install the extra they
+need first:
+
+```bash
+pip install -e ".[notebooks,recommended]"
+```
+
+Figures appear inline and are also written to `plots/`, which each notebook
+creates on demand — the directory is not tracked, since its contents are
+regenerable output.
 
 Every notebook has an "Open in Colab" badge in its header cell, so it can
 also be run with zero local setup. The header is followed by a guarded
@@ -19,7 +30,7 @@ install cell (`importlib.util.find_spec("primat") is None`) that
 | Notebook | Description |
 |----------|-------------|
 | `StandardPlots.ipynb` | **Schramm diagram**: primordial abundances vs η_b with 1σ nuclear-rate uncertainty bands and observational constraints (YP, D/H, ³He/⁴He, ⁷Li/H). |
-| `AbundanceEvolution.ipynb` | **Time evolution** of A_i Y_i(t) for all nuclides from 1 s to 10⁵ s, for both the 12-reaction (small) and ~429-reaction (large) networks. |
+| `AbundanceEvolution.ipynb` | **Time evolution** of A_i Y_i(t) for all nuclides from 1 s to 10⁶ s, for the 12-reaction (`small`), 68-reaction (`large`, `amax=8`) and ~429-reaction (`large`) networks. |
 | `AnimatedAbundances.ipynb` | **Animated time evolution**: two GIFs of the small-network A_i Y_i(t) tracks, sweeping ΔNeff and Ω_b h² respectively. |
 | `CompareSmallNetworks.ipynb` | **Network comparison**: `small` vs `small_parthenope` — abundances and time evolution side by side. |
 | `ReactionRates.ipynb` | **Reaction rates vs Hubble**: weak n↔p rates and the main `small`-network nuclear reactions, all as inverse times [s⁻¹], forward solid / backward dashed, with the Hubble rate H(T) in black — visualising weak freeze-out and the deuterium bottleneck. |
@@ -30,7 +41,7 @@ install cell (`importlib.util.find_spec("primat") is None`) that
 |----------|-------------|
 | `PosteriorBaryons.ipynb` | **Posterior on Ω_b h²** from YP and D/H: scans Ω_b h² ∈ [0.020, 0.024] and computes Gaussian likelihoods from each observable. |
 | `AbundancesNrelat.ipynb` | **Abundances vs ΔNeff**: scans ΔNeff ∈ [−2, +2] to show how extra relativistic species shift YP and D/H. |
-| `AbundancesXi.ipynb` | **Abundances vs neutrino degeneracy ξ = μ_ν/T_ν**: scans ξ ∈ [−0.05, +0.05] to show the effect of a neutrino chemical potential on BBN. |
+| `AbundancesXi.ipynb` | **Abundances vs neutrino degeneracy ξ = μ_ν/T_ν**: scans ξ ∈ [−0.05, +0.05] to show the effect of a neutrino chemical potential on BBN. Runs in the instantaneous-decoupling limit, the only mode self-consistent at ξ ≠ 0 — see the notebook's header. |
 
 ### Uncertainty analysis
 
@@ -48,12 +59,16 @@ install cell (`importlib.util.find_spec("primat") is None`) that
 - **Observational constraints** shown as grey horizontal/vertical bands.
 - **Baryon density** Ω_b h² = 0.02242 ± 0.00014 (Planck 2018 + BAO, TT,TE,EE+lowE+lensing+BAO;
   also PRIMAT's default `Omegabh2`) shown as a red vertical band.
-- Set `num_mc = 500` or more for publication-quality uncertainty bands (default is 50 for speed).
+- Set `num_mc = 500` or more for publication-quality uncertainty bands (the
+  notebooks default to 100).
 - **Notebook outputs**: all notebooks in this folder are committed *with*
-  their outputs (plots, printed tables) so they render fully on GitHub and
+  their outputs (figures and printed tables) so they render fully on GitHub and
   in the documentation site without needing to be re-executed. Re-run a
   notebook top-to-bottom before committing if you change its code, so the
-  saved outputs stay in sync with the source cells.
+  saved outputs stay in sync with the source cells — and re-run it with an
+  *inline* Matplotlib backend. Executing with `MPLBACKEND=Agg` set (as
+  `tests/test_notebooks.py` deliberately does) stores a
+  `FigureCanvasAgg is non-interactive` warning where each figure should be.
 
 ---
 
