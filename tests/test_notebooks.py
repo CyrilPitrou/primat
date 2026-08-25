@@ -31,10 +31,11 @@ renamed/removed attribute that the notebooks rely on (``r.A``,
 makes one of these cells raise, and papermill re-raises that as a
 ``CellExecutionError`` here.
 
-``generate_rates/thermal_average.ipynb`` lives outside ``notebooks/`` and
-derives its repo root from ``Path.cwd().parent``, so it is executed from a
-throwaway ``generate_rates/`` directory instead (``_run_thermal_average``).
-Every notebook in the repository is covered; ``AbundancesXi``/
+Two notebooks live outside ``notebooks/`` and derive their root from the
+working directory, so each is executed from a throwaway copy of its own
+directory: ``generate_rates/thermal_average.ipynb`` (the rate-generation
+how-to) and ``manual/primat_doc_figures.ipynb`` (the manual's figure set).
+Every notebook in the repository is therefore covered; ``AbundancesXi``/
 ``AbundancesNrelat``'s MC scans run at reduced sample counts, as above.
 
 Requires ``papermill`` (an optional ``notebooks`` extra, see
@@ -55,7 +56,7 @@ FAST_NOTEBOOKS = [
     "ReactionRates.ipynb",
     # No Monte Carlo either, so no parameter override is needed: Sensitivity
     # runs the derivative scan (~6 s) and AnimatedAbundances builds its frames
-    # from ~20 solves (~13 s).
+    # from 40 solves (21 for the DeltaNeff sweep, 19 for Omega_b h^2).
     "Sensitivity.ipynb",
     "AnimatedAbundances.ipynb",
 ]
@@ -118,8 +119,7 @@ def test_mc_notebook_executes_with_few_samples(name, tmp_path, monkeypatch):
 def test_thermal_average_notebook_executes(tmp_path, monkeypatch):
     """Run ``generate_rates/thermal_average.ipynb``, the rate-generation how-to.
 
-    It is the one notebook outside ``notebooks/``, and the only one whose
-    self-checks are assertions rather than plots: three analytic thermal
+    It is the only notebook whose self-checks are assertions rather than plots: three analytic thermal
     averages (constant sigma, 1/v, and the two d+d S-factor channels) that fail
     the cell if the quadrature drifts. It reads primat's shipped rate tables
     and reruns a small BBN solve with the table it just wrote, so an API rename
@@ -148,6 +148,38 @@ def test_thermal_average_notebook_executes(tmp_path, monkeypatch):
     papermill.execute_notebook(
         str(work_dir / "thermal_average.ipynb"),
         str(work_dir / "out_thermal_average.ipynb"),
+        cwd=str(work_dir),
+        progress_bar=False,
+    )
+
+
+def test_manual_figure_notebook_executes(tmp_path, monkeypatch):
+    """Run ``manual/primat_doc_figures.ipynb``, which regenerates every figure
+    in the LaTeX manual.
+
+    It is the only notebook that reaches into a solved run's *intermediate*
+    state -- ``background.Tg_vec``, ``plasma.rho_e``, the weak-rate
+    interpolants -- so it fails on an attribute rename that the result-dict
+    based notebooks would not notice. Run from a throwaway ``manual/`` whose
+    parent links back to the real package, so its figures land in tmp_path.
+    """
+    papermill = pytest.importorskip("papermill")
+    monkeypatch.setenv("MPLBACKEND", "Agg")
+
+    repo = Path(__file__).resolve().parents[1]
+    work_root = tmp_path / "repo"
+    (work_root / "manual").mkdir(parents=True)
+    try:
+        (work_root / "primat").symlink_to(repo / "primat", target_is_directory=True)
+    except (OSError, NotImplementedError):
+        # Windows needs a privilege for symlinks; a copy works everywhere.
+        shutil.copytree(repo / "primat", work_root / "primat")
+    work_dir = work_root / "manual"
+    shutil.copy(repo / "manual" / "primat_doc_figures.ipynb", work_dir)
+
+    papermill.execute_notebook(
+        str(work_dir / "primat_doc_figures.ipynb"),
+        str(work_dir / "out_primat_doc_figures.ipynb"),
         cwd=str(work_dir),
         progress_bar=False,
     )

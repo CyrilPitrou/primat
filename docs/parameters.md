@@ -185,7 +185,7 @@ A `None` default means the feature is off or the path is unset.
 | `rate_grid_T9_max` | `10.0` | maximum T9 [GK] of the master rate grid |
 | `network` | `"small"` | "small" / "small_parthenope" / "large" / custom network filename |
 | `amax` | `None` | filter any network to reactions with A &lt;= amax |
-| `atol_large_LT` | `1e-26` | solve_ivp absolute tolerance for the large-network LT era |
+| `atol_large_LT` | `1e-26` | solve_ivp absolute tolerance for the LT era of every network (the name is historical) |
 | `rescale_nuclear_rates` | `False` | vary all nuclear rates by a uniform factor (sensitivity studies) |
 | `mc_rate_rescale_cap` | `30` | clamp the MC rate variation factor to [1/cap, cap]; None disables the cap |
 | `nuclear_qed_corrections` | `True` | QED correction to select radiative-capture rates (Pitrou &amp; Pospelov 2020) |

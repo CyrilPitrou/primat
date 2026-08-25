@@ -29,6 +29,10 @@ printed under ``--quick`` are not meaningful as a benchmark, only as a
 "did it run" check. Each solve/MC call is repeated ``--repeats`` times
 (default 3) and the *minimum* wall time is reported, to reduce noise from
 OS scheduling/thermal throttling on the first call of a warm process.
+
+Prints one line per row and then the whole table in Markdown, ready to paste
+over docs/performance.md's. Writes nothing. Takes about five seconds at the
+default ``--repeats 3``.
 """
 import argparse
 import os

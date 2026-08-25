@@ -16,6 +16,9 @@ Run from the repo root so that the shipped ``data/`` data resolve correctly:
 
     python runfiles/primat_mc.py
 
+Takes a few seconds for the default 500 samples on the C backend, about a
+second with ``--quick``.
+
 Pass ``--quick`` (or set the ``PRIMAT_MC_QUICK`` environment variable) to use
 a small sample count suitable for a fast smoke test (see
 ``tests/test_runfiles.py``); the default sample count is large enough for the

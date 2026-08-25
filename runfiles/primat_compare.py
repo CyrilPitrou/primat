@@ -7,7 +7,11 @@ small network, the small_parthenope network, the large network restricted to
 A <= 8 (68 reactions, equivalent to the old "medium" network), and the full
 large network.
 
-Usage::
+Prints Neff, YP, He4/H, D/H, He3/H and Li7/H for each of the four, so the
+network-to-network spread can be read off directly. Writes nothing.
+Takes a couple of seconds, most of it the full large network.
+
+Run from the repo root so that the shipped ``data/`` data resolve correctly::
 
     python runfiles/primat_compare.py
 """
