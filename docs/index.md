@@ -46,7 +46,7 @@ tolerance that applies to each, live in
 `run_bbn()` is the main entry point and automatically selects the best
 available backend (fast C engine by default, pure-Python fallback if
 needed). Pass an optional parameter dict to override defaults; {doc}`parameters`
-lists all 96 keys with their defaults, and every one of them can equally be set
+lists all 95 keys with their defaults, and every one of them can equally be set
 on the command line or in an INI file.
 
 ## Four ways to use primat

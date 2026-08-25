@@ -85,7 +85,7 @@ is stored cannot change what is in it.
   `data_dir` rather than as a missing CSV. A leading `~` is expanded in all
   three, on both backends.
 - `user_nuclear_dir` is not part of the n↔p weak-rate fingerprint machinery
-  (`_WEAK_RATE_BG_FIELDS`/`_THERMAL_BG_FIELDS`) since it only affects
+  (`WEAK_RATE_BG_FIELDS`/`THERMAL_BG_FIELDS`) since it only affects
   network/rate-table resolution, not anything those fingerprints cover.
 - The C side (`primat-c/`) mirrors this overlay exactly — same lookup
   order, same two wired call sites (`cpr_load_network` and each reaction's

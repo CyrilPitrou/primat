@@ -255,9 +255,9 @@ def test_reference_large_DoH(ref_large):
 
 @pytest.mark.solve
 def test_no_numba_small_matches_numba(solved_small):
-    """Pure-Python (numba_installed=False) must agree with the JIT path to 1e-4."""
+    """Pure-Python (use_numba=False) must agree with the JIT path to 1e-4."""
     from primat.main import PRIMAT
-    r_nn = PRIMAT({"numba_installed": False, "network": "small"}).primat_results()
+    r_nn = PRIMAT({"use_numba": False, "network": "small"}).primat_results()
     assert r_nn["YPBBN"] == pytest.approx(solved_small.results["YPBBN"], rel=1e-4)
     assert r_nn["DoH"]   == pytest.approx(solved_small.results["DoH"],   rel=1e-4)
 
@@ -267,7 +267,7 @@ def test_no_numba_large_amax8_smoke():
     """Pure-Python large/amax=8 network solve completes and YP is physically
     reasonable (the old "medium" network's exact 68-reaction equivalent)."""
     from primat.main import PRIMAT
-    r = PRIMAT({"numba_installed": False, "network": "large", "amax": 8}).primat_results()
+    r = PRIMAT({"use_numba": False, "network": "large", "amax": 8}).primat_results()
     assert 0.24 < r["YPBBN"] < 0.25
     assert 2.0e-5 < r["DoH"] < 3.0e-5
 

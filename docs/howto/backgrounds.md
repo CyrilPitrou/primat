@@ -106,7 +106,7 @@ print(f"Neff     = {result['Neff']:.8f}")
 A `PRIMAT(background=<Background instance>)` hook for a fully custom
 expansion history that needs more than `extra_rho` can express — subclass
 `primat.background.Background` (whose docstring lists the compulsory
-`T_of_t`/`t_of_T`/`rhoB_BBN`/`weak_nTOp_frwrd`/`weak_nTOp_bkwrd` and
+`T_of_t`/`t_of_T`/`rhoB_BBN`/`weak_nTOp`/`weak_pTOn` and
 optional methods) and pass an instance. `PRIMAT` takes `self.cfg`/
 `self.plasma` from the supplied instance rather than building its own, so
 build the instance with your own `PRIMATConfig`/`Plasma` first:
@@ -127,7 +127,7 @@ PRIMAT(background=MyBackground(cfg, plasma))
 
 > **Turn the weak-rate cache off if your history differs.** The n↔p
 > weak-rate cache is keyed on the *config* alone
-> (`_weak_rate_fingerprint`), but the rates are integrated against the
+> (`weak_rate_fingerprint`), but the rates are integrated against the
 > `[Tg_vec, Tnue_vec]` grid **your** instance builds — the grid behind the
 > `T_nu(T_gamma)` interpolant every rate integrand reads. Two subclasses with
 > different neutrino histories and the same `cfg` therefore hash to the same

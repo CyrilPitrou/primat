@@ -26,7 +26,7 @@ Key choices versus the standard run:
         T_start_cosmo_MeV (among others);
       * the thermal (CCRTh) one via T_start_cosmo_MeV (40 -> 100) and
         sampling_nTOp_thermal_per_decade (20 -> 25), both in
-        _THERMAL_BG_FIELDS.
+        THERMAL_BG_FIELDS.
     The thermal recompute is the multi-minute vegas integration, which is
     most of this script's run time; its result is written back under a new
     hash (save_nTOp_thermal defaults to True), so a second reference run on

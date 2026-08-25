@@ -26,7 +26,7 @@ def test_corrections_all_names_exist():
 
 @pytest.fixture(scope="module")
 def cfg():
-    return PRIMATConfig({"numba_installed": False})
+    return PRIMATConfig({"use_numba": False})
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ def test_ComputeFn_positive(cfg):
 
 def test_ComputeFn_Born_smaller_than_full(cfg):
     """Born-level Fn (no radiative/finite-mass corrections) should be smaller than the full Fn."""
-    cfg_born = PRIMATConfig({"numba_installed": False,
+    cfg_born = PRIMATConfig({"use_numba": False,
                            "radiative_corrections": False,
                            "finite_mass_corrections": False})
     Fn_full = wr.ComputeFn(cfg)
@@ -133,7 +133,7 @@ def test_vacuum_limit_reproduces_tau_n():
             cfg=cfg_, me=me, mn=cfg_.mn * cfg_.MeV, mp=cfg_.mp * cfg_.MeV,
             Q=(cfg_.mn - cfg_.mp) * cfg_.MeV, xi_nu=0.0,
             T_nuOverT=lambda T: ratio, gA=cfg_.gA,
-            deltakappa=cfg_.deltakappa, my_dir=cfg_._resolved_data_dir)
+            deltakappa=cfg_.deltakappa, my_dir=cfg_.resolved_data_dir)
 
     # --- Born: flat convergence to Fn -------------------------------------
     cfg_born = PRIMATConfig({"radiative_corrections": False,
@@ -262,7 +262,7 @@ def test_gauss_legendre_converged():
     # convergence check; any smooth T_nu(T_gamma) exercises the same integrand).
     MeV_to_K = cfg.MeV_to_Kelvin
     Tg  = np.logspace(np.log10(cfg.T_end / MeV_to_K),
-                      np.log10(cfg.T_start / MeV_to_K), 60)
+                      np.log10(cfg.T_start_nucl / MeV_to_K), 60)
     Tnu = Tg * (4. / 11.) ** (1. / 3.)
 
     _, f0, b0 = wr.ComputeWeakRates([Tg, Tnu], cfg)
@@ -292,16 +292,16 @@ def test_fingerprint_changes_with_munuOverTnu():
 
     munuOverTnu shifts the neutrino Fermi-Dirac occupation that enters every
     n<->p rate integral, so a cache built for one value must not be silently
-    reused for another.  This pins ``_WEAK_RATE_BG_FIELDS``
+    reused for another.  This pins ``WEAK_RATE_BG_FIELDS``
     (weak_rates/cache.py) to keep including ``munuOverTnu`` (stored under that
-    historical key by ``_weak_rate_fingerprint``, holding the effective
+    historical key by ``weak_rate_fingerprint``, holding the effective
     ``cfg.xi_nu_e``).
     """
     cfg0 = PRIMATConfig({"munuOverTnu": 0.0})
     cfg1 = PRIMATConfig({"munuOverTnu": 0.1})
 
-    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
-    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    fp0 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
 
 
@@ -325,8 +325,8 @@ def test_thermal_fingerprint_changes_with_chemical_potential(params):
     per-flavour ``munuOverTnu_e`` override (only nu_e reaches these
     integrands, so both funnel through the effective ``cfg.xi_nu_e``).
     """
-    fp0 = wr.fingerprint_hash(wr._thermal_fingerprint(PRIMATConfig({})))
-    fp1 = wr.fingerprint_hash(wr._thermal_fingerprint(PRIMATConfig(params)))
+    fp0 = wr.fingerprint_hash(wr.thermal_fingerprint(PRIMATConfig({})))
+    fp1 = wr.fingerprint_hash(wr.thermal_fingerprint(PRIMATConfig(params)))
     assert fp0 != fp1
 
 
@@ -336,11 +336,11 @@ def test_thermal_fingerprint_ignores_muon_tau_degeneracy():
     The complement of the test above: a nu_mu or nu_tau degeneracy changes the
     neutrino energy density (hence Neff) but never enters the n<->p
     integrands, so forcing a multi-minute vegas recompute for it would be
-    pure waste.  Mirrors the same rule in ``_weak_rate_fingerprint``.
+    pure waste.  Mirrors the same rule in ``weak_rate_fingerprint``.
     """
-    fp0 = wr.fingerprint_hash(wr._thermal_fingerprint(PRIMATConfig({})))
+    fp0 = wr.fingerprint_hash(wr.thermal_fingerprint(PRIMATConfig({})))
     for key in ("munuOverTnu_mu", "munuOverTnu_tau"):
-        fp1 = wr.fingerprint_hash(wr._thermal_fingerprint(PRIMATConfig({key: 0.1})))
+        fp1 = wr.fingerprint_hash(wr.thermal_fingerprint(PRIMATConfig({key: 0.1})))
         assert fp0 == fp1, f"{key} must not invalidate the thermal cache"
 
 
@@ -360,13 +360,13 @@ def test_fingerprint_changes_with_nevo_grid_file(tmp_path):
     away (see ``test_off_default_params.py``).
     """
     cfg0 = PRIMATConfig({"spectral_distortions": True})
-    shipped = os.path.join(cfg0._resolved_data_dir, "NEVO", "NEVOGrid.csv")
+    shipped = os.path.join(cfg0.resolved_data_dir, "NEVO", "NEVOGrid.csv")
     custom = tmp_path / "MyGrid.csv"
     shutil.copyfile(shipped, custom)
     cfg1 = PRIMATConfig({"spectral_distortions": True,
                          "nevo_grid_file": str(custom)})
-    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
-    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    fp0 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
 
 
@@ -385,8 +385,8 @@ def test_fingerprint_changes_with_sampling_temperature_per_decade():
     """
     cfg0 = PRIMATConfig({})
     cfg1 = PRIMATConfig({"sampling_temperature_per_decade": 300})
-    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
-    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    fp0 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
 
 
@@ -423,8 +423,8 @@ def test_shipped_weak_caches_carry_current_format_version():
     # 1. The two tables a default run needs must be present AND current. This
     #    is the check that fails if a fingerprint change lands without the
     #    shipped tables being re-keyed.
-    for fp_fn, prefix in ((wr._weak_rate_fingerprint, "nTOp_"),
-                          (wr._thermal_fingerprint, "nTOp_thermal_")):
+    for fp_fn, prefix in ((wr.weak_rate_fingerprint, "nTOp_"),
+                          (wr.thermal_fingerprint, "nTOp_thermal_")):
         fp = fp_fn(cfg)
         assert fp["format_version"] == WEAK_RATE_FORMAT_VERSION
         path = os.path.join(weak_dir, prefix + wr.fingerprint_hash(fp) + ".txt")
@@ -456,8 +456,8 @@ def test_fingerprint_changes_with_y_SZ():
     cfg0 = PRIMATConfig({**common, "y_SZ": 0.0})
     cfg1 = PRIMATConfig({**common, "y_SZ": 0.05})
 
-    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
-    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    fp0 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
 
 
@@ -476,13 +476,13 @@ def test_fingerprint_changes_with_nevo_file(tmp_path):
     no longer costs a full recompute (see ``test_off_default_params.py``).
     """
     cfg0 = PRIMATConfig({"network": "small"})
-    shipped = os.path.join(cfg0._resolved_data_dir, "NEVO", "NEVOPRIMAT_col_1_7.csv")
+    shipped = os.path.join(cfg0.resolved_data_dir, "NEVO", "NEVOPRIMAT_col_1_7.csv")
     custom = tmp_path / "MyHistory.csv"
     shutil.copyfile(shipped, custom)
     cfg1 = PRIMATConfig({"network": "small", "nevo_file": str(custom)})
 
-    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
-    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    fp0 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
 
 
@@ -523,7 +523,7 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
     # [T_gamma_vec, T_nue_vec] and dFDneu_func (built from the
     # nevo_spectral_file/nevo_grid_file defaults, untouched by nevo_file)
     # makes the *non-thermal* part bit-identical. The *thermal* part
-    # (CCRTh, see _thermal_fingerprint) is cached on disk separately and
+    # (CCRTh, see thermal_fingerprint) is cached on disk separately and
     # keyed by its own fingerprint, which nevo_file also enters; the
     # custom-copy run therefore cannot hit the shipped
     # nTOp_thermal_<hash>.txt cache and must re-run the vegas Monte Carlo
@@ -593,8 +593,8 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
     try:
         cfg0 = PRIMATConfig({"network": "small"})
         cfg1 = PRIMATConfig({"network": "small", "nevo_file_prefix": "MYPREFIX"})
-        fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
-        fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+        fp0 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg0))
+        fp1 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg1))
         assert fp0 != fp1
 
         # See the matching comment in test_nevo_file_with_custom_copy_reproduces_default:
@@ -628,14 +628,14 @@ def test_fingerprint_unaffected_by_external_scale_factor():
     ODE vs. reading the NEVO table's x column, see
     docs/howto/nevo-tables.md) -- it does not change the rate(T) integrand itself
     (ComputeWeakRates takes a T grid directly, with no dependence on a(T)).
-    _WEAK_RATE_BG_FIELDS (weak_rates.py) deliberately excludes
+    WEAK_RATE_BG_FIELDS (weak_rates.py) deliberately excludes
     external_scale_factor for exactly this reason (see the module's "v1"
     format-version note), so the weak-rate cache fingerprint -- unlike the
     physical a(T)/t(T) history -- must NOT change."""
     cfg0 = PRIMATConfig({"network": "small"})
     cfg1 = PRIMATConfig({"network": "small", "external_scale_factor": True})
-    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
-    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    fp0 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr.weak_rate_fingerprint(cfg1))
     assert fp0 == fp1
 
 
@@ -644,7 +644,7 @@ def test_thermal_accuracy_knobs_rekey_the_ccrth_cache():
 
     GOAL: `vegas_n_eval`, `vegas_n_itn` and `epsrel_thermal` are grouped in
     DEFAULT_PARAMS under "Thermal correction accuracy knobs", but they were
-    absent from _thermal_fingerprint, and corrections.py consults the cache
+    absent from thermal_fingerprint, and corrections.py consults the cache
     *before* reading them. All three were therefore silently inert whenever a
     file existed -- which, for the shipped configurations, is always. A run at
     vegas_n_eval=200 reproduced the default run digit for digit, while a forced
@@ -653,12 +653,12 @@ def test_thermal_accuracy_knobs_rekey_the_ccrth_cache():
     every later run of it.
     """
     base = PRIMATConfig({"network": "small"})
-    ref = wr.fingerprint_hash(wr._thermal_fingerprint(base))
+    ref = wr.fingerprint_hash(wr.thermal_fingerprint(base))
     for knob, value in (("vegas_n_eval", 200),
                         ("vegas_n_itn", 2),
                         ("epsrel_thermal", 1e-4)):
         cfg = PRIMATConfig({"network": "small", knob: value})
-        got = wr.fingerprint_hash(wr._thermal_fingerprint(cfg))
+        got = wr.fingerprint_hash(wr.thermal_fingerprint(cfg))
         assert got != ref, f"{knob} does not re-key the thermal cache"
     # The default configuration must still name the shipped file, so a plain
     # run does not pay a multi-minute vegas rebuild.
@@ -742,8 +742,8 @@ def test_recomputed_rates_match_cached():
     MeV_to_K = PRIMATConfig().MeV_to_Kelvin
     for T_MeV in [0.5, 1.0, 3.0, 10.0]:
         T_K = T_MeV * MeV_to_K
-        for cached, fresh in ((r_cached.background.weak_nTOp_frwrd_raw, r_fresh.background.weak_nTOp_frwrd_raw),
-                              (r_cached.background.weak_nTOp_bkwrd_raw, r_fresh.background.weak_nTOp_bkwrd_raw)):
+        for cached, fresh in ((r_cached.background.weak_nTOp_raw, r_fresh.background.weak_nTOp_raw),
+                              (r_cached.background.weak_pTOn_raw, r_fresh.background.weak_pTOn_raw)):
             assert fresh(T_K) == pytest.approx(cached(T_K),
                                                rel=_RECOMPUTE_REL_TOL)
 
@@ -803,12 +803,12 @@ def test_analytic_distortion_weak_rates_stay_fast():
             "return of the np.vectorize SD-FM performance regression")
 
 
-def test_setup_fd_impls_rewraps_on_numba_installed_change():
-    """Regression test: _setup_fd_impls must re-wrap when numba_installed flips.
+def test_setup_fd_impls_rewraps_on_use_numba_change():
+    """Regression test: _setup_fd_impls must re-wrap when use_numba flips.
 
     It used to latch on a one-shot boolean (``_fd_impls_initialized``), so a
     second call -- e.g. from a second PRIMATConfig with the opposite
-    numba_installed value -- was a silent no-op: whichever variant (jitted or
+    use_numba value -- was a silent no-op: whichever variant (jitted or
     plain Python) got set up *first* in the process stuck around forever,
     regardless of what later callers asked for. _setup_fd_impls now tracks
     the actual last-applied value (``_fd_impls_numba``) and always rebuilds
@@ -821,7 +821,7 @@ def test_setup_fd_impls_rewraps_on_numba_installed_change():
     pytest.importorskip("numba")
     from numba.core.registry import CPUDispatcher
 
-    # Start from a known state, then flip numba_installed back and forth and
+    # Start from a known state, then flip use_numba back and forth and
     # check the module-level FD_* names track it each time (not just once).
     wr._setup_fd_impls(False)
     assert not isinstance(wr.FD_nu3, CPUDispatcher)
@@ -835,7 +835,7 @@ def test_setup_fd_impls_rewraps_on_numba_installed_change():
     assert not isinstance(wr.FD2, CPUDispatcher)
 
     # Restore numba=True so later tests in this session (most fixtures use
-    # the real numba_installed autodetection) see the JIT-compiled versions.
+    # the real use_numba autodetection) see the JIT-compiled versions.
     wr._setup_fd_impls(True)
 
 

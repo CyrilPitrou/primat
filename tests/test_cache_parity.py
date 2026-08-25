@@ -29,7 +29,7 @@ For each deterministic cache, both backends are driven with their own
 ``cache_dir`` on a coarse grid, then:
 
 1. **Hash identity** -- both backends must emit the *same filename*. This pins
-   ``cpr_weak_rate_fingerprint`` == ``_weak_rate_fingerprint`` and
+   ``cpr_weak_rate_fingerprint`` == ``weak_rate_fingerprint`` and
    ``cpr_constants_hash`` == ``constants_hash(cache)`` field for field, per
    cache -- the two sides declare the same constant subsets. A single
    field present on one side only, a float formatted differently, a key sorted
@@ -246,7 +246,7 @@ def _max_rel_above_scale(a, b, frac):
 def test_weak_rate_cache_filename_identical(coarse_dirs):
     """Both backends name the n<->p weak-rate cache identically.
 
-    A mismatch means cpr_weak_rate_fingerprint and _weak_rate_fingerprint have
+    A mismatch means cpr_weak_rate_fingerprint and weak_rate_fingerprint have
     drifted -- a field on one side only, a differently formatted float, a
     different key order -- and the two backends would each silently maintain
     their own copy of a cache meant to be shared.
@@ -300,11 +300,11 @@ def test_thermal_cache_fingerprints_agree(thermal_dirs):
     assert c_names == [], (
         "C backend missed the shipped thermal cache and recomputed "
         f"{c_names} -- cpr_thermal_fingerprint has drifted from "
-        "_thermal_fingerprint")
+        "thermal_fingerprint")
     assert py_names == [], (
         "Python backend missed the shipped thermal cache and recomputed "
         f"{py_names} -- the shipped table's fingerprint no longer matches "
-        "_thermal_fingerprint (was it re-keyed?)")
+        "thermal_fingerprint (was it re-keyed?)")
 
 
 def test_constants_hash_identical_across_backends():

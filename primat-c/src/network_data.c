@@ -468,14 +468,14 @@ static const char *CPR_ORDER_MT[] = {
 #define CPR_N_ORDER_MT (sizeof(CPR_ORDER_MT) / sizeof(CPR_ORDER_MT[0]))
 
 /* Stable light-nuclide species orders (network_data.py's SPECIES_SMALL/
- * SPECIES_MD, where "MD" abbreviates "medium"): light species first, in this
+ * SPECIES_MT, where "MD" abbreviates "medium"): light species first, in this
  * fixed physically-meaningful order, then any remaining active nuclide in
  * nuclides.csv's own order (see cpr_species_order). */
 static const char *CPR_SPECIES_SMALL[] = {"n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"};
 #define CPR_N_SPECIES_SMALL (sizeof(CPR_SPECIES_SMALL) / sizeof(CPR_SPECIES_SMALL[0]))
-static const char *CPR_SPECIES_MD[] = {"n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7",
+static const char *CPR_SPECIES_MT[] = {"n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7",
                                          "He6", "Li8", "Li6", "B8"};
-#define CPR_N_SPECIES_MD (sizeof(CPR_SPECIES_MD) / sizeof(CPR_SPECIES_MD[0]))
+#define CPR_N_SPECIES_MT (sizeof(CPR_SPECIES_MT) / sizeof(CPR_SPECIES_MT[0]))
 
 /* Electric charge of each lepton bookkeeping token (A=0, not in the ODE
  * state vector). Bm = beta- = electron (Z=-1); Bp = beta+ = positron (Z=+1). */
@@ -712,7 +712,7 @@ static int qed_nuclear_rescale(const char *name, const double *grid, size_t n_gr
 }
 
 /* Orders active nuclides with light species first (network_data.py's
- * _species_order): SPECIES_MD if any of its 4 heavier-than-SPECIES_SMALL
+ * _species_order): SPECIES_MT if any of its 4 heavier-than-SPECIES_SMALL
  * members (He6/Li8/Li6/B8) is active, else SPECIES_SMALL; then every
  * remaining active nuclide in cfg->nuclides' own (nuclides.csv) order.
  * `active` (length n_active) need not be sorted; `out` (caller-allocated,
@@ -728,10 +728,10 @@ static size_t species_order(const CPRConfig *cfg, char active[][16], size_t n_ac
                               char out[][16])
 {
     int use_md = 0;
-    for (size_t i = 8; i < CPR_N_SPECIES_MD; i++)
-        if (active_contains(active, n_active, CPR_SPECIES_MD[i])) { use_md = 1; break; }
-    const char **base = use_md ? CPR_SPECIES_MD : CPR_SPECIES_SMALL;
-    size_t n_base = use_md ? CPR_N_SPECIES_MD : CPR_N_SPECIES_SMALL;
+    for (size_t i = 8; i < CPR_N_SPECIES_MT; i++)
+        if (active_contains(active, n_active, CPR_SPECIES_MT[i])) { use_md = 1; break; }
+    const char **base = use_md ? CPR_SPECIES_MT : CPR_SPECIES_SMALL;
+    size_t n_base = use_md ? CPR_N_SPECIES_MT : CPR_N_SPECIES_SMALL;
 
     size_t n_out = 0;
     for (size_t i = 0; i < n_base; i++)
@@ -1191,8 +1191,8 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
             for (size_t k = 0; k < r.n; k++) add_to_set(file_nuclides, &n_fn, r.names[k]);
             for (size_t k = 0; k < p.n; k++) add_to_set(file_nuclides, &n_fn, p.names[k]);
         }
-        for (size_t k = 0; k < CPR_N_SPECIES_MD; k++) {
-            const char *s = CPR_SPECIES_MD[k];
+        for (size_t k = 0; k < CPR_N_SPECIES_MT; k++) {
+            const char *s = CPR_SPECIES_MT[k];
             if (!active_contains(file_nuclides, n_fn, s)) continue;
             const CPRNuclide *nuc = find_nuclide(cfg, s);
             if (cfg->amax >= 0 && nuc && nuc->N + nuc->Z > cfg->amax) continue;

@@ -91,10 +91,10 @@ static void test_standard(void)
     CHECK(close_rel(cpr_bg_N_eff(&bg, Tg_f, rho_nu_f), 3.0439772985579183, 1e-6),
           "Neff matches Python (== the documented default Neff)");
 
-    CHECK(close_rel(cpr_bg_weak_nTOp_frwrd(&bg, 1.0e9), 0.0011509718118067201, 1e-2),
-          "weak_nTOp_frwrd(1e9 K) matches Python");
-    CHECK(close_rel(cpr_bg_weak_nTOp_bkwrd(&bg, 1.0e9), 7.970623324614784e-11, 1e-2),
-          "weak_nTOp_bkwrd(1e9 K) matches Python");
+    CHECK(close_rel(cpr_bg_weak_nTOp(&bg, 1.0e9), 0.0011509718118067201, 1e-2),
+          "weak_nTOp(1e9 K) matches Python");
+    CHECK(close_rel(cpr_bg_weak_pTOn(&bg, 1.0e9), 7.970623324614784e-11, 1e-2),
+          "weak_pTOn(1e9 K) matches Python");
 
     CHECK(close_rel(cpr_bg_rhoB_BBN(&bg, cpr_bg_t_of_T(&bg, 0.1)), 3.9497600504254556e-05, 1e-2),
           "rhoB_BBN(t_of_T(0.1 MeV)) matches Python");
@@ -175,8 +175,8 @@ static void test_custom(const char *path)
           "custom: t_of_T(0.1 MeV) matches Python");
     CHECK(close_rel(cpr_bg_a_of_t(&bg, 100.0), 2.010582569163517e-09, 1e-6),
           "custom: a_of_t(100 s) matches Python");
-    CHECK(close_rel(cpr_bg_weak_nTOp_frwrd(&bg, 1.0e9), 0.0011508476841614137, 1e-2),
-          "custom: weak_nTOp_frwrd(1e9 K) matches Python");
+    CHECK(close_rel(cpr_bg_weak_nTOp(&bg, 1.0e9), 0.0011508476841614137, 1e-2),
+          "custom: weak_nTOp(1e9 K) matches Python");
     CHECK(close_rel(cpr_bg_rhoB_BBN(&bg, 100.0), 5.150194582286438e-05, 1e-6),
           "custom: rhoB_BBN(100 s) matches Python");
 

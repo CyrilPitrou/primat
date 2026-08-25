@@ -190,9 +190,11 @@ class Constants:
         """
         return 1. / self.GN_MeV2_to_SI
 
-    # ---- Fixed temperature eras [MeV, converted to Kelvin] ----
+    # ---- Fixed temperature eras: quoted in MeV, stored in Kelvin ----
+    # T_start_nucl is where the *nuclear* network starts; the *background*
+    # integration starts higher, at the overridable cfg.T_start_cosmo_MeV.
     @property
-    def T_start(self) -> float:
+    def T_start_nucl(self) -> float:
         return 10.0 * self.MeV_to_Kelvin
 
     @property

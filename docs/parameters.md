@@ -3,7 +3,7 @@
 
 # Parameters
 
-Every one of primat's 96 run parameters, grouped as `primat/config.py`
+Every one of primat's 95 run parameters, grouped as `primat/config.py`
 groups them. All are optional: a run overrides only what it names and takes
 the rest from the defaults below.
 
@@ -44,7 +44,7 @@ A `None` default means the feature is off or the path is unset.
 | `debug` | `False` | print extra debug messages |
 | `show_progress` | `True` | print compact stderr progress indicators (HT./MT./LT./done., MC counter) when verbose=False |
 | `numerical_precision` | `1e-07` | rtol for all solve_ivp/ODE calls |
-| `numba_installed` | `True` | a request, not a fact: set False to run without the JIT kernels even where numba is installed; True is cleared at runtime if it is not (unused on the C backend, kept for round-trip parity) |
+| `use_numba` | `True` | a request, not a fact: set False to run without the JIT kernels even where numba is installed; True is cleared at runtime if it is not (unused on the C backend, kept for round-trip parity) |
 | `strict_params` | `False` | True: raise on an unknown param key (typo); False: warn with a "did you mean ...?" hint |
 
 ## Neutrino decoupling
@@ -185,8 +185,7 @@ A `None` default means the feature is off or the path is unset.
 | `rate_grid_T9_max` | `10.0` | maximum T9 [GK] of the master rate grid |
 | `network` | `"small"` | "small" / "small_parthenope" / "large" / custom network filename |
 | `amax` | `None` | filter any network to reactions with A &lt;= amax |
-| `atol_large_LT` | `1e-26` | solve_ivp absolute tolerance for the LT era of every network (the name is historical) |
-| `rescale_nuclear_rates` | `False` | accepted but read by nothing; vary a rate with p_&lt;reaction&gt; or delta_&lt;reaction&gt; |
+| `atol_LT` | `1e-26` | solve_ivp absolute tolerance for the LT era of every network (the name is historical) |
 | `mc_rate_rescale_cap` | `30` | clamp the MC rate variation factor to [1/cap, cap]; None disables the cap |
 | `nuclear_qed_corrections` | `True` | QED correction to select radiative-capture rates (Pitrou &amp; Pospelov 2020) |
 

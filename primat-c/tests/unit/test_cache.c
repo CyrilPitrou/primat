@@ -3,11 +3,11 @@
  * Ground truth was captured directly from the running Python code:
  *   python3 -c "
  *     from primat.config import PRIMATConfig
- *     from primat.weak_rates.cache import _weak_rate_fingerprint, _thermal_fingerprint
+ *     from primat.weak_rates.cache import weak_rate_fingerprint, thermal_fingerprint
  *     from primat.cache_utils import fingerprint_hash
  *     cfg = PyPRConfig()
- *     print(fingerprint_hash(_weak_rate_fingerprint(cfg)))
- *     print(fingerprint_hash(_thermal_fingerprint(cfg)))
+ *     print(fingerprint_hash(weak_rate_fingerprint(cfg)))
+ *     print(fingerprint_hash(thermal_fingerprint(cfg)))
  *   "
  * -> 4a901fa9a22a2694
  * -> 076f987eab9187c6

@@ -48,8 +48,8 @@ __all__ = [
     "NetworkKernels",
     "ORDER_SMALL",
     "ORDER_MT",
-    "ORDER_LT",
-    "SPECIES_MD",
+    "ORDER_LT_LARGE",
+    "SPECIES_MT",
     "SPECIES_SMALL",
     "UpdateNuclearRates",
     "_LinearRate",
@@ -422,11 +422,11 @@ ORDER_MT = [
 # common time-evolution table.  Larger LT networks append their extra nuclides in
 # the order supplied by ``nuclides.csv``.
 #
-# ``SPECIES_MD`` -- "MD" abbreviates "medium" -- is the MT era's fixed species
+# ``SPECIES_MT`` -- "MD" abbreviates "medium" -- is the MT era's fixed species
 # set for any network reaching past ``SPECIES_SMALL``: the eight light
 # nuclides plus He6, Li8, Li6 and B8.
 SPECIES_SMALL = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"]
-SPECIES_MD = SPECIES_SMALL + ["He6", "Li8", "Li6", "B8"]
+SPECIES_MT = SPECIES_SMALL + ["He6", "Li8", "Li6", "B8"]
 
 # Special-cased LaTeX forms for the bookkeeping species that are not written as
 # "<element symbol><mass number>" (the neutron and the proton, i.e. bare ``n``
@@ -553,14 +553,14 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
     >>> len(load_reaction_names("/repo/data/nuclear/networks", "small"))
     12
     """
-    if hasattr(cfg_or_dir, "_resolved_data_dir"):
+    if hasattr(cfg_or_dir, "resolved_data_dir"):
         if hasattr(cfg_or_dir, "resolve_rates_path"):
             # Honour the user_nuclear_dir overlay (see
             # PRIMATConfig.resolve_rates_path) so a user-supplied network
             # file does not require touching the installed package.
             nets_dir = cfg_or_dir.resolve_rates_path("nuclear", "networks")
         else:
-            nets_dir = os.path.join(cfg_or_dir._resolved_data_dir, "nuclear", "networks")
+            nets_dir = os.path.join(cfg_or_dir.resolved_data_dir, "nuclear", "networks")
         network = network or cfg_or_dir.network
     else:
         nets_dir = os.fspath(cfg_or_dir)
@@ -603,11 +603,19 @@ def _bare_entry(entry: str) -> str:
 try:
     _REACTIONS_LARGE = [_bare_entry(e)
                         for e in load_reaction_names(_network_dir_from_cwd(), "large")]
-except OSError:
-    # Importing documentation tooling outside the repository should still work.
+except OSError as _exc:
+    # Importing documentation tooling outside the repository should still work,
+    # but say so: a silently empty catalog turns ORDER_LT_LARGE into a
+    # one-reaction list that looks like a real answer.
+    warnings.warn(
+        f"the large network's reaction list could not be read ({_exc}); "
+        "ORDER_LT_LARGE will hold only the weak n<->p entry. This is normal "
+        "when importing primat's documentation tooling outside a checkout, "
+        "and a problem anywhere else.",
+        stacklevel=2)
     _REACTIONS_LARGE = []
 
-ORDER_LT = ["n__p"] + _REACTIONS_LARGE
+ORDER_LT_LARGE = ["n__p"] + _REACTIONS_LARGE
 
 
 def _read_csv(path):
@@ -871,7 +879,7 @@ def reaction_stoichiometry(name, data_dir=None):
         Data root whose ``csv/`` catalog supplies ``detailed_balance.csv``
         (the reactant/product split) and ``nuclides.csv`` (the A/Z validation
         on the fallback path).  Defaults to the package-shipped tree.  Pass
-        ``cfg._resolved_data_dir`` to honour a ``cfg.data_dir`` override --
+        ``cfg.resolved_data_dir`` to honour a ``cfg.data_dir`` override --
         without it the shipped catalog is used, which is wrong whenever the
         replacement tree defines different reactions or nuclide data.
 
@@ -1318,7 +1326,7 @@ def _reaction_catalog(data_dir: str):
         :func:`functools.lru_cache`: the three CSV files under ``csv/`` are
         read at most once per process instead of on every :func:`load_network`,
         :func:`reaction_stoichiometry` or :func:`to_filename` call.
-        Equivalent to ``cfg._resolved_data_dir``.
+        Equivalent to ``cfg.resolved_data_dir``.
     """
     base = os.path.join(data_dir, "csv")
     tables_dir = os.path.join(data_dir, "nuclear", "tables")
@@ -1367,7 +1375,7 @@ def _side_counts(field):
 
 def _species_order(nuclides, nuc_order):
     """Order active nuclides with light species first, then CSV order."""
-    base = SPECIES_MD if any(s in nuclides for s in SPECIES_MD[8:]) else SPECIES_SMALL
+    base = SPECIES_MT if any(s in nuclides for s in SPECIES_MT[8:]) else SPECIES_SMALL
     ordered = [s for s in base if s in nuclides]
     ordered.extend(s for s in nuc_order if s in nuclides and s not in ordered)
     return ordered
@@ -1610,7 +1618,7 @@ def available_rate_tables(name: str, cfg) -> list[str]:
     name : str
         Bare reaction name (the folder under ``tables/`` to list).
     cfg : PRIMATConfig
-        Used only for ``cfg._resolved_data_dir`` (via ``resolve_rates_path``).
+        Used only for ``cfg.resolved_data_dir`` (via ``resolve_rates_path``).
 
     Returns
     -------
@@ -1622,7 +1630,7 @@ def available_rate_tables(name: str, cfg) -> list[str]:
     if hasattr(cfg, "resolve_rates_path"):
         reaction_dir = cfg.resolve_rates_path("nuclear", "tables", name)
     else:
-        reaction_dir = os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name)
+        reaction_dir = os.path.join(cfg.resolved_data_dir, "nuclear", "tables", name)
     if not os.path.isdir(reaction_dir):
         return []
     files = sorted(f for f in os.listdir(reaction_dir) if f.endswith(".txt"))
@@ -1721,7 +1729,7 @@ def _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg):
     for n in new_names:
         try:
             react_counts, prod_counts = reaction_stoichiometry(
-                n, cfg._resolved_data_dir)
+                n, cfg.resolved_data_dir)
         except (ValueError, KeyError) as exc:
             # Unparseable name, unknown nuclide token, or a stoichiometry
             # that does not conserve baryon number/charge: surface a clear
@@ -1868,12 +1876,12 @@ def _parse_reaction_sides(selected, bare_to_file, rxn_map):
 
 
 def _extend_mt_species(era, cfg, bare_names, rxn_map, nuc_NZ, amax, active_nuclides):
-    """Add the fixed MT-era species set (SPECIES_MD) to active_nuclides.
+    """Add the fixed MT-era species set (SPECIES_MT) to active_nuclides.
 
     The MT era historically carries a fixed set of nuclides through the
     solver even when only a subset of reactions is active. For standard
-    networks this is all of SPECIES_MD (12 nuclides). For custom networks we
-    only add SPECIES_MD members that actually appear in the file's full
+    networks this is all of SPECIES_MT (12 nuclides). For custom networks we
+    only add SPECIES_MT members that actually appear in the file's full
     reaction list (before the MT intersection), so we don't carry columns for
     species that are completely absent from the network. The amax filter
     must apply here too, to keep the MT and LT eras' species lists consistent
@@ -1905,7 +1913,7 @@ def _extend_mt_species(era, cfg, bare_names, rxn_map, nuc_NZ, amax, active_nucli
             file_nuclides.update(r)
             file_nuclides.update(p)
     active_nuclides.update(
-        s for s in SPECIES_MD
+        s for s in SPECIES_MT
         if s in file_nuclides and (amax is None or sum(nuc_NZ[s]) <= amax)
     )
 
@@ -2242,7 +2250,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             f"network {subset_file or cfg.network!r} lists no reactions; a "
             f"network needs at least one thermonuclear reaction.")
 
-    tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg._resolved_data_dir)
+    tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg.resolved_data_dir)
 
     rxn_map, db = _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg)
 
@@ -2312,7 +2320,7 @@ def reaction_category(name: str, data_dir=None) -> int:
     reactions alike (anything reaction_stoichiometry can parse).
 
     ``data_dir`` selects the catalog root (defaulting to the shipped tree);
-    pass ``cfg._resolved_data_dir`` so that a ``cfg.data_dir`` override's own
+    pass ``cfg.resolved_data_dir`` so that a ``cfg.data_dir`` override's own
     ``nuclides.csv`` decides the categories.
 
     Example
@@ -2441,8 +2449,8 @@ class UpdateNuclearRates:
         # Legacy attribute names used by tests and output helpers.
         self._order_MT = self._mt_net.names
         self._order_LT = self._lt_net.names
-        self.species_large = self._lt_net.species
-        self.large_NZ = {
+        self.species_LT = self._lt_net.species
+        self.LT_NZ = {
             s: (int(n), int(z)) for s, n, z in zip(self._lt_net.species,
                                                    self._lt_net.N, self._lt_net.Z)
         }
@@ -2496,7 +2504,7 @@ class UpdateNuclearRates:
         check_conservation(cnet, net.N, net.Z,
                            weak_indices=net.weak_indices,
                            lepton_dZ=net.lepton_dZ)
-        return NetworkKernels(cnet, cfg.numba_installed)
+        return NetworkKernels(cnet, cfg.use_numba)
 
     def rhsMT(self, Y, T_t, rhoBBN, nTOp_frwrd, nTOp_bkwrd):
         """MT RHS for the selected network intersected with :data:`ORDER_MT`."""

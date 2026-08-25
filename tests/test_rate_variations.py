@@ -9,7 +9,7 @@ These tests verify that:
 1. varying a rate (p_* or delta_*) actually changes the predicted abundances;
 2. restoring p=0/delta=0 reproduces the baseline to floating-point precision;
 3. delta_* works when passed via run_bbn's params dict (the original bug:
-   delta was silently gated behind rescale_nuclear_rates and had no effect);
+   delta was silently gated behind a separate flag and had no effect);
 4. the MC runner propagates rate uncertainty to non-zero spread in observables.
 
 The ``test_config_dynamic_attr`` test (attribute routing for p_* / delta_*)
@@ -51,7 +51,7 @@ def test_run_bbn_delta_variation():
     """delta_<rxn> passed via run_bbn params changes D/H on both backends.
 
     This is the regression test for the bug where delta_<rxn> was silently
-    gated behind ``rescale_nuclear_rates`` and had no effect when that flag
+    gated behind a separate enabling flag and had no effect when that flag
     was False (the default).  Passing delta_n_p__d_g=0.1 must shift D/H
     relative to the baseline without any extra flags.
     """

@@ -17,7 +17,7 @@
  * The from-scratch thermal computation (L_CCRTh_compute in weak_rates.c)
  * is intentionally not exercised here via
  * cpr_weak_rates_init: that path builds a full T-grid up to a *fixed*
- * 10 MeV boundary (cpr_T_start(), independent of any PyPRConfig field),
+ * 10 MeV boundary (cpr_T_start_nucl(), independent of any PyPRConfig field),
  * where the (E,k) integration domain genuinely widens to E_max~390 (see
  * L_thermal_2d's docstring) -- a real physics-driven cost that Python's
  * own dblquad-based implementation pays too (multi-minute per from-scratch
@@ -75,7 +75,7 @@ int main(void)
     cfg.sampling_nTOp_thermal_per_decade = 20;
     /* Part of the weak-rate fingerprint since format v4 (it sets the node
      * spacing of the T_nu(T_gamma) interpolant, hence the rates -- see
-     * weak_rates/cache.py's _WEAK_RATE_BG_FIELDS). This cfg is hand-rolled
+     * weak_rates/cache.py's WEAK_RATE_BG_FIELDS). This cfg is hand-rolled
      * from a memset(0) rather than cpr_config_init_defaults, so the Python
      * default has to be restated here or the fingerprint carries 0, misses
      * the shipped nTOp_<hash>.txt, and silently falls through to a

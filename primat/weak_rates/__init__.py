@@ -64,7 +64,7 @@ from .api import *
 __all__ = ['ComputeWeakRates', 'InterpolateWeakRates', 'RecomputeWeakRates', 'ComputeFn']
 
 
-def _setup_fd_impls(numba_installed):
+def _setup_fd_impls(use_numba):
     """Package-level wrapper around :func:`integrands._setup_fd_impls`.
 
     ``integrands._setup_fd_impls`` rebinds the FD_* names inside the
@@ -72,11 +72,11 @@ def _setup_fd_impls(numba_installed):
     submodule looks them up, via ``integrands.FD_nu3(...)`` -- see that
     module's docstring).  The ``weak_rates.FD_nu3`` aliases imported above are
     a one-shot snapshot taken at package-import time, so they go stale the
-    moment this is called with a different ``numba_installed`` value unless
+    moment this is called with a different ``use_numba`` value unless
     re-synced here -- this wrapper does both, keeping ``wr.FD_nu3`` (used by
     tests/test_weak_rates.py) tracking the real, currently-installed
     implementation.
     """
-    integrands._setup_fd_impls(numba_installed)
+    integrands._setup_fd_impls(use_numba)
     globals().update({name: getattr(integrands, name)
                        for name in integrands._FD_IMPLS_ORIG})

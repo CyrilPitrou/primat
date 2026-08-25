@@ -607,7 +607,7 @@ When `output_time_evolution=True`, the time evolution data is made available. If
 the chosen network (8 for small/small_parthenope, ~59 for large, fewer with
 an `amax` cutoff). Both backends write the identical schema, loadable with
 `primat.evolution.load_evolution()`. The n↔p weak rates are not duplicated
-on disk — evaluate `run.background.weak_nTOp_frwrd/bkwrd` at the
+on disk — evaluate `run.background.weak_nTOp/bkwrd` at the
 `T_gamma_MeV` column if needed.
 
 `output_file` defaults to `results/output_tables.tsv` (relative to the current

@@ -16,7 +16,7 @@ a public instance of the same app runs at
 
 ## The sidebar: setting up a run
 
-The form covers the parameters a physics run usually varies, not all 96 of
+The form covers the parameters a physics run usually varies, not all 95 of
 them, in five expanders:
 
 | Expander | Holds |

@@ -1255,7 +1255,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
                     cpr_deltakappa(&cfg->consts) };
 
     double T_end = cpr_config_T_end(cfg);
-    double T_start = cpr_T_start(); /* fixed 10 MeV era boundary, NOT T_start_cosmo */
+    double T_start = cpr_T_start_nucl(); /* fixed 10 MeV era boundary, NOT T_start_cosmo */
 
     CPRFPField fp_fields[24];
     size_t n_fp = cpr_weak_rate_fingerprint(cfg, fp_fields);

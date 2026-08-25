@@ -94,7 +94,7 @@ def _cache_data(cfg):
     ctx = _build_rate_context(Tvec, cfg)
     opts = _ThermalIntegOpts(True, cfg.vegas_n_eval, cfg.vegas_n_itn,
                              cfg.epsrel_thermal)
-    T_th = np.logspace(np.log10(_T_CCRTH_MIN), np.log10(cfg.T_start), 3)
+    T_th = np.logspace(np.log10(_T_CCRTH_MIN), np.log10(cfg.T_start_nucl), 3)
     return {
         "weak": np.column_stack([T_all, frwrd, bkwrd]),
         "thermal": np.column_stack(

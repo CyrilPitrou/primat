@@ -1386,7 +1386,7 @@ def test_export_of_small_parthenope_keeps_its_own_rate_tables():
                 f"{bare}_parthenope3.0.txt -- the wrong rate table was exported"
             )
             assert f"tables/{bare}/{fname}" in members
-            on_disk = os.path.join(cfg._resolved_data_dir, "nuclear", "tables",
+            on_disk = os.path.join(cfg.resolved_data_dir, "nuclear", "tables",
                                    bare, fname)
             with open(on_disk) as fh:
                 assert zf.read(f"tables/{bare}/{fname}").decode() == fh.read(), (

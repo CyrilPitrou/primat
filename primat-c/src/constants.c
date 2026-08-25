@@ -59,7 +59,7 @@ double cpr_MeV4_to_gcmm3(void)
     return cpr_MeV_to_g() * cmm1 * cmm1 * cmm1;
 }
 
-double cpr_T_start(void) { return 10.0 * cpr_MeV_to_Kelvin(); }
+double cpr_T_start_nucl(void) { return 10.0 * cpr_MeV_to_Kelvin(); }
 double cpr_T_weak(void)  { return 1.0 * cpr_MeV_to_Kelvin(); }
 double cpr_T_nucl(void)  { return 0.11 * cpr_MeV_to_Kelvin(); }
 

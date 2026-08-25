@@ -71,10 +71,8 @@ def test_multiplicative_matches_manual():
 def test_rate_target_matches_delta_mechanism():
     """A bare reaction name is auto-classified and uses delta_<rxn> rescaling."""
     rxn = "n_p__d_g"
-    rp = run_bbn({**BASE, "rescale_nuclear_rates": True,
-                  f"delta_{rxn}": +DELTA, "verbose": False})
-    rm = run_bbn({**BASE, "rescale_nuclear_rates": True,
-                  f"delta_{rxn}": -DELTA, "verbose": False})
+    rp = run_bbn({**BASE, f"delta_{rxn}": +DELTA, "verbose": False})
+    rm = run_bbn({**BASE, f"delta_{rxn}": -DELTA, "verbose": False})
     denom = 2 * math.log1p(DELTA)
     expect = _log_sens(rp["DoH"], rm["DoH"], denom)
 

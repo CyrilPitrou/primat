@@ -14,7 +14,7 @@ a ``primat.background.Background`` instance:
 * ``T_of_t(t)`` / ``t_of_T(T)``  -- time <-> temperature
 * ``rhoB_BBN(t)``                -- baryon mass density [g/cm^3] as a
   function of cosmic time (the prefactor for nuclear reaction rates)
-* ``weak_nTOp_frwrd(T_K)`` / ``weak_nTOp_bkwrd(T_K)`` -- already-normalised
+* ``weak_nTOp(T_K)`` / ``weak_pTOn(T_K)`` -- already-normalised
   n<->p weak rates [s^-1] at photon temperature ``T_K`` [Kelvin]
 
 It knows nothing about *how* the background was constructed (NEVO table,
@@ -55,7 +55,7 @@ from scipy.special import zeta
 from .evolution import EvolutionResult, dump_evolution
 
 # Absolute ``solve_ivp`` tolerances of the first two eras, named so they read
-# like the third (the LT era's, which is the configurable ``cfg.atol_large_LT``).
+# like the third (the LT era's, which is the configurable ``cfg.atol_LT``).
 #
 # HT integrates n <-> p only, whose two abundances are of order 0.1-1, so an
 # absolute floor of 1e-10 is ten significant digits on the state itself.  MT
@@ -189,7 +189,7 @@ class NuclearNetwork:
     background : primat.background.Background
         The cosmological background (Class 1) supplying ``T_of_t``/``t_of_T``,
         ``rhoB_BBN(t)``, and the normalised n<->p weak rates
-        ``weak_nTOp_frwrd``/``weak_nTOp_bkwrd`` (see the module docstring for
+        ``weak_nTOp``/``weak_pTOn`` (see the module docstring for
         the full minimal interface).
 
     Attributes (populated by :meth:`solve`)
@@ -224,11 +224,11 @@ class NuclearNetwork:
         Returns ``(t_start, t_weak, t_nucl, t_end)``, the HT/MT/LT era
         endpoints, via ``background.t_of_T`` (which expects a temperature in
         MeV, hence the ``/cfg.MeV_to_Kelvin`` conversion from the Kelvin
-        values stored in ``cfg.T_start``/``T_weak``/``T_nucl``/``T_end``).
+        values stored in ``cfg.T_start_nucl``/``T_weak``/``T_nucl``/``T_end``).
         """
         cfg = self.cfg
         t_of_T = self.background.t_of_T
-        t_start = t_of_T(cfg.T_start / cfg.MeV_to_Kelvin)
+        t_start = t_of_T(cfg.T_start_nucl / cfg.MeV_to_Kelvin)
         t_weak  = t_of_T(cfg.T_weak  / cfg.MeV_to_Kelvin)
         t_nucl  = t_of_T(cfg.T_nucl  / cfg.MeV_to_Kelvin)
         t_end   = t_of_T(cfg.T_end   / cfg.MeV_to_Kelvin)
@@ -336,11 +336,11 @@ class NuclearNetwork:
         cfg        = self.cfg
         background = self.background
         T_of_t     = background.T_of_t
-        nTOp_frwrd = background.weak_nTOp_frwrd
-        nTOp_bkwrd = background.weak_nTOp_bkwrd
+        nTOp_frwrd = background.weak_nTOp
+        nTOp_bkwrd = background.weak_pTOn
 
         # Fixed era boundaries in MeV (10 / 1 MeV), used in verbose messages.
-        T_start_MeV = cfg.T_start / cfg.MeV_to_Kelvin
+        T_start_MeV = cfg.T_start_nucl / cfg.MeV_to_Kelvin
         T_weak_MeV  = cfg.T_weak  / cfg.MeV_to_Kelvin
         if _show:
             print("[primat]  HT.", end='', file=sys.stderr, flush=True)
@@ -358,7 +358,7 @@ class NuclearNetwork:
             b   = nTOp_bkwrd(T_K)
             return b * Y[1] - f * Y[0], f * Y[0] - b * Y[1]
 
-        Yn_i = Yn_i_func(cfg.T_start)
+        Yn_i = Yn_i_func(cfg.T_start_nucl)
         Yp_i = 1. - Yn_i
         _t_ht0 = time.time()
         # HT integrator: LSODA here, Dormand-Prince RK45 in the C backend. A
@@ -392,8 +392,8 @@ class NuclearNetwork:
         cfg        = self.cfg
         background = self.background
         nucl       = self.nucl
-        nTOp_frwrd = background.weak_nTOp_frwrd
-        nTOp_bkwrd = background.weak_nTOp_bkwrd
+        nTOp_frwrd = background.weak_nTOp
+        nTOp_bkwrd = background.weak_pTOn
 
         T_weak_MeV = cfg.T_weak / cfg.MeV_to_Kelvin
         T_nucl_MeV = cfg.T_nucl / cfg.MeV_to_Kelvin
@@ -460,8 +460,8 @@ class NuclearNetwork:
         cfg        = self.cfg
         background = self.background
         nucl       = self.nucl
-        nTOp_frwrd = background.weak_nTOp_frwrd
-        nTOp_bkwrd = background.weak_nTOp_bkwrd
+        nTOp_frwrd = background.weak_nTOp
+        nTOp_bkwrd = background.weak_pTOn
 
         T_nucl_MeV = cfg.T_nucl / cfg.MeV_to_Kelvin
 
@@ -482,13 +482,13 @@ class NuclearNetwork:
         # Seed the LT vector from MT final values, filling any extra species
         # (present in the LT but absent in MT) with 0.  By looking up by name,
         # this works for any MT and LT network sizes without hardcoding.
-        species_L = nucl.species_large
+        species_L = nucl.species_LT
         Yi_LT = [mt_final_raw.get(s, 0.0) for s in species_L]
 
         _t_lt0 = time.time()
-        # Universal LT absolute tolerance (cfg.atol_large_LT) for *every*
+        # Universal LT absolute tolerance (cfg.atol_LT) for *every*
         # network, not just "large". Previously this was
-        # `cfg.atol_large_LT if cfg.is_large else 1e-20`, i.e. keyed on the
+        # `cfg.atol_LT if cfg.is_large else 1e-20`, i.e. keyed on the
         # literal network name -- which meant a custom network reproduced under
         # a renamed `user_nuclear_dir` overlay (is_large=False) silently used a
         # looser atol than the same network run as "large" in the GUI, breaking
@@ -498,7 +498,7 @@ class NuclearNetwork:
         # tolerance artifact, not physics), and it never loosens `large`'s
         # heavy-nuclide tracking. Keep in lockstep with primat-c's
         # nuclear_network.c (bdf_opts_lt.atol).
-        atol = cfg.atol_large_LT
+        atol = cfg.atol_LT
         sol_LT = solve_ivp(Y_prime_LT, [t_nucl, t_end], Yi_LT,
                            method=_BDF, jac=Jacobian_LT,
                            rtol=10.*cfg.numerical_precision, atol=atol)
@@ -607,7 +607,7 @@ class NuclearNetwork:
         # Store final Y values for direct access (used by get_quantity)
         # ------------------------------------------------------------------
         # Use the LT species list as the canonical name list for any network.
-        species_L = nucl.species_large
+        species_L = nucl.species_LT
         self.abundance_names = species_L
         self.Y_final = dict(finL)
 
@@ -823,7 +823,7 @@ class NuclearNetwork:
         rate tables) at the row's temperature, populated into
         ``EvolutionResult.rates`` and serialised by ``dump_evolution``. The
         n<->p weak rates are not duplicated on disk: recover them from
-        ``run.background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd`` evaluated at the
+        ``run.background.weak_nTOp``/``weak_pTOn`` evaluated at the
         ``T_gamma_MeV`` column. The C backend emits the identical rate columns.
         The richer background-only TSV (``H``, ``Nheating``, energy
         densities, ...) is still written separately by

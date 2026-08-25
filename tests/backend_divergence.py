@@ -171,20 +171,20 @@ def ccrth_interpolant_gap(params=None):
     from scipy.interpolate import CubicSpline
 
     from primat import PRIMAT
-    from primat.weak_rates.cache import _thermal_fingerprint, fingerprint_hash
+    from primat.weak_rates.cache import thermal_fingerprint, fingerprint_hash
     from primat.cache_utils import resolve_cache_file
 
     run = PRIMAT(dict(params or {"network": "small"}))
     cfg = run.cfg
     if not cfg.thermal_corrections:
         return None
-    fname = "nTOp_thermal_%s.txt" % fingerprint_hash(_thermal_fingerprint(cfg))
+    fname = "nTOp_thermal_%s.txt" % fingerprint_hash(thermal_fingerprint(cfg))
     tab = np.loadtxt(resolve_cache_file(cfg, "weak", fname))
     T, Ln, Lp = tab[:, 0], tab[:, 1], tab[:, 2]
     mid = np.sqrt(T[:-1] * T[1:])
     T_MeV = mid / cfg.MeV_to_Kelvin
     mid = mid[(T_MeV > BBN_WINDOW_MEV[0]) & (T_MeV < BBN_WINDOW_MEV[1])]
-    scale = run.background.weak_nTOp_frwrd(mid) * cfg.tau_n
+    scale = run.background.weak_nTOp(mid) * cfg.tau_n
 
     # The live closures, so a change of scheme in corrections.py shows up here
     # rather than being re-asserted by this file. They return L/Fn, the units

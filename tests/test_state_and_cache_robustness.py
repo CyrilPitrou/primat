@@ -123,7 +123,7 @@ def test_a_cache_that_cannot_be_written_completely_is_not_installed(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_numba_rebinding_survives_concurrent_flipping():
-    """Two configurations flipping ``numba_installed`` must not kill a thread.
+    """Two configurations flipping ``use_numba`` must not kill a thread.
 
     The rebinding is process-wide; setting its "already done" flag before the
     names were actually rebound let a second thread re-wrap an already-jitted

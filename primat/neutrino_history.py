@@ -58,7 +58,7 @@ def resolve_nevo_path(cfg, override, default_filename):
     ``cfg.QED_corrections``, see :class:`NEVOTable`) is used unchanged.
 
     Args:
-        cfg: PRIMATConfig instance (used for ``cfg._resolved_data_dir``).
+        cfg: PRIMATConfig instance (used for ``cfg.resolved_data_dir``).
         override: ``cfg.nevo_*`` value, or ``None``.
         default_filename: filename (relative to ``NEVO/``) to use when
             ``override`` is ``None``.
@@ -69,7 +69,7 @@ def resolve_nevo_path(cfg, override, default_filename):
     fname = override if override is not None else default_filename
     if os.path.isabs(fname):
         return fname
-    return os.path.join(cfg._resolved_data_dir, "NEVO", fname)
+    return os.path.join(cfg.resolved_data_dir, "NEVO", fname)
 
 __all__ = ["NeutrinoHistory", "NEVOTable", "InstantaneousDecoupling",
            "AnalyticDistortion", "make_neutrino_history"]

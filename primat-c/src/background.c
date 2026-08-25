@@ -1149,11 +1149,11 @@ double cpr_bg_rhoB_BBN(const CPRBackground *bg, double t)
     return cfg->consts.ma * n0B * cpr_MeV4_to_gcmm3() / (a * a * a);
 }
 
-double cpr_bg_weak_nTOp_frwrd(const CPRBackground *bg, double T_K)
+double cpr_bg_weak_nTOp(const CPRBackground *bg, double T_K)
 {
     return bg->norm_weak_rates * clamp_raw_weak_rate(cpr_weak_rate_nTOp(&bg->wr, T_K));
 }
-double cpr_bg_weak_nTOp_bkwrd(const CPRBackground *bg, double T_K)
+double cpr_bg_weak_pTOn(const CPRBackground *bg, double T_K)
 {
     return bg->norm_weak_rates * clamp_raw_weak_rate(cpr_weak_rate_pTOn(&bg->wr, T_K));
 }

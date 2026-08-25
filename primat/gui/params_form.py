@@ -11,7 +11,7 @@ Design
 ------
 ``DEFAULT_PARAMS`` has ~50 keys, most of which are caching/debug knobs that a
 typical user never touches (e.g. ``save_nTOp``, ``recompute_qed_corrections``,
-``numba_installed``).  We therefore split the form in two:
+``use_numba``).  We therefore split the form in two:
 
 * A **curated set** of "headline" flags (``_FORM_METADATA`` below), grouped
   under ``GROUP_ORDER`` and shown as expanded/visible sidebar sections, each
@@ -305,7 +305,7 @@ def _bare(entry):
 
 @st.cache_resource(show_spinner=False)
 def _cfg():
-    """A throwaway ``PRIMATConfig`` for helpers that only need ``cfg._resolved_data_dir``."""
+    """A throwaway ``PRIMATConfig`` for helpers that only need ``cfg.resolved_data_dir``."""
     return PRIMATConfig()
 
 
@@ -327,7 +327,7 @@ def _root():
     every catalog call site -- so new lookups should go through here rather
     than reaching into ``importlib.resources`` directly.
     """
-    return _cfg()._resolved_data_dir
+    return _cfg().resolved_data_dir
 
 
 def _network_dirs():
@@ -840,7 +840,7 @@ class _DialogState:
                 # An on-disk alternate filename (e.g. a "*_parthenope3.0.txt"
                 # sibling) -- load_network's custom_tables mechanism only
                 # knows raw text, not filenames, so resolve to text here.
-                path = os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name, choice)
+                path = os.path.join(cfg.resolved_data_dir, "nuclear", "tables", name, choice)
                 try:
                     with open(path) as f:
                         replaced[name] = f.read()
@@ -860,7 +860,7 @@ def _decay_rates():
     from a genuinely tableless reaction.
     """
     from primat.network_data import _load_decay_table
-    tables_dir = os.path.join(_cfg()._resolved_data_dir, "nuclear", "tables")
+    tables_dir = os.path.join(_cfg().resolved_data_dir, "nuclear", "tables")
     return _load_decay_table(tables_dir)
 
 
@@ -882,7 +882,7 @@ def _current_table_text(name):
     if choice in uploaded_for_name:
         return uploaded_for_name[choice]
     if choice:
-        path = os.path.join(_cfg()._resolved_data_dir, "nuclear", "tables", name, choice)
+        path = os.path.join(_cfg().resolved_data_dir, "nuclear", "tables", name, choice)
         try:
             with open(path) as f:
                 return f.read()

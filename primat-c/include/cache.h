@@ -50,7 +50,7 @@ char *cpr_fingerprint_hash(const CPRFPField *fields, size_t n);
 void cpr_constants_hash(const CPRConstants *c, CPRConstsCache which, char out[17]);
 
 /* Builds the n<->p weak-rate cache fingerprint (nTOp_<hash>.txt), mirroring
- * weak_rates.cache._weak_rate_fingerprint(cfg). `out` must have room for at
+ * weak_rates.cache.weak_rate_fingerprint(cfg). `out` must have room for at
  * least 20 fields (19 unconditional ones, + 1 iff custom_background is set).
  * Returns the number of fields
  * written (for cpr_fingerprint_json/_hash's `n` argument). Field .key
@@ -60,7 +60,7 @@ void cpr_constants_hash(const CPRConstants *c, CPRConstsCache which, char out[17
 size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out);
 
 /* Builds the thermal-correction cache fingerprint (nTOp_thermal_<hash>.txt),
- * mirroring weak_rates.cache._thermal_fingerprint(cfg). `out` must have room
+ * mirroring weak_rates.cache.thermal_fingerprint(cfg). `out` must have room
  * for at least 9 fields. Returns the number of fields written. */
 size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out);
 

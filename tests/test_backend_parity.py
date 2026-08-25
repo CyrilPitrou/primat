@@ -766,7 +766,7 @@ def test_backend_mc_cov_corr_parity():
     The ``small`` network reports exactly its 8 evolved nuclides on *both*
     backends now (see tests/test_nuclear.py
     ::test_small_network_reports_exactly_its_eight_nuclides -- Python no longer
-    pads Y_final up to SPECIES_MD), so the full MC quantity list (observables +
+    pads Y_final up to SPECIES_MT), so the full MC quantity list (observables +
     nuclides) is identical across backends.
     """
     from primat.backend import (run_mc, dump_mc_covariance, dump_mc_correlation)

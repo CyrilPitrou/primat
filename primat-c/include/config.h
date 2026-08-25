@@ -154,7 +154,7 @@ typedef struct {
     int show_progress; /* print [primat] HT./MT./LT./done. phase markers to stderr (default 1; suppressed during MC batch samples) */
     int debug;
     double numerical_precision;
-    int numba_installed; /* unused in C (no JIT path); kept for CLI/ini parity */
+    int use_numba; /* unused in C (no JIT path); kept for CLI/ini parity */
     int strict_params; /* unknown-key policy for the INI/CLI loaders (default 0). Mirrors
                         * PRIMATConfig.strict_params: 0 = warn-and-ignore, 1 = fatal. Stored
                         * for round-trip/wrapper parity; the standalone C loaders already treat
@@ -266,8 +266,7 @@ typedef struct {
     double rate_grid_T9_max;
     char *network;
     int amax; /* -1 = None (no filter); else positive int */
-    double atol_large_LT;
-    int rescale_nuclear_rates;
+    double atol_LT;
     /* Cap on the MC rate rescaling factor: variation is clamped to [1/cap, cap]
      * before multiplying the median rate.  0.0 = no cap (mirrors Python None). */
     double mc_rate_rescale_cap;
@@ -284,7 +283,7 @@ typedef struct {
      * `primat/data/nuclear`, so they should contain `networks/` and `tables/`
      * directly.  The full data-tree takeover (PRIMATConfig.data_dir) is handled
      * at the C level by cpr_config_init_defaults(data_dir): the Python
-     * backend.py passes cfg._resolved_data_dir there, so data_dir already
+     * backend.py passes cfg.resolved_data_dir there, so data_dir already
      * reflects any user override before any field is set. */
     char *user_nuclear_dir;  /* additive nuclear overlay, checked before the shipped default */
 
@@ -366,9 +365,10 @@ typedef struct {
     char data_dir[CPR_DATA_DIR_LEN]; /* the data folder itself (NEVO/, nuclear/, csv/, cache_plasma_weak/) */
 } CPRConfig;
 
-/* True iff cfg->network == "small" / "large" (mirrors is_small/is_large). */
-int cpr_config_is_small(const CPRConfig *cfg);
-int cpr_config_is_large(const CPRConfig *cfg);
+/* True iff cfg->network == "small" (mirrors network_is_small). Compares the
+ * name, not the size: "small_parthenope" has the same twelve reactions and
+ * answers 0. */
+int cpr_config_network_is_small(const CPRConfig *cfg);
 
 /* Recomputes everything that follows from cfg->consts: the cache-key hash
  * cfg->consts_hash, and the eta0b chain built on n0CMB/ma/maOvermB. Called

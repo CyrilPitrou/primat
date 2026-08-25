@@ -386,13 +386,13 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"radiative_corrections", pb(cfg->radiative_corrections)};
     out[n++] = (CPRFPField){"finite_mass_corrections", pb(cfg->finite_mass_corrections)};
     /* The constants the stored rates read (cpr_constants_hash's `weak` subset).
-     * Mirrors Python _weak_rate_fingerprint's "constants_hash" entry; the
+     * Mirrors Python weak_rate_fingerprint's "constants_hash" entry; the
      * pointer is to the config's own buffer, so it safely outlives this call. */
     out[n++] = (CPRFPField){"constants_hash", ps(cfg->consts_hash[CPR_CONSTS_WEAK])};
     /* Effective ξ_e under the historical "munuOverTnu" key: only nu_e
      * shifts the n<->p rates, and using the effective xi_e (= munuOverTnu when
      * munuOverTnu_e is unset) keeps the default-run hash unchanged so shipped
-     * data/weak/ caches stay valid. Mirrors Python _weak_rate_fingerprint. */
+     * data/weak/ caches stay valid. Mirrors Python weak_rate_fingerprint. */
     out[n++] = (CPRFPField){"munuOverTnu", pd(cpr_config_xi_nu_e(cfg))};
     out[n++] = (CPRFPField){"QED_corrections", pb(cfg->QED_corrections)};
     out[n++] = (CPRFPField){"incomplete_decoupling", pb(cfg->incomplete_decoupling)};
@@ -402,7 +402,7 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
      * distortion only, so in the default (tabulated NEVO) mode neither value
      * reaches an integrand and must not re-key the cache. Both are 0 in a
      * default run either way, so every shipped hash is unchanged. Mirrors
-     * _weak_rate_fingerprint in weak_rates/cache.py. */
+     * weak_rate_fingerprint in weak_rates/cache.py. */
     out[n++] = (CPRFPField){"y_SZ", pd(cfg->analytic_distortions ? cfg->y_SZ : 0.0)};
     out[n++] = (CPRFPField){"y_gray", pd(cfg->analytic_distortions ? cfg->y_gray : 0.0)};
     out[n++] = (CPRFPField){"T_start_cosmo_MeV", pd(cfg->T_start_cosmo_MeV)};
@@ -410,7 +410,7 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     /* Sets the node spacing of the linear T_nu(T_gamma) interpolant every rate
      * integrand reads, hence the rates themselves (~1e-5 at the default 600
      * points/decade, ~1e-3 at 40) -- see the matching note in
-     * weak_rates/cache.py's _WEAK_RATE_BG_FIELDS. */
+     * weak_rates/cache.py's WEAK_RATE_BG_FIELDS. */
     out[n++] = (CPRFPField){"sampling_temperature_per_decade",
                             pi(cfg->sampling_temperature_per_decade)};
     out[n++] = (CPRFPField){"nevo_file", ps(nevo_override_effective(cfg, 0))};
@@ -426,14 +426,14 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
      * cached nTOp table. Keyed on the path, as nevo_file is. Emitted only when
      * set, so a run without custom_background hashes byte-identically to
      * before and keeps hitting the shipped caches (same conditional trick as
-     * munuOverTnu). Mirrors weak_rates/cache.py's _weak_rate_fingerprint. */
+     * munuOverTnu). Mirrors weak_rates/cache.py's weak_rate_fingerprint. */
     if (cfg->custom_background && cfg->custom_background[0] != '\0')
         out[n++] = (CPRFPField){"custom_background", ps(cfg->custom_background)};
     return n; /* 19 entries, +1 iff custom_background is set;
                  sampling_nTOp_per_decade/radiative_corrections/
                  finite_mass_corrections each appear once here already
                  (the Python dict's apparent "duplicate" assignment from
-                 looping over _WEAK_RATE_BG_FIELDS after the literal dict
+                 looping over WEAK_RATE_BG_FIELDS after the literal dict
                  is a no-op re-write of the same key -- not represented
                  twice in a dict, so not duplicated here either). */
 }
@@ -442,7 +442,7 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
  * the integral to exactly 0 below ~10^8.2 K regardless of cfg.T_end, and the
  * thermal cache grid is now built down to that fixed floor (CCRTH_T_MIN in
  * weak_rates.c) rather than down to cfg.T_end (mirrors
- * weak_rates/cache.py's _THERMAL_BG_FIELDS). Including it here only forced
+ * weak_rates/cache.py's THERMAL_BG_FIELDS). Including it here only forced
  * spurious cache misses -- and the multi-minute recompute that goes with
  * them -- whenever a run changed T_end_MeV alone. */
 size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out)
@@ -451,11 +451,11 @@ size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     out[n++] = (CPRFPField){"format_version", pi(WEAK_RATE_FORMAT_VERSION)};
     out[n++] = (CPRFPField){"sampling_nTOp_thermal_per_decade", pi(cfg->sampling_nTOp_thermal_per_decade)};
     /* The constants the raw L_CCRTh integrals read (cpr_constants_hash's
-     * `thermal` subset). Mirrors Python _thermal_fingerprint. */
+     * `thermal` subset). Mirrors Python thermal_fingerprint. */
     out[n++] = (CPRFPField){"constants_hash", ps(cfg->consts_hash[CPR_CONSTS_THERMAL])};
     /* The three thermal accuracy knobs. They change the stored numbers, and
      * the cache is consulted before they are read, so leaving them out made
-     * all three inert while any file existed. Mirrors _thermal_fingerprint. */
+     * all three inert while any file existed. Mirrors thermal_fingerprint. */
     out[n++] = (CPRFPField){"vegas_n_eval", pi(cfg->vegas_n_eval)};
     out[n++] = (CPRFPField){"vegas_n_itn", pi(cfg->vegas_n_itn)};
     out[n++] = (CPRFPField){"epsrel_thermal", pd(cfg->epsrel_thermal)};
@@ -468,7 +468,7 @@ size_t cpr_thermal_fingerprint(const CPRConfig *cfg, CPRFPField *out)
      * thermal integrands' Chitilde carries exp(znu*(en - sgnq*q) - sgnq*xi_nu)
      * (th_chitilde in weak_rates.c), so the CCRTh table is xi_e-specific --
      * measured ~4e-3 of the base rate at xi_e = 0.3, T = 1e10 K. Mirrors
-     * weak_rates/cache.py's _thermal_fingerprint. */
+     * weak_rates/cache.py's thermal_fingerprint. */
     out[n++] = (CPRFPField){"munuOverTnu", pd(cpr_config_xi_nu_e(cfg))};
     return n; /* 12 entries */
 }

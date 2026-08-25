@@ -15,8 +15,8 @@ import numpy as np
 
 from ..cache_utils import constants_hash, fingerprint_hash, resolve_cache_file
 
-__all__ = ['WEAK_RATE_FORMAT_VERSION', '_WEAK_RATE_BG_FIELDS', '_THERMAL_BG_FIELDS',
-           'n_points_per_decade', '_thermal_fingerprint', '_weak_rate_fingerprint',
+__all__ = ['WEAK_RATE_FORMAT_VERSION', 'WEAK_RATE_BG_FIELDS', 'THERMAL_BG_FIELDS',
+           'n_points_per_decade', 'thermal_fingerprint', 'weak_rate_fingerprint',
            'thermal_cache_exists']
 
 # ---------------------------------------------------------------------------
@@ -88,12 +88,12 @@ WEAK_RATE_FORMAT_VERSION = 6
 # In principle if we consider a DeltaNeff with incomplete decoupling we must also consider the associated NEVO file.
 # We need to review the interplay between NEVO and primat.
 # Note  that spectral distortions and incomplete decoupling effects are expected to have a small effect on weak rates.
-_WEAK_RATE_BG_FIELDS = [
+WEAK_RATE_BG_FIELDS = [
     "radiative_corrections",
     "finite_mass_corrections",
     # NOTE: the neutrino chemical potential enters the weak-rate fingerprint via
     # the EFFECTIVE ξ_e (cfg.xi_nu_e), added under the historical key name
-    # "munuOverTnu" in _weak_rate_fingerprint below -- NOT listed here. This keeps
+    # "munuOverTnu" in weak_rate_fingerprint below -- NOT listed here. This keeps
     # the default-run hash byte-identical to the previous single-xi fingerprint
     # (xi_nu_e == munuOverTnu whenever munuOverTnu_e is unset), so the shipped
     # data/cache_plasma_weak/weak/ caches stay valid, while a per-flavour
@@ -137,8 +137,8 @@ _WEAK_RATE_BG_FIELDS = [
 # When improving the interpolay with NEVO this could be improved.
 #
 # The effective xi_e is added under the historical "munuOverTnu" key by
-# _thermal_fingerprint below (not listed here), exactly as in
-# _weak_rate_fingerprint -- see that function for why the key name and the
+# thermal_fingerprint below (not listed here), exactly as in
+# weak_rate_fingerprint -- see that function for why the key name and the
 # per-flavour fallback are what they are. It belongs in this fingerprint
 # because the thermal integrands' Chitilde carries an explicit
 # exp(znu*(en - sgnq*q) - sgnq*xi_nu) neutrino occupation
@@ -173,19 +173,19 @@ _WEAK_RATE_BG_FIELDS = [
 # only forced spurious cache misses -- and the multi-minute vegas recompute
 # that goes with them -- whenever a run changed T_end_MeV alone.
 #
-# vegas_n_eval/vegas_n_itn/epsrel_thermal ARE hashed, in _thermal_fingerprint
+# vegas_n_eval/vegas_n_itn/epsrel_thermal ARE hashed, in thermal_fingerprint
 # itself rather than here (they are accuracy knobs, not background fields).
 # See the comment there for why.
 #
 # sampling_temperature_per_decade is likewise deliberately NOT listed, even
-# though it IS in _WEAK_RATE_BG_FIELDS: it acts on both tables through the same
+# though it IS in WEAK_RATE_BG_FIELDS: it acts on both tables through the same
 # T_nu(T_gamma) interpolant, but CCRTh is itself only a ~1e-3 correction to the
 # rate, so the ~1e-5 interpolant error at the default density propagates to
 # ~1e-8 of the total rate -- far below any tolerance, and not worth forcing a
 # multi-minute vegas recompute for. nevo_spectral_file/nevo_grid_file are
 # absent for a stronger reason: the thermal integrands use the plain
 # Fermi-Dirac occupation, never the distortion.
-_THERMAL_BG_FIELDS = [
+THERMAL_BG_FIELDS = [
     "T_start_cosmo_MeV",
     "sampling_nTOp_thermal_per_decade",
     "QED_corrections",
@@ -250,7 +250,7 @@ def _normalise_nevo_override(cfg, field):
     return None if same else value
 
 
-def _thermal_fingerprint(cfg):
+def thermal_fingerprint(cfg):
     """Fingerprint dict for the thermal radiative-correction cache file
     ``nTOp_thermal_<hash>.txt``.
 
@@ -259,7 +259,7 @@ def _thermal_fingerprint(cfg):
     range, the neutrino-to-photon temperature ratio T_ν(T_γ) (fixed by the
     NEVO table selection), the electron-neutrino degeneracy ξ_e (which enters
     the integrands' neutrino occupation directly), and the thermal-correction
-    grid density.  See :data:`_THERMAL_BG_FIELDS` for what is deliberately
+    grid density.  See :data:`THERMAL_BG_FIELDS` for what is deliberately
     left out and why.
 
     Args:
@@ -288,11 +288,11 @@ def _thermal_fingerprint(cfg):
           "vegas_n_eval": cfg.vegas_n_eval,
           "vegas_n_itn": cfg.vegas_n_itn,
           "epsrel_thermal": cfg.epsrel_thermal}
-    for key in _THERMAL_BG_FIELDS:
+    for key in THERMAL_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     fp["nevo_file"] = _normalise_nevo_override(cfg, "nevo_file")
     # Effective ξ_e under the same historical "munuOverTnu" key as
-    # _weak_rate_fingerprint, so the two fingerprints name it identically
+    # weak_rate_fingerprint, so the two fingerprints name it identically
     # (ξ_μ/ξ_τ gravitate only and never reach these integrands).
     fp["munuOverTnu"] = cfg.xi_nu_e
     return fp
@@ -320,11 +320,11 @@ def thermal_cache_exists(cfg):
     # correctly reports a hit only when the thermal cache is actually reachable.
     path = resolve_cache_file(
         cfg, "weak",
-        "nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
+        "nTOp_thermal_" + fingerprint_hash(thermal_fingerprint(cfg)) + ".txt")
     return os.path.exists(path)
 
 
-def _weak_rate_fingerprint(cfg):
+def weak_rate_fingerprint(cfg):
     """Fingerprint dict for the n<->p weak-rate cache file ``nTOp_<hash>.txt``.
 
     ``cfg.tau_n_normalization``/``cfg.tau_n`` are deliberately excluded: the
@@ -352,7 +352,7 @@ def _weak_rate_fingerprint(cfg):
           # that puts the table in 1/tau_n units. GF/Vud are NOT among them --
           # the absolute normalisation is applied after the load.
           "constants_hash":          constants_hash("weak", cfg)}
-    for key in _WEAK_RATE_BG_FIELDS:
+    for key in WEAK_RATE_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     # y_SZ/y_gray shape the ANALYTIC distortion only (neutrino_history.
     # AnalyticDistortion); with analytic_distortions=False the tabulated NEVO
