@@ -24,16 +24,15 @@ error column).
   primat --set p_n_p__d_g=1
   ```
 
-## 2. Additive rate rescaling: `rescale_nuclear_rates` + `delta_<reaction>`
+## 2. Additive rate rescaling: `delta_<reaction>`
 
-For deterministic sensitivity studies, enable `rescale_nuclear_rates=True`.
-This activates additive variation parameters `delta_<name>`. When
-`p_<name>=0` (the default), the rate becomes:
+For deterministic sensitivity studies, set `delta_<name>`. When `p_<name>=0`
+(the default), the rate becomes:
 
 **Rate = median × (1 + delta_&lt;name&gt;)**
 
-This allows uniform or per-reaction rescaling. When both
-`rescale_nuclear_rates=True` *and* `p_<name>≠0`, the combined formula is:
+This allows uniform or per-reaction rescaling. When `p_<name>≠0` as well, the
+combined formula is:
 
 **Rate = median × (exp(p × σ) + delta_&lt;name&gt;)**
 
@@ -42,16 +41,18 @@ from primat.backend import run_bbn
 
 # Sensitivity study: vary n+p->d+gamma rate by +10%
 result = run_bbn({
-    "rescale_nuclear_rates": True,
     "delta_n_p__d_g": 0.1,
 })
 ```
 
 :::{important}
 `p_<reaction>` is designed for MC uncertainty propagation (log-normal
-variations); `rescale_nuclear_rates` + `delta_<reaction>` is designed for
-deterministic sensitivity studies (additive variations). They can be used
-together, but interpret the combined effect carefully.
+variations); `delta_<reaction>` is designed for deterministic sensitivity
+studies (additive variations). They can be used together, but interpret the
+combined effect carefully.
+
+There is also a `rescale_nuclear_rates` flag. It is accepted and stored but
+read by nothing: `delta_<reaction>` applies whether or not you set it.
 :::
 
 ## 3. Computing the uncertainty: `run_mc()` and `--mc N`

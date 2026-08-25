@@ -74,9 +74,10 @@ def resolve_nevo_path(cfg, override, default_filename):
 __all__ = ["NeutrinoHistory", "NEVOTable", "InstantaneousDecoupling",
            "AnalyticDistortion", "make_neutrino_history"]
 
-# Exponential overflow guard shared by the distortion Fermi-Dirac evaluations
-# (matches the weak_rates / PRIMAT exp_cutoff convention).
-_EXP_CUT = 3e2
+# Exponential overflow guard shared by the distortion Fermi-Dirac evaluations:
+# the same value, and the same name up to case, as weak_rates.integrands'
+# ``exp_cutoff``.
+_EXP_CUTOFF = 3e2
 
 # Number of neutrino flavours sharing the distortion. The y/gray spectral
 # distortions are applied identically to nu_e, nu_mu, nu_tau, so the extra
@@ -390,8 +391,8 @@ class NEVOTable(NeutrinoHistory):
             # f_FD_nu = 1 / (exp(en_ph * znu) + 1)
             arg_y   = y
             arg_nu  = en_ph * znu
-            f_nevo  = (0. if arg_y  > _EXP_CUT else (1. + df) / (np.exp(arg_y)  + 1.))
-            f_fd_nu = (0. if arg_nu > _EXP_CUT else 1.             / (np.exp(arg_nu) + 1.))
+            f_nevo  = (0. if arg_y  > _EXP_CUTOFF else (1. + df) / (np.exp(arg_y)  + 1.))
+            f_fd_nu = (0. if arg_nu > _EXP_CUTOFF else 1.             / (np.exp(arg_nu) + 1.))
             delta_f = f_nevo - f_fd_nu
 
             # Apply sign convention from PRIMAT:
@@ -545,7 +546,7 @@ class AnalyticDistortion(NeutrinoHistory):
         """Safe Fermi-Dirac, elementwise over scalars or arrays.
 
         Clamps the exponent before exp() (avoids overflow) and masks the
-        result to 0 above ``_EXP_CUT``. np.where-based (not a Python
+        result to 0 above ``_EXP_CUTOFF``. np.where-based (not a Python
         if/else) so this -- and everything built from it in
         :meth:`_build_dFDneu_func`/:meth:`_build_dFDneu_moments` -- stays
         array-vectorised: the SD-FM correction (_L_SD_FMCCR/_NoCCR in
@@ -555,7 +556,7 @@ class AnalyticDistortion(NeutrinoHistory):
         (~20 s; see git log for the profiling that found this).
         """
         arg = np.asarray(arg)
-        return np.where(arg > _EXP_CUT, 0., 1. / (np.exp(np.minimum(arg, _EXP_CUT)) + 1.))
+        return np.where(arg > _EXP_CUTOFF, 0., 1. / (np.exp(np.minimum(arg, _EXP_CUTOFF)) + 1.))
 
     def _build_dFDneu_func(self):
         """y-type (SZ/Compton) and gray-type analytic distortions: builds

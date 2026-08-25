@@ -54,6 +54,16 @@ from scipy.special import zeta
 
 from .evolution import EvolutionResult, dump_evolution
 
+# Absolute ``solve_ivp`` tolerances of the first two eras, named so they read
+# like the third (the LT era's, which is the configurable ``cfg.atol_large_LT``).
+#
+# HT integrates n <-> p only, whose two abundances are of order 0.1-1, so an
+# absolute floor of 1e-10 is ten significant digits on the state itself.  MT
+# switches the nuclear network on and carries trace species many orders of
+# magnitude smaller (Be7 reaches ~1e-11), so its floor has to sit below them.
+_ATOL_HT = 1e-10
+_ATOL_MT = 1e-15
+
 
 def _bdf_method():
     """The ``method=`` argument for the MT/LT solves: scipy's BDF with its
@@ -354,13 +364,13 @@ class NuclearNetwork:
         # HT integrator: LSODA here, Dormand-Prince RK45 in the C backend. A
         # KNOWN, accepted divergence -- recorded on both sides so it is not
         # "fixed" by accident. Same rtol (cfg.numerical_precision) and atol
-        # (1e-10) on both, and the era is n <-> p only, so neither method is
+        # (:data:`_ATOL_HT`) on both, and the era is n <-> p only, so neither method is
         # more accurate: sweeping numerical_precision has LSODA, RK45 and BDF
         # converging to the same YPBBN. Aligning both backends on BDF was
         # tried and made cross-backend YP parity worse. Its contribution to
         # the cross-backend gap is measured by tests/backend_divergence.py.
         sol_HT = solve_ivp(Y_prime_HT, [t_start, t_weak], [Yn_i, Yp_i],
-                           method='LSODA', rtol=cfg.numerical_precision, atol=1e-10)
+                           method='LSODA', rtol=cfg.numerical_precision, atol=_ATOL_HT)
         _check_solver(sol_HT, "HT",
                       f"T = {T_start_MeV:.4g} -> {T_weak_MeV:.4g} MeV")
         if cfg.verbose:
@@ -423,7 +433,7 @@ class NuclearNetwork:
         _t_mt0 = time.time()
         sol_MT = solve_ivp(Y_prime_MT, [t_weak, t_nucl], Yi_MT,
                            method=_BDF, jac=Jacobian_MT,
-                           rtol=cfg.numerical_precision, atol=1e-15)
+                           rtol=cfg.numerical_precision, atol=_ATOL_MT)
         _check_solver(sol_MT, "MT",
                       f"{cfg.network} network, {len(mt_species)} species, "
                       f"T = {T_weak_MeV:.4g} -> {T_nucl_MeV:.4g} MeV")

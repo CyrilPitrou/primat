@@ -78,12 +78,14 @@ __all__ = [
 # float overflow (e^600 ≈ 10^260, already double-precision infinity at ~709).
 _EXP_CAP = 600.0
 
-# Forward-rate threshold below which the reverse rate is forced to zero.
-# When fwd ≈ 0 (reaction frozen out), the detailed-balance formula would
-# amplify floating-point noise into a spurious huge reverse rate.  The floor
-# value is just above the smallest denormalised double (~5e-324) so the
-# comparison is safe without relying on subnormal arithmetic.
-_FLOOR = 1.0001e-35
+# Forward-rate threshold, in the shipped tables' own units (cm^3 s^-1 mol^-1
+# for a two-body reaction, s^-1 for a decay), below which the reverse rate is
+# forced to zero.  A rate this small means the reaction is frozen out, and
+# the detailed-balance formula bwd = α T9^β exp(γ/T9) × fwd multiplies it by
+# an exp(γ/T9) that the ``_EXP_CAP`` clamp above lets reach e^600 -- so
+# whatever rounding noise is left in fwd would come back as a spurious huge
+# reverse rate.
+_REVERSE_FLOOR = 1.0001e-35
 _PHOTONS = {"g"}
 _LEPTONS = {"Bm", "Bp"}
 
@@ -98,7 +100,7 @@ def _fill_buffer_core(T9, grid, fwd_table, abg, bwd_cap, clamp, r):
     ``(n_thermo_reac, ngrid)``), and ``r[3::2]`` the reverse rates obtained from
     detailed balance, ``bwd = α T9^β exp(min(γ/T9, _EXP_CAP)) × fwd`` with
     ``(α, β, γ) = abg[k]``, then floored to 0 (when the forward rate is below
-    ``_FLOOR`` or the result is negative noise) and, if ``clamp``, capped at
+    ``_REVERSE_FLOOR`` or the result is negative noise) and, if ``clamp``, capped at
     ``bwd_cap[k]``.  Slots ``r[0]``/``r[1]`` (the weak n↔p rates) are set by the
     caller and left untouched here.
 
@@ -134,10 +136,10 @@ def _fill_buffer_core(T9, grid, fwd_table, abg, bwd_cap, clamp, r):
         if e > _EXP_CAP:
             e = _EXP_CAP
         bwd = abg[k, 0] * T9 ** abg[k, 1] * np.exp(e) * fwd
-        # A frozen-out forward rate (below _FLOOR) or negative interpolation
+        # A frozen-out forward rate (below _REVERSE_FLOOR) or negative interpolation
         # noise must not seed a spurious reverse flux; a reverse rate is
         # physically >= 0.
-        if fwd <= _FLOOR or bwd < 0.0:
+        if fwd <= _REVERSE_FLOOR or bwd < 0.0:
             bwd = 0.0
         if clamp and bwd > bwd_cap[k]:
             bwd = bwd_cap[k]
@@ -419,6 +421,10 @@ ORDER_MT = [
 # Stable light-nuclide orders used when embedding HT/MT/LT solutions into a
 # common time-evolution table.  Larger LT networks append their extra nuclides in
 # the order supplied by ``nuclides.csv``.
+#
+# ``SPECIES_MD`` -- "MD" abbreviates "medium" -- is the MT era's fixed species
+# set for any network reaching past ``SPECIES_SMALL``: the eight light
+# nuclides plus He6, Li8, Li6 and B8.
 SPECIES_SMALL = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"]
 SPECIES_MD = SPECIES_SMALL + ["He6", "Li8", "Li6", "B8"]
 
@@ -1199,8 +1205,6 @@ class NetworkDefinition:
         ``fwd_i = median_i * clamp(exp(p_i * log(sigma_i)) + delta_i)``,
         where p_i=0/delta_i=0 is the no-variation baseline (fwd_i = median_i).
         delta_i is a direct fractional additive shift (delta=0.1 → +10%).
-        ``cfg.rescale_nuclear_rates`` is checked but no longer gates delta; it
-        is kept for backward compatibility only.
 
         The clamping is controlled by ``cfg.mc_rate_rescale_cap`` (default 30):
         the variation factor is restricted to [1/cap, cap] before the multiply.
@@ -1284,7 +1288,7 @@ class NetworkDefinition:
         r[1] = nTOp_bkwrd(T_t)
 
         # Fill the thermonuclear forward/reverse slots (r[2:]) in place.  The
-        # detailed-balance reverse rate, the _FLOOR/_EXP_CAP handling and the
+        # detailed-balance reverse rate, the _REVERSE_FLOOR/_EXP_CAP handling and the
         # optional bwd_cap clamp all live in the numba kernel now; it writes
         # straight into r without the previous per-call slice copies (the copies
         # were only there to protect the cached table columns from in-place

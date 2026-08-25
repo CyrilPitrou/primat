@@ -31,7 +31,7 @@ typedef struct {
     /* ---- Fundamental constants (PDG) ---- */
     double kB;      /* Boltzmann constant [erg/K] */
     double clight;  /* speed of light [cm/s] */
-    double hbar;    /* Planck constant [erg s] */
+    double hbar;    /* reduced Planck constant h/2pi [erg s] */
     double Mpc;     /* megaparsec [cm] */
     double MeV;     /* 1 MeV [erg] */
     double keV;     /* 1 keV [erg] */
