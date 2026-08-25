@@ -8,8 +8,8 @@ the primary reference is the Physics Reports paper linked from
 
 ## Add a nuclear reaction
 
-See {doc}`howto/custom-networks` — either the GUI's "Create custom network"
-popup / `custom_network=` API for a run-time toggle, or a permanent addition
+See {doc}`howto/custom-networks` — either the GUI's "Manage networks" dialog
+or the `custom_network=` API for a run-time toggle, or a permanent addition
 to the source tree (drop a rate table under
 `primat/data/nuclear/tables/<name>/`, add `<name>` to a network file under
 `primat/data/nuclear/networks/`).

@@ -36,10 +36,12 @@ is called "the 12-reaction network" and `large` "~429 reactions" — the same
 two networks, counted the two different ways. Nuclide counts include `n` and
 `p`.
 
-All networks share the HT (n↔p) and MT eras — the MT era intersects the chosen
-network with a fixed list of 18 reactions, the full network being too stiff to
-run there, so it holds 18 reactions for `large` and 13 for `small`; only the LT
-reaction set is filtered by `network`/`amax`. The light-element abundances of the
+Every network is integrated across the same three temperature eras — high
+(HT), middle (MT) and low (LT), defined in the {doc}`../glossary`. HT evolves
+n and p only, and MT intersects the chosen network with a fixed list of 18
+reactions, the full network being too stiff to run there, so it holds 18
+reactions for `large` and 13 for `small`. Only the LT reaction set is filtered
+by `network`/`amax`. The light-element abundances of the
 full `large` network match the `amax=8` restriction to ≲1e-4; its
 heavy-nuclide tail (B, C, N, O, …) is approximate (limited by the AC2024
 rate floors). See the {doc}`../tutorials/AbundanceEvolution` notebook for
@@ -56,5 +58,6 @@ evolution plots across networks.
 | `tau_n_normalization` | `True` | Normalise weak rates using τ_n (neutron lifetime) |
 | `numerical_precision` | `1e-7` | `solve_ivp` relative tolerance (rtol) for all ODE integration |
 
-See {doc}`weak-rate-cache` for how changing these flags interacts with the
-n↔p rate cache.
+The four correction abbreviations (CCR, FM, CCRTh, SD) each have a line in the
+{doc}`../glossary`. See {doc}`weak-rate-cache` for how changing these flags
+interacts with the n↔p rate cache.

@@ -217,7 +217,7 @@ DEFAULT_PARAMS: dict = {
 
     ##################### caching/saving options
     "cache_dir": None, # single writable directory for ALL regenerable caches (n<->p weak-rate nTOp_*.txt AND the plasma electron-thermo/QED tables); None (default) = <data_dir>/cache_plasma_weak/ inside the (possibly installed) package, with weak/ and plasma/ subdirs. Set it when the install location is read-only (e.g. system-wide site-packages): caches are then WRITTEN to <cache_dir>/{weak,plasma}/ (created on demand) and READ from there first, falling back to the shipped caches in the package (overlay -- shipped caches are never shadowed). Not part of any fingerprint -- the cache LOCATION cannot affect physics.
-    "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
+    "weak_rate_cache":            True,  # If False, never load the *non-thermal* cache (always recompute it); the thermal (CCRTh) table is loaded whenever its own file exists. save_nTOp still controls whether the result is written back.
     "save_nTOp":                  True,  # If True, the computed n<->p rates are saved to cache_plasma_weak/weak/ (or the cache_dir redirect) as nTOp_<hash>.txt (forward and backward columns together).
     "sampling_nTOp_per_decade":   80,    # points per decade of T (T_end -> T_start) in the single n<->p rate grid
 

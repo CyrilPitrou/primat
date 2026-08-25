@@ -14,7 +14,9 @@ drifts from `primat --help`.
 :::{tip}
 Anything not exposed as a named flag can still be set via the repeatable
 `--set KEY=VALUE` escape hatch for any `PRIMATConfig` key, e.g.
-`primat --set T_end_MeV=1e-4 --set network=large`.
+`primat --set T_end_MeV=1e-4 --set network=large`. {doc}`parameters` lists
+every key it accepts; `primat --list-params` prints the same list in the
+terminal.
 :::
 
 :::{tip}

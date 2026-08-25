@@ -11,13 +11,15 @@ The generic plug-in point. Pass a list of callables `rho(Tg) -> MeV^4` to
 `PRIMAT(params, extra_rho=[...])`; each is summed into `rho_tot` by
 `StandardBackground.Hubble` (`primat.background`) every time the Friedmann
 equation is evaluated. This is the right tool for "add an extra
-energy-density component to a standard run" — e.g. a constant dark-radiation
-density:
+energy-density component to a standard run" — e.g. a dark-radiation
+component:
 
 ```python
 from primat import PRIMAT
+from primat.plasma import rho_g
 
-PRIMAT({"network": "small"}, extra_rho=[lambda Tg: dRho])
+# an extra radiation component worth 1 % of the photon energy density
+PRIMAT({"network": "small"}, extra_rho=[lambda Tg: 0.01 * rho_g(Tg)])
 ```
 
 Early Dark Energy (`cfg.fEDE > 0`) is itself implemented this way

@@ -11,20 +11,29 @@
 | `He4oH` | He4/H (by number) |
 | `DoH` | D/H |
 | `He3oH` | (He3+H3)/H |
+| `He3oHe4` | (He3+H3)/He4 |
 | `Li7oH` | (Li7+Be7)/H |
+| `Li6oLi7` | Li6/(Li7+Be7) — *only when the network tracks Li6* (`amax >= 6`) |
+| `YCNO` | mass fraction in C, N and O isotopes — *only when the network tracks them* |
+| `Y_final` | dict of every tracked nuclide's final abundance per baryon, `{"He4": 6.17e-02, ...}` |
 | `Neff` | Effective number of neutrino species |
 | `Omeganurel` | Ω_ν h² × 10⁶ **per flavour** (relativistic) |
 | `OneOverOmeganunr` | 1 / (Ω_ν h² × 10⁻⁶) **per flavour** (non-relativistic) |
+
+Five of those are conditional, so test for them rather than assuming them.
+`Li6oLi7` and `YCNO` need a network that tracks the nuclides they are built
+from — neither is present on the default `small` network. The neutrino-sector
+keys (`Neff`, `Omeganurel`, `OneOverOmeganunr`) need a background that provides
+that information; see `primat.main.PRIMAT.solve`.
+
+`Y_final` is where every other nuclide lives: `result["Y_final"]["Li7"]` is an
+abundance per baryon, and `4 * result["Y_final"]["He4"]` is `YPBBN` exactly.
 
 Both Ω_ν keys are **per neutrino flavour** (ν + ν̄), not summed over the three.
 Multiply `Omeganurel` by 3 to compare with the usual quoted total (≈ 17 for
 Neff ≈ 3.044). The per-flavour convention is the natural one for
 `OneOverOmeganunr`, whose value ≈ 93 reproduces the standard
 Σm_ν / 93.1 eV normalisation, and `Omeganurel` follows it for consistency.
-
-The neutrino-sector keys (`Neff`, `Omeganurel`, `OneOverOmeganunr`) are only
-present if the background actually provides that information — see
-`primat.main.PRIMAT.solve`.
 
 ## Monte-Carlo uncertainties
 
@@ -63,8 +72,9 @@ assuming a column count.
   8 for `small`/`small_parthenope`, ~59 for `large`, fewer with an `amax`
   cutoff.
 - The `<reaction>_frwrd` block (`output_rates_time_evolution=True`) is
-  appended after the abundances: one column per reaction in the active LT
-  network, lexicographically sorted, carrying the forward rate evaluated at
+  appended after the abundances: one column per reaction in the active
+  low-temperature (LT, see the {doc}`../glossary`) network, lexicographically
+  sorted, carrying the forward rate evaluated at
   each row's photon temperature. It is only available for
   `small`/`small_parthenope` — omitted (with a printed note) for
   `network="large"`.
