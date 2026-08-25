@@ -433,8 +433,12 @@ void cpr_reaction_table_free(CPRReactionTable *t)
  * formula bwd = alpha*T9^beta*exp(gamma/T9)*fwd -- mirrors network_data.py's
  * _EXP_CAP (e^600 ~ 1e260, already inf at ~709 in double precision). */
 static const double CPR_EXP_CAP = 600.0;
-/* Forward-rate floor below which the reverse rate is forced to zero
- * (mirrors network_data.py's _FLOOR; just above the smallest denormal). */
+/* Forward-rate floor, in the shipped tables' own units (cm^3 s^-1 mol^-1 for
+ * a two-body reaction, s^-1 for a decay), below which the reverse rate is
+ * forced to zero. A rate this small means the reaction is frozen out, and the
+ * detailed-balance formula above multiplies it by an exp(gamma/T9) that
+ * CPR_EXP_CAP lets reach e^600 -- so whatever rounding noise is left in fwd
+ * would come back as a spurious huge reverse rate. */
 static const double CPR_REVERSE_FLOOR = 1.0001e-35;
 
 /* MT-era reaction order (network_data.py's ORDER_MT, minus its leading "n__p"
@@ -464,9 +468,9 @@ static const char *CPR_ORDER_MT[] = {
 #define CPR_N_ORDER_MT (sizeof(CPR_ORDER_MT) / sizeof(CPR_ORDER_MT[0]))
 
 /* Stable light-nuclide species orders (network_data.py's SPECIES_SMALL/
- * SPECIES_MD): light species first, in this fixed physically-meaningful
- * order, then any remaining active nuclide in nuclides.csv's own order
- * (see cpr_species_order). */
+ * SPECIES_MD, where "MD" abbreviates "medium"): light species first, in this
+ * fixed physically-meaningful order, then any remaining active nuclide in
+ * nuclides.csv's own order (see cpr_species_order). */
 static const char *CPR_SPECIES_SMALL[] = {"n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"};
 #define CPR_N_SPECIES_SMALL (sizeof(CPR_SPECIES_SMALL) / sizeof(CPR_SPECIES_SMALL[0]))
 static const char *CPR_SPECIES_MD[] = {"n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7",
@@ -1465,9 +1469,8 @@ void cpr_network_apply_variations(CPRNetworkDef *net, const CPRConfig *cfg)
         double *fwd_row = &net->fwd[row * n_grid];
         const double *median_row = &net->fwd_median[row * n_grid];
         /* variation = exp(p * log(sigma)) + delta; baseline p=0,delta=0 → 1.0.
-         * delta is a direct fractional additive shift (delta=0.1 → +10%).
-         * cfg->rescale_nuclear_rates is kept for backward compat but no longer
-         * gates delta; any nonzero delta always applies. */
+         * delta is a direct fractional additive shift (delta=0.1 → +10%), and
+         * applies on its own. */
         if (p == 0.0 && delta == 0.0) {
             memcpy(fwd_row, median_row, n_grid * sizeof(double));
         } else {

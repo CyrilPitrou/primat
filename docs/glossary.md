@@ -105,10 +105,9 @@ p_&lt;reaction&gt;
   samples these from N(0,1).
 
 delta_&lt;reaction&gt;
-  Per-reaction *additive* rescaling, active when
-  `rescale_nuclear_rates=True`: the rate becomes `median × (1 + delta)`. For
-  deterministic sensitivity studies, where `p_<reaction>` is for uncertainty
-  propagation.
+  Per-reaction *additive* rescaling: the rate becomes `median × (1 + delta)`.
+  For deterministic sensitivity studies, where `p_<reaction>` is for
+  uncertainty propagation.
 
 expsigma
   The log-normal uncertainty width σ of a rate, read from the third column

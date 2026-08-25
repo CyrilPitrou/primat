@@ -25,6 +25,17 @@
  * needed only by the Saha (YA) equilibrium formula below. */
 #define ZETA3 1.2020569031595942854
 
+/* Absolute ODE tolerances of the first two eras, named so they read like the
+ * third (the LT era's, which is the configurable cfg->atol_large_LT).
+ *
+ * HT integrates n <-> p only, whose two abundances are of order 0.1-1, so an
+ * absolute floor of 1e-10 is ten significant digits on the state itself. MT
+ * switches the nuclear network on and carries trace species many orders of
+ * magnitude smaller (Be7 reaches ~1e-11), so its floor has to sit below
+ * them. */
+#define CPR_ATOL_HT 1.0e-10
+#define CPR_ATOL_MT 1.0e-15
+
 static const CPRNuclide *find_nuclide(const CPRConfig *cfg, const char *name)
 {
     for (size_t i = 0; i < cfg->nuclides.n; i++)
@@ -269,7 +280,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
      * contribution to the cross-backend gap is measured by
      * tests/backend_divergence.py. */
     CPRRKOpts rk_opts = cpr_ode_rk_default_opts();
-    rk_opts.rtol = cfg->numerical_precision; rk_opts.atol = 1.0e-10;
+    rk_opts.rtol = cfg->numerical_precision; rk_opts.atol = CPR_ATOL_HT;
     if (cfg->show_progress && !cfg->verbose) {
         fprintf(stderr, "[primat]  HT."); fflush(stderr);
     }
@@ -306,13 +317,13 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     recorder_push(&rec_mt, t_weak, Yi_MT);
     MTLTCtx mt_ctx = { background, nucl };
     CPRBDFOpts bdf_opts = cpr_ode_bdf_default_opts();
-    /* atol 1e-15, matching primat/nuclear_network.py's MT solve_ivp call. It
+    /* CPR_ATOL_MT, matching primat/nuclear_network.py's MT solve_ivp call. It
      * read 1e-16 here, an undocumented tolerance divergence: swapping the two
      * values on the Python side moves YPBBN 0.24699729 -> 0.24699702 and D/H
      * 2.4358985e-05 -> 2.4358951e-05, i.e. 1.4e-06 relative, ~470x the +-3e-9
      * same-backend D/H regression pin (the C's own BDF is far less sensitive
      * here, ~4e-08, which is why it went unnoticed). */
-    bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = 1.0e-15;
+    bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = CPR_ATOL_MT;
     if (cfg->show_progress && !cfg->verbose) {
         fprintf(stderr, "  MT."); fflush(stderr);
     }
@@ -782,7 +793,7 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
 
 /* Dense n x n matrix multiply C = A*B, row-major. n is small (<= ~60, the
  * large network's LT nuclide count), so the naive triple loop is fine. */
-static void dt_mat_mul(const double *A, const double *B, double *C, size_t n)
+static void decay_mat_mul(const double *A, const double *B, double *C, size_t n)
 {
     for (size_t i = 0; i < n; i++)
         for (size_t j = 0; j < n; j++) {
@@ -805,7 +816,7 @@ static void dt_mat_mul(const double *A, const double *B, double *C, size_t n)
  *
  * Reference: N. J. Higham, "The Scaling and Squaring Method for the Matrix
  * Exponential Revisited", SIAM J. Matrix Anal. Appl. 26 (2005) 1179-1193. */
-static int dt_expm(const double *A_in, size_t n, double *E, char **errmsg)
+static int decay_expm(const double *A_in, size_t n, double *E, char **errmsg)
 {
     /* Degree-13 Pade numerator/denominator coefficients (Higham 2005 Table). */
     static const double b[14] = {
@@ -832,7 +843,7 @@ static int dt_expm(const double *A_in, size_t n, double *E, char **errmsg)
     if (!A || !A2 || !A4 || !A6 || !U || !V || !W || !P || !Q || !piv || !col) {
         free(A); free(A2); free(A4); free(A6); free(U); free(V);
         free(W); free(P); free(Q); free(piv); free(col);
-        if (errmsg) *errmsg = strdup("dt_expm: out of memory");
+        if (errmsg) *errmsg = strdup("decay_expm: out of memory");
         return 1;
     }
     memcpy(A, A_in, nn * sizeof(double));
@@ -853,24 +864,24 @@ static int dt_expm(const double *A_in, size_t n, double *E, char **errmsg)
     }
 
     /* Even powers of the (scaled) A. */
-    dt_mat_mul(A, A, A2, n);
-    dt_mat_mul(A2, A2, A4, n);
-    dt_mat_mul(A4, A2, A6, n);
+    decay_mat_mul(A, A, A2, n);
+    decay_mat_mul(A2, A2, A4, n);
+    decay_mat_mul(A4, A2, A6, n);
 
     /* U = A * (A6*(b13*A6 + b11*A4 + b9*A2) + b7*A6 + b5*A4 + b3*A2 + b1*I)
      * V =      A6*(b12*A6 + b10*A4 + b8*A2) + b6*A6 + b4*A4 + b2*A2 + b0*I */
     for (size_t i = 0; i < nn; i++)
         W[i] = b[13] * A6[i] + b[11] * A4[i] + b[9] * A2[i];
-    dt_mat_mul(A6, W, V, n);                 /* reuse V as scratch for A6*W */
+    decay_mat_mul(A6, W, V, n);                 /* reuse V as scratch for A6*W */
     for (size_t i = 0; i < nn; i++)
         V[i] += b[7] * A6[i] + b[5] * A4[i] + b[3] * A2[i];
     for (size_t i = 0; i < n; i++)
         V[i * n + i] += b[1];                /* + b1*I */
-    dt_mat_mul(A, V, U, n);                  /* U = A * (...) */
+    decay_mat_mul(A, V, U, n);                  /* U = A * (...) */
 
     for (size_t i = 0; i < nn; i++)
         W[i] = b[12] * A6[i] + b[10] * A4[i] + b[8] * A2[i];
-    dt_mat_mul(A6, W, V, n);                 /* V = A6*(...) */
+    decay_mat_mul(A6, W, V, n);                 /* V = A6*(...) */
     for (size_t i = 0; i < nn; i++)
         V[i] += b[6] * A6[i] + b[4] * A4[i] + b[2] * A2[i];
     for (size_t i = 0; i < n; i++)
@@ -881,7 +892,7 @@ static int dt_expm(const double *A_in, size_t n, double *E, char **errmsg)
     if (cpr_lu_factor(Q, n, piv)) {
         free(A); free(A2); free(A4); free(A6); free(U); free(V);
         free(W); free(P); free(Q); free(piv); free(col);
-        if (errmsg) *errmsg = strdup("dt_expm: singular Pade denominator");
+        if (errmsg) *errmsg = strdup("decay_expm: singular Pade denominator");
         return 1;
     }
     /* Solve column by column: Q * E[:,j] = P[:,j]. */
@@ -893,7 +904,7 @@ static int dt_expm(const double *A_in, size_t n, double *E, char **errmsg)
 
     /* Undo the scaling: square E s times (E <- E*E). */
     for (int k = 0; k < s; k++) {
-        dt_mat_mul(E, E, W, n);
+        decay_mat_mul(E, E, W, n);
         memcpy(E, W, nn * sizeof(double));
     }
 
@@ -927,7 +938,7 @@ static int dt_expm(const double *A_in, size_t n, double *E, char **errmsg)
  * the thermal n<->p rate, absent from decays.txt, so without it the residual
  * free neutrons at t_end would never decay. D is written into the caller's
  * N*N buffer (row-major, zeroed here first). */
-static void dt_build_decay_matrix(const CPRNetworkDef *net, const CPRConfig *cfg, double *D)
+static void decay_build_matrix(const CPRNetworkDef *net, const CPRConfig *cfg, double *D)
 {
     size_t N = net->n_species;
     memset(D, 0, N * N * sizeof(double));
@@ -996,7 +1007,7 @@ int cpr_nuclear_network_decay_era(const CPRNuclearNetwork *nn, char **errmsg)
         return 1;
     }
 
-    dt_build_decay_matrix(net, cfg, D);
+    decay_build_matrix(net, cfg, D);
 
     /* Y0 = end-of-LT abundances, in abundance_names (== lt_net.species) order. */
     for (size_t i = 0; i < N; i++) Y0[i] = nn->Y_final[i];
@@ -1017,7 +1028,7 @@ int cpr_nuclear_network_decay_era(const CPRNuclearNetwork *nn, char **errmsg)
     for (int k = 0; k < M; k++) {
         double dt = t_grid[k] - nn->t_end;
         for (size_t i = 0; i < N * N; i++) Ddt[i] = D[i] * dt;
-        if (dt_expm(Ddt, N, E, errmsg)) {
+        if (decay_expm(Ddt, N, E, errmsg)) {
             free(D); free(Y0); free(t_grid); free(Y_DT); free(E); free(Ddt);
             return 1;
         }

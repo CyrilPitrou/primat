@@ -383,6 +383,8 @@ def ComputeFn(cfg):
 # linear in T: that is physics, not quadrature error, since chi_FM carries
 # genuinely thermal 1/x = kB T/m_e pieces (see _chi_func_fm_v).
 #
+# Gauss-Legendre node count for the rate integrals (_quad_grid and the L_*
+# terms built on it).
 # Node count pinned by tests/test_weak_rates.py's
 # test_gauss_legendre_converged (doubling the nodes barely moves the rates)
 # and test_vacuum_limit_reproduces_tau_n (the Born vacuum limit against the

@@ -47,7 +47,7 @@ Each entry of `targets` is either a bare string (auto-classified) or an explicit
 
 | Flavour | How it is varied | How to pass it |
 |---------|------------------|----------------|
-| **Nuclear rate** (`n_p__d_g`, `d_p__He3_g`, …) | `rescale_nuclear_rates=True` + `delta_<rxn>=±δ`, i.e. `rate = median·(1±δ)` | bare string, or `SensTarget("n_p__d_g")` |
+| **Nuclear rate** (`n_p__d_g`, `d_p__He3_g`, …) | `delta_<rxn>=±δ`, i.e. `rate = median·(1±δ)` | bare string, or `SensTarget("n_p__d_g")` |
 | **Multiplicative parameter** (`tau_n`, `GN`, `Omegabh2`, …) | scaled by `(1±δ)` about its fiducial value | bare string, or `SensTarget("tau_n", label=r"$\tau_n$")` |
 | **Additive parameter** (`DeltaNeff`, fiducial 0) | varied by an absolute `±step` about the base value, normalised by the `ref` parameter it offsets | `SensTarget("DeltaNeff", kind="additive", step=0.1, ref="Neff")` |
 

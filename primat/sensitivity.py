@@ -36,8 +36,8 @@ Three flavours of parameter need three variation recipes, all expressed through
 the :class:`SensTarget` helper (a plain string is auto-classified):
 
 * **Nuclear reaction rates** (e.g. ``"n_p__d_g"``): varied through primat's
-  ``rescale_nuclear_rates`` + ``delta_<rxn>`` mechanism, which multiplies the
-  median rate by ``(1 + delta)`` — see the *Rate variation* how-to. The
+  ``delta_<rxn>`` knob, which multiplies the median rate by ``(1 + delta)``
+  — see the *Rate variation* how-to. The
   resulting number is a genuine :math:`\\partial\\ln O/\\partial\\ln(\\text{rate})`.
 * **Multiplicative physical parameters** with a non-zero fiducial value
   (``tau_n``, ``GN``, ``Omegabh2``, ...): scaled by ``(1 ± δ)`` about their
@@ -213,13 +213,13 @@ class SensTarget:
             )
 
         if kind == "rate":
-            # primat's deterministic rate-rescaling knob: with
-            # rescale_nuclear_rates=True and p_<rxn>=0 (default), the rate
-            # becomes median*(1 + delta_<rxn>). So delta=±δ brackets the rate
-            # multiplicatively and the log-derivative denominator applies.
+            # primat's deterministic rate-rescaling knob: with p_<rxn>=0
+            # (default), the rate becomes median*(1 + delta_<rxn>). So
+            # delta=±δ brackets the rate multiplicatively and the
+            # log-derivative denominator applies.
             key = f"delta_{self.param}"
-            plus = {"rescale_nuclear_rates": True, key: +d}
-            minus = {"rescale_nuclear_rates": True, key: -d}
+            plus = {key: +d}
+            minus = {key: -d}
             return plus, minus, (self.denom if self.denom is not None else default_denom)
 
         if kind == "param":

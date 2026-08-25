@@ -412,7 +412,7 @@ static double df_2d_lookup(const CPRNeutrinoHistory *nh, double log_xNEVO, doubl
 
 static double dFDneu_raw(const CPRNeutrinoHistory *nh, double en, double x, double znu)
 {
-    static const double EXP_CUT = 3e2;
+    static const double EXP_CUTOFF = 3e2;
     if (x < nh->x_min_table || x > nh->x_max_table) return 0.0;
 
     double xNEV = interp_asc(nh->x_table_sorted, nh->xNEVO_of_xtable_sorted, nh->n_dist_rows, x, CPR_EXTRAP_LINEAR);
@@ -422,8 +422,8 @@ static double dFDneu_raw(const CPRNeutrinoHistory *nh, double en, double x, doub
 
     double df = df_2d_lookup(nh, log(xNEV), y);
     double arg_y = y, arg_nu = en_ph * znu;
-    double f_nevo  = (arg_y  > EXP_CUT) ? 0.0 : (1.0 + df) / (exp(arg_y) + 1.0);
-    double f_fd_nu = (arg_nu > EXP_CUT) ? 0.0 : 1.0 / (exp(arg_nu) + 1.0);
+    double f_nevo  = (arg_y  > EXP_CUTOFF) ? 0.0 : (1.0 + df) / (exp(arg_y) + 1.0);
+    double f_fd_nu = (arg_nu > EXP_CUTOFF) ? 0.0 : 1.0 / (exp(arg_nu) + 1.0);
     double delta_f = f_nevo - f_fd_nu;
 
     return (en < 0.0) ? -delta_f : delta_f;
@@ -445,12 +445,13 @@ static double dFDneu_raw(const CPRNeutrinoHistory *nh, double en, double x, doub
  * against that script.
  * ------------------------------------------------------------------- */
 
-/* Safe logistic Fermi-Dirac, shared with the NEVO-table path's EXP_CUT. */
+/* Safe logistic Fermi-Dirac. EXP_CUTOFF is the same exponential-overflow
+ * guard, under the same name, as weak_rates.c's and integrands.py's. */
 static double fd_safe(double arg)
 {
-    static const double EXP_CUT = 3e2;
-    if (arg > EXP_CUT) return 0.0;
-    return 1.0 / (exp(fmin(arg, EXP_CUT)) + 1.0);
+    static const double EXP_CUTOFF = 3e2;
+    if (arg > EXP_CUTOFF) return 0.0;
+    return 1.0 / (exp(fmin(arg, EXP_CUTOFF)) + 1.0);
 }
 
 /* AnalyticDistortion._dFDneu_analytic (en >= 0 form; caller handles the

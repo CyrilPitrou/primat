@@ -38,7 +38,11 @@ DEFAULT_PARAMS: dict = {
     # when verbose=False: the "[primat]  HT.  MT.  LT.  done." phase markers from a single solve,
     # and the "[MC] Running N samples..." banner / "[MC] i/N samples (XX%)" counter from an MC run.
     "numerical_precision":        1.e-7, # for finite differences (solve_ivp). 1e-6 should be enough.
-    "numba_installed":            True,  # will be re-checked at runtime. Allows just-in-time compilation for faster execution.
+    # A request, not a detected fact: True asks for the numba JIT kernels and is
+    # cleared at runtime if numba is not importable; False runs the plain-Python
+    # kernels even where numba is installed, which is not numerically neutral
+    # (the two paths differ in the last digits of the rate integrands).
+    "numba_installed":            True,
     "strict_params":              False, # How PRIMATConfig reacts to an unknown parameter key (a typo like "Omegab2h", or a key from a different code).
     # False (default): warn and ignore it, appending difflib "did you mean ...?" suggestions so the mistake is visible without being fatal. True: raise ValueError on the first unknown key 
 
@@ -311,7 +315,12 @@ DEFAULT_PARAMS: dict = {
     # "large" -- despite the legacy name). It must be tight enough for the
     # large network's heavy nuclides, which reach very small abundances.
     "atol_large_LT":              1.e-26,
-    "rescale_nuclear_rates":            False, #Use to vary some rates with a uniform factor to explore their impact.
+    # Accepted and stored, but read by nothing in either backend: a nuclear rate
+    # is varied by setting p_<reaction> (log-normal, in units of the table's own
+    # sigma) or delta_<reaction> (a direct fractional shift), each of which
+    # applies on its own. Kept so that saved ini files and params dicts that
+    # name it keep loading.
+    "rescale_nuclear_rates":            False,
 
     # Cap applied to the MC rate rescaling factor during Monte Carlo runs.
     # When a p_* parameter is non-zero, the effective variation factor is  variation = sigma^p + delta

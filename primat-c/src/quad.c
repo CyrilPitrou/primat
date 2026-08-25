@@ -8,8 +8,6 @@ static double simpson(double a, double b, double fa, double fm, double fb)
     return (b - a) / 6.0 * (fa + 4.0 * fm + fb);
 }
 
-static double fabsd(double x) { return x < 0.0 ? -x : x; }
-
 static double recurse(CPRQuadFunc f, void *ctx, double a, double b,
                        double fa, double fm, double fb, double whole,
                        double tol, int depth, double *err_accum)
@@ -25,7 +23,7 @@ static double recurse(CPRQuadFunc f, void *ctx, double a, double b,
      * refined (two-panel) estimate is ~(refined - whole)/15, so the
      * standard adaptive-Simpson stopping test compares |refined - whole|
      * against 15*tol. */
-    if (depth <= 0 || fabsd(refined - whole) <= 15.0 * tol) {
+    if (depth <= 0 || fabs(refined - whole) <= 15.0 * tol) {
         *err_accum += (refined - whole) / 15.0;
         return refined + (refined - whole) / 15.0;
     }
@@ -43,7 +41,7 @@ double cpr_quad_adaptive(CPRQuadFunc f, void *ctx, double a, double b,
     double whole = simpson(a, b, fa, fm, fb);
     double err_accum = 0.0;
     double result = recurse(f, ctx, a, b, fa, fm, fb, whole, tol, max_depth, &err_accum);
-    if (err_estimate) *err_estimate = fabsd(err_accum);
+    if (err_estimate) *err_estimate = fabs(err_accum);
     return result;
 }
 

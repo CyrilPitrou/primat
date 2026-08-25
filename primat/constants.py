@@ -98,7 +98,7 @@ class Constants:
     # The first four are *exact* by the 2019 SI redefinition (no uncertainty).
     kB:     float = 1.380649e-16          # Boltzmann constant [erg/K]      (SI 2019, exact)
     clight: float = 2.99792458e+10        # speed of light [cm/s]           (SI 2019, exact)
-    hbar:   float = 6.62607015 / (2 * np.pi) * 1e-27  # Planck constant [erg s]  (SI 2019, exact h)
+    hbar:   float = 6.62607015 / (2 * np.pi) * 1e-27  # reduced Planck constant h/2pi [erg s] (SI 2019, exact h)
     Mpc:    float = 3.08567758149e+24     # megaparsec [cm]                 (IAU 2015)
     MeV:    float = 1.602176634e-6        # 1 MeV [erg]                     (SI 2019, exact e)
     keV:    float = 1.602176634e-9        # 1 keV [erg]                     (SI 2019, exact e)
