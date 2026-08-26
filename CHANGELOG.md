@@ -51,6 +51,39 @@ in this repository is the authoritative source.
   They are in the repository's history where such material belongs.
 
 ### Fixed
+- **`--verbose` no longer corrupts `--json`.** Progress messages — the banner,
+  the options recap and every `[tag]` line — went to stdout on both backends,
+  so `primat --json --verbose | jq` failed. They now go to stderr, on both;
+  stdout carries the results and nothing else.
+- **`primat-c --Omegabh2 0.02242xyz` is rejected instead of silently run.** It
+  was the one flag parsed with `atof`, which stops at the first bad character:
+  the run completed at exit 0, saying nothing, with the truncated value. A
+  non-numeric value now reports the string the user typed, as the Python CLI
+  already did.
+- **One voice for warnings and errors.** The Python CLI prints
+  `warning: <message>` instead of wrapping it in an absolute path,
+  `UserWarning:` and a line of primat's own source; four different warning
+  prefixes in the C tree became the same one; and the messages both backends
+  print for the same condition — a missing `user_nuclear_dir`, a bad `amax`, a
+  non-numeric `--mc` — now match word for word.
+- **A value-taking flag typed last is an error, not a no-op.** `primat-c --ini`
+  with no path ran with the defaults and printed the answer as though the
+  file had been read; `--mc`, `--data_dir` and the rest disappeared the same
+  way. They now report `expected one argument` and exit 2.
+- **`primat-c --help` printed `--list-params`' description in two halves**,
+  split by the `--list-reactions` entry that had been inserted into the middle
+  of it. An unrecognised flag no longer prints the whole help to stdout: the
+  reason goes to stderr with a pointer to `--help`.
+- **`--mc-jobs` said the C backend ignores it.** It does not: both backends
+  split the samples across that many workers, joblib processes in pure Python
+  and pthreads in C. The flag is the only way to stop a Monte-Carlo run taking
+  every core on a shared machine, and the help told half of primat's users not
+  to bother with it.
+- **`--output_final_result`'s help named the wrong file.** The Python help said
+  the table is written to `output_file`; it is written to `output_final_file`.
+- **A failed QED cache write is no longer silent.** On the C backend it was
+  reported through the verbose channel, so a read-only install — the case the
+  message exists for — heard nothing unless `--verbose` was given.
 - **`weak_rate_cache=False` never forced the expensive recompute, and the
   documentation said it did.** The finite-temperature (CCRTh) table is loaded
   whenever a file matching its fingerprint exists, on both backends; only the

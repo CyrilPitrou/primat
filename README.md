@@ -170,7 +170,7 @@ Li6/Li7    = 1.419348e-05
 | `--numerical_precision RTOL` | `solve_ivp` relative tolerance (default: 1e-7) |
 | `--backend {auto,c,python}` | Force a backend (default: `auto`) |
 | `--json` | Print full results dict as JSON instead of summary |
-| `--verbose` | Enable progress messages (timings, cache hits, ...) |
+| `--verbose` | Enable progress messages on stderr (timings, cache hits, ...) |
 | `--set KEY=VALUE` | Set any configuration parameter (e.g., `--set tau_n=880.1`); use `primat --help` for the full list |
 
 Run `primat --help` to see all available command-line options. For parameters not exposed as flags, use `--set` or the Python API.
@@ -237,7 +237,7 @@ performance choice and not a physics choice:
   given configuration, so they share every cache file rather than evicting each
   other's.
 - **Console output.** Verbose (`verbose=True`) runs report the same stages with
-  the same wording.
+  the same wording, on stderr; stdout carries only the results.
 
 `tests/test_backend_parity.py` and `tests/test_cache_parity.py` enforce this in
 code; the former's module docstring is the authoritative account of the

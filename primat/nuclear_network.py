@@ -346,7 +346,7 @@ class NuclearNetwork:
             print("[primat]  HT.", end='', file=sys.stderr, flush=True)
         if cfg.verbose:
             print(f"[nucl-py] Solving neutron decoupling at high temperature era"
-                  f" (T = {T_start_MeV:.4g} -> {T_weak_MeV:.4g} MeV)")
+                  f" (T = {T_start_MeV:.4g} -> {T_weak_MeV:.4g} MeV)", file=sys.stderr)
 
         def Yn_i_func(T):
             b = nTOp_bkwrd(T)
@@ -375,7 +375,7 @@ class NuclearNetwork:
                       f"T = {T_start_MeV:.4g} -> {T_weak_MeV:.4g} MeV")
         if cfg.verbose:
             print(f"[nucl-py] [HT] Finished solve_ivp in {time.time()-_t_ht0:.2f} s",
-                  flush=True)
+                  flush=True, file=sys.stderr)
         if _show:
             print("  MT.", end='', file=sys.stderr, flush=True)
         Yn_HT_f, Yp_HT_f = sol_HT.y[0][-1], sol_HT.y[1][-1]
@@ -410,7 +410,7 @@ class NuclearNetwork:
 
         if cfg.verbose:
             print(f"[nucl-py] Solving nuclear network at mid temperature era"
-                  f" (T = {T_weak_MeV:.4g} -> {T_nucl_MeV:.4g} MeV)")
+                  f" (T = {T_weak_MeV:.4g} -> {T_nucl_MeV:.4g} MeV)", file=sys.stderr)
 
         # Saha (NSE) seed for all MT species except n and p, which come from
         # the HT solution.  The MT network's species list is determined by the
@@ -440,7 +440,7 @@ class NuclearNetwork:
         if cfg.verbose:
             print(f"[nucl-py] [MT] Finished solve_ivp ({cfg.network} network, "
                   f"{len(mt_species)} nuclides) in {time.time()-_t_mt0:.2f} s",
-                  flush=True)
+                  flush=True, file=sys.stderr)
         if _show:
             print("  LT.", end='', file=sys.stderr, flush=True)
         # Extract MT final values by name — works for any network size.
@@ -477,7 +477,7 @@ class NuclearNetwork:
 
         if cfg.verbose:
             print(f"[nucl-py] Solving nuclear network at low temperature era"
-                  f" (T = {T_nucl_MeV:.4g} -> {cfg.T_end_MeV:.4g} MeV)")
+                  f" (T = {T_nucl_MeV:.4g} -> {cfg.T_end_MeV:.4g} MeV)", file=sys.stderr)
 
         # Seed the LT vector from MT final values, filling any extra species
         # (present in the LT but absent in MT) with 0.  By looking up by name,
@@ -508,7 +508,7 @@ class NuclearNetwork:
         if cfg.verbose:
             print(f"[nucl-py] [LT] Finished solve_ivp ({cfg.network} network, "
                   f"{len(species_L)} nuclides) in {time.time()-_t_lt0:.2f} s",
-                  flush=True)
+                  flush=True, file=sys.stderr)
         if _show:
             print("  done.", file=sys.stderr)
         # Build LT final abundances by name.
@@ -536,12 +536,12 @@ class NuclearNetwork:
             # LT era (species_L is exactly the LT solver's state vector).  The
             # list grows with the chosen network (8 / 12 / ~59 nuclides for
             # small / large, optionally amax-restricted).
-            print("-" * 50)
+            print("-" * 50, file=sys.stderr)
             print(f"Primordial abundances ({len(species_L)} nuclides) at "
-                  f"T = {cfg.T_end_MeV:.4g} MeV")
-            print("-" * 50)
+                  f"T = {cfg.T_end_MeV:.4g} MeV", file=sys.stderr)
+            print("-" * 50, file=sys.stderr)
             for s in species_L:
-                print(f"  Y{s:<5}= {finL[s]:.6e}")
+                print(f"  Y{s:<5}= {finL[s]:.6e}", file=sys.stderr)
         return sol_LT, finL
 
     def solve(self, progress=True):
@@ -686,10 +686,10 @@ class NuclearNetwork:
             Y_DT = self._integrate_decay_era(D, Y0_DT, t_end, t_DT)
             if cfg.verbose:
                 print(f"[nucl-py] [DT] Decay era: {decay_n} time points from "
-                      f"t={t_end:.3g} s to t={t_end + t_decay_end:.3g} s")
+                      f"t={t_end:.3g} s to t={t_end + t_decay_end:.3g} s", file=sys.stderr)
                 for i, s in enumerate(self.abundance_names[:12]):
                     if Y_DT[-1, i] > 0:
-                        print(f"  Y{s:<5}= {Y_DT[-1, i]:.6e}")
+                        print(f"  Y{s:<5}= {Y_DT[-1, i]:.6e}", file=sys.stderr)
 
             # Extend the public Y(t) interpolator across the DT era so that
             # callers (``run[species](t)``, ``get_quantity(..., t=...)``) see a

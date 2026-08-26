@@ -16,6 +16,7 @@ the analytically computed K/Fn) after loading; see
 phase-space normalisation Fn.
 """
 
+import sys
 import os
 
 import numpy as np
@@ -407,11 +408,12 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     if not forced_recompute and cfg.weak_rate_cache and os.path.exists(path):
         nonthermal = InterpolateWeakRates(cfg)
         if cfg.verbose:
-            print("[weak-py] background n<->p weak rates: loaded from cache.")
+            print("[weak-py] background n<->p weak rates: loaded from cache.", file=sys.stderr)
 
     if nonthermal is None:
         if cfg.verbose and not forced_recompute and cfg.weak_rate_cache:
-            print("[weak-py] Recomputing n<->p weak rates (no cache for this configuration).")
+            print("[weak-py] Recomputing n<->p weak rates "
+                  "(no cache for this configuration).", file=sys.stderr)
         T_all, frwrd, bkwrd = ComputeWeakRates(Tvec, cfg, dFDneu_func=dFDneu_func,
                                                 dFDneu_moments=dFDneu_moments)
         # Before the cache write: a NaN table is a legitimate fingerprint hit,

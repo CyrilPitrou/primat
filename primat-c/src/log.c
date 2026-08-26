@@ -14,12 +14,12 @@ void cpr_log(const CPRConfig *cfg, const char *tag, const char *fmt, ...)
 {
     if (!cfg->verbose) return;
 
-    printf("[%s-c] ", tag);
+    fprintf(stderr, "[%s-c] ", tag);
     va_list args;
     va_start(args, fmt);
-    vprintf(fmt, args);
+    vfprintf(stderr, fmt, args);
     va_end(args);
-    printf("\n");
+    fputc('\n', stderr);
 }
 
 void cpr_warn(const char *fmt, ...)
@@ -38,15 +38,15 @@ void cpr_log_raw(const CPRConfig *cfg, const char *fmt, ...)
 
     va_list args;
     va_start(args, fmt);
-    vprintf(fmt, args);
+    vfprintf(stderr, fmt, args);
     va_end(args);
-    printf("\n");
+    fputc('\n', stderr);
 }
 
 int cpr_console_takes_utf8(void)
 {
 #if defined(_WIN32)
-    if (!_isatty(_fileno(stdout))) return 1;   /* redirected: raw bytes */
+    if (!_isatty(_fileno(stderr))) return 1;   /* redirected: raw bytes */
     return GetConsoleOutputCP() == CP_UTF8;
 #else
     return 1;

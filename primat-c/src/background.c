@@ -213,11 +213,11 @@ static void setup_lcdm(CPRBackground *bg)
     double Omegalambdah2 = cfg->h * cfg->h - cpr_config_get_Omegabh2(cfg) - cfg->Omegach2;
     bg->rholambda = Omegalambdah2 * rhocrit100;
     if (Omegalambdah2 < 0.0) {
-        fprintf(stderr,
-                "[bckg] warning: Omega_Lambda h^2 = %.4g < 0 (h=%g, Omegabh2=%g, "
-                "Omegach2=%g). Cosmological constant is negative -- non-standard "
-                "cosmology.\n",
-                Omegalambdah2, cfg->h, cpr_config_get_Omegabh2(cfg), cfg->Omegach2);
+        cpr_warn("Omega_Lambda h^2 = %.4g < 0 (h=%g, Omegabh2=%g, "
+                 "Omegach2=%g). Cosmological constant is negative -- "
+                 "non-standard cosmology.",
+                 Omegalambdah2, cfg->h, cpr_config_get_Omegabh2(cfg),
+                 cfg->Omegach2);
     }
 }
 

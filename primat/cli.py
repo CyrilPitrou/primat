@@ -49,7 +49,7 @@ from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
 from .cache_utils import (clear_cache, list_cache_files, plasma_cache_dir,
                            weak_cache_dir)
 from .config import (DEFAULT_PARAMS, PARAM_GROUPS, PRIMATConfig,
-                     _default_params_comments, _rates_overlay_notice)
+                     _default_params_comments)
 from .constants import OVERRIDABLE_CONSTANTS
 from .tools.gen_param_templates import _TEMPLATE_DESCRIPTIONS
 
@@ -382,7 +382,7 @@ def _build_parser():
          "Write the full time-evolution series (in-memory always; to disk "
          "if output_file is set)."),
         ("output_final_result",
-         "Write the final results dict to output_file."),
+         "Write the final-abundance table to output_final_file."),
         ("output_background_evolution",
          "Write the cosmological background time series to disk."),
         ("output_mc_samples",
@@ -395,7 +395,8 @@ def _build_parser():
          "<output_mc_file_prefix>_correlation.tsv."),
         ("show_progress",
          "Print compact stderr progress indicators ('[primat]  HT.  MT.  "
-         "LT.  done.' phase markers, '[MC] ...' sample counter)."),
+         "LT.  done.' phase markers, '[MC] ...' sample counter) when "
+         "--verbose is not used."),
     ):
         parser.add_argument(
             f"--{flag_name}", action=argparse.BooleanOptionalAction, default=None,
@@ -421,8 +422,10 @@ def _build_parser():
     )
     parser.add_argument(
         "--mc-jobs", type=int, default=-1, metavar="N",
-        help="Parallel worker count for --mc (default: -1, all CPUs; Python "
-             "backend only -- the C backend always uses one pthread per sample).",
+        help="Parallel worker count for --mc (default: -1, one per available "
+             "CPU). Honoured by both backends: joblib processes in pure "
+             "Python, pthreads in the C backend, each worker taking a "
+             "contiguous block of the samples.",
     )
     parser.add_argument(
         "--json", action="store_true",
@@ -457,6 +460,21 @@ def _build_parser():
         default=[], help=argparse.SUPPRESS,
     )
     return parser
+
+
+def _install_warning_format():
+    """Print warnings as ``warning: <message>`` on stderr, as the C CLI does.
+
+    Only for the console script: ``warnings``' default format prefixes the
+    absolute path and line of the primat source that raised the warning and
+    echoes that line, none of which the user can act on -- their mistake is in
+    the command line. Library callers keep the default format, and their own
+    ``simplefilter`` settings.
+    """
+    def show(message, category, filename, lineno, file=None, line=None):
+        print(f"warning: {message}", file=sys.stderr)
+
+    warnings.showwarning = show
 
 
 def main(argv=None):
@@ -497,6 +515,7 @@ def main(argv=None):
     # the right place to make stdout survive a console codec that cannot
     # encode primat's Greek and box-drawing output.
     configure_console()
+    _install_warning_format()
 
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -626,10 +645,6 @@ def _dispatch(args, parser):
         _print_list_reactions(params)
         return 0
 
-    for key in ("data_dir", "user_nuclear_dir"):
-        if params.get(key) is not None:
-            print(_rates_overlay_notice(key, params[key]), file=sys.stderr)
-
     # One config for the CLI's own bookkeeping: which MC outputs were asked
     # for, and where to write them. Built once, before the run, so a rejected
     # configuration is reported before any solving starts.
@@ -658,8 +673,8 @@ def _dispatch(args, parser):
             ("output_mc_correlation", cfg_cli.output_mc_correlation),
         ) if enabled]
         if requested:
-            # Plain stderr print (matching _rates_overlay_notice above and
-            # the C CLI's fprintf(stderr, "warning: ...") in cli.c), not
+            # Plain stderr print (matching the C CLI's
+            # fprintf(stderr, "warning: ...") in cli.c), not
             # warnings.warn: this fires inside main() itself, the CLI entry
             # point, so warnings.warn's source-line echo would just quote
             # whichever line of this (multi-line) call happens to sit at the

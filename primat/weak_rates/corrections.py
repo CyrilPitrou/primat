@@ -56,6 +56,7 @@ corrections"; App. B.3 "Finite nucleon mass corrections", App. B.6
 "Bremsstrahlung", App. B.8 "Finite temperature radiative corrections".
 """
 
+import sys
 import os
 from dataclasses import dataclass
 
@@ -1363,7 +1364,7 @@ def _compute_or_load_L_CCRTh_grid(ctx):
 
     if os.path.exists(_th_path):
         if cfg.verbose:
-            print("[weak-py] n <--> p thermal corrections loaded from cache.")
+            print("[weak-py] n <--> p thermal corrections loaded from cache.", file=sys.stderr)
         tab = np.loadtxt(_th_path)
         return tab[:, 0], tab[:, 1], tab[:, 2]
 
@@ -1388,7 +1389,8 @@ def _compute_or_load_L_CCRTh_grid(ctx):
     # same notice unconditionally (primat-c/src/weak_rates.c, "[weak-c]
     # Re-evaluating ..."), so the two backends stay in step here.
     print(f"[weak-py] Re-evaluating n <--> p thermal corrections "
-          f"({'vegas' if use_vegas else 'scipy.dblquad'}). This may take a while ...")
+          f"({'vegas' if use_vegas else 'scipy.dblquad'}). "
+          f"This may take a while ...", file=sys.stderr)
 
     # Grid floor is the fixed clamp _T_CCRTH_MIN, not cfg.T_end: every
     # point below it evaluates to exactly 0 anyway (see
@@ -1411,7 +1413,7 @@ def _compute_or_load_L_CCRTh_grid(ctx):
                        f"vegas_n_eval={cfg.vegas_n_eval} vegas_n_itn={cfg.vegas_n_itn}")
 
     if cfg.verbose:
-        print("[weak-py] n <--> p thermal corrections computed")
+        print("[weak-py] n <--> p thermal corrections computed", file=sys.stderr)
 
     return _T_th, L_nTh_data, L_pTh_data
 

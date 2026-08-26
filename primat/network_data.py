@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import re
 import csv
+import sys
 import io
 import warnings
 from dataclasses import dataclass
@@ -2395,7 +2396,7 @@ class UpdateNuclearRates:
             cache, see :mod:`primat.weak_rates`).
         """
         if cfg.verbose:
-            print(f"[rates-py] Building {cfg.network!r} network from text lists.")
+            print(f"[rates-py] Building {cfg.network!r} network from text lists.", file=sys.stderr)
 
         removed = set(custom_network.get("removed", [])) if custom_network else set()
         custom_tables = {}
@@ -2457,11 +2458,11 @@ class UpdateNuclearRates:
 
         if cfg.verbose:
             print(f"[rates-py] MT network: {len(self._mt_net.names)-1} reactions over "
-                  f"{len(self._mt_net.species)} nuclides.")
-            print(f"[rates-py] MT nuclides: {', '.join(self._mt_net.species)}")
+                  f"{len(self._mt_net.species)} nuclides.", file=sys.stderr)
+            print(f"[rates-py] MT nuclides: {', '.join(self._mt_net.species)}", file=sys.stderr)
             print(f"[rates-py] LT network: {len(self._lt_net.names)-1} reactions over "
-                  f"{len(self._lt_net.species)} nuclides.")
-            print(f"[rates-py] LT nuclides: {', '.join(self._lt_net.species)}")
+                  f"{len(self._lt_net.species)} nuclides.", file=sys.stderr)
+            print(f"[rates-py] LT nuclides: {', '.join(self._lt_net.species)}", file=sys.stderr)
             self.print_reactions()
 
     def describe_reactions(self):
@@ -2484,13 +2485,13 @@ class UpdateNuclearRates:
         automatically from :meth:`__init__` when ``cfg.verbose`` is set.
         """
         reactions = self.describe_reactions()
-        print("-" * 60)
-        print(f"Loaded {len(reactions)} reactions (LT network):")
-        print("-" * 60)
+        print("-" * 60, file=sys.stderr)
+        print(f"Loaded {len(reactions)} reactions (LT network):", file=sys.stderr)
+        print("-" * 60, file=sys.stderr)
         # Pad the equation column so the source labels line up in the terminal.
         width = max(len(eq) for _, eq, _, _ in reactions)
         for name, equation, source, _file in reactions:
-            print(f"  {equation:<{width}}   [{source}]")
+            print(f"  {equation:<{width}}   [{source}]", file=sys.stderr)
 
     def apply_variations(self, cfg):
         """Update active forward rate tables in both era networks."""

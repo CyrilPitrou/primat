@@ -10,6 +10,8 @@
 #include "network_data.h"
 
 #include <dirent.h>
+#include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -312,11 +314,11 @@ static void usage(const char *prog)
            "  --credits             Print the project credits and exit.\n"
            "  --version             Print the primat-c version and exit.\n"
            "  --list-params         Print every parameter settable via --set/--ini\n"
+           "                        with its default value, then exit. One-line\n"
+           "                        descriptions are in examples/run_basic.ini.\n"
            "  --list-reactions      Print every reaction name of the selected\n"
            "                        --network/--amax (the p_<reaction>/\n"
            "                        delta_<reaction> rate-variation keys), then exit.\n"
-           "                        with its default value, then exit. One-line\n"
-           "                        descriptions are in examples/run_basic.ini.\n"
            "  --Omegabh2 VALUE      Baryon density Omega_b h^2 (default: 0.02242).\n"
            "  --DeltaNeff VALUE     Extra relativistic degrees of freedom on top of\n"
            "                        the SM neutrino sector (default: 0).\n"
@@ -334,14 +336,14 @@ static void usage(const char *prog)
            "                        (default: 1e-7).\n"
            "  --munuOverTnu XI      Reduced neutrino chemical potential mu/T, the\n"
            "                        common default for all flavours (default: 0).\n"
-           "  --munuOverTnu_e XI_E  Per-flavour ξ of nu_e; overrides --munuOverTnu\n"
+           "  --munuOverTnu_e XI_E  Per-flavour mu/T of nu_e; overrides --munuOverTnu\n"
            "                        for the electron neutrino, the only flavour that\n"
            "                        shifts the n<->p weak rates. (default: inherit).\n"
            "  --munuOverTnu_mu XI_MU\n"
-           "                        Per-flavour ξ of nu_mu (gravitates only; default:\n"
+           "                        Per-flavour mu/T of nu_mu (gravitates only; default:\n"
            "                        inherit --munuOverTnu).\n"
            "  --munuOverTnu_tau XI_TAU\n"
-           "                        Per-flavour ξ of nu_tau (gravitates only; default:\n"
+           "                        Per-flavour mu/T of nu_tau (gravitates only; default:\n"
            "                        inherit --munuOverTnu).\n"
            "  --alphaem V, --GF V, --mZ V, --me V, --mn V, --mp V, --T0CMB V,\n"
            "  --gA V, --Vud V, --kappa_p V, --kappa_n V, --radproton V, --ma V,\n"
@@ -449,6 +451,55 @@ static void usage(const char *prog)
            "                        e.g. --set T_end_MeV=1e-4. Repeatable; later\n"
            "                        values win.\n",
            prog);
+}
+
+/* Read an integer flag value, refusing anything atoi() would silently read as
+ * 0 ("abc", "3x"). Returns non-zero after reporting the offending string --
+ * naming what the user typed, as argparse does on the Python side. */
+static int parse_int_flag(const char *flag, const char *value, int *out)
+{
+    char *end = NULL;
+    errno = 0;
+    long v = strtol(value, &end, 10);
+    if (end == value || *end != '\0' || errno == ERANGE
+        || v > INT_MAX || v < INT_MIN) {
+        fprintf(stderr, "error: argument %s: invalid int value: '%s'\n",
+                flag, value);
+        return 1;
+    }
+    *out = (int)v;
+    return 0;
+}
+
+/* Report a flag the parser could not use, on stderr in the `error: ` register
+ * every other message uses, pointing at --help rather than printing the whole
+ * of it over the reason.
+ *
+ * A known flag reaches here only when it is the last token and so has no
+ * value: say that, rather than calling it unrecognised. Known means a settable
+ * parameter (cpr_config_field_name enumerates them, so --Omegabh2, the 16
+ * constants and the path overlays are all covered) or one of the CLI's own
+ * value-taking flags. */
+static void unknown_argument(const char *prog, const char *arg)
+{
+    static const char *const cli_value_flags[] = {
+        "--set", "--ini", "--mc", "--mc-seed", "--mc-jobs",
+    };
+    int takes_value = 0;
+    for (size_t i = 0; i < sizeof cli_value_flags / sizeof *cli_value_flags; i++)
+        takes_value |= (strcmp(arg, cli_value_flags[i]) == 0);
+    if (!takes_value && arg[0] == '-' && arg[1] == '-') {
+        for (size_t i = 0; i < cpr_config_field_count() && !takes_value; i++) {
+            const char *name = cpr_config_field_name(i);
+            takes_value = (name && strcmp(arg + 2, name) == 0);
+        }
+    }
+
+    if (takes_value)
+        fprintf(stderr, "error: argument %s: expected one argument\n", arg);
+    else
+        fprintf(stderr, "error: unrecognized argument: %s\n", arg);
+    fprintf(stderr, "Try '%s --help' for the list of options.\n", prog);
 }
 
 /* S_ISDIR, not `st_mode & S_IFDIR`: S_IFDIR (0040000) is a *value* within the
@@ -1045,12 +1096,12 @@ int cpr_cli_main(int argc, char **argv)
         } else if (strcmp(argv[i], "--json") == 0) {
             do_json = 1;
         } else if (strcmp(argv[i], "--mc") == 0 && i + 1 < argc) {
-            mc_n = atoi(argv[++i]);
+            if (parse_int_flag("--mc", argv[++i], &mc_n)) return CLI_EXIT_CONFIG;
             mc_given = 1;
         } else if (strcmp(argv[i], "--mc-seed") == 0 && i + 1 < argc) {
-            mc_seed = atoi(argv[++i]);
+            if (parse_int_flag("--mc-seed", argv[++i], &mc_seed)) return CLI_EXIT_CONFIG;
         } else if (strcmp(argv[i], "--mc-jobs") == 0 && i + 1 < argc) {
-            mc_jobs = atoi(argv[++i]);
+            if (parse_int_flag("--mc-jobs", argv[++i], &mc_jobs)) return CLI_EXIT_CONFIG;
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             usage(argv[0]);
             return 0;
@@ -1093,7 +1144,8 @@ int cpr_cli_main(int argc, char **argv)
 
     if (custom_nuclear_dir) {
         if (!path_is_dir(custom_nuclear_dir)) {
-            fprintf(stderr, "--user_nuclear_dir: '%s' is not a directory\n", custom_nuclear_dir);
+            fprintf(stderr, "error: user_nuclear_dir='%s' is not an existing "
+                            "directory\n", custom_nuclear_dir);
             cpr_config_free(&cfg);
             return 2;
         }
@@ -1148,16 +1200,35 @@ int cpr_cli_main(int argc, char **argv)
         const char *a = argv[i];
         int has_val = (i + 1 < argc);
 
-        /* Already handled in first pass or not a solver param. */
+        /* Already handled in first pass or not a solver param. The value
+         * these consumed in that pass is only there if the flag was not the
+         * last token; without it the first pass silently skipped the flag, so
+         * say so here rather than running as though it had not been typed. */
         if (strcmp(a, "--data_dir") == 0 || strcmp(a, "--user_nuclear_dir") == 0
-            || strcmp(a, "--ini") == 0) { i++; continue; }
+            || strcmp(a, "--ini") == 0) {
+            if (!has_val) {
+                unknown_argument(argv[0], a);
+                cpr_paramlist_free(&cp);
+                cpr_config_free(&cfg);
+                return 2;
+            }
+            i++; continue;
+        }
         if (strcmp(a, "--cache-info") == 0 || strcmp(a, "--cache-clear") == 0
             || strcmp(a, "--credits") == 0 || strcmp(a, "--version") == 0
             || strcmp(a, "--list-params") == 0 || strcmp(a, "--json") == 0
             || strcmp(a, "--list-reactions") == 0
             || strcmp(a, "--help") == 0 || strcmp(a, "-h") == 0) continue;
         if (strcmp(a, "--mc") == 0 || strcmp(a, "--mc-seed") == 0
-            || strcmp(a, "--mc-jobs") == 0) { i++; continue; }
+            || strcmp(a, "--mc-jobs") == 0) {
+            if (!has_val) {
+                unknown_argument(argv[0], a);
+                cpr_paramlist_free(&cp);
+                cpr_config_free(&cfg);
+                return 2;
+            }
+            i++; continue;
+        }
 
         /* ---- The 16 measured physical constants ---- */
         const char *const_name = constant_flag_name(a);
@@ -1170,7 +1241,8 @@ int cpr_cli_main(int argc, char **argv)
 
         /* ---- Simple scalar flags (string or numeric) ---- */
         if (strcmp(a, "--Omegabh2") == 0 && has_val) {
-            CPRParam p = {CPR_DOUBLE, .v.d = atof(argv[++i])};
+            char litbuf[CPR_PARAM_VAL_LEN];
+            CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
             APPLY_OR_FAIL(&cfg, &cp, "Omegabh2", p, "--Omegabh2");
         } else if (strcmp(a, "--DeltaNeff") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
@@ -1273,16 +1345,14 @@ int cpr_cli_main(int argc, char **argv)
                     CPRParam p = cpr_parse_literal(eq + 1, litbuf, sizeof litbuf);
                     APPLY_OR_FAIL(&cfg, &cp, key, p, entry);
                 } else {
-                    fprintf(stderr, "unrecognized argument: %s\n", a);
-                    usage(argv[0]);
+                    unknown_argument(argv[0], a);
                     cpr_paramlist_free(&cp);
                     cpr_config_free(&cfg);
                     return 2;
                 }
             }
         } else {
-            fprintf(stderr, "unrecognized argument: %s\n", a);
-            usage(argv[0]);
+            unknown_argument(argv[0], a);
             cpr_paramlist_free(&cp);
             cpr_config_free(&cfg);
             return 2;

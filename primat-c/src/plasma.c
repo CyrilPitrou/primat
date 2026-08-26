@@ -198,11 +198,11 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
             if (cpr_qed_save_tables(&t, plasma_wdir,
                                      QED_T_MIN, QED_T_MAX, QED_N_PTS,
                                      cfg->consts_hash[CPR_CONSTS_QED], errmsg)) {
-                cpr_log(cfg, "plasma",
-                        "could not write cache to %s: results are unaffected, "
-                        "but the next run will recompute. Set the cache_dir "
-                        "parameter to redirect the cache to a writable directory.",
-                        plasma_wdir);
+                cpr_warn("could not write cache to %s: results are "
+                         "unaffected, but the next run will recompute. Set the "
+                         "cache_dir parameter to redirect the cache to a "
+                         "writable directory.",
+                         plasma_wdir);
                 if (errmsg && *errmsg) { free(*errmsg); *errmsg = NULL; }
             } else {
                 /* Mirrors qed_pressure.py's verbose block: a recompute that

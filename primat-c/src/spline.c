@@ -1,5 +1,6 @@
 /* spline.c -- see spline.h. */
 #include "spline.h"
+#include "log.h"
 #include "xalloc.h"
 
 #include <math.h>
@@ -247,11 +248,11 @@ int cpr_resample_rate_table(const double *T9_src, const double *rate_src, size_t
         for (size_t i = 0; i < n_dst; i++)
             if (lx_dst[i] < lx_src[0] || lx_dst[i] > lx_src[n_src - 1]) n_out++;
         if (n_out)
-            fprintf(stderr,
-                     "[warn] rate table covers T9 in [%.4g, %.4g] GK but the master "
+            cpr_warn("rate table covers T9 in [%.4g, %.4g] GK but the master "
                      "grid spans [%.4g, %.4g] GK; %zu of %zu grid points are "
-                     "extrapolated by continuing the table's end slope in log-log. "
-                     "Supply a table covering the full grid to avoid this.\n",
+                     "extrapolated by continuing the table's end slope in "
+                     "log-log. Supply a table covering the full grid to avoid "
+                     "this.",
                      T9_src[0], T9_src[n_src - 1], T9_dst[0], T9_dst[n_dst - 1],
                      n_out, n_dst);
     }
