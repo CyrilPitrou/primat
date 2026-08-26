@@ -1,3 +1,10 @@
+/* config.c -- see config.h. The CPRConfig field table and its by-name
+ * setter/getter: the C side of primat/config.py's DEFAULT_PARAMS, including
+ * the range and flag-combination validation and the ~-expansion of the path
+ * fields. Every key primat/config.py accepts must round-trip through
+ * cpr_config_set_by_name here, which is what lets one .ini drive either
+ * backend. */
+
 #include "config.h"
 #include "table_io.h"
 #include "neutrino_history.h"

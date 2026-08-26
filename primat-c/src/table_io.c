@@ -1,3 +1,7 @@
+/* table_io.c -- see table_io.h. The one numeric-table reader every loader in the
+ * port goes through: whitespace- or comma-separated columns, `#` comments,
+ * column count either fixed by the caller or detected from the first data row. */
+
 #include "table_io.h"
 #include "xalloc.h"
 

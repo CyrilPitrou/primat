@@ -127,6 +127,11 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
      * extragalactic HII-region spectroscopy; He4/H = Y_He4/Y_p. */
     results->He4oH   = ratio(Ya, Yp);
     results->DoH     = ratio(Yd, Yp);
+    /* He3 and Li7 carry their parent: the network stops at T_end, where H3 and
+     * Be7 are still present, but H3 -> He3 (12.32 yr) and Be7 + e- -> Li7
+     * (53.22 d) both complete long before any observation. Adding the parent
+     * to the daughter is what makes these ratios the observed ones
+     * (Phys. Rep. §V.A). */
     results->He3oH   = ratio(Yt + YHe3, Yp);
     results->He3oHe4 = ratio(Yt + YHe3, Ya);
     results->Li7oH   = ratio(YLi7 + YBe7, Yp);

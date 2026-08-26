@@ -428,6 +428,11 @@ class PRIMAT:
             # He4/H = (Y_P/4)/(1-Y_P) to a very good approximation.
             "He4oH":   _ratio(Ya_f, Yp_f),
             "DoH":     _ratio(Yd_f, Yp_f),
+            # He3 and Li7 carry their parent: the network stops at T_end, where
+            # H3 and Be7 are still present, but H3 -> He3 (12.32 yr) and
+            # Be7 + e- -> Li7 (53.22 d) both complete long before any
+            # observation. Adding the parent to the daughter is what makes
+            # these ratios the observed ones (Phys. Rep. §V.A).
             "He3oH":   _ratio(Yt_f + YHe3_f, Yp_f),
             "He3oHe4": _ratio(Yt_f + YHe3_f, Ya_f),
             "Li7oH":   _ratio(YLi7_f + YBe7_f, Yp_f),
@@ -583,7 +588,34 @@ class PRIMAT:
         self._ensure_solved()
         return self.nuclear.evolution
 
-    # Convenience accessors
+    # ------------------------------------------------------------------
+    # Convenience accessors for the nine most-used result-dict keys, each
+    # solving first if needed. Everything else in the dict (He3oHe4, Li6oLi7,
+    # YCNO, the per-nuclide Y) is reached through get_quantity. Read the units:
+    # one of the nine is not dimensionless, and two of the three neutrino ones
+    # are *per flavour*, not summed over three.
+    #
+    #   Neff           effective number of relativistic neutrino species
+    #                  [dimensionless]
+    #   Omeganurel     10^6 x Omega_nu h^2 per flavour, relativistic-neutrino
+    #                  convention [dimensionless]
+    #   Omeganunonrel  Omega_nu h^2 per flavour per unit neutrino mass
+    #                  [eV^-1]; its reciprocal is the familiar ~93.1 eV
+    #   YPCMB          helium mass fraction, CMB convention: n_He/(n_He+n_H)
+    #                  by mass -- what a CMB code calls Y_He [dimensionless]
+    #   YPBBN          helium mass fraction, BBN convention: 4 Y_He4
+    #                  [dimensionless]
+    #   He4oH          He4/H       by number [dimensionless]
+    #   DoH            D/H         by number [dimensionless]
+    #   He3oH          (He3+H3)/H  by number [dimensionless]
+    #   Li7oH          (Li7+Be7)/H by number [dimensionless]
+    #
+    # The last two sum in a parent still present at T_end but long decayed by
+    # the time anything observes it: 3H -> 3He (12.32 yr) and 7Be + e- -> 7Li
+    # (53.22 d). Adding the parent to the daughter is what makes these
+    # comparable with observation, and is the convention Phys. Rep. §V.A
+    # states explicitly.
+    # ------------------------------------------------------------------
     def Neff(self) -> float:          self._ensure_solved(); return cast(dict, self.results)["Neff"]
     def Omeganurel(self) -> float:    self._ensure_solved(); return cast(dict, self.results)["Omeganurel"]
     def Omeganunonrel(self) -> float: self._ensure_solved(); return 1. / cast(dict, self.results)["OneOverOmeganunr"]

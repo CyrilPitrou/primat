@@ -195,16 +195,36 @@ class Constants:
     # integration starts higher, at the overridable cfg.T_start_cosmo_MeV.
     @property
     def T_start_nucl(self) -> float:
+        """Start of the nuclear integration, 10 MeV [K].
+
+        High enough that every nuclide is in nuclear statistical equilibrium,
+        so the initial abundances are the Saha values and not a free choice.
+        """
         return 10.0 * self.MeV_to_Kelvin
 
     @property
     def T_weak(self) -> float:
+        """HT -> MT era boundary, 1 MeV [K].
+
+        Roughly where the n<->p weak rates drop below the expansion rate, so
+        below it the neutron fraction is no longer set by equilibrium and the
+        n/p-only HT treatment stops being enough.
+        """
         return 1.0 * self.MeV_to_Kelvin
 
     @property
     def T_nucl(self) -> float:
+        """MT -> LT era boundary, 0.11 MeV [K].
+
+        The deuterium bottleneck: below it photodissociation can no longer keep
+        D down, the network ignites, and the full LT reaction set is needed.
+        Phys. Rep. §V.A quotes the same boundary as 1.25e9 K, so the exact
+        value is a convention, not a threshold -- but it is not free either:
+        the two eras run different reaction sets and different solver settings,
+        so moving it trades MT stiffness against LT cost.
+        """
         return 0.11 * self.MeV_to_Kelvin
-        
+
     # ---- Electroweak mixing angle and effective couplings ----
     @property
     def sW2(self) -> float:
@@ -212,24 +232,48 @@ class Constants:
         return 0.5 * (1. - np.sqrt(1. - 2.*np.sqrt(2.)*np.pi*self.alphaem
                                     / (self.GF * self.mZ**2)))
 
+    # The four effective couplings of neutrino-electron elastic scattering
+    # (all dimensionless).  nu_e couples to e+- through *both* the charged and
+    # the neutral current, nu_mu/nu_tau only through the neutral one; Fierzing
+    # the charged-current piece into neutral-current form shifts the
+    # left-handed coupling by +1, which is the whole difference between the
+    # geL/gmuL pair below.  Phys. Rep. §V.C discusses the consequence -- nu_e
+    # gains more energy from e+e- annihilation than the other two flavours.
+    #
+    # None of the four is read by the solver: the n<->p rates use the measured
+    # tau_n normalisation instead, and the neutrino heating comes from the NEVO
+    # tables.  They are here so a reader (or an extension computing scattering
+    # rates directly) has the convention written down once.
     @property
     def geL(self) -> float:
+        """nu_e left-handed coupling to e+- [dimensionless]: 1/2 + sin^2(theta_W)."""
         return 0.5 + self.sW2
 
     @property
     def geR(self) -> float:
+        """nu_e right-handed coupling to e+- [dimensionless]: sin^2(theta_W)."""
         return self.sW2
 
     @property
     def gmuL(self) -> float:
+        """nu_mu/nu_tau left-handed coupling [dimensionless]: -1/2 + sin^2(theta_W)."""
         return -0.5 + self.sW2
 
     @property
     def gmuR(self) -> float:
+        """nu_mu/nu_tau right-handed coupling [dimensionless]: sin^2(theta_W)."""
         return self.sW2
 
     @property
     def deltakappa(self) -> float:
+        """kappa_p - kappa_n, the anomalous magnetic moments' difference
+        [nuclear magnetons, dimensionless].
+
+        It is the weak-magnetism coefficient of the finite-nucleon-mass
+        correction to the n<->p rates (Phys. Rep. App. B.2), reaching the rates
+        only through the f_1/f_2 form factors of ``weak_rates.corrections``;
+        with ``finite_mass_corrections=False`` it changes no number.
+        """
         return self.kappa_p - self.kappa_n
 
     # ---- High-T plasma entropy/number-density normalisations ----

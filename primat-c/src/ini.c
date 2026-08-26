@@ -1,3 +1,7 @@
+/* ini.c -- see ini.h. The `--ini` file loader: a flat `key = value` parser with
+ * `#`/`;` comments, feeding each pair to cpr_config_set_by_name. Deliberately
+ * not a general INI implementation -- there are no sections. */
+
 #include "ini.h"
 #include "table_io.h"
 

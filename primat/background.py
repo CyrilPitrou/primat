@@ -996,6 +996,16 @@ class StandardBackground(Background):
 
             lna_end = np.log(a_end)
             _t_nevo_a0 = time.time()
+            # Tolerances. The state variable is ln a, which is O(-20) over the
+            # whole solve, so atol=1e-10 is some ten orders below it and never
+            # binds: this integration is under pure relative control, and rtol
+            # is the only knob that matters. The extra decade over
+            # numerical_precision is a margin against this solve's own
+            # discretisation error reaching D/H: at the default
+            # numerical_precision, dropping the factor costs a noticeable
+            # fraction of the routine D/H tolerance, while at reference
+            # precision it is immaterial either way. The decade is free -- the
+            # a(T) solve is nowhere near where the run spends its time.
             sol_lna = solve_ivp(_dlnadlnT_NEVO,
                                 [np.log(Tend), np.log(Tstartcosmo)],
                                 [lna_end],
@@ -1084,6 +1094,10 @@ class StandardBackground(Background):
         # descending order (t_eval must run in the integration direction).
         lnT_desc = np.log(T_sol)[::-1]
         _t_nevo_t0 = time.time()
+        # atol=1e-12 sits far below the smallest t reached (t ~ 1e-4 s at
+        # T_start_cosmo, growing to ~1e6 s at T_end), so like the a(T) solve
+        # above this runs under relative control throughout; the atol only
+        # stops the error scale collapsing to zero at the first step.
         sol_t = solve_ivp(_dtdlnT,
                           [lnT_desc[0], lnT_desc[-1]],
                           [t_ini],
@@ -1167,6 +1181,8 @@ class StandardBackground(Background):
             return [1. / Hubble_NEVO(T_of_a(np.exp(lna)))]
 
         _t_nevo_t0 = time.time()
+        # Same atol reasoning as the ln T formulation above: t spans ~1e-4 s to
+        # ~1e6 s, so 1e-12 never binds and rtol does the work.
         sol_t = solve_ivp(_dtdlna,
                           [np.log(a_ini), np.log(a_fin)],
                           [t_ini],

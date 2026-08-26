@@ -59,6 +59,25 @@ monomials with the power rule; see :func:`_jac_kernel`.
 
 ``r`` is the flat forward/backward rate buffer exactly as filled by
 ``UpdateNuclearRates`` (via ``NetworkDefinition.fill_buffer``).
+
+Units
+-----
+The kernels are the one place the astrophysical rate convention has to line
+up, so it is worth stating once:
+
+  * ``Y[s]``  -- abundance per baryon, which in these units *is* moles per
+    gram of baryons, normalised so sum_s A_s Y_s = 1  [mol g^-1]
+  * ``rho``   -- baryon mass density  [g cm^-3]
+  * ``r[2i]``, ``r[2i+1]`` -- the tabulated rate in its own convention:
+    N_A<sigma v> [cm^3 mol^-1 s^-1] for a two-body reaction, N_A^2<sigma v>
+    [cm^6 mol^-2 s^-1] for three-body, and a plain decay constant [s^-1] for
+    a one-body decay
+  * ``rhs``   -> dY/dt  [mol g^-1 s^-1], i.e. per second
+  * ``jacobian`` -> J = d(dY/dt)/dY  [s^-1]
+
+which is what makes ``r * rho**(R-1)`` come out in s^-1 for every body count
+R: the mol^-1 of the rate cancels the mol g^-1 of one abundance factor, and
+the cm^3 cancels the cm^-3 of the density.
 """
 from math import factorial
 
