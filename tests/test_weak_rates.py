@@ -1,5 +1,6 @@
 """Tests for weak_rates: Fn integral, Fermi-Coulomb, rate functions."""
 import os
+import re
 import shutil
 
 import pytest
@@ -9,6 +10,7 @@ from primat.plasma import Plasma
 from primat.neutrino_history import InstantaneousDecoupling, AnalyticDistortion
 import primat.weak_rates as wr
 import primat.weak_rates.corrections as corrections
+import primat.weak_rates.integrands as integrands
 
 
 def test_corrections_all_names_exist():
@@ -49,6 +51,58 @@ def test_FD_nu3_zero_phi_equals_FD2():
     """With phi=0, FD_nu3 must reduce to FD2."""
     E, x = 1.5, 1.0
     assert wr.FD_nu3(E, 0.0, x) == pytest.approx(wr.FD2(E, x), rel=1e-10)
+
+
+# The eight FD_nu_eNpM kernels. Reached through the module object, never by a
+# from-import: _setup_fd_impls rebinds these names, and a name-import would
+# freeze onto whichever variant (jitted or plain) was installed first.
+_ENPM_NAMES = [n for n in integrands.__all__ if n.startswith("FD_nu_e")]
+
+
+def _g_nu(E, phi, x):
+    """Plain neutrino Fermi-Dirac occupation, the kernels' common factor."""
+    return 1.0 / (np.exp(x * E - phi) + 1.0)
+
+
+def test_eNpM_kernels_are_the_E_derivatives_they_claim_to_be():
+    """Every FD_nu_eNpM equals d^M/dE^M[E^N g_nu], the identity integrands.py states.
+
+    The eight closed forms are hand-expanded from that definition, and
+    duplicated as static functions in primat-c/src/weak_rates.c, so a
+    transcription slip on either side moves the finite-mass n<->p correction
+    with nothing else pinning it. Central differences set the tolerance here:
+    their own truncation error is ~1e-7 at the second order.
+    """
+    def central(N, M, E, phi, x, h=1e-4):
+        f = lambda e: e**N * _g_nu(e, phi, x)
+        if M == 0:
+            return f(E)
+        if M == 1:
+            return (f(E + h) - f(E - h)) / (2.0 * h)
+        return (f(E + h) - 2.0 * f(E) + f(E - h)) / h**2
+
+    checked = set()
+    for E, phi, x in [(1.7, 0.13, 0.9), (0.6, 0.0, 2.5), (3.1, -0.2, 0.4)]:
+        for name in _ENPM_NAMES:
+            N, M = (int(d) for d in re.match(r"FD_nu_e(\d)p(\d)$", name).groups())
+            kernel = getattr(integrands, name)
+            assert float(kernel(E, phi, x)) == pytest.approx(
+                central(N, M, E, phi, x), rel=1e-5), f"{name} at E={E}, phi={phi}, x={x}"
+            checked.add(name)
+    assert len(checked) == 8, f"expected 8 eNpM kernels, checked {sorted(checked)}"
+
+
+def test_eNpM_kernels_vanish_past_the_exponential_cutoff():
+    """Deep in the tail every eNpM kernel returns exactly 0, never inf or nan.
+
+    The guards are what let these run over the whole Gauss-Legendre grid, where
+    the neutrino factor is far into its exponential tail: without them the
+    discarded branch overflows and an inf/nan propagates into the rate integral
+    rather than a zero.
+    """
+    for name in _ENPM_NAMES:
+        val = float(getattr(integrands, name)(1.0, 0.0, 1e4))
+        assert val == 0.0, f"{name} did not vanish past the cutoff: {val}"
 
 
 # ---------------------------------------------------------------------------
