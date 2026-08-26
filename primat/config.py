@@ -2,15 +2,24 @@
 """
 config.py
 =========
-Central configuration for primat.
+Central configuration for primat: the one object every other module reads.
 
-Physical constants and derived unit conversions are *fixed* and computed once
-here.  All run-time flags and cosmological/nuclear parameters are carried in a
-``PRIMATConfig`` instance and can be overridden by passing a parameter dictionary
+A run is described by a single ``PRIMATConfig``.  Every cosmological and
+nuclear parameter, every solver flag and every path override lives in
+``DEFAULT_PARAMS`` below and can be replaced by passing a parameter dictionary
 to ``PRIMATConfig(params)``.
 
-No file I/O happens here.  Nuclear rate data are loaded separately in
-``nuclear_data.py``.
+The constants themselves live in ``constants.py``, not here.  Ten of them are
+exact by definition and frozen; the sixteen *measured* ones
+(``constants.OVERRIDABLE_CONSTANTS``) are ordinary parameters, so setting e.g.
+``{"mn": ...}`` rebuilds every quantity derived from it (see
+``_update_constants``).
+
+Two files are read during ``__init__``: ``csv/nuclides.csv``, for the mass
+excesses and spins (``_load_nuclide_data``), and any custom NEVO table named by
+``nevo_file``/``nevo_spectral_file``/``nevo_grid_file``, whose shape is checked
+early so a typo fails here rather than deep in the background solve.  Nuclear
+rate tables are *not* read here -- those are loaded by ``network_data.py``.
 """
 
 import dataclasses
@@ -1307,6 +1316,12 @@ class PRIMATConfig:
 
     @property
     def Mpl(self) -> float:
+        """Planck mass [MeV], 1/sqrt(G) in natural units.
+
+        The **non-reduced** one: the reduced Planck mass 1/sqrt(8 pi G) is
+        smaller by sqrt(8 pi) ~ 5.01, so a formula taken from a source using
+        the reduced convention needs that factor put back.
+        """
         return 1. / np.sqrt(self._GN_MeV2)
 
     @property

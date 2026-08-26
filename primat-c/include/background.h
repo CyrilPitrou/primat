@@ -167,11 +167,15 @@ double cpr_bg_rhoB_BBN(const CPRBackground *bg, double t); /* [g/cm^3] */
 double cpr_bg_weak_nTOp(const CPRBackground *bg, double T_K); /* [s^-1] */
 double cpr_bg_weak_pTOn(const CPRBackground *bg, double T_K); /* [s^-1] */
 
-/* ---- Scale-factor interface (both kinds set has_scale_factor=1). ---- */
-double cpr_bg_a_of_T(const CPRBackground *bg, double T);
-double cpr_bg_T_of_a(const CPRBackground *bg, double a);
-double cpr_bg_a_of_t(const CPRBackground *bg, double t);
-double cpr_bg_t_of_a(const CPRBackground *bg, double a);
+/* ---- Scale-factor interface (both kinds set has_scale_factor=1).
+ * `a` is the dimensionless scale factor, in the same normalisation the
+ * background solve fixed (a_end at T_end); `t` is [s]. Note that `T` here is
+ * in **MeV**, like cpr_bg_T_of_t above and unlike the `T_K` of the weak-rate
+ * accessors -- a mix-up costs a factor cpr_MeV_to_Kelvin() silently. ---- */
+double cpr_bg_a_of_T(const CPRBackground *bg, double T);   /* T [MeV] */
+double cpr_bg_T_of_a(const CPRBackground *bg, double a);   /* -> [MeV] */
+double cpr_bg_a_of_t(const CPRBackground *bg, double t);   /* t [s] */
+double cpr_bg_t_of_a(const CPRBackground *bg, double a);   /* -> [s] */
 
 /* ---- Friedmann expansion rate H [s^-1] at Tg and the three flavour
  * neutrino temperatures [MeV] (CPR_BG_STANDARD only -- CustomBackground

@@ -176,10 +176,11 @@ def RadCorrResum(b, y, en, cfg):
         1/(134 × 2π)                            [α(mₚ)/(2π), Eq. B36]
 
     NLL correction:
-        NLLndecay = -0.0001                     [next-to-leading log, ~10⁻⁴;
-                                                 not in Phys. Rep. Eq. B35 --
-                                                 carried over from
-                                                 PRIMAT-Main.m]
+        NLLndecay = -0.0001                     [NLL ≃ -10⁻⁴ in Eq. B36. Eq. B35
+                                                 puts it *inside* the α(mₚ)/(2π)
+                                                 factor; PRIMAT-Main.m:1327 adds
+                                                 it outside, and this port
+                                                 follows PRIMAT-Main.m]
 
     Args:
         b   : electron velocity v/c = p_e/E_e  (dimensionless).
@@ -200,7 +201,9 @@ def RadCorrResum(b, y, en, cfg):
     mA        = 1.2e+3 * cfg.MeV   # m_A [Eq. B31]: QCD matching scale ~1.2 GeV
     Agndecay  = -0.34              # A_g [Eq. B31]: hadronic logarithm coefficient
     Cndecay   =  0.891             # C   [Eq. B31]: inner radiative constant
-    deltand   = -0.00043           # δ   [Eq. B36]: small correction
+    deltand   = -0.00043           # (α_FS/2π)δ [Eq. B36]: the *product*, not δ
+                                   # itself -- see the return statement, which
+                                   # divides the α/(2π) back out
     Lndecay   =  1.02094           # L   [Eq. B36]: long-distance QED running
     Sndecay   =  1.02248           # S   [Eq. B36]: short-distance factor
     NLLndecay = -0.0001            # next-to-leading logarithm (not in Eq. B35;
@@ -215,13 +218,21 @@ def RadCorrResum(b, y, en, cfg):
     # (rather than a Python if/else) makes this work elementwise when b is
     # an array too, so this one function serves both the scalar quad/dblquad
     # calls and the Gauss-Legendre array grid -- no separate "_v" twin.
+    # This guards atanh(b)/b only. The Spence term below still divides by a
+    # raw b, so the function as a whole is undefined at exactly b = 0 (an
+    # electron at rest, E_e = mₑ). Nothing evaluates it there: b = 0 is the
+    # lower endpoint of every integral that calls it, and both `quad`
+    # (Gauss-Kronrod) and the Gauss-Legendre grid are open rules.
     b_safe = np.where(b == 0., 1., b)
     Rd = np.where(b == 0., 1., np.arctanh(b_safe) / b_safe)
-    # Sirlin's outer radiative function g(b,y,E) [Phys. Rep. Eq. 103]
+    # Sirlin's outer radiative function g(b,y,E) [Phys. Rep. Eq. B32]
     Sirlin = (3. * np.log(mp / me) - 3. / 4.
               + 4. * (Rd - 1.) * (y / (3. * en) - 3. / 2. + np.log(2. * y))
               + Rd * (2. * (1. + b**2) + y**2 / (6. * en**2) - 4. * b * Rd)
               - (4. / b) * spence(1. - (2 * b) / (1. + b)))
+    # The α/(2π) and its inverse in the δ term cancel exactly. Both are kept so
+    # the line reads as Eq. B35's second bracket, L + (α/π)C + (α/2π)δ, with δ
+    # spelled out as PRIMAT-Main.m:1321 stores it (δfactor = -0.00043·2π/α_FS).
     return ((1. + cfg.alphaem / (2. * np.pi) * (Sirlin - 3. * np.log(mp / (2 * Q))))
             * (Lndecay + (cfg.alphaem / np.pi) * Cndecay
                + cfg.alphaem / (2 * np.pi) * deltand * 2 * np.pi / cfg.alphaem)

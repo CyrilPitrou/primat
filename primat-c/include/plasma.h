@@ -106,8 +106,9 @@ void cpr_plasma_free(CPRPlasma *pl);
  * 0 for Tg < me/30 (Boltzmann-suppressed below double precision -- see
  * _ELEC_THERMO_LOWT_RATIO in plasma.c). */
 double cpr_plasma_rho_e(const CPRPlasma *pl, double Tg);
+/* ... and its Tg-derivative [MeV^3]. */
 double cpr_plasma_drho_e_dT(const CPRPlasma *pl, double Tg);
-/* e+- pressure [MeV^4] (Phys. Rep. Eq. A4c). */
+/* e+- pressure [MeV^4] (Phys. Rep. Eq. A4c) and its Tg-derivative [MeV^3]. */
 double cpr_plasma_p_e(const CPRPlasma *pl, double Tg);
 double cpr_plasma_dp_e_dT(const CPRPlasma *pl, double Tg);
 

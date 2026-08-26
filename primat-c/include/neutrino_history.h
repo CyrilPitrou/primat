@@ -113,6 +113,8 @@ int cpr_neutrino_history_init(CPRNeutrinoHistory *nh, const CPRConfig *cfg,
 
 void cpr_neutrino_history_free(CPRNeutrinoHistory *nh);
 
+/* Per-flavour neutrino temperature [MeV] at photon temperature Tg [MeV].
+ * All three coincide under CPR_NU_INSTANTANEOUS. */
 double cpr_nu_Tnue_of_Tg(const CPRNeutrinoHistory *nh, double Tg);
 double cpr_nu_Tnumu_of_Tg(const CPRNeutrinoHistory *nh, double Tg);
 double cpr_nu_Tnutau_of_Tg(const CPRNeutrinoHistory *nh, double Tg);

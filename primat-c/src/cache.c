@@ -1,3 +1,13 @@
+/* cache.c -- see cache.h. The fingerprinting machinery every on-disk cache in
+ * the port shares: turn a list of (name, value) fields into canonical JSON,
+ * hash it, and read/write that hash in a cache file's header. It builds the
+ * weak-rate and thermal field lists itself; the electron-thermo and QED caches
+ * assemble their own and call in here for the hash.
+ *
+ * A cache file is reused only when its stored fingerprint matches what the
+ * current configuration hashes to, so a changed constant, flag or table
+ * silently selects a different file instead of reusing a stale one. */
+
 #include "cache.h"
 #include "constants.h"
 #include "neutrino_history.h"   /* cpr_resolve_nevo_path, for nevo_override_effective */

@@ -48,11 +48,11 @@ The results are stored in two separate four-column files, one per order
 in e, so that either correction can be inspected, regenerated, or swapped
 out independently of the other:
 
-  ``data/plasma/QED_pressure_correction_e2.txt`` [O(e²), one-loop]::
+  ``data/cache_plasma_weak/plasma/QED_pressure_correction_e2.txt`` [O(e²), one-loop]::
 
     T [MeV]  dP_a [MeV^4]  d(dP_a)/dT [MeV^3]  d2(dP_a)/dT2 [MeV^2]
 
-  ``data/plasma/QED_pressure_correction_e3.txt`` [O(e³), ring/plasmon]::
+  ``data/cache_plasma_weak/plasma/QED_pressure_correction_e3.txt`` [O(e³), ring/plasmon]::
 
     T [MeV]  dP_e3 [MeV^4]  d(dP_e3)/dT [MeV^3]  d2(dP_e3)/dT2 [MeV^2]
 
@@ -69,7 +69,7 @@ Usage
 -----
 >>> from primat.qed_pressure import compute_qed_pressure_tables, save_qed_tables
 >>> tables = compute_qed_pressure_tables()  # ~0.3 s on a modern laptop
->>> save_qed_tables(tables, "/path/to/data/plasma/")
+>>> save_qed_tables(tables, "/path/to/data/cache_plasma_weak/plasma/")
 
 Reference
 ---------
@@ -517,7 +517,9 @@ def save_qed_tables(tables, plasma_dir, verbose=True, cfg=None):
     tables : dict
         Output of :func:`compute_qed_pressure_tables`.
     plasma_dir : str
-        Path to the ``data/plasma/`` directory.
+        Path to the ``data/cache_plasma_weak/plasma/`` directory -- the one
+        :func:`primat.plasma.Plasma._load_tables` reads.  Writing anywhere else
+        creates a directory the solver never looks in.
     verbose : bool
         Print confirmation message (default True).
 
@@ -531,7 +533,7 @@ def save_qed_tables(tables, plasma_dir, verbose=True, cfg=None):
 
     Example
     -------
-    >>> save_qed_tables(tables, "primat/data/plasma/")
+    >>> save_qed_tables(tables, "primat/data/cache_plasma_weak/plasma/")
     """
     T    = tables["T"]
     e2   = tables["dP_e2"]

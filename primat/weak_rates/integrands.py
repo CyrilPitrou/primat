@@ -7,18 +7,28 @@ The FD_nu_eNpM functions compute Fermi-Dirac-related integrands appearing
 in the finite-nucleon-mass Fokker-Planck expansion (Phys. Rep. App. B.2,
 PRIMAT-Main.m ~line 1270).  Their arguments are always
 (E, phi, x) with E = ε_ν/mₑ (dimensionless), phi = ξ_ν = μ_ν/T_ν,
-x = mₑ/(kB T) (inverse temperature ratio):
+x = mₑ/(kB T) (inverse temperature ratio).
 
-  FD_nu3(E, phi, x)    — g_ν(xE, phi) = 1/(e^{xE−phi}+1)   [plain neutrino FD]
-  FD2(E, x)            — g(xE) = 1/(e^{xE}+1)               [electron/positron FD]
-  FD_nu_e2p0(E, phi, x) — E² × g_ν                           [FD × E²]
-  FD_nu_e3p0(E, phi, x) — E³ × g_ν                           [FD × E³]
-  FD_nu_e2p1(E, phi, x) — (∂/∂x)[x² g_ν] type combination   [1st FP order]
-  FD_nu_e3p1(E, phi, x) — E-weighted 1st-order FP term
-  FD_nu_e4p1(E, phi, x) — E²-weighted 1st-order FP term
-  FD_nu_e2p2(E, phi, x) — 2nd-order FP combination × E⁰
-  FD_nu_e3p2(E, phi, x) — 2nd-order FP combination × E
-  FD_nu_e4p2(E, phi, x) — 2nd-order FP combination × E²
+The name says the formula.  Writing g_ν(xE, phi) = 1/(e^{xE−phi}+1) for the
+neutrino occupation, every kernel in the eNpM family is
+
+    FD_nu_eNpM(E, phi, x) = ∂^M/∂E^M [ E^N g_ν(xE, phi) ]
+
+evaluated in closed form: N is the power of E carried into the derivative,
+M the derivative order (the Fokker-Planck order, since the expansion is in
+∂/∂E of the neutrino spectrum).  Note the derivative is in E, not in x, and
+that each ∂/∂E costs one power of E, so e2p2 leads with E⁰ and e4p2 with E².
+
+  FD_nu3(E, phi, x)     — g_ν(xE, phi)                       [plain neutrino FD]
+  FD2(E, x)             — g(xE) = 1/(e^{xE}+1)               [electron/positron FD]
+  FD_nu_e2p0(E, phi, x) — E² g_ν
+  FD_nu_e3p0(E, phi, x) — E³ g_ν
+  FD_nu_e2p1(E, phi, x) — ∂/∂E  [E² g_ν]
+  FD_nu_e3p1(E, phi, x) — ∂/∂E  [E³ g_ν]
+  FD_nu_e4p1(E, phi, x) — ∂/∂E  [E⁴ g_ν]
+  FD_nu_e2p2(E, phi, x) — ∂²/∂E² [E² g_ν]
+  FD_nu_e3p2(E, phi, x) — ∂²/∂E² [E³ g_ν]
+  FD_nu_e4p2(E, phi, x) — ∂²/∂E² [E⁴ g_ν]
 
 Each kernel is njit-compiled via :func:`_setup_fd_impls` when numba is
 available.  Other weak_rates submodules must call through the
@@ -60,6 +70,17 @@ exp_cutoff = 3e+2
 # this also makes the functions numba-njit-compatible, since numba supports
 # np.where/np.minimum on scalars and arrays alike but not the
 # np.errstate(...) context manager an unclamped masked branch would need.
+#
+# Validity in phi. The guards are written for the tail the rate grid actually
+# reaches, x*E large, where the occupation vanishes and 0 is the right answer.
+# They also fire on large *positive* phi = xi_nu, where it is not: there the
+# occupation saturates at 1 and the true value is finite and O(1), but the
+# guard still returns 0. The thresholds are the tightest clause of each kernel
+# -- phi > 100 for the e2p2 form, phi > 150 for the others. Nothing physical
+# comes near: xi_nu is 0 by default, degenerate-BBN studies use |xi| of order
+# 1, and observational bounds keep |xi_nu_e| below ~0.05. Worth knowing before
+# anyone reuses these kernels for a strongly degenerate neutrino sea, since the
+# failure is a silent zero rather than an overflow.
 # ---------------------------------------------------------------------------
 
 def FD_nu3(E, phi, x):
