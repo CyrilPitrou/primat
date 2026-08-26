@@ -81,6 +81,10 @@ in this repository is the authoritative source.
   to bother with it.
 - **`--output_final_result`'s help named the wrong file.** The Python help said
   the table is written to `output_file`; it is written to `output_final_file`.
+- **The graphical interface speaks in one voice.** Two dialog errors surfaced
+  an exception fragment verbatim, so the line began lowercase and mid-sentence
+  ("enter a reaction name (e.g. 'He3_d__He4_p')."). Every error and warning in
+  the interface now opens with what it is about.
 - **A failed QED cache write is no longer silent.** On the C backend it was
   reported through the verbose channel, so a read-only install — the case the
   message exists for — heard nothing unless `--verbose` was given.

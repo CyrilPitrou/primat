@@ -1206,7 +1206,7 @@ def _render_add_rate_section(dialog_amax, all_entries):
             try:
                 eq = custom_rates.validate_new_reaction(name, _root())
             except ValueError as exc:
-                st.error(str(exc))
+                st.error(f"Reaction name: {exc}")
             else:
                 parsed_ok = True
                 st.success(f"Parsed as: {eq}")
@@ -1222,11 +1222,11 @@ def _render_add_rate_section(dialog_amax, all_entries):
             try:
                 cat = reaction_category(bare, _root())
             except (ValueError, KeyError) as exc:
-                st.error(str(exc))
+                st.error(f"Reaction name: {exc}")
                 return
             if dialog_amax is not None and cat > dialog_amax:
                 st.error(
-                    f"reaction {bare!r} involves a nuclide with A={cat}, which "
+                    f"Reaction {bare!r} involves a nuclide with A={cat}, which "
                     f"exceeds the current amax={dialog_amax}.")
                 return
             if upload is None:
