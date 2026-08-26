@@ -240,22 +240,22 @@ class PRIMAT:
         if background is not None:
             if params:
                 warnings.warn(
-                    "PRIMAT: params is ignored when background= is supplied "
+                    "params is ignored when background= is supplied "
                     "(self.cfg is taken from background.cfg instead)."
                 )
             if extra_rho is not None:
                 warnings.warn(
-                    "PRIMAT: extra_rho is ignored when background= is supplied "
+                    "extra_rho is ignored when background= is supplied "
                     "(fold any extra energy density into the background "
                     "instance directly before passing it in)."
                 )
             self.cfg = background.cfg
             cfg = self.cfg
             if cfg.verbose:
-                print(_banner())
-                print(_options_recap(cfg, backend="python"))
+                print(_banner(), file=sys.stderr)
+                print(_options_recap(cfg, backend="python"), file=sys.stderr)
                 for msg in cfg._init_messages:
-                    print(msg)
+                    print(msg, file=sys.stderr)
                 self._t0 = time.time()
             # A per-instance Plasma object (rather than the module-level
             # default) so that several PRIMAT instances coexisting in the same
@@ -271,10 +271,10 @@ class PRIMAT:
             # messages (table loading/computing) gated on cfg.verbose, and
             # those must appear after the banner, not before it.
             if cfg.verbose:
-                print(_banner())
-                print(_options_recap(cfg, backend="python"))
+                print(_banner(), file=sys.stderr)
+                print(_options_recap(cfg, backend="python"), file=sys.stderr)
                 for msg in cfg._init_messages:
-                    print(msg)
+                    print(msg, file=sys.stderr)
                 self._t0 = time.time()
             self.plasma = primat_thermo.Plasma(cfg)
 
@@ -317,13 +317,13 @@ class PRIMAT:
             # background= branch above already does for extra_rho.
             if extra_rho:
                 warnings.warn(
-                    "PRIMAT: extra_rho is ignored when custom_background is "
+                    "extra_rho is ignored when custom_background is "
                     "supplied (the table already fixes the expansion history); "
                     "its effect is absent from the reported abundances."
                 )
             if cfg.fEDE > 0.0:
                 warnings.warn(
-                    f"PRIMAT: fEDE = {cfg.fEDE:g} is ignored when "
+                    f"fEDE = {cfg.fEDE:g} is ignored when "
                     "custom_background is supplied (Early Dark Energy is only "
                     "applied in the standard mode); its effect is absent from "
                     "the reported abundances."
@@ -344,7 +344,8 @@ class PRIMAT:
         self.results: dict[str, Any] | None = None
 
         if cfg.verbose:
-            print(f"[init-py] Initialisation complete in {time.time()-self._t0:.1f} s")
+            print(f"[init-py] Initialisation complete in "
+                  f"{time.time()-self._t0:.1f} s", file=sys.stderr)
 
     # ======================================================================
     # solve(): integrate nuclear network ODEs

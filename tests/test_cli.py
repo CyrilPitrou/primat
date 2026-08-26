@@ -254,7 +254,8 @@ def test_cli_json_with_time_evolution_is_serialisable(capsys, tmp_path):
 
 
 @pytest.mark.parametrize("backend", ["c", "python"])
-def test_cli_json_stdout_is_pure_json_in_a_subprocess(backend, tmp_path):
+@pytest.mark.parametrize("verbose", [False, True], ids=["quiet", "verbose"])
+def test_cli_json_stdout_is_pure_json_in_a_subprocess(backend, verbose, tmp_path):
     """`primat --json … | jq` must work: nothing but JSON reaches stdout.
 
     GOAL: pin the redirection contract that the in-process test above cannot
@@ -262,6 +263,10 @@ def test_cli_json_stdout_is_pure_json_in_a_subprocess(backend, tmp_path):
     ``fprintf`` to the underlying file descriptor is invisible to it -- the
     "[output] Time-evolution data …" progress line went to stdout on both
     backends and corrupted the JSON document while that test stayed green.
+
+    The ``verbose`` case covers the other way in: the banner, the options
+    recap and every ``[tag]`` progress line are diagnostics, so they belong on
+    stderr whatever ``--verbose`` says.
     """
     if backend == "c":
         from primat.backend import HAS_C_BACKEND
@@ -269,7 +274,8 @@ def test_cli_json_stdout_is_pure_json_in_a_subprocess(backend, tmp_path):
             pytest.skip("primat._primat_c C extension is not built")
     proc = subprocess.run(
         [sys.executable, "-m", "primat.cli", "--json", "--backend", backend,
-         "--output_time_evolution", "--output_file", str(tmp_path / "evo.tsv")],
+         "--output_time_evolution", "--output_file", str(tmp_path / "evo.tsv")]
+        + (["--verbose"] if verbose else []),
         capture_output=True, text=True, encoding="utf-8", timeout=300,
     )
     assert proc.returncode == 0, proc.stderr
@@ -277,6 +283,9 @@ def test_cli_json_stdout_is_pure_json_in_a_subprocess(backend, tmp_path):
     assert payload["DoH"] > 0
     assert "[output]" in proc.stderr           # announced, on the right stream
     assert "[output]" not in proc.stdout
+    if verbose:
+        assert "Welcome to PRIMAT" in proc.stderr
+        assert "Welcome to PRIMAT" not in proc.stdout
 
 
 def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
@@ -295,7 +304,11 @@ def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOMEPATH", os.path.splitdrive(str(tmp_path))[1])
     (tmp_path / "custom").mkdir()
 
-    rc = main(["--set", "user_nuclear_dir=~/custom", "--json"])
+    # --verbose because the overlay note is one of the [init] messages: the
+    # CLI no longer repeats it unconditionally (the C backend never did).
+    # --backend python so the note is a Python-level write capsys can see.
+    rc = main(["--set", "user_nuclear_dir=~/custom", "--json", "--verbose",
+               "--backend", "python"])
     assert rc == 0
     # The [init] overlay note quotes the resolved path with repr(), which
     # doubles backslashes on Windows; collapse them so the substring check

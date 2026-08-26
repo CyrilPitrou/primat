@@ -24,7 +24,7 @@ static void print_banner(void)
     if (!cpr_console_takes_utf8()) {
         /* ASCII rendition for a legacy-code-page Windows console; mirrors
          * main.py's _BANNER_ASCII. */
-        printf(
+        fprintf(stderr,
 "\n"
 "+----------------------------------------------+\n"
 "|                                              |\n"
@@ -36,7 +36,7 @@ static void print_banner(void)
 "\n", CPRIMAT_VERSION);
         return;
     }
-    printf(
+    fprintf(stderr,
 "\n"
 "\xe2\x94\x8f\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x93\n"
 "\xe2\x94\x83                                              \xe2\x94\x83\n"
@@ -271,15 +271,15 @@ static void print_reactions(const CPRNetworkDef *lt)
         memcpy(equations[i], buf, off + 1);
         if (off > width) width = off;
     }
-    printf("------------------------------------------------------------\n");
-    printf("Loaded %zu reactions (LT network):\n", lt->n_reac);
-    printf("------------------------------------------------------------\n");
+    fprintf(stderr, "------------------------------------------------------------\n");
+    fprintf(stderr, "Loaded %zu reactions (LT network):\n", lt->n_reac);
+    fprintf(stderr, "------------------------------------------------------------\n");
     for (size_t i = 0; i < lt->n_reac; i++) {
         const char *src = (lt->sources && lt->sources[i][0]) ? lt->sources[i] : "";
         if (src[0])
-            printf("  %-*s   [%s]\n", (int)width, equations[i], src);
+            fprintf(stderr, "  %-*s   [%s]\n", (int)width, equations[i], src);
         else
-            printf("  %-*s\n", (int)width, equations[i]);
+            fprintf(stderr, "  %-*s\n", (int)width, equations[i]);
         free(equations[i]);
     }
     free(equations);
@@ -345,16 +345,14 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
      * of warnings in main.py's custom_background branch. */
     if (cfg->custom_background) {
         if (cfg->extra_rho_n)
-            fprintf(stderr,
-                     "[warn] extra_rho is ignored when custom_background is "
+            cpr_warn("extra_rho is ignored when custom_background is "
                      "supplied (the table already fixes the expansion history); "
-                     "its effect is absent from the reported abundances.\n");
+                     "its effect is absent from the reported abundances.");
         if (cfg->fEDE > 0.0)
-            fprintf(stderr,
-                     "[warn] fEDE = %g is ignored when custom_background is "
+            cpr_warn("fEDE = %g is ignored when custom_background is "
                      "supplied (Early Dark Energy is only applied in the "
                      "standard mode); its effect is absent from the reported "
-                     "abundances.\n", cfg->fEDE);
+                     "abundances.", cfg->fEDE);
     }
 
     CPRBackground bg;

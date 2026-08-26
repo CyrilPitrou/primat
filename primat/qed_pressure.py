@@ -78,6 +78,8 @@ PRIMAT-Main.m: ``dPa``, ``dPe3``, ``dPb`` definitions (lines 920, 939, 949)
 """
 
 import os
+import sys
+
 import numpy as np
 from scipy.integrate import quad, dblquad
 from scipy.interpolate import CubicSpline
@@ -422,7 +424,7 @@ def compute_qed_pressure_tables(T_min=1e-3, T_max=1e2, n_pts=500,
 
     for i, T in enumerate(T_grid):
         if verbose and i % max(1, n_pts // 10) == 0:
-            print(f"  [QED] Computing T = {T:.3e} MeV  ({i+1}/{n_pts})")
+            print(f"  [QED] Computing T = {T:.3e} MeV  ({i+1}/{n_pts})", file=sys.stderr)
         dP_e2[i] = _dPa(T, alpha=alpha, me=me)
         dP_e3[i] = _dPe3(T, alpha=alpha, me=me)
         if include_dPb:
@@ -573,7 +575,9 @@ def save_qed_tables(tables, plasma_dir, verbose=True, cfg=None):
     if verbose:
         # Mirrored by plasma.c's cpr_log(cfg, "QED", ...) block; kept ASCII so
         # the two streams compare byte for byte on any console.
-        print(f"[QED]  Tables written to {plasma_dir}:")
-        print(f"       QED_pressure_correction_e2.txt  (4 columns: T, dP_a, derivatives)")
-        print(f"       QED_pressure_correction_e3.txt  (4 columns: T, dP_e3, derivatives)")
-        print(f"       T range: {T[0]:.3e}-{T[-1]:.3e} MeV  ({len(T)} points)")
+        print(f"[QED]  Tables written to {plasma_dir}:", file=sys.stderr)
+        print("       QED_pressure_correction_e2.txt  "
+              "(4 columns: T, dP_a, derivatives)", file=sys.stderr)
+        print("       QED_pressure_correction_e3.txt  "
+              "(4 columns: T, dP_e3, derivatives)", file=sys.stderr)
+        print(f"       T range: {T[0]:.3e}-{T[-1]:.3e} MeV  ({len(T)} points)", file=sys.stderr)

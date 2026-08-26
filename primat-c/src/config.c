@@ -1363,7 +1363,13 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
     }
 
     if (cfg->amax != -1 && cfg->amax < 1) {
-        *errmsg = strdup("amax must be None (-1) or a positive integer");
+        /* -1 is the internal stand-in for None, which is not something a user
+         * can type: report the value they did. Wording matches config.py. */
+        char buf[96];
+        snprintf(buf, sizeof(buf),
+                 "amax must be None or a positive integer (got %d).",
+                 cfg->amax);
+        *errmsg = strdup(buf);
         return 1;
     }
 

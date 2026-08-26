@@ -1403,10 +1403,9 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                  * network_data.py's decay_reverse_rates branch. (g >= 0 means
                  * Q <= 0, an endothermic decay, which is unphysical -- also
                  * worth surfacing rather than swallowing.) */
-                fprintf(stderr,
-                        "[warn] decay '%s': no detailed-balance reverse rate (%s); "
-                        "treated as irreversible (abg = 0).\n",
-                        sel_name, dberr ? dberr : "endothermic Q <= 0");
+                cpr_warn("decay '%s': no detailed-balance reverse rate (%s); "
+                         "treated as irreversible (abg = 0).",
+                         sel_name, dberr ? dberr : "endothermic Q <= 0");
                 free(dberr);
                 abg_row[0] = abg_row[1] = abg_row[2] = 0.0;
             }

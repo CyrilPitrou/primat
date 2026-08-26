@@ -553,11 +553,13 @@ class StandardBackground(Background):
         self._setup_LCDM()
         self._setup_EDE()
         if cfg.verbose:
-            print("[bg-py] Solving cosmological background: a(T), t(T) relations ...")
+            print("[bg-py] Solving cosmological background: a(T), t(T) "
+                  "relations ...", file=sys.stderr)
             _t_bg0 = time.time()
         self._setup_background_and_cosmo()
         if cfg.verbose:
-            print(f"[bg-py] Background a(T), t(T) ready in {time.time()-_t_bg0:.2f} s")
+            print(f"[bg-py] Background a(T), t(T) ready in "
+                  f"{time.time()-_t_bg0:.2f} s", file=sys.stderr)
         self._setup_weak_rates()
 
     # ======================================================================
@@ -669,7 +671,7 @@ class StandardBackground(Background):
         if Omegalambdah2 < 0:
             import warnings
             warnings.warn(
-                f"_setup_LCDM: Omega_Lambda h^2 = {Omegalambdah2:.4g} < 0 "
+                f"Omega_Lambda h^2 = {Omegalambdah2:.4g} < 0 "
                 f"(h={h}, Omegabh2={cfg.Omegabh2}, Omegach2={Omegach2}).  "
                 "Cosmological constant is negative -- non-standard cosmology.",
                 stacklevel=3,
@@ -1012,8 +1014,9 @@ class StandardBackground(Background):
                                 t_eval=lnT_sol,
                                 method='LSODA', rtol=0.1*cfg.numerical_precision, atol=1e-10)
             if cfg.debug:
-                print((f"[bckg]  Finished a(T) solve in {time.time()- _t_nevo_a0:.2f} s "
-                       f"(status={sol_lna.status}, nfev={sol_lna.nfev})"), flush=True)
+                print((f"[bg-py] Finished a(T) solve in {time.time()- _t_nevo_a0:.2f} s "
+                       f"(status={sol_lna.status}, nfev={sol_lna.nfev})"),
+                      flush=True, file=sys.stderr)
             _lnalnT = interp1d(sol_lna.t, sol_lna.y[0].flatten(),
                                bounds_error=False, fill_value="extrapolate")
 
@@ -1104,8 +1107,8 @@ class StandardBackground(Background):
                           t_eval=lnT_desc,
                           method='LSODA', rtol=cfg.numerical_precision, atol=1e-12)
         if cfg.debug:
-            print((f"[bckg]  Finished t(T) solve in {time.time()-_t_nevo_t0:.2f} s "
-                   f"(status={sol_t.status}, nfev={sol_t.nfev})"), flush=True)
+            print((f"[bg-py] Finished t(T) solve in {time.time()-_t_nevo_t0:.2f} s "
+                   f"(status={sol_t.status}, nfev={sol_t.nfev})"), flush=True, file=sys.stderr)
 
         Tg_vec = np.exp(sol_t.t)          # descending T, exactly step 2's grid
         t_vec  = sol_t.y[0].flatten()     # ascending t [s]
@@ -1189,8 +1192,8 @@ class StandardBackground(Background):
                           t_eval=lna_samp,
                           method='LSODA', rtol=cfg.numerical_precision, atol=1e-12)
         if cfg.debug:
-            print((f"[bckg]  Finished t(a) solve in {time.time()-_t_nevo_t0:.2f} s "
-                   f"(status={sol_t.status}, nfev={sol_t.nfev})"), flush=True)
+            print((f"[bg-py] Finished t(a) solve in {time.time()-_t_nevo_t0:.2f} s "
+                   f"(status={sol_t.status}, nfev={sol_t.nfev})"), flush=True, file=sys.stderr)
 
         a_arr  = np.exp(sol_t.t)       # a values at ODE evaluation points
         t_vec  = sol_t.y[0].flatten()  # corresponding t [s]
@@ -1437,8 +1440,8 @@ class StandardBackground(Background):
             # Wording is generic on purpose: RecomputeWeakRates may have either
             # recomputed the rates (~2 s) or loaded them from a fingerprinted
             # cache file (~0 s) -- see primat.weak_rates.RecomputeWeakRates.
-            print((f"[weak]  n <--> p weak rates ready in "
-                   f"{time.time()-_t_weak0:.2f} s"), flush=True)
+            print((f"[weak-py] n <--> p weak rates ready in "
+                   f"{time.time()-_t_weak0:.2f} s"), flush=True, file=sys.stderr)
 
         # Normalisation factor: the stored rates are already in units of 1/tau_n
         # (ComputeFn was applied inside ComputeWeakRates), so multiplying by
@@ -1701,7 +1704,7 @@ class CustomBackground(Background):
                                         dFDneu_func=None)
         if cfg.debug:
             print(f"[weak-py] n <--> p weak rates ready in "
-                  f"{time.time()-_t0:.2f} s", flush=True)
+                  f"{time.time()-_t0:.2f} s", flush=True, file=sys.stderr)
 
         if cfg.tau_n_normalization:
             self._norm_weak_rates = 1. / cfg.tau_n
@@ -1834,13 +1837,16 @@ class CustomBackground(Background):
 
         rho_nu_tot = rho_tot - rho_plasma
 
+        # ASCII, and on stderr: the C twin (background.c's
+        # cpr_bg_custom_final_state) prints the same line, and both must
+        # survive a legacy Windows code page and stay out of --json's stdout.
         print(
-            f"[custom_background] Neff from Friedmann H²=8πG/3·ρ_tot "
-            f"at Tγ = {Tg_f:.4e} MeV: "
-            f"H = {H_final:.6e} s⁻¹, "
-            f"ρ_tot = {rho_tot:.6e} MeV⁴, "
-            f"ρ_plasma = {rho_plasma:.6e} MeV⁴, "
-            f"ρ_ν = {rho_nu_tot:.6e} MeV⁴"
-        )
+            f"[custom_background] Neff from Friedmann H^2=8piG/3*rho_tot "
+            f"at Tg = {Tg_f:.4e} MeV: "
+            f"H = {H_final:.6e} s^-1, "
+            f"rho_tot = {rho_tot:.6e} MeV^4, "
+            f"rho_plasma = {rho_plasma:.6e} MeV^4, "
+            f"rho_nu = {rho_nu_tot:.6e} MeV^4",
+            file=sys.stderr)
 
         return Tg_f, rho_nu_tot

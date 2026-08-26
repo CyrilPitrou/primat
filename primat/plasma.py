@@ -57,8 +57,9 @@ Build an instance explicitly:
     >>> plasma.rho_e(Tg)
 """
 
-import threading
 import os
+import sys
+import threading
 import numpy as np
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, CubicSpline
@@ -447,7 +448,7 @@ class Plasma:
         self._setup_integrand_impls(cfg)
         self._build_electron_tables(cfg)
         if cfg.verbose:
-            print("[init-py] QED pressure corrections tables loaded.")
+            print("[init-py] QED pressure corrections tables loaded.", file=sys.stderr)
 
     # ------------------------------------------------------------------
     # Initialisation helpers
@@ -556,7 +557,7 @@ class Plasma:
         if cfg.T_start_cosmo_MeV > 100.:
             import warnings
             warnings.warn(
-                f"[plasma] cfg.T_start_cosmo_MeV={cfg.T_start_cosmo_MeV} MeV exceeds "
+                f"T_start_cosmo_MeV={cfg.T_start_cosmo_MeV} MeV exceeds "
                 "the QED plasma-pressure correction table's fixed upper bound "
                 "(100 MeV); delta_P_QED will be extrapolated above 100 MeV by "
                 "continuing the last cubic segment, which does not reproduce the "
@@ -629,7 +630,8 @@ class Plasma:
                 reason = ("recompute requested" if recompute
                           else "cached tables stale (fingerprint mismatch)" if split_stale
                           else "files not found")
-                print(f"[init-py] Computing QED plasma-pressure tables ({reason})...")
+                print(f"[init-py] Computing QED plasma-pressure tables "
+                      f"({reason})...", file=sys.stderr)
             # alpha/me come from cfg, matching what plasma.c has always passed
             # from g_const: qed_pressure's module-level _ALPHA_FS/_ME_MEV are a
             # standalone-use default only, so the solver has a single source of
@@ -650,7 +652,7 @@ class Plasma:
                     import warnings
                     warnings.warn(
                         f"could not write QED-pressure cache to {qed_dir}: {exc}; "
-                        "results are unaffected, but the next recompute run will "
+                        "results are unaffected, but the next run will "
                         "recompute. Set the cache_dir parameter to redirect the "
                         "cache to a writable directory.")
             # Build interpolants directly from the computed arrays via CubicSpline,
@@ -885,11 +887,13 @@ class Plasma:
                 self._dp_e_dT_tab   = interp1d(d[:, 0], d[:, 4], kind='cubic',
                                           bounds_error=False, fill_value="extrapolate")
                 if cfg.verbose:
-                    print(f"[init-py] Electron-thermo tables loaded from cache ({cfg.n_electron_table} points).")
+                    print(f"[init-py] Electron-thermo tables loaded from "
+                          f"cache ({cfg.n_electron_table} points).",
+                          file=sys.stderr)
                 return
             except Exception as exc:
                 import warnings
-                warnings.warn(f"[plasma] Could not read electron-thermo cache "
+                warnings.warn(f"could not read electron-thermo cache "
                                f"{cache_read!r} ({exc}); falling back to recompute.")
 
         # Compute from scratch.
@@ -922,13 +926,14 @@ class Plasma:
         except Exception as exc:
             import warnings
             warnings.warn(
-                f"[plasma] could not write electron-thermo cache to "
+                f"could not write electron-thermo cache to "
                 f"{cache_write}: {exc}; results are unaffected, but the next "
                 "run will recompute. Set the cache_dir parameter to redirect "
                 "the cache to a writable directory.")
 
         if cfg.verbose:
-            print(f"[init-py] Electron-thermo tables built ({cfg.n_electron_table} points).")
+            print(f"[init-py] Electron-thermo tables built "
+                  f"({cfg.n_electron_table} points).", file=sys.stderr)
 
     # ------------------------------------------------------------------
     # e± — public entry points (dispatch to table or exact)
