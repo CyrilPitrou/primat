@@ -1,24 +1,24 @@
-/* api.h -- the thin top-level wrapper (port of primat/main.py's PRIMAT
- * class).
+/* api.h -- one BBN run, start to finish. The header to read first.
  *
- * `cprimat_run` is the single entry point mirroring `PRIMAT(params).solve()`:
- * it owns the full init sequence (plasma -> nuclear rates -> background ->
- * nuclear network) and assembles the same "BBN observables" dict that
- * `PRIMAT.solve()` returns, plus the per-nuclide final abundances (`Y_final`
- * in Python). Unlike Python's dynamically-keyed dict, each optional
- * observable here is a `has_*` flag next to its value, set only when the
- * corresponding Python dict key would have been present (e.g. `Neff`/
- * `Omeganurel`/`OneOverOmeganunr` are CPR_BG_STANDARD-only, `Li6oLi7`/
- * `YCNO` are large-network-only).
+ * `cprimat_run(cfg, custom, results, &errmsg)` is the whole library in one
+ * call: it builds the plasma tables, the nuclear rate networks, the
+ * cosmological background and the n<->p weak rates from `cfg`, integrates the
+ * HT -> MT -> LT eras, and fills `results` with the BBN observables and the
+ * per-nuclide final abundances. Everything else in include/ is either a
+ * parameter it reads (config.h) or a stage it runs (plasma.h, background.h,
+ * network_data.h, nuclear_network.h), exposed separately so a caller can drive
+ * one stage on its own.
  *
- * `custom_network` (the GUI "Customise Reactions" override) *is* supported,
- * via `cprimat_run`'s optional `custom` parameter -- see network_data.h's
- * CPRCustomNetwork.
- * `cfg.output_time_evolution`/`output_final_file` *are* honoured (delegated
- * to nuclear_network.h's existing writers for the disk side; `cfg.output_time_evolution`
- * also populates `CPRResults`'s `evol_*` in-memory arrays directly --
- * so `primat/_primat_c_src/_wrapper.c` can hand the same
- * `EvolutionResult` shape back to Python with no disk I/O).
+ * Not every observable exists for every run, so each optional one carries a
+ * `has_*` flag beside its value: the neutrino sector needs the standard
+ * background, and `Li6oLi7`/`YCNO` need a network that tracks those nuclides.
+ * Reading a value whose flag is 0 gives 0.0, not an error, which is why the
+ * flag is the thing to test.
+ *
+ * `cprimat_run` also honours the output settings in `cfg`: the time-evolution
+ * TSV and the final-abundance table are written where `cfg` says, and the
+ * evolution arrays are filled in `results` whether or not a file is written --
+ * so an embedding caller can have the time series without touching the disk.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095).
  */
@@ -32,7 +32,7 @@
 #include <stddef.h>
 
 typedef struct {
-    /* ---- Light-element ratios (always present; mirrors PyPR.solve()'s
+    /* ---- Light-element ratios (always present; mirrors PRIMAT.solve()'s
      * unconditional dict entries). _ratio's "0/0 -> nan, x/0 -> inf"
      * convention (main.py) is reproduced exactly. ---- */
     double YPCMB, YPBBN, He4oH, DoH, He3oH, He3oHe4, Li7oH;
@@ -89,7 +89,7 @@ typedef struct {
     double *evol_rates;
 } CPRResults;
 
-/* Runs one full PyPR(params).solve()-equivalent BBN computation: builds
+/* Runs one full PRIMAT(params).solve()-equivalent BBN computation: builds
  * Plasma -> CPRNuclearRates -> CPRBackground (standard or custom, per
  * cfg->custom_background) -> CPRNuclearNetwork, integrates HT->MT->LT,
  * and fills `results` (zeroed first). Honours cfg->output_final_file
@@ -100,7 +100,7 @@ typedef struct {
  *
  * Returns 0 on success (caller must cprimat_results_free), nonzero with
  * *errmsg set (caller frees) on any init/integration failure -- mirrors
- * PyPR's constructor or solve() raising. */
+ * PRIMAT's constructor or solve() raising. */
 int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
                   CPRResults *results, char **errmsg);
 
@@ -113,9 +113,12 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
 void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
                            const CPRNuclearNetwork *nn, const CPRBackground *bg);
 
+/* Releases every array `results` owns and zeroes it; `results` itself is the
+ * caller's. Safe on a zeroed CPRResults (a failed cprimat_run leaves one), but
+ * not on NULL. */
 void cprimat_results_free(CPRResults *results);
 
-/* Returns a scalar quantity by name (mirrors PyPR.get_quantity): first
+/* Returns a scalar quantity by name (mirrors PRIMAT.get_quantity): first
  * checks the fixed result fields above (by name, e.g. "YPBBN"/"DoH"/
  * "Neff"/...), then falls back to a per-nuclide final abundance lookup in
  * `nuclide_names`/`Y_final` (e.g. "H2"/"He4"/"Li7"). Sets *found = 0 (and

@@ -1,29 +1,34 @@
-/* network_data.h -- loaders for the network/reaction list files, plus the
- * physics layer that turns them into a
- * solver-ready CPRNetworkDef: load_network, NetworkDefinition::fill_buffer/
- * apply_variations, and UpdateNuclearRates, on top of network_builder.h's
- * generic stoichiometry-driven RHS/Jacobian.
+/* network_data.h -- from data files on disk to a network the solver can
+ * integrate.
  *
- * custom_network (the GUI's "Customise Reactions" per-reaction rate-table
- * override -- removed/replaced/added) *is* ported: see CPRCustomNetwork
- * below and cpr_load_network's `custom` parameter. A minimal port of
- * Python's reaction_stoichiometry tokeniser (parse_reaction_name in
- * network_data.c) derives an "added" reaction's stoichiometry from its
- * "a_b__c_d" name; it only supports the "spaced" syntax (the one
- * _RATE_SYNTAX_ and every GUI-generated name use), not the legacy
- * "compact" ("abTOcd") syntax.
+ * Two layers, in that order:
  *
- * Still deliberately not ported (gui/ and plotting.py are
- * out of scope, and these are GUI-only call paths): to_filename/
- * reaction_category/group_reactions_by_category (display/lookup helpers
- * with no effect on a run's numerics), and the files provenance list on
- * NetworkDefinition (rate-table path per reaction, used only by the GUI
- * table -- not needed for the verbose console listing). The sources list
- * (ref= labels) is now ported: CPRNetworkDef.sources, populated by
- * cpr_load_network and printed by cprimat_run's verbose print_reactions.
- * compute_detailed_balance_coefficients is ported in full (used
- * both for cfg->decay_reverse_rates and for an "added" reaction's reverse
- * rate, mirroring Python's _inject_custom_reactions).
+ *   Loaders. One reader per file format under data/: the network list
+ *     (nuclear/networks/<name>.txt), the analytic decay rates
+ *     (nuclear/tables/decays.txt), the reaction catalog (csv/reactions_large.csv),
+ *     and the detailed-balance coefficients (csv/detailed_balance.csv). Each
+ *     hands back a plain array of rows and interprets nothing.
+ *
+ *   Physics layer. cpr_load_network turns one of those lists into a
+ *     CPRNetworkDef: reaction names resolved to stoichiometry, every rate table
+ *     read and resampled onto one master T9 grid, reverse rates derived from
+ *     detailed balance, the species set ordered, and the whole thing compiled
+ *     through network_builder.h into the flat arrays the RHS/Jacobian kernels
+ *     read. cpr_nuclear_rates_init does this twice, once per solver era (MT and
+ *     LT), and exposes the four kernels nuclear_network.c integrates.
+ *
+ * Two things happen per solver step rather than per run, and live here for
+ * that reason: cpr_network_apply_variations rescales the forward rates by the
+ * p_<rxn>/delta_<rxn> parameters (the basis of Monte-Carlo uncertainty
+ * propagation), and cpr_network_fill_buffer evaluates every forward and
+ * backward rate at one temperature.
+ *
+ * A network's reaction set can also be edited at run time -- reactions removed,
+ * their rate tables replaced, or brand-new reactions added with a rate table
+ * supplied by the caller. See CPRCustomNetwork and cpr_load_network's `custom`
+ * parameter. An added reaction's stoichiometry is derived from its own name
+ * ("a_b__c_d"), which is why only that spelling is accepted, not the legacy
+ * compact "abTOcd" form.
  */
 #ifndef CPRIMAT_NETWORK_DATA_H
 #define CPRIMAT_NETWORK_DATA_H
@@ -37,9 +42,9 @@
  * "<rxn_name>, <rate_table_filename>" (a tabulated reaction; `rxn_name` is
  * also the lookup key used against detailed_balance.csv/
  * reactions_large.csv and the tables/<rxn_name>/ directory, and
- * `table_file` is the specific candidate table within it -- the
- * "_primat.txt"/"_parthenope3.0.txt" naming distinguishes sibling
- * alternates, see manual/EXTENDING.md), or a bare
+ * `table_file` is the specific candidate table within it -- one reaction
+ * directory may hold several, and the file name is what picks between them,
+ * e.g. n_p__d_g_primat.txt vs n_p__d_g_parthenope3.0.txt), or a bare
  * "<rxn_name>" with no comma -- a T9-independent analytic decay/electron-
  * capture reaction looked up by name in decays.txt instead of a rate-table
  * file (`table_file[0] == '\0'` then; e.g. "B12__C12_Bm" in large.txt). */
@@ -59,9 +64,10 @@ typedef struct {
 int cpr_load_network_list(const char *path, CPRNetworkList *out, char **errmsg);
 void cpr_network_list_free(CPRNetworkList *list);
 
-/* One row of data/nuclear/tables/decays.txt: a T9-independent beta-decay/
- * electron-capture rate (see manual/EXTENDING.md, the decays.txt
- * exception). `ref` is the trailing free-text citation. */
+/* One row of data/nuclear/tables/decays.txt: a beta-decay or electron-capture
+ * rate that does not vary with temperature, so it needs no rate table of its
+ * own -- one line here replaces a whole tables/<rxn>/ directory. `ref` is the
+ * trailing free-text citation. */
 typedef struct {
     char name[64];
     double halflife_s;
@@ -88,7 +94,7 @@ int cpr_validate_rate_table(const double *T9, const double *rate,
                              const double *err, size_t n, const char *source,
                              char **errmsg);
 
-/* One row of data/nuclear/data/detailed_balance.csv: the alpha/beta/gamma
+/* One row of data/csv/detailed_balance.csv: the alpha/beta/gamma
  * detailed-balance coefficients and Q-value [keV] used to derive each
  * reaction's reverse rate (Phys. Rep. detailed-balance formula, applied by
  * the physics layer below, not here). */
@@ -106,7 +112,7 @@ int cpr_load_detailed_balance(const char *path, CPRDetailedBalanceTable *out,
                                 char **errmsg);
 void cpr_detailed_balance_free(CPRDetailedBalanceTable *t);
 
-/* One row of data/nuclear/data/reactions_large.csv: reactants/products as
+/* One row of data/csv/reactions_large.csv: reactants/products as
  * raw "+"-joined strings (e.g. "B10+He3" / "C11+H2") -- left untokenised
  * here; reaction_stoichiometry's "TO"-splitting logic belongs to the physics
  * layer below. */

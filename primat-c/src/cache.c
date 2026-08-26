@@ -402,7 +402,7 @@ size_t cpr_weak_rate_fingerprint(const CPRConfig *cfg, CPRFPField *out)
     /* Effective ξ_e under the historical "munuOverTnu" key: only nu_e
      * shifts the n<->p rates, and using the effective xi_e (= munuOverTnu when
      * munuOverTnu_e is unset) keeps the default-run hash unchanged so shipped
-     * data/weak/ caches stay valid. Mirrors Python weak_rate_fingerprint. */
+     * data/cache_plasma_weak/weak/ caches stay valid. Mirrors Python weak_rate_fingerprint. */
     out[n++] = (CPRFPField){"munuOverTnu", pd(cpr_config_xi_nu_e(cfg))};
     out[n++] = (CPRFPField){"QED_corrections", pb(cfg->QED_corrections)};
     out[n++] = (CPRFPField){"incomplete_decoupling", pb(cfg->incomplete_decoupling)};

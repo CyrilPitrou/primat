@@ -1,4 +1,7 @@
-/* log.c -- see log.h. */
+/* log.c -- see log.h. Four small writers, all to stderr: the verbose-gated
+ * tagged line, the same without a tag, the ungated warning, and the query
+ * asking whether a stream can carry the decorative UTF-8 output.
+ */
 #include "log.h"
 
 #include <stdarg.h>
@@ -43,12 +46,13 @@ void cpr_log_raw(const CPRConfig *cfg, const char *fmt, ...)
     fputc('\n', stderr);
 }
 
-int cpr_console_takes_utf8(void)
+int cpr_console_takes_utf8(FILE *stream)
 {
 #if defined(_WIN32)
-    if (!_isatty(_fileno(stderr))) return 1;   /* redirected: raw bytes */
+    if (!_isatty(_fileno(stream))) return 1;   /* redirected: raw bytes */
     return GetConsoleOutputCP() == CP_UTF8;
 #else
+    (void)stream;
     return 1;
 #endif
 }

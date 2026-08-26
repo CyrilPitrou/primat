@@ -82,6 +82,8 @@ typedef struct {
  * setup. Caller must cpr_compiled_network_free the result. */
 void cpr_compile_network(const CPRReaction *reactions, size_t n_rx, size_t n_sp,
                            CPRCompiledNetwork *out);
+/* Releases the flat arrays and zeroes the struct; `cn` itself is the
+ * caller's (typically an automatic). Not NULL-safe. */
 void cpr_compiled_network_free(CPRCompiledNetwork *cn);
 
 /* dY/dt of the whole network at one (Y, rho, r). `r` is the flat

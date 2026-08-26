@@ -1,4 +1,21 @@
-/* cli.c -- see cli.h. */
+/* cli.c -- see cli.h. Everything between the command line and the printed
+ * report. Reading order, top to bottom:
+ *
+ *   1. Standalone subcommands that never solve: --credits, --list-params,
+ *      --list-reactions, --cache-info/--cache-clear.
+ *   2. Argument plumbing: the usage text, integer/flag parsing, the
+ *      unrecognised-argument path, and how the default data directory is
+ *      found when neither --data_dir nor CPRIMAT_DATA_DIR says.
+ *   3. apply_param / APPLY_OR_FAIL: every override goes through one place,
+ *      which both applies it to the config and records it for the Monte-Carlo
+ *      workers (see the comment there for why the recording is not optional).
+ *   4. Output: --json, the Monte-Carlo sample/covariance/correlation files and
+ *      printed matrices, and the plain-text report.
+ *   5. cpr_cli_main, which walks argv once and then drives 1-4.
+ *
+ * Stream discipline throughout: results to stdout, everything else -- progress,
+ * warnings, errors, the verbose stream -- to stderr, so `--json` stays pipeable.
+ */
 #include "cli.h"
 #include "log.h"
 #include "xalloc.h"
@@ -30,20 +47,11 @@
  * this name rather than a literal, which is how the two ends stay together. */
 #define CLI_EXIT_CONFIG 2
 
-/* Matches "<prefix>*.txt" for one of the hash-named cache families, mirroring
- * primat.cache_utils._CACHE_PREFIXES:
- *   weak/   "nTOp_"            (thermal caches are "nTOp_thermal_*.txt" and
- *                               match the same prefix, as in Python)
- *   plasma/ "electron_thermo_" (hash-named since configurations stopped
- *                               evicting one another)
- * The fixed-name QED pressure tables are deliberately not matched by any
- * prefix: they cannot proliferate, so there is nothing to clean. */
-static int is_cache_name(const char *name, const char *prefix)
-{
-    size_t plen = strlen(prefix), nlen = strlen(name);
-    return strncmp(name, prefix, plen) == 0
-        && nlen > 4 && strcmp(name + nlen - 4, ".txt") == 0;
-}
+/* ---------------------------------------------------------------------- */
+/* 1. Subcommands that answer and exit, without solving anything:       */
+/* --credits, --list-params, --list-reactions,                          */
+/* --cache-info / --cache-clear.                                        */
+/* ---------------------------------------------------------------------- */
 
 /* Byte-for-byte twin of primat.credits.cli_credits_text()
  * (_CREDITS_CORE + _CREDITS_CLI_SUFFIX + "\n\n" + CITATION_BIBTEX), which is
@@ -113,6 +121,21 @@ static void print_list_params(const CPRConfig *cfg)
     }
 }
 
+/* Matches "<prefix>*.txt" for one of the hash-named cache families, mirroring
+ * primat.cache_utils._CACHE_PREFIXES:
+ *   weak/   "nTOp_"            (thermal caches are "nTOp_thermal_*.txt" and
+ *                               match the same prefix, as in Python)
+ *   plasma/ "electron_thermo_" (hash-named since configurations stopped
+ *                               evicting one another)
+ * The fixed-name QED pressure tables are deliberately not matched by any
+ * prefix: they cannot proliferate, so there is nothing to clean. */
+static int is_cache_name(const char *name, const char *prefix)
+{
+    size_t plen = strlen(prefix), nlen = strlen(name);
+    return strncmp(name, prefix, plen) == 0
+        && nlen > 4 && strcmp(name + nlen - 4, ".txt") == 0;
+}
+
 /* Counts (and optionally deletes) the hash-named cache files of ONE family:
  * `subdir` is "weak" or "plasma", `prefix` the matching basename prefix.
  * Mirrors primat.cache_utils.list_cache_files/clear_cache restricted to a
@@ -164,6 +187,11 @@ static const char * const bool_flags[] = {
     "show_progress",
     NULL
 };
+
+/* ---------------------------------------------------------------------- */
+/* Constant-override and rate-variation key checking, shared by         */
+/* --list-reactions and the argument walk in cpr_cli_main.              */
+/* ---------------------------------------------------------------------- */
 
 /* The 16 measured physical constants (primat.constants.OVERRIDABLE_CONSTANTS),
  * each exposed as its own --<name> VALUE flag so a sensitivity study reads the
@@ -278,6 +306,11 @@ static int print_list_reactions(const CPRConfig *cfg)
     cpr_network_def_free(&net);
     return 0;
 }
+
+/* ---------------------------------------------------------------------- */
+/* 2. Argument plumbing: the usage text, value parsing, the             */
+/* unrecognised-argument path, and finding the data directory.          */
+/* ---------------------------------------------------------------------- */
 
 static void usage(const char *prog)
 {
@@ -502,6 +535,10 @@ static void unknown_argument(const char *prog, const char *arg)
     fprintf(stderr, "Try '%s --help' for the list of options.\n", prog);
 }
 
+/* ---------------------------------------------------------------------- */
+/* Locating the shipped data tree when the user named none.             */
+/* ---------------------------------------------------------------------- */
+
 /* S_ISDIR, not `st_mode & S_IFDIR`: S_IFDIR (0040000) is a *value* within the
  * S_IFMT field, not a standalone bit, so the bitwise test also accepts
  * S_IFBLK (0060000) and S_IFSOCK (0140000) -- a block device or socket passed
@@ -523,7 +560,7 @@ static const char *canonical_dir(char *buf, size_t bufsize)
 }
 
 /* Best-effort absolute path to the running executable's own directory, so
- * the default data dir can be anchored to where `cprimat` itself lives
+ * the default data dir can be anchored to where the executable itself lives
  * rather than to the caller's CWD (the old ".." default silently broke
  * whenever invoked from anywhere other than primat-c/, e.g. from
  * primat-c/build/ or the repo root). Returns 0 and fills
@@ -550,7 +587,7 @@ static int executable_dir(char *out, size_t outsize)
 }
 
 /* Resolves the default data dir: CPRIMAT_DATA_DIR env var wins outright;
- * otherwise try "<exe_dir>/../primat/data" (works for `cprimat` run from
+ * otherwise try "<exe_dir>/../primat/data" (works for a binary run from
  * primat-c/, primat-c/build/, or any installed location with that sibling
  * layout); otherwise fall back to the legacy CWD-relative "../primat/data"
  * guess (works only when invoked with CWD == primat-c/). Does not require
@@ -564,9 +601,9 @@ static const char *default_data_dir(char *buf, size_t bufsize)
 
     char exe_dir[4096];
     if (executable_dir(exe_dir, sizeof(exe_dir)) == 0) {
-        /* The binary normally lives in primat-c/build/cprimat, so the
+        /* The binary normally lives in primat-c/build/primat-c, so the
          * sibling primat/ package is two levels up; also try one level up
-         * in case cprimat was copied/symlinked directly into primat-c/.
+         * in case it was copied or symlinked directly into primat-c/.
          *
          * Collapsed with realpath before it is kept: the "..", left in,
          * reappears verbatim in every path this run prints -- error messages,
@@ -582,6 +619,10 @@ static const char *default_data_dir(char *buf, size_t bufsize)
     snprintf(buf, bufsize, "../primat/data");
     return buf;
 }
+
+/* ---------------------------------------------------------------------- */
+/* 3. Applying an override, and recording it for the MC workers.        */
+/* ---------------------------------------------------------------------- */
 
 /* ---- Collected CLI + ini overrides ----
  *
@@ -632,10 +673,12 @@ static int apply_param(CPRConfig *cfg, CPRParamList *cp,
 }
 
 /* apply_param + "release everything and leave with status 2", the form every
- * call site below wants (2 = usage error, as for an unrecognised argument). */
-#define APPLY_OR_FAIL(cfg, cp, key, val, label)                 \
+ * call site below wants (2 = usage error, as for an unrecognised argument).
+ *
+ * A macro rather than a function because it returns from cpr_cli_main, which a
+ * function cannot do; apply_param above holds everything that does not. */
+#define APPLY_OR_FAIL(cfg, cp, key, val)                        \
     do {                                                        \
-        (void)(label);                                          \
         if (apply_param((cfg), (cp), (key), (val))) {           \
             cpr_paramlist_free(cp);                             \
             cpr_config_free(cfg);                               \
@@ -643,7 +686,12 @@ static int apply_param(CPRConfig *cfg, CPRParamList *cp,
         }                                                       \
     } while (0)
 
-/* ---- JSON output ---- */
+/* ---------------------------------------------------------------------- */
+/* 4. Output: --json first, then the Monte-Carlo files and printed      */
+/* matrices, then the plain-text report.                                */
+/* ---------------------------------------------------------------------- */
+
+
 
 /* Prints a JSON-safe string (escaping backslash and double-quote). */
 static void print_json_str(const char *s)
@@ -767,6 +815,10 @@ static void print_json(const CPRResults *results, const CPRMCResult *mc)
  * dump_mc_covariance/dump_mc_correlation, computing the ddof=1 sample
  * covariance/correlation here from the CPRMCResult's own per-quantity value
  * arrays. */
+
+/* ---------------------------------------------------------------------- */
+/* Filesystem, timing and notice helpers used by the writers below.     */
+/* ---------------------------------------------------------------------- */
 
 /* mkdir -p equivalent (mirrors nuclear_network.c's static mkdir_p and Python's
  * os.makedirs(exist_ok=True)); creates each '/'-delimited component in turn. */
@@ -987,7 +1039,7 @@ static void print_plain(const CPRConfig *cfg, const CPRResults *results,
 {
     /* "-" where the console codec cannot carry U+2500 (cp1252, the Windows
      * default), same guard as cli.py's separator. */
-    const char *sep = cpr_console_takes_utf8()
+    const char *sep = cpr_console_takes_utf8(stdout)
         ? "────────────────────────────────────────────────────"
         : "----------------------------------------------------";
     char header[80];
@@ -1049,6 +1101,10 @@ static void print_plain(const CPRConfig *cfg, const CPRResults *results,
      * --mc case, so the two CLIs' output diffs empty. */
     printf("--- running time: %.2f seconds ---\n", elapsed_s);
 }
+
+/* ---------------------------------------------------------------------- */
+/* 5. The driver: walk argv once, then do what it asked for.            */
+/* ---------------------------------------------------------------------- */
 
 int cpr_cli_main(int argc, char **argv)
 {
@@ -1235,7 +1291,7 @@ int cpr_cli_main(int argc, char **argv)
         if (const_name && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, const_name, p, a);
+            APPLY_OR_FAIL(&cfg, &cp, const_name, p);
             continue;
         }
 
@@ -1243,55 +1299,55 @@ int cpr_cli_main(int argc, char **argv)
         if (strcmp(a, "--Omegabh2") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, "Omegabh2", p, "--Omegabh2");
+            APPLY_OR_FAIL(&cfg, &cp, "Omegabh2", p);
         } else if (strcmp(a, "--DeltaNeff") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, "DeltaNeff", p, "--DeltaNeff");
+            APPLY_OR_FAIL(&cfg, &cp, "DeltaNeff", p);
         } else if (strcmp(a, "--network") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            APPLY_OR_FAIL(&cfg, &cp, "network", p, "--network");
+            APPLY_OR_FAIL(&cfg, &cp, "network", p);
         } else if (strcmp(a, "--amax") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, "amax", p, "--amax");
+            APPLY_OR_FAIL(&cfg, &cp, "amax", p);
         } else if (strcmp(a, "--numerical_precision") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, "numerical_precision", p, "--numerical_precision");
+            APPLY_OR_FAIL(&cfg, &cp, "numerical_precision", p);
         } else if (strcmp(a, "--munuOverTnu") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu", p, "--munuOverTnu");
+            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu", p);
         } else if (strcmp(a, "--munuOverTnu_e") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_e", p, "--munuOverTnu_e");
+            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_e", p);
         } else if (strcmp(a, "--munuOverTnu_mu") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_mu", p, "--munuOverTnu_mu");
+            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_mu", p);
         } else if (strcmp(a, "--munuOverTnu_tau") == 0 && has_val) {
             char litbuf[CPR_PARAM_VAL_LEN];
             CPRParam p = cpr_parse_literal(argv[++i], litbuf, sizeof litbuf);
-            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_tau", p, "--munuOverTnu_tau");
+            APPLY_OR_FAIL(&cfg, &cp, "munuOverTnu_tau", p);
         } else if (strcmp(a, "--verbose") == 0) {
             CPRParam p = {CPR_BOOL, .v.b = 1};
-            APPLY_OR_FAIL(&cfg, &cp, "verbose", p, "--verbose");
+            APPLY_OR_FAIL(&cfg, &cp, "verbose", p);
 
         /* ---- Output file paths ---- */
         } else if (strcmp(a, "--output_file") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            APPLY_OR_FAIL(&cfg, &cp, "output_file", p, "--output_file");
+            APPLY_OR_FAIL(&cfg, &cp, "output_file", p);
         } else if (strcmp(a, "--output_final_file") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            APPLY_OR_FAIL(&cfg, &cp, "output_final_file", p, "--output_final_file");
+            APPLY_OR_FAIL(&cfg, &cp, "output_final_file", p);
         } else if (strcmp(a, "--output_background_file") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            APPLY_OR_FAIL(&cfg, &cp, "output_background_file", p, "--output_background_file");
+            APPLY_OR_FAIL(&cfg, &cp, "output_background_file", p);
         } else if (strcmp(a, "--output_mc_file_prefix") == 0 && has_val) {
             CPRParam p = {CPR_STRING, .v.s = argv[++i]};
-            APPLY_OR_FAIL(&cfg, &cp, "output_mc_file_prefix", p, "--output_mc_file_prefix");
+            APPLY_OR_FAIL(&cfg, &cp, "output_mc_file_prefix", p);
 
         /* ---- Boolean --flag / --no-flag pairs ---- */
         } else if (strncmp(a, "--", 2) == 0) {
@@ -1303,11 +1359,11 @@ int cpr_cli_main(int argc, char **argv)
                 snprintf(neg_flag, sizeof(neg_flag), "--no-%s", bool_flags[fi]);
                 if (strcmp(a, neg_flag) == 0) {
                     CPRParam p = {CPR_BOOL, .v.b = 0};
-                    APPLY_OR_FAIL(&cfg, &cp, bool_flags[fi], p, neg_flag);
+                    APPLY_OR_FAIL(&cfg, &cp, bool_flags[fi], p);
                     matched = 1; break;
                 } else if (strcmp(a, pos_flag) == 0) {
                     CPRParam p = {CPR_BOOL, .v.b = 1};
-                    APPLY_OR_FAIL(&cfg, &cp, bool_flags[fi], p, pos_flag);
+                    APPLY_OR_FAIL(&cfg, &cp, bool_flags[fi], p);
                     matched = 1; break;
                 }
             }
@@ -1343,7 +1399,7 @@ int cpr_cli_main(int argc, char **argv)
                     key[klen] = '\0';
                     char litbuf[CPR_PARAM_VAL_LEN];
                     CPRParam p = cpr_parse_literal(eq + 1, litbuf, sizeof litbuf);
-                    APPLY_OR_FAIL(&cfg, &cp, key, p, entry);
+                    APPLY_OR_FAIL(&cfg, &cp, key, p);
                 } else {
                     unknown_argument(argv[0], a);
                     cpr_paramlist_free(&cp);

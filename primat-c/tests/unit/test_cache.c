@@ -5,13 +5,13 @@
  *     from primat.config import PRIMATConfig
  *     from primat.weak_rates.cache import weak_rate_fingerprint, thermal_fingerprint
  *     from primat.cache_utils import fingerprint_hash
- *     cfg = PyPRConfig()
+ *     cfg = PRIMATConfig()
  *     print(fingerprint_hash(weak_rate_fingerprint(cfg)))
  *     print(fingerprint_hash(thermal_fingerprint(cfg)))
  *   "
  * -> 4a901fa9a22a2694
  * -> 076f987eab9187c6
- * (default PyPRConfig(): incomplete_decoupling/QED_corrections/
+ * (default PRIMATConfig(): incomplete_decoupling/QED_corrections/
  * spectral_distortions/radiative_corrections/finite_mass_corrections all
  * True, analytic_distortions False, every numeric default unchanged.)
  *

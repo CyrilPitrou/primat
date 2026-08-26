@@ -6,7 +6,7 @@
  * one (T, sgnq) point at a time, bypassing cpr_weak_rates_init's full
  * table build. That matters for runtime: cpr_weak_rates_init always grids
  * the thermal table up to the *fixed* 10 MeV boundary (cpr_T_start_nucl(),
- * independent of any PyPRConfig field), where L_thermal_2d/L_thermal_2_3's
+ * independent of any PRIMATConfig field), where L_thermal_2d/L_thermal_2_3's
  * (E,k) domain width max(10, 20/x) (x=me/(kB*T)) grows to ~390 -- a real,
  * Python-shared cost (see test_weak_rates.c's header comment), not
  * something a unit test should pay on every run. The individual T points

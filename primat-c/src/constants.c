@@ -1,11 +1,18 @@
+/* constants.c -- see constants.h. The default constant table, and the derived
+ * quantities built from it.
+ *
+ * g_const is a static initialiser and nothing writes to it, which is what lets
+ * several configurations and several threads read it at once. Everything below
+ * it is a pure function: unit conversions and the fixed temperature era
+ * boundaries take no argument, since they depend only on the constants that are
+ * exact by definition; the electroweak couplings and mass combinations take a
+ * CPRConstants, because a run may have overridden the measured values they use.
+ */
 #include "constants.h"
 #include <math.h>
 
-/* Riemann zeta(3) (Apery's constant), needed by cpr_n0CMB() below. Python
- * gets this from scipy.special.zeta(3); libm has no zeta function, so the
- * literal (17 significant digits, well beyond double precision) is the
- * simplest faithful port. */
-#define ZETA3 1.2020569031595942854
+/* Not every libm exposes M_PI: it is an X/Open extension, absent under a strict
+ * -std=c11 with no _GNU_SOURCE, so define it rather than depend on the flags. */
 #ifndef M_PI
 #  define M_PI  3.141592653589793238462643383279502884
 #endif
@@ -87,7 +94,7 @@ double cpr_n0CMB(const CPRConstants *c)
 {
     /* n_gamma = (2 zeta(3)/pi^2) T^3 for a bosonic gas with g=2 (photon). */
     double t = c->T0CMB / cpr_MeV_to_Kelvin();
-    return (2. * ZETA3) / (M_PI * M_PI) * t * t * t;
+    return (2. * CPR_ZETA3) / (M_PI * M_PI) * t * t * t;
 }
 
 double cpr_mB(const CPRConstants *c)

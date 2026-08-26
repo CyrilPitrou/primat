@@ -281,8 +281,8 @@ static PyObject *results_to_dict(const CPRResults *r)
  * comment lines and blank lines skipped, whitespace-separated columns) into
  * heap T9/rate/err arrays, mirroring Python's np.loadtxt + np.zeros_like
  * err fallback (network_data.py's custom_tables consumer). Returns 0 on
- * success (caller owns *T9/*rate/*err, each length *n), 1 (with a Python
- * exception set) if no data row parses. */
+ * success (caller owns the three out-parameters, each length *n), 1 (with a
+ * Python exception set) if no data row parses. */
 static int parse_custom_table_text(const char *text, double **T9, double **rate,
                                     double **err, size_t *n)
 {

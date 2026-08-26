@@ -22,12 +22,6 @@
  * cpr_bg_omeganuh2_relnu/nrnu and cpr_bg_write_time_evolution (richer
  * output for CPR_BG_STANDARD).
  *
- * Out of scope, not ported: analytic mu/y-type spectral
- * distortions (rho_nu_SD is always NULL/inactive here, since
- * neutrino_history.c never sets has_distortion's analytic-mode sibling --
- * see neutrino_history.h's top comment). (The decay_era, once out of scope
- * here, is now ported -- see nuclear_network.h's cpr_nuclear_network_decay_era.)
- *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095).
  */
 #ifndef CPRIMAT_BACKGROUND_H

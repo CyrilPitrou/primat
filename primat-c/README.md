@@ -2,12 +2,22 @@
 
 A standalone C99 implementation of the PRIMAT Big Bang Nucleosynthesis (BBN) solver.
 
+Two kinds of reader come here. Most users never do: `pip install primat` builds
+this tree into a compiled extension and `primat.backend.run_bbn()` uses it
+automatically. You are in the right place if you want to **run BBN without a
+Python interpreter** — on a cluster node, inside a C or Fortran pipeline, from a
+Makefile — or if you are **changing the solver** and need the C half of a
+physics change that must land on both backends.
+
 ## Overview
 
 `primat-c/` is a complete C99 port of the PRIMAT BBN solver, providing:
 
-- **Identical physics**: Same numerical results as the Python backend (within ~1e-8 relative tolerance)
-- **High performance**: Typically ~25× faster than the pure Python implementation
+- **Identical physics**: the same observables as the Python backend, held to a
+  `rel=5e-5` cross-backend D/H budget by `tests/test_backend_parity.py` (the
+  measured gap is ~7e-6; `Neff` agrees to every digit)
+- **High performance**: ~10× faster than the pure-Python backend on a warm
+  `small` run and ~5× on `large, amax=8` (`examples/baseline_timings.txt`)
 - **Standalone usage**: Can be compiled and run independently of the Python package
 - **Python integration**: Compiled as an extension to provide the default fast backend for `primat.backend.run_bbn()`
 
@@ -34,7 +44,8 @@ This produces the `primat-c` executable in the `build/` directory.
 - `make` or `make all` - Build the standalone executable (optimized, `-O2` by default)
 - `make clean` - Remove build artifacts
 - `make debug` - Build with debug symbols and sanitizers instead
-- `make test` - Build and run the unit test suite
+- `make test` - Build and run the unit test suite (27 programs)
+- `make debug-test` - The same, instrumented with ASan and UBSan
 - `make bench` - Build and run the timing benchmark
 - `make leak-test` - Build and run the memory-leak check under a sanitizer
 - `make fuzz RUNS=N` - Fuzz every parser that reads a user-supplied file, under
@@ -78,7 +89,7 @@ make
 The Python extension is automatically built during `pip install primat` and included in the wheel distribution. To build manually:
 
 ```bash
-cd primat-c
+# from the repository root, not from primat-c/
 python setup.py build_ext --inplace
 ```
 
@@ -105,8 +116,9 @@ After compilation, run from the `primat-c/` directory:
 - `--network NAME` - Nuclear reaction network: small, small_parthenope, large (default: small)
 - `--amax N` - Maximum mass number A for reactions (filters any network)
 - `--numerical_precision VALUE` - ODE solver relative tolerance (default: 1e-7)
-- `--backend c` - Force C backend (default when using the standalone executable)
-- `--output_file PATH` - Output file path for results
+- `--output_file PATH` - Where to write the time-evolution TSV
+- `--ini FILE` - Read parameters from an INI file instead of flags
+- `--data_dir DIR` - Use a different data tree (see "Data directory" below)
 - `--json` - Output results as JSON
 
 ### Configuration file
@@ -166,75 +178,120 @@ The C backend produces identical output to the Python backend:
 
 Default console output:
 ```
+────────────────────────────────────────────────────
+          PRIMAT results at T = 0.001 MeV
+────────────────────────────────────────────────────
 Neff       = 3.04397730
-YP (BBN)   = 0.24700068
-YP (CMB)   = 0.24567436
-He4/H      = 8.2012164e-02
-D/H        = 2.4365872e-05
-He3/H      = 1.0397390e-05
-He3/He4    = 1.2677863e-04
-Li7/H      = 5.500349e-10
-Li6/Li7    = 1.419389e-05
---- running time: 3.67 seconds ---
+YP (BBN)   = 0.24699907
+YP (CMB)   = 0.24567276
+He4/H      = 8.2011454e-02
+D/H        = 2.4358767e-05
+He3/H      = 1.0399348e-05
+He3/He4    = 1.2680361e-04
+Li7/H      = 5.557664e-10
+--- running time: 0.06 seconds ---
 ```
+
+`Li6/Li7` and `YCNO` appear only when the network tracks them, i.e. with
+`--network large`. The running time is whatever this machine took; the
+abundances are the `small` network's, pinned by `tests/README.md`'s validation
+reference.
 
 With `--json` flag, full results are output as JSON.
 
 ## Data directory structure
 
-The C backend uses the same data directory structure as the Python package:
+`primat-c/` ships no data of its own: both backends read the one tree inside
+the Python package, `primat/data/`.
 
 ```
-primat-c/data/
+primat/data/
   nuclear/
     tables/              # Per-reaction rate tables (one folder per reaction)
     networks/            # Network list files (small.txt, large.txt, etc.)
-  csv/                 # Reaction catalog files (nuclides.csv, detailed_balance.csv, reactions_large.csv)
-  plasma/              # Pre-computed QED pressure tables
-  weak/                # Cached n<->p forward/backward rates
-  NEVO/                # Neutrino-decoupling history tables
+  csv/                   # Reaction catalog (nuclides.csv, detailed_balance.csv, reactions_large.csv)
+  NEVO/                  # Neutrino-decoupling history tables
+  cache_plasma_weak/
+    plasma/              # Pre-computed QED pressure and electron-thermo tables
+    weak/                # Cached n<->p forward/backward rates
 ```
 
-The standalone executable looks for data files relative to its working directory. When used as a Python extension, paths are resolved relative to the installed package.
+The standalone executable finds that tree without being told, in this order:
+
+1. `--data_dir DIR`, if given;
+2. the `CPRIMAT_DATA_DIR` environment variable;
+3. the sibling package next to the executable itself — `build/primat-c` resolves
+   `../../primat/data`. This is anchored to where the binary lives, **not** to
+   the working directory, so `./build/primat-c` gives the same answer from any
+   directory.
+
+Two further knobs redirect parts of the tree: `--user_nuclear_dir DIR` overlays
+networks and rate tables only, and `--cache_dir DIR` sends the two regenerable
+cache trees somewhere writable. Used as a Python extension, the root comes from
+the installed package.
 
 ## Code structure
 
+Every header carries the contract for what it declares — ownership of
+pointers, units, error returns — so `include/` is the API document and `src/`
+need not be read to use the library.
+
 ```
 primat-c/
-  include/      # Public headers
-    api.h             # Main API functions
-    config.h          # Configuration structure and functions
-    network_data.h   # Network and reaction data structures
-    evolution.h       # Time evolution data structures
-    background.h      # Background cosmology structures
-    weak_rates.h      # Weak rate computation structures
-  
-  src/                # Implementation
-    api.c             # Main API implementation (cpr_run, cpr_mc_uncertainty)
-    config.c          # Configuration parsing and validation
-    network_data.c    # Network loading and rate table handling
-    nuclear_network.c # Nuclear network ODE integration
-    background.c      # Background cosmology computation
-    weak_rates.c      # Weak rate computation
-    cli.c             # Command-line interface
-    neutrino_history.c # NEVO table loading and interpolation
-    
-  tests/              # Unit tests
-    unit/             # C unit test suite
-    
-  examples/           # Example configurations
-    run_basic.ini     # Template configuration file
+  include/            # 26 public headers, one per module
+    api.h             # cprimat_run: one full BBN solve, and its CPRResults
+    config.h          # CPRConfig: every parameter, and the by-name setter
+    cli.h             # the executable's entry point
+    mc.h              # threaded Monte-Carlo rate/tau_n uncertainty propagation
+    background.h      # a<->t<->T, the Friedmann rate, the neutrino sector
+    nuclear_network.h # the HT/MT/LT era integration
+    network_data.h    # network files, rate tables, the solver-ready network
+    weak_rates.h      # n<->p rate tables and their corrections
+    plasma.h          # photon/e+-/neutrino thermodynamics
+    ...               # and the numerics: ode_bdf, ode_rk, spline, linalg,
+                      # quad, vegas, rng, cache, table_io, xalloc, ...
+
+  src/                # one .c per header, plus main.c
+    api.c             # cprimat_run, cpr_assemble_results, the verbose banner
+    cli.c             # argument parsing, the printed report, --json, --mc
+    mc.c              # the MC worker threads
+    config.c          # the field table, validation, path resolution
+    network_data.c    # cpr_load_network and the rate-table pipeline
+    nuclear_network.c # cpr_nuclear_network_solve and the output writers
+    background.c      # cpr_bg_init_standard / _custom and the queries
+    weak_rates.c      # the Born/CCR/FM/SD/CCRTh rate integrals
+
+  tests/
+    unit/             # 27 test programs, run by `make test`
+    fuzz/             # 11 fuzz targets + a coverage-guided engine (`make fuzz`)
+
+  examples/           # run_basic.ini and two reference-run configurations
 ```
+
+Ownership convention, uniform across the library: every `cpr_*_free` releases
+what the struct owns but **never the struct itself**, and none of them accepts
+`NULL`. A `char **errmsg` out-parameter is always the caller's to `free`.
 
 ## Custom backgrounds and advanced usage
 
-For advanced users who want to implement custom cosmological backgrounds or test alternative scenarios, the C backend provides hooks for:
+The C backend supports the same extension points as the Python one, all as
+ordinary parameters:
 
-- Custom background tables (when `incomplete_decoupling=False`)
-- Custom NEVO tables for neutrino decoupling
-- Rate variation for sensitivity analysis
+- `custom_background FILE` — a user-supplied `(T, t, a)` table replacing the
+  standard cosmology. Setting it forces `incomplete_decoupling=False` and
+  `spectral_distortions=False` (custom-background mode uses
+  instantaneous-decoupling weak rates) and says so on stderr.
+- `nevo_file` / `nevo_spectral_file` / `nevo_grid_file` / `nevo_file_prefix` —
+  alternative neutrino-decoupling tables.
+- `p_<reaction>` / `delta_<reaction>` — per-reaction rate variation, the basis
+  of `--mc` and of sensitivity analysis. `--list-reactions` prints the keys the
+  selected network accepts.
+- `external_scale_factor`, `decay_era`, `fEDE`/`zcEDE`/`wnEDE` — see
+  `--list-params` for the full set with its current values, in a spelling an
+  INI file accepts back.
 
-See the `include/` headers for the available API functions.
+`include/` carries the contract for each of these; `docs/howto/` documents the
+physics behind them.
 
 ## Error handling and debugging
 

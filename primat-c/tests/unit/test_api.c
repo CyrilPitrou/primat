@@ -115,7 +115,7 @@ int main(void)
         /* Remove the Li7(p,a)a reaction: the dominant Li7-depletion channel,
          * so its absence must visibly raise Li7oH relative to the baseline
          * (same reaction the GUI custom-network test drives, see
-         * test_network_data_phase4.c). */
+         * test_network_data_physics.c). */
         char removed_names[1][64];
         snprintf(removed_names[0], sizeof(removed_names[0]), "Li7_p__a_a");
         CPRCustomNetwork custom = { .removed = removed_names, .n_removed = 1,

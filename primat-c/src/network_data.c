@@ -1,4 +1,13 @@
-/* network_data.c -- see network_data.h. */
+/* network_data.c -- see network_data.h. Files in, integrable network out.
+ *
+ * The first third of the file is one reader per on-disk format, plus the rate
+ * table validator every door goes through. The middle is small lookup and
+ * stoichiometry helpers. The last third is cpr_load_network, whose body is one
+ * pipeline of numbered stages -- resolve the reaction list, load the catalog,
+ * filter by mass number, select the era, parse stoichiometry, order the
+ * species, build the master T9 grid, read and resample every rate table, cap
+ * the reverse rates -- followed by the per-step entry points the solver calls.
+ */
 #include "network_data.h"
 #include "xalloc.h"
 
@@ -1177,7 +1186,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
         for (size_t k = 0; k < prod_sides[i].n; k++) add_to_set(active, &n_active, prod_sides[i].names[k]);
     }
 
-    /* ---- 6. MT-era species extension (network_data.py's _extend_mt_species). ---- */
+    /* ---- 6. MT-era species extension. ---- */
     if (is_mt && strcmp(cfg->network, "small") != 0) {
         char file_nuclides[CPR_MAX_LOCAL_SPECIES][16];
         size_t n_fn = 0;

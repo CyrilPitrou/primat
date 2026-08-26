@@ -14,6 +14,20 @@
  *   - amax (int-or-None)               -> -1 sentinel (Python requires a
  *                                          positive int when set, so -1 is
  *                                          unambiguous)
+ *
+ * Two conventions hold across every header in this library, and are stated
+ * here rather than repeated on each declaration:
+ *
+ *   Freeing. `cpr_<thing>_free(x)` releases what `x` owns and leaves `x`
+ *     itself alone -- it is the caller's storage, usually an automatic, and
+ *     freeing it is the caller's business. None of them accepts NULL. Calling
+ *     one twice is only safe for the structs whose free re-zeroes them, so
+ *     treat a freed struct as spent unless you re-initialise it.
+ *
+ *   Errors. A function returning `int` and taking `char **errmsg` returns 0 on
+ *     success and leaves `*errmsg` untouched; on failure it returns nonzero and
+ *     sets `*errmsg` to a malloc'd message the caller must free. There is no
+ *     errno-style global.
  */
 #ifndef CPRIMAT_CONFIG_H
 #define CPRIMAT_CONFIG_H
@@ -489,7 +503,7 @@ int cpr_config_format_value(const CPRConfig *cfg, const char *name,
                             char *out, size_t outsize);
 
 /* Validates flag-combination invariants (mirrors the `raise ValueError`
- * blocks in PyPRConfig.__init__, except the ones that require modules not
+ * blocks in PRIMATConfig.__init__, except the ones that require modules not
  * yet ported -- see config.c's top-of-function comment for the current
  * list). Returns 0 if valid, nonzero with *errmsg set (caller frees)
  * otherwise. Call once after all overrides (ini/cli/--set) are applied. */

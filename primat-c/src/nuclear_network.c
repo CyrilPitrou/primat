@@ -1,4 +1,17 @@
-/* nuclear_network.c -- see nuclear_network.h.
+/* nuclear_network.c -- see nuclear_network.h. Three integrations and the
+ * writers that report them.
+ *
+ * The eras run in order and hand their end state to the next: HT solves the
+ * two-species n<->p equilibrium with an explicit method, MT and LT solve the
+ * stiff network with BDF and an analytic Jacobian, each over its own species
+ * set. Between them sits the embedding step that maps one era's species onto
+ * the next's, and the concatenation that leaves a single abundance history a
+ * caller can sample at any time.
+ *
+ * The rest of the file is output: the final-abundance table, the unified
+ * time-evolution schema (sampling first, then the TSV writer that shares it
+ * with the in-memory path), the optional per-reaction rate columns, and the
+ * decay-era propagation past T_end.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095),
  * cited below as "Phys. Rep.".
@@ -19,11 +32,6 @@
 #include <string.h>
 #include "compat_posix.h"  /* sys/stat.h + mkdir, portable across POSIX & MSVC */
 #include <time.h>
-
-/* Riemann zeta(3) (Apery's constant) -- see constants.c's identical
- * literal; duplicated here (not exposed via constants.h) since it is
- * needed only by the Saha (YA) equilibrium formula below. */
-#define ZETA3 1.2020569031595942854
 
 /* Absolute ODE tolerances of the first two eras, named so they read like the
  * third (the LT era's, which is the configurable cfg->atol_LT).
@@ -80,7 +88,7 @@ static double saha_YA(const CPRConfig *cfg, double eta_b, const char *name,
                           1.5);
 
     return (2.0 * nuc->spin + 1.0)
-           * pow(ZETA3, A - 1.0) * pow(M_PI, (1.0 - A) / 2.0)
+           * pow(CPR_ZETA3, A - 1.0) * pow(M_PI, (1.0 - A) / 2.0)
            * pow(2.0, (3.0 * A - 5.0) / 2.0)
            * NormYA
            * pow(g_const.kB * T_K, 1.5 * (A - 1.0))
@@ -255,7 +263,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
 
     /* ---- Baryon-to-photon ratio at T_weak, for the MT-era Saha seed. ---- */
     double nB_weak = cpr_bg_rhoB_BBN(background, t_weak) / (cfg->consts.ma * cpr_MeV4_to_gcmm3());
-    double ngamma_weak = (2.0 * ZETA3 / (M_PI * M_PI)) * pow(T_weak_K / cpr_MeV_to_Kelvin(), 3.0);
+    double ngamma_weak = (2.0 * CPR_ZETA3 / (M_PI * M_PI)) * pow(T_weak_K / cpr_MeV_to_Kelvin(), 3.0);
     double eta_b_weak = nB_weak / ngamma_weak;
 
     /* ------------------------------------------------------------------

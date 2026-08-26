@@ -1,4 +1,12 @@
-/* network_builder.c -- see network_builder.h. */
+/* network_builder.c -- see network_builder.h. The mass-action algebra, done
+ * once per network and then evaluated by two loops.
+ *
+ * cpr_compile_network flattens a list of reactions into the padded row-major
+ * arrays the header describes; cpr_network_rhs and cpr_network_jacobian read
+ * those arrays and nothing else, which is what makes one code path serve every
+ * network size. cpr_check_conservation is the setup-time guard that the
+ * flattened stoichiometry still conserves nucleon number and charge.
+ */
 #include "network_builder.h"
 #include "xalloc.h"
 

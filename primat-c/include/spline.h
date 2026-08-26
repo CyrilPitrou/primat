@@ -13,9 +13,9 @@
 
 typedef enum { CPR_EXTRAP_CONSTANT, CPR_EXTRAP_LINEAR } CPRExtrapMode;
 
-/* Binary search for the segment i such that x[i] <= xq <= x[i+1] (clamped
- * to [0, n-2] outside the table). Exposed as the ground-truth reference
- * cpr_find_segment_monotone below must always agree with. */
+/* Binary search for the segment i such that x[i] <= xq <= x[i+1] (clamped to
+ * [0, n-2] outside the table). This is the definition of the answer; the
+ * hinted variant below is an optimisation that must return exactly this. */
 size_t cpr_find_segment(const double *x, size_t n, double xq);
 
 /* Hinted variant of cpr_find_segment for repeated lookups in the same
@@ -47,10 +47,12 @@ typedef struct {
     size_t n; /* number of knots; n-1 segments */
 } CPRCubicSpline;
 
-/* "Not-a-knot" boundary (third derivative continuous across the second and
- * second-to-last knots, i.e. the first two and last two segments are each a
- * single cubic) -- mirrors scipy's `interp1d(kind="cubic")` default used by
- * _resample_rate_table. Requires n >= 4. */
+/* Fits the spline through (x[i], y[i]) into `out` (caller must
+ * cpr_cubic_spline_free it), with the "not-a-knot" boundary condition: the
+ * third derivative stays continuous across the second and second-to-last
+ * knots, i.e. the first two and the last two segments are each a single cubic.
+ * `x` must be strictly increasing. Returns 0 on success, nonzero with *errmsg
+ * set (caller frees) when n < 4, which is not-a-knot's minimum. */
 int cpr_cubic_spline_fit_notaknot(const double *x, const double *y, size_t n,
                                     CPRCubicSpline *out, char **errmsg);
 
@@ -60,6 +62,8 @@ int cpr_cubic_spline_fit_notaknot(const double *x, const double *y, size_t n,
  * `dx`. */
 double cpr_cubic_spline_eval(const CPRCubicSpline *s, double xq);
 
+/* Releases the five coefficient arrays and zeroes the struct; `s` itself is
+ * the caller's (typically an automatic). Not NULL-safe. */
 void cpr_cubic_spline_free(CPRCubicSpline *s);
 
 /* Port of network_data._resample_rate_table: resamples a rate table from
