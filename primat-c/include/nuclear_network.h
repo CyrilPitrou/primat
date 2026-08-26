@@ -3,7 +3,7 @@
  * NuclearNetwork class).
  *
  * CPRNuclearNetwork is driven purely through the *compulsory* interface of
- * a CPRBackground (cpr_bg_T_of_t/t_of_T/rhoB_BBN/weak_nTOp_frwrd/bkwrd,
+ * a CPRBackground (cpr_bg_T_of_t/t_of_T/rhoB_BBN/weak_nTOp/bkwrd,
  * background.h) and a CPRNuclearRates (the compiled MT/LT RHS/Jacobian
  * kernels, network_data.h) -- it knows nothing about *how* the
  * background or the rate tables were built.

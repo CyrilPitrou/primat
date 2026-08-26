@@ -186,7 +186,7 @@ class PRIMAT:
         .. warning::
            **The n<->p weak-rate cache cannot see your background.** It is
            keyed on the config alone
-           (:func:`weak_rates.cache._weak_rate_fingerprint`), while the rates
+           (:func:`weak_rates.cache.weak_rate_fingerprint`), while the rates
            are integrated against the ``[Tg_vec, Tnue_vec]`` grid *your*
            instance builds. Two subclasses with different neutrino histories
            and the same ``cfg`` hash to the same ``nTOp_<hash>.txt``, and
@@ -391,8 +391,8 @@ class PRIMAT:
         # the AbundanceEvolution notebook, primat.gui.panels) can look up
         # A[name]/Z[name]/N[name] for every species returned by
         # abundance_names.
-        if not self.cfg.is_small:
-            for s, (N, Z) in self.nucl.large_NZ.items():
+        if not self.cfg.network_is_small:
+            for s, (N, Z) in self.nucl.LT_NZ.items():
                 self.N[s], self.Z[s], self.A[s] = N, Z, N + Z
 
         cfg  = self.cfg

@@ -17,7 +17,7 @@ from primat.cache_utils import fingerprint_hash
 from primat.config import PRIMATConfig
 from primat.weak_rates.api import (_weak_rate_loglog_interp,
                                    validate_weak_rates_finite)
-from primat.weak_rates.cache import _thermal_fingerprint, _weak_rate_fingerprint
+from primat.weak_rates.cache import thermal_fingerprint, weak_rate_fingerprint
 
 requires_c_backend = pytest.mark.skipif(
     not HAS_C_BACKEND, reason="primat._primat_c C extension is not built"
@@ -41,7 +41,7 @@ def _poison_weak_cache(cache_dir):
     so this is exactly what a run that cached a NaN table leaves behind.
     """
     cfg = PRIMATConfig({"cache_dir": str(cache_dir)})
-    fname = "nTOp_" + fingerprint_hash(_weak_rate_fingerprint(cfg)) + ".txt"
+    fname = "nTOp_" + fingerprint_hash(weak_rate_fingerprint(cfg)) + ".txt"
     weak = os.path.join(str(cache_dir), "weak")
     os.makedirs(weak, exist_ok=True)
     T = np.logspace(np.log10(1.16e7), np.log10(1.16e11), 320)
@@ -161,8 +161,8 @@ def test_DeltaNeff_below_minus_three_is_rejected():
 
 
 def _hashes(cfg):
-    return (fingerprint_hash(_weak_rate_fingerprint(cfg)),
-            fingerprint_hash(_thermal_fingerprint(cfg)))
+    return (fingerprint_hash(weak_rate_fingerprint(cfg)),
+            fingerprint_hash(thermal_fingerprint(cfg)))
 
 
 def test_inert_overrides_do_not_re_key_the_caches():
@@ -181,8 +181,8 @@ def test_shipped_weak_cache_hash_is_unchanged():
     """The default fingerprint must keep naming the shipped cache file: this is
     what makes the normalisation above free rather than a mass re-key."""
     cfg = PRIMATConfig({})
-    fname = "nTOp_" + fingerprint_hash(_weak_rate_fingerprint(cfg)) + ".txt"
-    shipped = os.path.join(cfg._resolved_data_dir, "cache_plasma_weak", "weak", fname)
+    fname = "nTOp_" + fingerprint_hash(weak_rate_fingerprint(cfg)) + ".txt"
+    shipped = os.path.join(cfg.resolved_data_dir, "cache_plasma_weak", "weak", fname)
     assert os.path.exists(shipped), fname
 
 

@@ -463,13 +463,13 @@ print(f"D/H mean: {mc_result['DoH'].mean:.8e} ± {mc_result['DoH'].std:.8e}")
 primat --set p_n_p__d_g=1  # Fixed variation: increase n+p->d+gamma rate by ~1σ
 ```
 
-#### 2. Additive rate rescaling: `rescale_nuclear_rates` + `delta_<reaction>`
+#### 2. Additive rate rescaling: `delta_<reaction>`
 
-For deterministic sensitivity studies, enable `rescale_nuclear_rates=True`. This activates additive variation parameters `delta_<name>`. When `p_<name>=0` (the default), the rate becomes:
+For deterministic sensitivity studies, set `delta_<name>`. When `p_<name>=0` (the default), the rate becomes:
 
 **Rate = median × (1 + delta_<name>)**
 
-This allows uniform or per-reaction rescaling. When both `rescale_nuclear_rates=True` AND `p_<name>≠0`, the combined formula is:
+This allows per-reaction rescaling. When `p_<name>≠0` as well, the combined formula is:
 
 **Rate = median × (exp(p × σ) + delta_<name>)**
 
@@ -479,12 +479,11 @@ from primat.backend import run_bbn
 
 # Sensitivity study: vary n+p->d+gamma rate by +10%
 result = run_bbn({
-    "rescale_nuclear_rates": True,
     "delta_n_p__d_g": 0.1
 })
 ```
 
-**Important**: The `p_<reaction>` mechanism is designed for MC uncertainty propagation (log-normal variations), while `rescale_nuclear_rates` + `delta_<reaction>` is designed for deterministic sensitivity studies (additive variations). They can be used together but interpret the combined effect carefully.
+**Important**: The `p_<reaction>` mechanism is designed for MC uncertainty propagation (log-normal variations), while `delta_<reaction>` is designed for deterministic sensitivity studies (additive variations). They can be used together but interpret the combined effect carefully.
 
 #### 3. Computing the uncertainty: `run_mc()` and `--mc N`
 
@@ -607,7 +606,7 @@ When `output_time_evolution=True`, the time evolution data is made available. If
 the chosen network (8 for small/small_parthenope, ~59 for large, fewer with
 an `amax` cutoff). Both backends write the identical schema, loadable with
 `primat.evolution.load_evolution()`. The n↔p weak rates are not duplicated
-on disk — evaluate `run.background.weak_nTOp_frwrd/bkwrd` at the
+on disk — evaluate `run.background.weak_nTOp/bkwrd` at the
 `T_gamma_MeV` column if needed.
 
 `output_file` defaults to `results/output_tables.tsv` (relative to the current

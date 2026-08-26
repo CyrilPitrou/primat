@@ -71,7 +71,7 @@ from scipy.interpolate import interp1d
 # without putting the package __init__ on corrections.py's import path.
 import primat.weak_rates.integrands as integrands
 from .integrands import exp_cutoff
-from .cache import n_points_per_decade, _thermal_fingerprint
+from .cache import n_points_per_decade, thermal_fingerprint
 from ..cache_utils import (fingerprint_hash, write_cache_with_fingerprint,
                            resolve_cache_file, cache_write_dir)
 
@@ -425,7 +425,7 @@ class _RateContext:
         Nucleon axial coupling g_A and kappa_p - kappa_n, used by the
         finite-nucleon-mass Fokker-Planck expansion (_L_FMCCR).
     my_dir : str
-        ``cfg._resolved_data_dir``, used to locate the thermal-correction cache files.
+        ``cfg.resolved_data_dir``, used to locate the thermal-correction cache files.
     """
     cfg: object
     me: float
@@ -859,7 +859,7 @@ def _L_SD_FMNoCCR(ctx, T_arr, sgnq, dFDneu_moments):
 # nTOp_thermal_<hash>.txt cache grid is therefore built down to this fixed
 # floor rather than down to cfg.T_end: the integral is never actually
 # evaluated below it regardless of how low cfg.T_end_MeV is set, so letting
-# the grid (and hence the cache fingerprint, see cache._THERMAL_BG_FIELDS)
+# the grid (and hence the cache fingerprint, see cache.THERMAL_BG_FIELDS)
 # depend on T_end_MeV only caused spurious cache misses -- and the
 # multi-minute vegas recompute that goes with them -- for runs that changed
 # T_end_MeV but were otherwise identical.
@@ -1342,7 +1342,7 @@ def _compute_or_load_L_CCRTh_grid(ctx):
     """
     cfg = ctx.cfg
 
-    _th_fp       = _thermal_fingerprint(cfg)
+    _th_fp       = thermal_fingerprint(cfg)
     _th_hash     = fingerprint_hash(_th_fp)
     _th_fname    = "nTOp_thermal_" + _th_hash + ".txt"
     # Overlay read (cache_dir first, else shipped copy); write to the writable
@@ -1384,8 +1384,8 @@ def _compute_or_load_L_CCRTh_grid(ctx):
     # _L_CCRTh_compute), so anchoring the grid to T_end_MeV only made the
     # cache fingerprint -- and thus a cold, multi-minute recompute --
     # depend on a parameter the integral never actually uses.
-    _n_th_pts  = n_points_per_decade(cfg.sampling_nTOp_thermal_per_decade, _T_CCRTH_MIN, cfg.T_start)
-    _T_th      = np.logspace(np.log10(_T_CCRTH_MIN), np.log10(cfg.T_start), _n_th_pts)
+    _n_th_pts  = n_points_per_decade(cfg.sampling_nTOp_thermal_per_decade, _T_CCRTH_MIN, cfg.T_start_nucl)
+    _T_th      = np.logspace(np.log10(_T_CCRTH_MIN), np.log10(cfg.T_start_nucl), _n_th_pts)
     L_nTh_data = np.vectorize(lambda T: _L_CCRTh_compute(ctx, T, +1, opts))(_T_th)
     L_pTh_data = np.vectorize(lambda T: _L_CCRTh_compute(ctx, T, -1, opts))(_T_th)
 
@@ -1510,7 +1510,7 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, dFDneu_moments=None):
     Born+FM+CCR+SD rate only at point of use, in :func:`RecomputeWeakRates`.
     Keeping it out here is what lets the stored ``nTOp_<hash>.txt`` rate
     correctly approach the free neutron-decay value (1 in units of 1/tau_n) as
-    T -> 0, and matches :func:`_weak_rate_fingerprint`, which never depended on
+    T -> 0, and matches :func:`weak_rate_fingerprint`, which never depended on
     ``thermal_corrections``.
 
     ``ComputeWeakRates`` sums these terms; the same list lets the test suite
@@ -1586,7 +1586,7 @@ def _build_rate_context(Tvec, cfg):
     T_nuOverT = interp1d(Tg_vec * cfg.MeV_to_Kelvin, Tnu_vec / Tg_vec,
                          bounds_error=False, fill_value="extrapolate", kind='linear')
 
-    integrands._setup_fd_impls(cfg.numba_installed)
+    integrands._setup_fd_impls(cfg.use_numba)
 
     # Only the electron-neutrino chemical potential enters the n<->p weak rates
     # (the reaction is n <-> p + e + nu_e), so xi_nu here is the EFFECTIVE
@@ -1594,7 +1594,7 @@ def _build_rate_context(Tvec, cfg):
     # left at None). xi_mu/xi_tau gravitate only and never reach this integrand.
     return _RateContext(cfg=cfg, me=me, mn=mn, mp=mp, Q=Q, xi_nu=cfg.xi_nu_e,
                         T_nuOverT=T_nuOverT, gA=cfg.gA, deltakappa=cfg.deltakappa,
-                        my_dir=cfg._resolved_data_dir)
+                        my_dir=cfg.resolved_data_dir)
 
 
 def _thermal_correction_interpolants(Tvec, cfg):

@@ -33,14 +33,14 @@ cfg = dict(
     # Every key below is shown at its DEFAULT_PARAMS default (see
     # primat/config.py for the authoritative, more detailed comments this
     # file summarises); uncomment and edit whichever you need to override.
-    # All 96 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
+    # All 95 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- General behaviour and numerical settings ----
     # verbose=False,  # print primat's own progress messages
     # debug=False,  # print extra debug messages
     # show_progress=True,  # print compact stderr progress indicators (HT./MT./LT./done., MC counter) when verbose=False
     # numerical_precision=1e-07,  # rtol for all solve_ivp/ODE calls
-    # numba_installed=True,  # a request, not a fact: set False to run without the JIT kernels even where numba is installed; True is cleared at runtime if it is not (unused on the C backend, kept for round-trip parity)
+    # use_numba=True,  # a request, not a fact: set False to run without the JIT kernels even where numba is installed; True is cleared at runtime if it is not (unused on the C backend, kept for round-trip parity)
     # strict_params=False,  # True: raise on an unknown param key (typo); False: warn with a "did you mean ...?" hint
 
     # ---- Neutrino decoupling ----
@@ -139,8 +139,7 @@ cfg = dict(
     # rate_grid_T9_max=10.0,  # maximum T9 [GK] of the master rate grid
     # network="small",  # "small" / "small_parthenope" / "large" / custom network filename
     # amax=None,  # filter any network to reactions with A <= amax
-    # atol_large_LT=1e-26,  # solve_ivp absolute tolerance for the LT era of every network (the name is historical)
-    # rescale_nuclear_rates=False,  # accepted but read by nothing; vary a rate with p_<reaction> or delta_<reaction>
+    # atol_LT=1e-26,  # solve_ivp absolute tolerance for the LT era of every network (the name is historical)
     # mc_rate_rescale_cap=30,  # clamp the MC rate variation factor to [1/cap, cap]; None disables the cap
     # nuclear_qed_corrections=True,  # QED correction to select radiative-capture rates (Pitrou & Pospelov 2020)
 

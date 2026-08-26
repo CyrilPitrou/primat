@@ -522,7 +522,7 @@ def _safe_basename(candidate, fallback):
 
 
 def _shipped_table_dir(cfg, name):
-    return os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name)
+    return os.path.join(cfg.resolved_data_dir, "nuclear", "tables", name)
 
 
 def _match_shipped_file(cfg, name, raw_text):
@@ -620,7 +620,7 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
     # way -- merge them into one map of custom tables.
     custom_tables = {**custom_network.get("replaced", {}),
                      **custom_network.get("added", {})}
-    decay_table = _load_decay_table(os.path.join(cfg._resolved_data_dir, "nuclear", "tables"))
+    decay_table = _load_decay_table(os.path.join(cfg.resolved_data_dir, "nuclear", "tables"))
     # Which on-disk table each *uncustomised* reaction actually uses, per
     # cfg.network's own list -- e.g. "*_parthenope3.0.txt" for
     # small_parthenope. Assuming "<name>_primat.txt" here used to silently
@@ -712,7 +712,7 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
             # "*_parthenope3.0.txt"), falling back to primat's default table
             # for a network that lists the reaction by bare name.
             fname = pinned_filenames.get(name, f"{name}_primat.txt")
-            path = os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name, fname)
+            path = os.path.join(cfg.resolved_data_dir, "nuclear", "tables", name, fname)
             try:
                 with open(path) as f:
                     table_text = f.read()
@@ -768,7 +768,7 @@ def export_zip_cached(cfg, custom_network, kept_names, network_filename="custom"
     """
     return _export_zip_cached(
         json.dumps(custom_network, sort_keys=True), tuple(kept_names),
-        network_filename, cfg.network, cfg._resolved_data_dir, _cfg=cfg)
+        network_filename, cfg.network, cfg.resolved_data_dir, _cfg=cfg)
 
 
 # Budget for an uploaded zip, enforced by _check_zip_budget before anything is
@@ -1033,7 +1033,7 @@ def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None, filenames=
     added = {n: replaced[n] for n in kept_set - bare_names if n in replaced}
     true_replaced = {n: t for n, t in replaced.items() if n not in added}
     if decay_overrides:
-        shipped = _load_decay_table(os.path.join(cfg._resolved_data_dir, "nuclear", "tables"))
+        shipped = _load_decay_table(os.path.join(cfg.resolved_data_dir, "nuclear", "tables"))
         for name, rate_s in decay_overrides.items():
             shipped_entry = shipped.get(name)
             if shipped_entry is None or not math.isclose(

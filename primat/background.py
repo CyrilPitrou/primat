@@ -10,7 +10,7 @@ A *background* encapsulates everything the nuclear-network integration
 expanding Universe.  The interface deliberately is **minimal**: only the
 ``T_of_t``/``t_of_T`` time<->temperature relations, the baryon mass density
 ``rhoB_BBN(t)`` *as a function of cosmic time*, and the (already normalised)
-n<->p weak rates ``weak_nTOp_frwrd(T)``/``weak_nTOp_bkwrd(T)`` are compulsory.
+n<->p weak rates ``weak_nTOp(T)``/``weak_pTOn(T)`` are compulsory.
 Everything else (scale factor ``a``, the Hubble rate, individual neutrino
 temperatures, ``N_eff``, ``Omega_nu``, the NEVO heating function, ...) is
 optional, with safe ``None``/``NotImplementedError`` defaults in
@@ -256,7 +256,7 @@ class Background(object):
     * :meth:`T_of_t`, :meth:`t_of_T`  -- T_gamma(t) <-> t(T_gamma)
     * :meth:`rhoB_BBN`                -- rho_B(t) [g/cm^3], the prefactor for
       nuclear reaction rates (rate ~ rho_B)
-    * :meth:`weak_nTOp_frwrd`, :meth:`weak_nTOp_bkwrd` -- normalised n<->p
+    * :meth:`weak_nTOp`, :meth:`weak_pTOn` -- normalised n<->p
       weak rates [s^-1] at photon temperature T [Kelvin]
 
     **Optional interface** (concrete defaults below):
@@ -324,7 +324,7 @@ class Background(object):
         -- not the ``t ∝ 1/T²`` of radiation domination, and far enough out it
         returns a *negative* time (with the default 0.001-40 MeV grid,
         ``t_of_T(80 MeV) ≈ -4.7e-04 s``).  Nothing inside primat queries
-        outside the span -- the nuclear network starts at ``cfg.T_start``,
+        outside the span -- the nuclear network starts at ``cfg.T_start_nucl``,
         comfortably inside -- but callers driving a background directly should
         stay in range or clamp.  Note this is a different question from the
         radiation-domination extrapolation *below* the NEVO table's lower edge
@@ -369,12 +369,12 @@ class Background(object):
     # n <-> p weak rates (normalised, compulsory)
     # ======================================================================
 
-    def weak_nTOp_frwrd(self, T_K):
+    def weak_nTOp(self, T_K):
         """Normalised n -> p weak rate [s^-1] at photon temperature ``T_K``
         [Kelvin]."""
         raise NotImplementedError
 
-    def weak_nTOp_bkwrd(self, T_K):
+    def weak_pTOn(self, T_K):
         """Normalised p -> n weak rate [s^-1] at photon temperature ``T_K``
         [Kelvin]."""
         raise NotImplementedError
@@ -824,7 +824,7 @@ class StandardBackground(Background):
         cfg    = self.cfg
 
         Tstartcosmo  = cfg.T_start_cosmo / cfg.MeV_to_Kelvin
-        Tstart = cfg.T_start / cfg.MeV_to_Kelvin   # [MeV]
+        Tstart = cfg.T_start_nucl / cfg.MeV_to_Kelvin   # [MeV]
         Tend   = cfg.T_end   / cfg.MeV_to_Kelvin   # [MeV]
 
         # Step 1 - Neutrino-sector background (temperatures, heating,
@@ -1413,7 +1413,7 @@ class StandardBackground(Background):
         _t_weak0 = time.time()
         # Single forward and backward n<->p interpolant over the whole BBN
         # temperature range (the rate is continuous, so one grid suffices).
-        self.weak_nTOp_frwrd_raw, self.weak_nTOp_bkwrd_raw = \
+        self.weak_nTOp_raw, self.weak_pTOn_raw = \
             primat_weak_rates.RecomputeWeakRates([self.Tg_vec, self.Tnue_vec], cfg,
                                         dFDneu_func=self.dFDneu_func,
                                         dFDneu_moments=self.dFDneu_moments)
@@ -1448,20 +1448,20 @@ class StandardBackground(Background):
     def NormWeakRates(self, value):
         self._norm_weak_rates = value
 
-    def weak_nTOp_frwrd(self, T_K):
+    def weak_nTOp(self, T_K):
         """Normalised n -> p weak rate [s^-1] (see
-        :meth:`Background.weak_nTOp_frwrd`)."""
+        :meth:`Background.weak_nTOp`)."""
         # Floor in raw (1/tau_n) units before normalising -- see
-        # weak_nTOp_bkwrd below.  The quadratic interpolation used by
+        # weak_pTOn below.  The quadratic interpolation used by
         # InterpolateWeakRates can overshoot slightly negative between
         # nodes even when the cached, already-clamped table values are all
         # >= 0, so the clamp is reapplied here rather than trusted to the
         # cache alone.
-        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_frwrd_raw(T_K))
+        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_raw(T_K))
 
-    def weak_nTOp_bkwrd(self, T_K):
+    def weak_pTOn(self, T_K):
         """Normalised p -> n weak rate [s^-1] (see
-        :meth:`Background.weak_nTOp_bkwrd`)."""
+        :meth:`Background.weak_pTOn`)."""
         # Clamp to >= 0 and floor below the ~1e-28 (1/tau_n units) noise
         # level used in ComputeWeakRates (weak_rates.py).  At low T
         # (<~0.01 MeV) the tabulated/computed p->n rate is exp(-Q/T)-suppressed
@@ -1472,7 +1472,7 @@ class StandardBackground(Background):
         # negative between cached nodes.  A rate is physically non-negative,
         # so this noise is replaced by 0 rather than left to feed a spurious
         # p->n *sink* of neutrons into the network.
-        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_bkwrd_raw(T_K))
+        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_pTOn_raw(T_K))
 
     # ======================================================================
     # Baryon sector
@@ -1658,7 +1658,7 @@ class CustomBackground(Background):
         # spacing of the LINEAR T_nu(T_gamma) interpolant every n<->p rate
         # integrand reads -- the very quantity sampling_temperature_per_decade
         # is a weak-rate fingerprint field for (see weak_rates/cache.py's
-        # _WEAK_RATE_BG_FIELDS: coarsening it moves the rates by ~1e-3).
+        # WEAK_RATE_BG_FIELDS: coarsening it moves the rates by ~1e-3).
         # Mirrored in primat-c/src/background.c's cpr_bg_init_custom.
         T_lo = float(np.min(self._T_by_t))
         T_hi = float(np.max(self._T_by_t))
@@ -1680,7 +1680,7 @@ class CustomBackground(Background):
         """
         cfg  = self.cfg
         _t0  = time.time()
-        self.weak_nTOp_frwrd_raw, self.weak_nTOp_bkwrd_raw = \
+        self.weak_nTOp_raw, self.weak_pTOn_raw = \
             primat_weak_rates.RecomputeWeakRates([self.Tg_vec, self.Tnue_vec], cfg,
                                         dFDneu_func=None)
         if cfg.debug:
@@ -1708,20 +1708,20 @@ class CustomBackground(Background):
     def NormWeakRates(self, value):
         self._norm_weak_rates = value
 
-    def weak_nTOp_frwrd(self, T_K):
-        """Normalised n -> p weak rate [s^-1] (see :meth:`Background.weak_nTOp_frwrd`)."""
+    def weak_nTOp(self, T_K):
+        """Normalised n -> p weak rate [s^-1] (see :meth:`Background.weak_nTOp`)."""
         # Floor in raw (1/tau_n) units before normalising: see the sibling
         # implementation above for why this is needed even on top of the
         # clamp already applied inside ComputeWeakRates.
-        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_frwrd_raw(T_K))
+        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_raw(T_K))
 
-    def weak_nTOp_bkwrd(self, T_K):
-        """Normalised p -> n weak rate [s^-1] (see :meth:`Background.weak_nTOp_bkwrd`)."""
+    def weak_pTOn(self, T_K):
+        """Normalised p -> n weak rate [s^-1] (see :meth:`Background.weak_pTOn`)."""
         # Clamp to >= 0 and floor below the numerical-noise level: see the
         # sibling implementation above -- the low-T p->n rate is dominated by
         # cancellation noise that can go negative, which is unphysical for a
         # rate.
-        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_bkwrd_raw(T_K))
+        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_pTOn_raw(T_K))
 
     # ======================================================================
     # Baryon sector

@@ -42,7 +42,7 @@ DEFAULT_PARAMS: dict = {
     # cleared at runtime if numba is not importable; False runs the plain-Python
     # kernels even where numba is installed, which is not numerically neutral
     # (the two paths differ in the last digits of the rate integrands).
-    "numba_installed":            True,
+    "use_numba":            True,
     "strict_params":              False, # How PRIMATConfig reacts to an unknown parameter key (a typo like "Omegab2h", or a key from a different code).
     # False (default): warn and ignore it, appending difflib "did you mean ...?" suggestions so the mistake is visible without being fatal. True: raise ValueError on the first unknown key 
 
@@ -89,7 +89,7 @@ DEFAULT_PARAMS: dict = {
     # effect when incomplete_decoupling=False (no NEVO file is read at all).
 
     # ---- data directory override and nuclear overlay -----------------------
-    # See PRIMATConfig.resolve_rates_path and _resolved_data_dir. Both default
+    # See PRIMATConfig.resolve_rates_path and resolved_data_dir. Both default
     # to None (shipped primat/data/ tree). When data_dir is set, it completely
     # replaces the shipped data tree (NEVO/, nuclear/, csv/, cache_plasma_weak/
     # must all be present under that directory; the regenerable weak-rate and
@@ -314,13 +314,7 @@ DEFAULT_PARAMS: dict = {
     # Absolute solve_ivp tolerance for the LT era of EVERY network (not just
     # "large" -- despite the legacy name). It must be tight enough for the
     # large network's heavy nuclides, which reach very small abundances.
-    "atol_large_LT":              1.e-26,
-    # Accepted and stored, but read by nothing in either backend: a nuclear rate
-    # is varied by setting p_<reaction> (log-normal, in units of the table's own
-    # sigma) or delta_<reaction> (a direct fractional shift), each of which
-    # applies on its own. Kept so that saved ini files and params dicts that
-    # name it keep loading.
-    "rescale_nuclear_rates":            False,
+    "atol_LT":              1.e-26,
 
     # Cap applied to the MC rate rescaling factor during Monte Carlo runs.
     # When a p_* parameter is non-zero, the effective variation factor is  variation = sigma^p + delta
@@ -400,7 +394,7 @@ DEFAULT_PARAMS: dict = {
 PARAM_GROUPS: dict = {
     "General behaviour and numerical settings": (
         "verbose", "debug", "show_progress", "numerical_precision",
-        "numba_installed", "strict_params",
+        "use_numba", "strict_params",
     ),
     "Neutrino decoupling": (
         "incomplete_decoupling",
@@ -452,7 +446,7 @@ PARAM_GROUPS: dict = {
     ),
     "Nuclear network": (
         "rate_grid_npts", "rate_grid_T9_min", "rate_grid_T9_max", "network",
-        "amax", "atol_large_LT", "rescale_nuclear_rates",
+        "amax", "atol_LT",
         "mc_rate_rescale_cap", "nuclear_qed_corrections",
     ),
     "Cosmological inputs": (
@@ -623,7 +617,7 @@ def _default_params_comments():
     2. Failing that, the **first sentence of the contiguous comment block
        immediately above the key**, with decorative section rules/headings
        skipped (:func:`_is_decorative_comment`).  A dozen keys are documented
-       that way -- ``network``, ``amax``, ``atol_large_LT``, the ``output_*``
+       that way -- ``network``, ``amax``, ``atol_LT``, the ``output_*``
        group, the ``decay_*`` group -- and used to print with no description at
        all, even though ``--list-params`` is the documented way to discover
        parameters (``--set`` being hidden from ``--help``).
@@ -826,7 +820,7 @@ _PARAM_RANGE = {
     "Omegabh2":            _POSITIVE,
     "Omegach2":            _POSITIVE,
     "h":                   _POSITIVE,
-    "atol_large_LT":       _POSITIVE,
+    "atol_LT":       _POSITIVE,
     "epsrel_thermal":      _POSITIVE,
     "t_decay_end":         _POSITIVE,
     "zcEDE":               _POSITIVE,
@@ -1049,7 +1043,7 @@ class PRIMATConfig:
         debug: bool
         show_progress: bool
         numerical_precision: float
-        numba_installed: bool
+        use_numba: bool
         strict_params: bool
         incomplete_decoupling: bool
         QED_corrections: bool
@@ -1120,8 +1114,7 @@ class PRIMATConfig:
         rate_grid_T9_max: float
         network: str
         amax: int | None
-        atol_large_LT: float
-        rescale_nuclear_rates: bool
+        atol_LT: float
         mc_rate_rescale_cap: float | None
         nuclear_qed_corrections: bool
         Omegach2: float
@@ -1148,14 +1141,9 @@ class PRIMATConfig:
         # END GENERATED PARAM ANNOTATIONS
 
     @property
-    def is_small(self) -> bool:
+    def network_is_small(self) -> bool:
         """True if using the 'small' network."""
         return self.network == "small"
-
-    @property
-    def is_large(self) -> bool:
-        """True if using the 'large' network."""
-        return self.network == "large"
 
     # ------------------------------------------------------------------
     # Effective per-flavour neutrino chemical potentials
@@ -1225,7 +1213,7 @@ class PRIMATConfig:
     MeV_to_g       = CONST.MeV_to_g
     MeV_to_cmm1    = CONST.MeV_to_cmm1
     MeV4_to_gcmm3  = CONST.MeV4_to_gcmm3
-    T_start        = CONST.T_start
+    T_start_nucl        = CONST.T_start_nucl
     T_weak         = CONST.T_weak
     T_nucl         = CONST.T_nucl
     s0bar          = CONST.s0bar
@@ -1779,7 +1767,7 @@ class PRIMATConfig:
         for entry in reactions_with_tables:
             bare = re.split(r'[, ]+', entry, maxsplit=1)[0]
             if (self.amax is not None
-                    and reaction_category(bare, self._resolved_data_dir) > self.amax):
+                    and reaction_category(bare, self.resolved_data_dir) > self.amax):
                 continue
             valid_rxns.add(bare)
         for rxn in valid_rxns:
@@ -1828,12 +1816,12 @@ class PRIMATConfig:
         the caller.  Messages are stored in ``_init_messages`` for deferred
         printing (after the banner).
         """
-        if self.numba_installed:
+        if self.use_numba:
             try:
                 import numba  # noqa: F401
                 self._init_messages.append('[init]  numba detected: using it for JIT compilation.')
             except ImportError:
-                self.numba_installed = False
+                self.use_numba = False
                 self._init_messages.append('[init]  numba not detected: running without JIT compilation.')
 
     def _validate_amax(self):
@@ -2138,7 +2126,7 @@ class PRIMATConfig:
     def _load_nuclide_data(self):
         """Load mass excesses, spins, and (N, Z) from nuclides.csv."""
         import csv
-        path = os.path.join(self._resolved_data_dir, "csv", "nuclides.csv")
+        path = os.path.join(self.resolved_data_dir, "csv", "nuclides.csv")
         
         self.Nuclides = {}
         self.NuclExcessMass = {}
@@ -2163,7 +2151,7 @@ class PRIMATConfig:
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
     @property
-    def _resolved_data_dir(self) -> str:
+    def resolved_data_dir(self) -> str:
         """Resolved data root: the ``data_dir`` param when set, otherwise ``primat/data/``.
 
         Use this everywhere a data-root path is needed instead of the old
@@ -2183,7 +2171,7 @@ class PRIMATConfig:
 
         Lookup order (first existing path wins):
           1. ``self.user_nuclear_dir`` (additive nuclear overlay), if set.
-          2. ``self._resolved_data_dir`` (either the user-supplied ``data_dir``
+          2. ``self.resolved_data_dir`` (either the user-supplied ``data_dir``
              or the shipped ``primat/data/`` tree — always tried last so
              ``small``/``large`` and the default rate tables are never
              unreachable just because ``user_nuclear_dir`` is also configured).
@@ -2210,7 +2198,7 @@ class PRIMATConfig:
         bases = []
         if self.user_nuclear_dir:
             bases.append(self.user_nuclear_dir)
-        bases.append(self._resolved_data_dir)  # shipped (or overridden) default, always last
+        bases.append(self.resolved_data_dir)  # shipped (or overridden) default, always last
         for base in bases:
             if relpath:
                 for candidate in _overlay_candidates(base, relpath):

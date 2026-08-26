@@ -26,7 +26,7 @@
 #define ZETA3 1.2020569031595942854
 
 /* Absolute ODE tolerances of the first two eras, named so they read like the
- * third (the LT era's, which is the configurable cfg->atol_large_LT).
+ * third (the LT era's, which is the configurable cfg->atol_LT).
  *
  * HT integrates n <-> p only, whose two abundances are of order 0.1-1, so an
  * absolute floor of 1e-10 is ten significant digits on the state itself. MT
@@ -156,8 +156,8 @@ static int ht_rhs(double t, const double *Y, double *dY, void *ctx)
 {
     HTCtx *c = ctx;
     double T_K = cpr_bg_T_of_t(c->bg, t) * cpr_MeV_to_Kelvin();
-    double f = cpr_bg_weak_nTOp_frwrd(c->bg, T_K);
-    double b = cpr_bg_weak_nTOp_bkwrd(c->bg, T_K);
+    double f = cpr_bg_weak_nTOp(c->bg, T_K);
+    double b = cpr_bg_weak_pTOn(c->bg, T_K);
     dY[0] = b * Y[1] - f * Y[0];
     dY[1] = f * Y[0] - b * Y[1];
     return 0;
@@ -170,7 +170,7 @@ static int mt_rhs(double t, const double *Y, double *dY, void *ctx)
     MTLTCtx *c = ctx;
     double rho = cpr_bg_rhoB_BBN(c->bg, t);
     double T_K = cpr_bg_T_of_t(c->bg, t) * cpr_MeV_to_Kelvin();
-    double f = cpr_bg_weak_nTOp_frwrd(c->bg, T_K), b = cpr_bg_weak_nTOp_bkwrd(c->bg, T_K);
+    double f = cpr_bg_weak_nTOp(c->bg, T_K), b = cpr_bg_weak_pTOn(c->bg, T_K);
     cpr_nuclear_rates_rhs_mt(c->nucl, Y, T_K, rho, f, b, dY);
     return 0;
 }
@@ -180,7 +180,7 @@ static int mt_jac(double t, const double *Y, double *J, void *ctx)
     MTLTCtx *c = ctx;
     double rho = cpr_bg_rhoB_BBN(c->bg, t);
     double T_K = cpr_bg_T_of_t(c->bg, t) * cpr_MeV_to_Kelvin();
-    double f = cpr_bg_weak_nTOp_frwrd(c->bg, T_K), b = cpr_bg_weak_nTOp_bkwrd(c->bg, T_K);
+    double f = cpr_bg_weak_nTOp(c->bg, T_K), b = cpr_bg_weak_pTOn(c->bg, T_K);
     cpr_nuclear_rates_jac_mt(c->nucl, Y, T_K, rho, f, b, J);
     return 0;
 }
@@ -190,7 +190,7 @@ static int lt_rhs(double t, const double *Y, double *dY, void *ctx)
     MTLTCtx *c = ctx;
     double rho = cpr_bg_rhoB_BBN(c->bg, t);
     double T_K = cpr_bg_T_of_t(c->bg, t) * cpr_MeV_to_Kelvin();
-    double f = cpr_bg_weak_nTOp_frwrd(c->bg, T_K), b = cpr_bg_weak_nTOp_bkwrd(c->bg, T_K);
+    double f = cpr_bg_weak_nTOp(c->bg, T_K), b = cpr_bg_weak_pTOn(c->bg, T_K);
     cpr_nuclear_rates_rhs_lt(c->nucl, Y, T_K, rho, f, b, dY);
     return 0;
 }
@@ -200,7 +200,7 @@ static int lt_jac(double t, const double *Y, double *J, void *ctx)
     MTLTCtx *c = ctx;
     double rho = cpr_bg_rhoB_BBN(c->bg, t);
     double T_K = cpr_bg_T_of_t(c->bg, t) * cpr_MeV_to_Kelvin();
-    double f = cpr_bg_weak_nTOp_frwrd(c->bg, T_K), b = cpr_bg_weak_nTOp_bkwrd(c->bg, T_K);
+    double f = cpr_bg_weak_nTOp(c->bg, T_K), b = cpr_bg_weak_pTOn(c->bg, T_K);
     cpr_nuclear_rates_jac_lt(c->nucl, Y, T_K, rho, f, b, J);
     return 0;
 }
@@ -237,11 +237,11 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
      * (mirrors solve()'s nucl.apply_variations(cfg) call at the top). */
     cpr_nuclear_rates_apply_variations(nucl, cfg);
 
-    /* ---- Temperature era boundaries [s]. cpr_T_start/T_weak/T_nucl are
+    /* ---- Temperature era boundaries [s]. cpr_T_start_nucl/T_weak/T_nucl are
      * *fixed* era boundaries in Kelvin (10/1/0.11 MeV respectively,
      * independent of cfg -- see constants.h), unlike T_end which is the
      * user-configurable cfg->T_end_MeV. ---- */
-    double T_start_K = cpr_T_start(), T_weak_K = cpr_T_weak(), T_nucl_K = cpr_T_nucl();
+    double T_start_K = cpr_T_start_nucl(), T_weak_K = cpr_T_weak(), T_nucl_K = cpr_T_nucl();
     double T_end_K = cpr_config_T_end(cfg);
     /* MeV values of era boundaries, used only in verbose log messages. */
     double T_start_MeV = T_start_K / cpr_MeV_to_Kelvin();
@@ -261,8 +261,8 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     /* ------------------------------------------------------------------
      * HT era: n <-> p only, non-stiff RK45.
      * ------------------------------------------------------------------ */
-    double f0 = cpr_bg_weak_nTOp_frwrd(background, T_start_K);
-    double b0 = cpr_bg_weak_nTOp_bkwrd(background, T_start_K);
+    double f0 = cpr_bg_weak_nTOp(background, T_start_K);
+    double b0 = cpr_bg_weak_pTOn(background, T_start_K);
     double Y_ht[2] = { b0 / (b0 + f0), 0.0 };
     Y_ht[1] = 1.0 - Y_ht[0];
 
@@ -360,14 +360,14 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     MTLTCtx lt_ctx = { background, nucl };
     CPRBDFOpts bdf_opts_lt = cpr_ode_bdf_default_opts();
     bdf_opts_lt.rtol = 10.0 * cfg->numerical_precision;
-    /* Universal LT absolute tolerance (cfg->atol_large_LT) for every network,
-     * not just "large" -- was `cpr_config_is_large(cfg) ? atol_large_LT :
-     * 1e-20`, keyed on the literal network name, which broke bit-for-bit
-     * reproduction of a custom network run under a renamed user_nuclear_dir
-     * overlay (is_large=False -> looser atol). One atol everywhere removes that
+    /* Universal LT absolute tolerance (cfg->atol_LT) for every network,
+     * not just "large". Keying it on the network being *literally named*
+     * "large" broke bit-for-bit reproduction of a custom network run under a
+     * renamed user_nuclear_dir overlay, which got the looser tolerance
+     * instead. One atol everywhere removes that
      * name dependence; it only tightens non-large networks. Keep in lockstep
-     * with primat/nuclear_network.py's `atol = cfg.atol_large_LT`. */
-    bdf_opts_lt.atol = cfg->atol_large_LT;
+     * with primat/nuclear_network.py's `atol = cfg.atol_LT`. */
+    bdf_opts_lt.atol = cfg->atol_LT;
     if (cfg->show_progress && !cfg->verbose) {
         fprintf(stderr, "  LT."); fflush(stderr);
     }

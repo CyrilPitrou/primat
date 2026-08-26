@@ -94,7 +94,7 @@ def test_small_network_reports_exactly_its_eight_nuclides():
     ``Y_final`` -- no phantom extras.
 
     Regression guard for a past bug: ``_solve_LT`` used to zero-fill
-    ``Y_final`` with all of ``SPECIES_MD`` (SPECIES_SMALL + He6/Li8/Li6/B8),
+    ``Y_final`` with all of ``SPECIES_MT`` (SPECIES_SMALL + He6/Li8/Li6/B8),
     padding the small network up to a spurious 12-nuclide ``Y_final`` even
     though its ODE state vector (``abundance_names``) is only the 8 above.
     That mismatch also leaked into the MC nuclide set (``nuclide_names =
@@ -114,7 +114,7 @@ def test_small_network_reports_exactly_its_eight_nuclides():
     # And for `small` that set is exactly the 8 SPECIES_SMALL members.
     assert set(pr.nuclear.Y_final) == set(SPECIES_SMALL)
     assert len(pr.nuclear.Y_final) == 8
-    # None of the four SPECIES_MD-only extras should appear.
+    # None of the four SPECIES_MT-only extras should appear.
     for phantom in ("He6", "Li8", "Li6", "B8"):
         assert phantom not in pr.nuclear.Y_final
 

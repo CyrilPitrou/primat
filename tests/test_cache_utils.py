@@ -174,8 +174,8 @@ def test_cache_write_failure_warns_instead_of_raising(tmp_path):
 
 def test_cache_dir_not_in_weak_rate_fingerprint():
     """Cache LOCATION must not invalidate caches (it cannot affect numbers)."""
-    from primat.weak_rates.cache import _WEAK_RATE_BG_FIELDS
-    assert "cache_dir" not in _WEAK_RATE_BG_FIELDS
+    from primat.weak_rates.cache import WEAK_RATE_BG_FIELDS
+    assert "cache_dir" not in WEAK_RATE_BG_FIELDS
 
 
 def test_shipped_data_uses_cache_plasma_weak_layout():

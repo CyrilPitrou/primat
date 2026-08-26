@@ -50,9 +50,6 @@ result = run_bbn({
 variations); `delta_<reaction>` is designed for deterministic sensitivity
 studies (additive variations). They can be used together, but interpret the
 combined effect carefully.
-
-There is also a `rescale_nuclear_rates` flag. It is accepted and stored but
-read by nothing: `delta_<reaction>` applies whether or not you set it.
 :::
 
 ## 3. Computing the uncertainty: `run_mc()` and `--mc N`

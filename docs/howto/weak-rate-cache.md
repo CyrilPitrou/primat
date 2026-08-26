@@ -13,7 +13,7 @@ affects its numeric content (background thermodynamics,
 `sampling_nTOp_per_decade`/`sampling_nTOp_thermal_per_decade`,
 `radiative_corrections`, `finite_mass_corrections`, the neutrino degeneracy
 `munuOverTnu`, the NEVO table selection, etc. — the authoritative lists are
-`_WEAK_RATE_BG_FIELDS` and `_THERMAL_BG_FIELDS` in
+`WEAK_RATE_BG_FIELDS` and `THERMAL_BG_FIELDS` in
 `primat/weak_rates/cache.py`, each field carrying a comment on why it is in
 or out). The same hash is also written into the file as a
 `# fingerprint_hash:`/`# fingerprint:` header, together with the full field
@@ -50,7 +50,7 @@ across runs that differ only in something the thermal integral cannot see
 the integral *does* see is keyed — including the electron-neutrino degeneracy
 `munuOverTnu`/`munuOverTnu_e`, which enters the integrands' neutrino
 occupation directly. Each exclusion is justified in a comment next to
-`_THERMAL_BG_FIELDS`; if you add a term to the thermal integrand, check
+`THERMAL_BG_FIELDS`; if you add a term to the thermal integrand, check
 whether it reads a config field that list does not yet cover.
 
 The physical constants are keyed the same way, through a `constants_hash`

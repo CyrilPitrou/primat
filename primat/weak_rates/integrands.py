@@ -46,7 +46,7 @@ exp_cutoff = 3e+2
 # Fermi-Dirac helper functions — JIT-compiled when numba is available.
 # These capture nothing from any enclosing scope (only the module-level
 # exp_cutoff constant), so they can live at module level and be wrapped
-# with @njit.  Call _setup_fd_impls(cfg.numba_installed) before first use.
+# with @njit.  Call _setup_fd_impls(cfg.use_numba) before first use.
 #
 # Each kernel is written ONCE, using np.where for the tail cutoff (instead
 # of a Python if/else), which makes it simultaneously:
@@ -137,7 +137,7 @@ def FD_nu_e3p2(E, phi, x):
 
 
 # Pristine (pure-Python) implementations, kept aside so _setup_fd_impls can
-# re-wrap from scratch if called again with a different numba_installed value
+# re-wrap from scratch if called again with a different use_numba value
 # (otherwise a second PRIMATConfig with the opposite setting would silently
 # keep reusing whichever variant -- jitted or not -- was installed first).
 _FD_IMPLS_ORIG = dict(
@@ -146,7 +146,7 @@ _FD_IMPLS_ORIG = dict(
     FD_nu_e2p1=FD_nu_e2p1, FD_nu_e3p1=FD_nu_e3p1, FD_nu_e3p2=FD_nu_e3p2,
 )
 
-# Remembers which numba_installed value the module-level FD_* names were last
+# Remembers which use_numba value the module-level FD_* names were last
 # wrapped for; None means "not yet set up".
 _fd_impls_numba = None
 
@@ -155,21 +155,21 @@ _fd_impls_numba = None
 _fd_impls_lock = threading.Lock()
 
 
-def _setup_fd_impls(numba_installed):
+def _setup_fd_impls(use_numba):
     global FD_nu3, FD2, FD_nu_e2p0, FD_nu_e3p0, FD_nu_e4p2, FD_nu_e2p2, \
            FD_nu_e4p1, FD_nu_e2p1, FD_nu_e3p1, FD_nu_e3p2, _fd_impls_numba
     with _fd_impls_lock:
-        _setup_fd_impls_locked(numba_installed)
+        _setup_fd_impls_locked(use_numba)
 
 
-def _setup_fd_impls_locked(numba_installed):
+def _setup_fd_impls_locked(use_numba):
     """The body of :func:`_setup_fd_impls`, run under ``_fd_impls_lock``."""
     global FD_nu3, FD2, FD_nu_e2p0, FD_nu_e3p0, FD_nu_e4p2, FD_nu_e2p2, \
            FD_nu_e4p1, FD_nu_e2p1, FD_nu_e3p1, FD_nu_e3p2, _fd_impls_numba
-    if _fd_impls_numba == numba_installed:
+    if _fd_impls_numba == use_numba:
         return
     # Always start from the pristine pure-Python implementations so this is
-    # idempotent regardless of which way numba_installed flips.
+    # idempotent regardless of which way use_numba flips.
     FD_nu3      = _FD_IMPLS_ORIG['FD_nu3']
     FD2         = _FD_IMPLS_ORIG['FD2']
     FD_nu_e2p0  = _FD_IMPLS_ORIG['FD_nu_e2p0']
@@ -180,8 +180,8 @@ def _setup_fd_impls_locked(numba_installed):
     FD_nu_e2p1  = _FD_IMPLS_ORIG['FD_nu_e2p1']
     FD_nu_e3p1  = _FD_IMPLS_ORIG['FD_nu_e3p1']
     FD_nu_e3p2  = _FD_IMPLS_ORIG['FD_nu_e3p2']
-    if not numba_installed:
-        _fd_impls_numba = numba_installed
+    if not use_numba:
+        _fd_impls_numba = use_numba
         return
     try:
         from numba import njit
@@ -211,5 +211,5 @@ def _setup_fd_impls_locked(numba_installed):
         pass
     # Last, so a thread that finds the flag set also finds the rebinding
     # finished.
-    _fd_impls_numba = numba_installed
+    _fd_impls_numba = use_numba
 

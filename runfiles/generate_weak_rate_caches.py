@@ -36,10 +36,10 @@ Expect tens of minutes: each combination's thermal (CCRTh) table is a vegas
 Monte-Carlo integration, and there are five of them.
 
 The cache filenames embed a hash of the weak-rate / thermal fingerprint
-(``weak_rates/cache.py``: ``_weak_rate_fingerprint`` / ``_thermal_fingerprint``
-and their ``_WEAK_RATE_BG_FIELDS`` / ``_THERMAL_BG_FIELDS`` field lists).
+(``weak_rates/cache.py``: ``weak_rate_fingerprint`` / ``thermal_fingerprint``
+and their ``WEAK_RATE_BG_FIELDS`` / ``THERMAL_BG_FIELDS`` field lists).
 Whenever those field lists change -- e.g. a field is added to or removed from
-``_WEAK_RATE_BG_FIELDS`` -- EVERY hash shifts and the previously shipped files
+``WEAK_RATE_BG_FIELDS`` -- EVERY hash shifts and the previously shipped files
 become orphaned (they would never be hit again, so they only bloat the repo).
 
 To keep the shipped set self-consistent, this script computes the exact set
@@ -87,8 +87,8 @@ from primat import PRIMAT
 from primat.config import PRIMATConfig
 from primat.backend import run_bbn, HAS_C_BACKEND
 from primat.cache_utils import fingerprint_hash, weak_cache_dir
-from primat.weak_rates.cache import (_weak_rate_fingerprint,
-                                       _thermal_fingerprint)
+from primat.weak_rates.cache import (weak_rate_fingerprint,
+                                       thermal_fingerprint)
 
 # Each entry only lists the flags that deviate from the PRIMATConfig defaults
 # (radiative_corrections/finite_mass_corrections/thermal_corrections all
@@ -141,8 +141,8 @@ def _expected_filenames(combos):
         # Verified: this route reproduces the PRIMAT(...).cfg hashes exactly.
         cfg = PRIMATConfig(params=dict(extra, verbose=False))
         cache_dir = weak_cache_dir(cfg)
-        expected.add("nTOp_" + fingerprint_hash(_weak_rate_fingerprint(cfg)) + ".txt")
-        expected.add("nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
+        expected.add("nTOp_" + fingerprint_hash(weak_rate_fingerprint(cfg)) + ".txt")
+        expected.add("nTOp_thermal_" + fingerprint_hash(thermal_fingerprint(cfg)) + ".txt")
     return expected, cache_dir
 
 
@@ -176,7 +176,7 @@ def _thermal_cache_path(extra):
     """
     cfg = PRIMATConfig(params=dict(extra, verbose=False))
     return os.path.join(weak_cache_dir(cfg),
-                         "nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
+                         "nTOp_thermal_" + fingerprint_hash(thermal_fingerprint(cfg)) + ".txt")
 
 
 def _compare_thermal_with_c(extra, th_path):

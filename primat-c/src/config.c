@@ -314,7 +314,7 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(show_progress, F_BOOL),
     FLD(debug, F_BOOL),
     FLD(numerical_precision, F_DOUBLE),
-    FLD(numba_installed, F_BOOL),
+    FLD(use_numba, F_BOOL),
     FLD(strict_params, F_BOOL),
     FLD(incomplete_decoupling, F_BOOL),
     FLD(QED_corrections, F_BOOL),
@@ -384,8 +384,7 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(rate_grid_T9_max, F_DOUBLE),
     FLD(network, F_STRING),
     FLD(amax, F_INT_OR_NONE),
-    FLD(atol_large_LT, F_DOUBLE),
-    FLD(rescale_nuclear_rates, F_BOOL),
+    FLD(atol_LT, F_DOUBLE),
     FLD(mc_rate_rescale_cap, F_DOUBLE_OR_NONE),
     FLD(nuclear_qed_corrections, F_BOOL),
     FLD(user_nuclear_dir, F_STRING_OR_NONE),
@@ -635,7 +634,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->show_progress = 1;
     cfg->debug = 0;
     cfg->numerical_precision = 1.e-7;
-    cfg->numba_installed = 1;
+    cfg->use_numba = 1;
     cfg->strict_params = 0;
 
     cfg->incomplete_decoupling = 1;
@@ -702,8 +701,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->rate_grid_T9_max = 10.0;
     cfg->network = cpr_strdup("small");
     cfg->amax = -1; /* None */
-    cfg->atol_large_LT = 1.e-26;
-    cfg->rescale_nuclear_rates = 0;
+    cfg->atol_LT = 1.e-26;
     cfg->mc_rate_rescale_cap = 30.0; /* 0.0 = no cap (mirrors Python None) */
     cfg->nuclear_qed_corrections = 1;
     cfg->user_nuclear_dir = NULL;
@@ -745,8 +743,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     return 0;
 }
 
-int cpr_config_is_small(const CPRConfig *cfg) { return strcmp(cfg->network, "small") == 0; }
-int cpr_config_is_large(const CPRConfig *cfg) { return strcmp(cfg->network, "large") == 0; }
+int cpr_config_network_is_small(const CPRConfig *cfg) { return strcmp(cfg->network, "small") == 0; }
 
 double cpr_config_Mpl(const CPRConfig *cfg) { return 1. / sqrt(cfg->GN); }
 
@@ -843,7 +840,7 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
     }
     /* Resolved default (cfg->data_dir, set by cpr_config_init_defaults from
      * the --data-dir flag / CPRIMAT_DATA_DIR env var / the Python backend's
-     * cfg._resolved_data_dir), always tried last (and returned even when
+     * cfg.resolved_data_dir), always tried last (and returned even when
      * missing, so the caller's "file not found" error points at the expected
      * location). cfg->data_dir is the data folder itself
      * (e.g. .../primat/data), not its parent. */
@@ -1414,8 +1411,8 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
                 "Omegach2=%.6g is out of range: must be > 0", cfg->Omegach2);
     CPR_REQUIRE(cfg->h > 0,
                 "h=%.6g is out of range: must be > 0", cfg->h);
-    CPR_REQUIRE(cfg->atol_large_LT > 0,
-                "atol_large_LT=%.6g is out of range: must be > 0", cfg->atol_large_LT);
+    CPR_REQUIRE(cfg->atol_LT > 0,
+                "atol_LT=%.6g is out of range: must be > 0", cfg->atol_LT);
     CPR_REQUIRE(cfg->epsrel_thermal > 0,
                 "epsrel_thermal=%.6g is out of range: must be > 0", cfg->epsrel_thermal);
     CPR_REQUIRE(cfg->t_decay_end > 0,

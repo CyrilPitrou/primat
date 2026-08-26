@@ -46,7 +46,7 @@ config-dependent values — they take ``me`` as an explicit argument precisely
 so the compiled code is identical for every config — and each instance
 captures its own references in ``_setup_integrand_impls``, so a later rebind
 cannot retroactively change an existing :class:`Plasma`.  The only residual
-cost is that alternating ``cfg.numba_installed`` between instances re-wraps
+cost is that alternating ``cfg.use_numba`` between instances re-wraps
 them each time.
 
 Build an instance explicitly:
@@ -192,14 +192,14 @@ def _dp_e_dT_intgd(E, Tg, me):
 
 
 # Pristine pure-Python implementations, kept aside so _setup_electron_integrands
-# can re-wrap from scratch if called again with a different numba_installed value
+# can re-wrap from scratch if called again with a different use_numba value
 # (mirrors weak_rates/integrands.py's _FD_IMPLS_ORIG mechanism).
 _ELEC_INTGD_ORIG = dict(
     _rho_e_intgd=_rho_e_intgd, _drho_e_dT_intgd=_drho_e_dT_intgd,
     _p_e_intgd=_p_e_intgd, _dp_e_dT_intgd=_dp_e_dT_intgd,
 )
 
-# Remembers which numba_installed value the module-level integrands were last
+# Remembers which use_numba value the module-level integrands were last
 # wrapped for; None means "not yet set up".
 _elec_intgd_numba = None
 
@@ -210,13 +210,13 @@ _elec_intgd_numba = None
 _elec_intgd_lock = threading.Lock()
 
 
-def _setup_electron_integrands(numba_installed):
+def _setup_electron_integrands(use_numba):
     """(Re)bind the four module-level e± integrands, optionally njit-compiled.
 
-    Idempotent, thread-safe and process-wide: the first call with ``numba_installed=True``
+    Idempotent, thread-safe and process-wide: the first call with ``use_numba=True``
     wraps each integrand with ``njit(cache=True)`` (compiled lazily on first
     use, then persisted to numba's on-disk cache); later calls with the same
-    value are a no-op, and flipping ``numba_installed`` restores the pristine
+    value are a no-op, and flipping ``use_numba`` restores the pristine
     pure-Python versions first. All Plasma instances share the resulting
     compiled objects (and hence the same disk cache), so only the very first
     process to touch them pays the ~0.5 s JIT cost.
@@ -224,15 +224,15 @@ def _setup_electron_integrands(numba_installed):
     global _rho_e_intgd, _drho_e_dT_intgd, _p_e_intgd, _dp_e_dT_intgd, \
            _elec_intgd_numba
     with _elec_intgd_lock:
-        if _elec_intgd_numba == numba_installed:
+        if _elec_intgd_numba == use_numba:
             return
         # Always restart from the pristine implementations so this is idempotent
-        # regardless of which way numba_installed flips.
+        # regardless of which way use_numba flips.
         _rho_e_intgd     = _ELEC_INTGD_ORIG['_rho_e_intgd']
         _drho_e_dT_intgd = _ELEC_INTGD_ORIG['_drho_e_dT_intgd']
         _p_e_intgd       = _ELEC_INTGD_ORIG['_p_e_intgd']
         _dp_e_dT_intgd   = _ELEC_INTGD_ORIG['_dp_e_dT_intgd']
-        if numba_installed:
+        if use_numba:
             try:
                 from numba import njit
                 _rho_e_intgd     = njit(_rho_e_intgd, cache=True)
@@ -243,7 +243,7 @@ def _setup_electron_integrands(numba_installed):
                 pass
         # Last, so a thread that finds the flag set also finds the rebinding
         # finished.
-        _elec_intgd_numba = numba_installed
+        _elec_intgd_numba = use_numba
 
 
 # ---------------------------------------------------------------------------
@@ -710,7 +710,7 @@ class Plasma:
         The dρ_e/dTγ and dp_e/dTγ integrands are obtained by differentiating
         the Fermi-Dirac factor w.r.t. Tγ: d/dTγ[1/(eᴱ+1)] = E/(4Tγ cosh²(E/2)).
 
-        When ``cfg.numba_installed`` is True and ``numba`` is importable, all four
+        When ``cfg.use_numba`` is True and ``numba`` is importable, all four
         are wrapped with ``njit(cache=True)`` for JIT compilation (persisted to
         numba's on-disk cache across processes); otherwise equivalent
         pure-Python functions are used.  Numerical results are identical in both
@@ -728,7 +728,7 @@ class Plasma:
         """
         # Wrap (or restore) the module-level integrands for this numba setting;
         # idempotent and process-wide, so the JIT cost is paid at most once.
-        _setup_electron_integrands(cfg.numba_installed)
+        _setup_electron_integrands(cfg.use_numba)
         self._rho_e_int_impl = _rho_e_intgd
         self._drho_e_dT_impl = _drho_e_dT_intgd
         self._p_e_int_impl   = _p_e_intgd

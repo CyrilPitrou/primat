@@ -160,10 +160,10 @@ def test_perturbing_a_constant_changes_the_weak_cache_filename():
     which set is proven by test_cache_constant_deps.py.
     """
     from primat.cache_utils import CACHE_CONSTANTS, fingerprint_hash
-    from primat.weak_rates.cache import _weak_rate_fingerprint
+    from primat.weak_rates.cache import weak_rate_fingerprint
 
     def cache_name(cfg):
-        return "nTOp_" + fingerprint_hash(_weak_rate_fingerprint(cfg)) + ".txt"
+        return "nTOp_" + fingerprint_hash(weak_rate_fingerprint(cfg)) + ".txt"
 
     base = cache_name(PRIMATConfig())
     for name in OVERRIDABLE_CONSTANTS:

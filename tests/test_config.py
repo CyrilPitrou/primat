@@ -61,7 +61,7 @@ def test_default_construction():
     and sane."""
     cfg = PRIMATConfig()
     assert cfg.Omegabh2 > 0
-    assert cfg.is_small is True
+    assert cfg.network_is_small is True
     assert cfg.numerical_precision > 0
 
 
@@ -152,7 +152,7 @@ def test_p_rate_keys_count():
     """``p_rxn``/``delta_rxn`` carry one MCMC weight per *configured*
     network's reaction (small/large±amax), not always the full large set --
     see the "Corrected bug on MC" fix in ``PRIMATConfig.__init__``, which reads
-    ``load_reaction_names(self._resolved_data_dir, self.network)`` rather than the
+    ``load_reaction_names(self.resolved_data_dir, self.network)`` rather than the
     hardcoded ``_REACTIONS_LARGE`` list."""
     from primat.network_data import load_network
 

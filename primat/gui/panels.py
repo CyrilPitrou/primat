@@ -398,7 +398,7 @@ def weak_rates_text(cfg, background):
         A Python background object (e.g. ``primat.gui.app._build_background``'s
         result) -- built separately from whichever backend actually solved
         the BBN network, since only the Python background exposes
-        ``weak_nTOp_frwrd``/``weak_nTOp_bkwrd``.
+        ``weak_nTOp``/``weak_pTOn``.
 
     Returns
     -------
@@ -406,8 +406,8 @@ def weak_rates_text(cfg, background):
         Tab-separated text with one header line and 500 data rows.
     """
     T_K = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start_cosmo), 500)
-    frwrd = background.weak_nTOp_frwrd(T_K)
-    bkwrd = background.weak_nTOp_bkwrd(T_K)
+    frwrd = background.weak_nTOp(T_K)
+    bkwrd = background.weak_pTOn(T_K)
     lines = ["T[K]\tGamma_nTOp[1/s]\tGamma_pTOn[1/s]"]
     for t, f, b in zip(T_K, frwrd, bkwrd):
         lines.append(f"{t:.6e}\t{f:.6e}\t{b:.6e}")
@@ -541,7 +541,7 @@ def render_downloads_panel(run, mc=None, background=None):
         )
     if run.cfg.network == "large":
         decays_path = os.path.join(
-            run.cfg._resolved_data_dir, "nuclear", "tables", "decays.txt"
+            run.cfg.resolved_data_dir, "nuclear", "tables", "decays.txt"
         )
         try:
             with open(decays_path, "rb") as fh:

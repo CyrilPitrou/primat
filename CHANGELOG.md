@@ -153,7 +153,7 @@ in this repository is the authoritative source.
   single temporary file; and the progress display's stop flag was read outside
   its mutex. All four are now safe, and ThreadSanitizer reports nothing where
   it previously reported 53 races.
-- **Two configurations differing in `numba_installed` can be built from
+- **Two configurations differing in `use_numba` can be built from
   different threads.** The just-in-time kernel rebinding is process-wide and
   marked itself complete before it was, so a second thread could re-wrap an
   already-compiled function and die on a numba error naming nothing about

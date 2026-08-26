@@ -76,8 +76,10 @@ double cpr_MeV_to_g(void);
 double cpr_MeV_to_cmm1(void);
 double cpr_MeV4_to_gcmm3(void);
 
-/* ---- Fixed temperature eras [K] ---- */
-double cpr_T_start(void);  /* 10 MeV */
+/* ---- Fixed temperature eras: quoted in MeV, returned in Kelvin ----
+ * cpr_T_start_nucl is where the *nuclear* network starts; the *background*
+ * integration starts higher, at the overridable cfg->T_start_cosmo_MeV. */
+double cpr_T_start_nucl(void);  /* 10 MeV */
 double cpr_T_weak(void);   /* 1 MeV */
 double cpr_T_nucl(void);   /* 0.11 MeV */
 

@@ -27,7 +27,7 @@ BARYON_TOL = 1e-10
 # lands orders of magnitude above it. Deliberately not a measured number --
 # the previous -1e-40 was one, and it failed on scipy 1.11 (where BDF
 # undershoots to -2.7e-31 on the large network) while passing on scipy 1.18.
-NEGATIVE_FLOOR = -DEFAULT_PARAMS["atol_large_LT"]
+NEGATIVE_FLOOR = -DEFAULT_PARAMS["atol_LT"]
 
 
 def _AZ(cfg, names):
@@ -90,7 +90,7 @@ def test_baryon_number_conserved_at_every_accepted_step(network):
     cfg = net.cfg
     eras = (("HT", ["n", "p"]),
             ("MT", net.nucl._mt_net.species),
-            ("LT", net.nucl.species_large))
+            ("LT", net.nucl.species_LT))
     for era, names in eras:
         sol = store[era]
         A, _ = _AZ(cfg, names)
@@ -248,8 +248,8 @@ def test_reaction_rates_are_never_negative_outside_the_master_grid(rate_grid_T9_
                          "rate_grid_T9_max": rate_grid_T9_max})
     cfg = run.cfg
     for net in (run.nucl._mt_net, run.nucl._lt_net):
-        buf = np.array(net.fill_buffer(cfg.T_weak, run.background.weak_nTOp_frwrd,
-                                       run.background.weak_nTOp_bkwrd, clamp=False))
+        buf = np.array(net.fill_buffer(cfg.T_weak, run.background.weak_nTOp,
+                                       run.background.weak_pTOn, clamp=False))
         assert buf[2::2].min() >= 0.0, "forward rate"
         assert buf[3::2].min() >= 0.0, "reverse rate"
 
@@ -302,7 +302,7 @@ def test_weak_rate_tends_to_free_neutron_decay_at_low_temperature():
     run = PRIMAT(params={"network": "small"})
     cfg = run.cfg
     for T_MeV, tol in ((1e-2, 1e-3), (1e-3, 1e-4), (2e-4, 1e-5)):
-        rate = float(run.background.weak_nTOp_frwrd(T_MeV * cfg.MeV_to_Kelvin))
+        rate = float(run.background.weak_nTOp(T_MeV * cfg.MeV_to_Kelvin))
         assert abs(rate * cfg.tau_n - 1.0) < tol, f"T = {T_MeV} MeV"
 
 
@@ -326,16 +326,16 @@ def test_weak_rates_obey_detailed_balance_above_neutrino_decoupling():
     Q = cfg.mn - cfg.mp
     for T_MeV, tol in ((10.0, 1e-6), (5.0, 1e-5)):
         T_K = T_MeV * cfg.MeV_to_Kelvin
-        ratio = (float(born.background.weak_nTOp_bkwrd(T_K))
-                 / float(born.background.weak_nTOp_frwrd(T_K)))
+        ratio = (float(born.background.weak_pTOn(T_K))
+                 / float(born.background.weak_nTOp(T_K)))
         assert abs(ratio / np.exp(-Q / T_MeV) - 1.0) < tol, f"Born, T = {T_MeV}"
 
     default = PRIMAT(params={"network": "small"})
     recoil = (cfg.mn / cfg.mp) ** 1.5
     for T_MeV in (5.0, 3.0, 2.0, 1.5):
         T_K = T_MeV * cfg.MeV_to_Kelvin
-        ratio = (float(default.background.weak_nTOp_bkwrd(T_K))
-                 / float(default.background.weak_nTOp_frwrd(T_K)))
+        ratio = (float(default.background.weak_pTOn(T_K))
+                 / float(default.background.weak_nTOp(T_K)))
         assert abs(ratio / (recoil * np.exp(-Q / T_MeV)) - 1.0) < 1e-3, \
             f"finite mass, T = {T_MeV}"
 
@@ -368,8 +368,8 @@ def test_saha_equilibrium_nulls_every_thermonuclear_reaction(network):
             Y = np.array([0.25 if s == "n" else 0.75 if s == "p"
                           else nn._saha_YA(s, 0.25, 0.75, T_K, eta_b)
                           for s in net.species])
-            buf = np.array(net.fill_buffer(T_K, run.background.weak_nTOp_frwrd,
-                                           run.background.weak_nTOp_bkwrd,
+            buf = np.array(net.fill_buffer(T_K, run.background.weak_nTOp,
+                                           run.background.weak_pTOn,
                                            clamp=False))
             fwd, bwd = _reaction_fluxes(comp, Y, rho, buf)
             checkable = np.isfinite(fwd) & np.isfinite(bwd) & (fwd > 0) & (bwd > 0)

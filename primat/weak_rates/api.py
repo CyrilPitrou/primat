@@ -21,7 +21,7 @@ import os
 import numpy as np
 from scipy.interpolate import interp1d
 
-from .cache import n_points_per_decade, _weak_rate_fingerprint
+from .cache import n_points_per_decade, weak_rate_fingerprint
 from .corrections import _build_rate_context, _correction_terms, \
     _thermal_correction_interpolants, ComputeFn
 from ..cache_utils import (fingerprint_hash, write_cache_with_fingerprint,
@@ -56,7 +56,7 @@ def _weak_rate_loglog_interp(T, rate):
     built only over the contiguous all-positive *suffix* of the table, and the
     rate is returned as 0 for ``T`` below that suffix -- physically the rate is
     negligible there and the caller
-    (:meth:`background.Background.weak_nTOp_bkwrd`) clamps it to 0 anyway. The
+    (:meth:`background.Background.weak_pTOn`) clamps it to 0 anyway. The
     forward rate is strictly positive over the whole grid, so its suffix is the
     full table.
 
@@ -187,8 +187,8 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     # cfg.sampling_nTOp_per_decade is points per decade of T (formerly
     # sampling_nTOp was the *total* point count, and before that the
     # per-era count when the network used three separate HT/MT/LT grids).
-    n_pts = n_points_per_decade(cfg.sampling_nTOp_per_decade, cfg.T_end, cfg.T_start)
-    T_all = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), n_pts)
+    n_pts = n_points_per_decade(cfg.sampling_nTOp_per_decade, cfg.T_end, cfg.T_start_nucl)
+    T_all = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start_nucl), n_pts)
 
     # Each correction term is already vectorised over T_all, so
     # the forward / backward rates are just the element-wise sum of the term
@@ -267,13 +267,13 @@ def InterpolateWeakRates(cfg):
     computed yet for this configuration).
 
     Args:
-        cfg : PRIMATConfig instance (provides _resolved_data_dir).
+        cfg : PRIMATConfig instance (provides resolved_data_dir).
 
     Returns:
         [frwrd, bkwrd] : two scipy interp1d objects (extrapolating), each mapping
                          T in Kelvin → rate in units of 1/tau_n.
     """
-    fp_hash = fingerprint_hash(_weak_rate_fingerprint(cfg))
+    fp_hash = fingerprint_hash(weak_rate_fingerprint(cfg))
     # Overlay read: cache_dir (if set) first, then the shipped package copy.
     path    = resolve_cache_file(cfg, "weak", "nTOp_" + fp_hash + ".txt")
     tab     = _read_weak_cache_table(path)
@@ -342,7 +342,7 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     thermal CCRTh correction is always handled separately, see step 5):
 
     1. Compute the fingerprint hash of the current configuration
-       (:func:`_weak_rate_fingerprint`).
+       (:func:`weak_rate_fingerprint`).
     2. If `cfg.weak_rate_cache` is True and `rates/weak/nTOp_<hash>.txt`
        exists, load and interpolate it directly (cheap: no integration at
        all).  The fingerprint is enforced by the *filename*: a different
@@ -394,7 +394,7 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     """
     forced_recompute = cfg.spectral_distortions and cfg.analytic_distortions
 
-    fp       = _weak_rate_fingerprint(cfg)
+    fp       = weak_rate_fingerprint(cfg)
     fp_hash  = fingerprint_hash(fp)
     fname    = "nTOp_" + fp_hash + ".txt"
     # Overlay read path (cache_dir first, else shipped copy); the write path

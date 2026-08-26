@@ -24,15 +24,15 @@ import numpy as np
 import pytest
 
 from primat.network_data import (phase_network,
-                          ORDER_SMALL, ORDER_MT, ORDER_LT, load_network,
-                          SPECIES_SMALL, SPECIES_MD)
+                          ORDER_SMALL, ORDER_MT, ORDER_LT_LARGE, load_network,
+                          SPECIES_SMALL, SPECIES_MT)
 from primat.network_builder import (compile_network, NetworkKernels,
                                  check_conservation)
 from primat.config import PRIMATConfig
 from _oracles import network_rhs, network_jacobian
 
-# ORDER_LT is now the *full* large-network order (429 entries spanning nuclides
-# up to A=23), which does not pair with SPECIES_MD (A<=8 only).  For the
+# ORDER_LT_LARGE is now the *full* large-network order (429 entries spanning nuclides
+# up to A=23), which does not pair with SPECIES_MT (A<=8 only).  For the
 # kernel/conservation tests below -- which need an order/species pair that's
 # actually self-consistent -- use the large network restricted to amax=8
 # instead -- the 68-reaction subset that replaced the old standalone
@@ -41,8 +41,8 @@ _ORDER_LT_AMAX8 = load_network(PRIMATConfig({"network": "large", "amax": 8}),
                                 era="LT").names
 
 _ORDERS = [("SMALL", ORDER_SMALL, SPECIES_SMALL),
-           ("MT", ORDER_MT, SPECIES_MD),
-           ("LT", _ORDER_LT_AMAX8, SPECIES_MD)]
+           ("MT", ORDER_MT, SPECIES_MT),
+           ("LT", _ORDER_LT_AMAX8, SPECIES_MT)]
 
 
 @pytest.mark.parametrize("label,order,species", _ORDERS)
@@ -105,9 +105,9 @@ def test_rhs_conserves_baryon_number(label, order, species):
 
 # (cfg params, era label, order attr, species, rhs method, jac method)
 _DRIVER_ERAS = [
-    ({"network": "small"}, "MT", "_order_MT", SPECIES_MD,  "rhsMT", "JacobianMT"),
-    ({"network": "large", "amax": 8}, "MT", "_order_MT", SPECIES_MD,  "rhsMT", "JacobianMT"),
-    ({"network": "large", "amax": 8}, "LT", "_order_LT", SPECIES_MD,  "rhsLT", "JacobianLT"),
+    ({"network": "small"}, "MT", "_order_MT", SPECIES_MT,  "rhsMT", "JacobianMT"),
+    ({"network": "large", "amax": 8}, "MT", "_order_MT", SPECIES_MT,  "rhsMT", "JacobianMT"),
+    ({"network": "large", "amax": 8}, "LT", "_order_LT", SPECIES_MT,  "rhsLT", "JacobianLT"),
 ]
 
 
@@ -124,7 +124,7 @@ def test_driver_methods_match_reference(network_params, era, order_attr, species
     cfg = PRIMATConfig({**network_params, "verbose": False})
     K = UpdateNuclearRates(cfg)
     order = getattr(K, order_attr)
-    species_eff = K.species_large if era == "LT" and network != "small" else species
+    species_eff = K.species_LT if era == "LT" and network != "small" else species
     net = phase_network(order, species_eff)
     rhs_method, jac_method = getattr(K, rhs_m), getattr(K, jac_m)
     
@@ -162,18 +162,18 @@ def test_buffer_orders_have_expected_lengths():
 
     ORDER_SMALL includes n__p + 12 nuclear reactions = 13 entries.
     ORDER_MT has 18 entries (n__p + 17).
-    ORDER_LT is now built from the *full* large network (the old "medium"
+    ORDER_LT_LARGE is now built from the *full* large network (the old "medium"
     network no longer exists) and has 429 entries (n__p + 428
     thermonuclear reactions, including all analytic beta-decay/
     electron-capture reactions up to A=23).
     """
     assert len(ORDER_SMALL) == 13, f"Expected 13, got {len(ORDER_SMALL)}"
     assert len(ORDER_MT) == 18,    f"Expected 18, got {len(ORDER_MT)}"
-    assert len(ORDER_LT) == 429,   f"Expected 429, got {len(ORDER_LT)}"
+    assert len(ORDER_LT_LARGE) == 429,   f"Expected 429, got {len(ORDER_LT_LARGE)}"
 
 
 def test_stoichiometry_conserves_baryon_and_charge():
-    """Every *nuclear* reaction in ORDER_LT must conserve A and Z.
+    """Every *nuclear* reaction in ORDER_LT_LARGE must conserve A and Z.
 
     n__p is excluded: it is the weak n↔p rate whose lepton charge is
     tracked separately via ``lepton_dZ`` (see test_formal_conservation_passes
@@ -190,7 +190,7 @@ def test_stoichiometry_conserves_baryon_and_charge():
     nz = PRIMATConfig().Nuclides
     A = {s: nz[s][0] + nz[s][1] for s in nz}
     Z = {s: nz[s][1] for s in nz}
-    for name in sorted(set(ORDER_LT) - {"n__p"}):
+    for name in sorted(set(ORDER_LT_LARGE) - {"n__p"}):
         react, prod = reaction_stoichiometry(name)
         dA = (sum(c * A[s] for s, c in prod.items() if s not in _LEPTON_Z)
               - sum(c * A[s] for s, c in react.items() if s not in _LEPTON_Z))

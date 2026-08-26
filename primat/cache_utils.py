@@ -298,7 +298,7 @@ def _cache_bases(cfg):
     bases = []
     if getattr(cfg, "cache_dir", None):
         bases.append(cfg.cache_dir)
-    bases.append(os.path.join(cfg._resolved_data_dir, "cache_plasma_weak"))
+    bases.append(os.path.join(cfg.resolved_data_dir, "cache_plasma_weak"))
     return bases
 
 

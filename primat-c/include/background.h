@@ -3,7 +3,7 @@
  * A "background" encapsulates everything the nuclear-network integration
  * needs about the expanding Universe: T_gamma(t)/t(T_gamma), the baryon
  * mass density rhoB_BBN(t) [g/cm^3] (the prefactor for nuclear reaction
- * rates), and the normalised n<->p weak rates weak_nTOp_frwrd/bkwrd(T)
+ * rates), and the normalised n<->p weak rates weak_nTOp/bkwrd(T)
  * [s^-1]. Two concrete kinds are ported:
  *
  *   CPR_BG_STANDARD: builds the full a<->t<->T relations and Friedmann
@@ -164,8 +164,8 @@ void cpr_background_free(CPRBackground *bg);
 double cpr_bg_T_of_t(const CPRBackground *bg, double t);   /* [MeV] */
 double cpr_bg_t_of_T(const CPRBackground *bg, double T);   /* [s] */
 double cpr_bg_rhoB_BBN(const CPRBackground *bg, double t); /* [g/cm^3] */
-double cpr_bg_weak_nTOp_frwrd(const CPRBackground *bg, double T_K); /* [s^-1] */
-double cpr_bg_weak_nTOp_bkwrd(const CPRBackground *bg, double T_K); /* [s^-1] */
+double cpr_bg_weak_nTOp(const CPRBackground *bg, double T_K); /* [s^-1] */
+double cpr_bg_weak_pTOn(const CPRBackground *bg, double T_K); /* [s^-1] */
 
 /* ---- Scale-factor interface (both kinds set has_scale_factor=1). ---- */
 double cpr_bg_a_of_T(const CPRBackground *bg, double T);
