@@ -34,6 +34,8 @@ typedef struct {
 int cpr_table_read(const char *path, size_t n_cols_hint, CPRTable *out,
                     char **errmsg);
 
+/* Releases the column arrays and zeroes the struct; `t` itself is the
+ * caller's. */
 void cpr_table_free(CPRTable *t);
 
 /* Reads one whole line from `f` into `buf` (at most `bufsize`-1 bytes plus the

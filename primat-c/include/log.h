@@ -12,6 +12,8 @@
 
 #include "config.h"
 
+#include <stdio.h>
+
 /* No-op unless cfg->verbose. Prints "[<tag>-c] " followed by the formatted
  * message and a trailing newline to stderr. `tag` should be one of
  * "init"/"opts"/"rates"/"weak"/"bg"/"nucl" to match the Python-side tags
@@ -32,14 +34,16 @@ void cpr_warn(const char *fmt, ...);
  * tests/test_verbose_parity.py. */
 void cpr_log_raw(const CPRConfig *cfg, const char *fmt, ...);
 
-/* True when the console can carry the decorative UTF-8 output (banner box,
- * rule).
+/* True when `stream` can carry the decorative UTF-8 output (the banner box, the
+ * results rule).
+ *
  * A Windows console in a legacy code page -- cp1252, the default outside UTF-8
  * mode -- renders those bytes as mojibake, so callers fall back to ASCII; a
- * redirected stream is a plain byte stream and takes UTF-8 unchanged. Mirrors
- * main.py's console_encodable(), which guards the same two places on the
- * Python side (where the mismatch raises UnicodeEncodeError rather than
- * garbling). */
-int cpr_console_takes_utf8(void);
+ * redirected stream is a plain byte stream and takes UTF-8 unchanged.
+ *
+ * Pass the stream the decoration is about to be written to, not an arbitrary
+ * one: the banner goes to stderr and the results rule to stdout, and either can
+ * be redirected without the other. Always 1 off Windows. */
+int cpr_console_takes_utf8(FILE *stream);
 
 #endif /* CPRIMAT_LOG_H */

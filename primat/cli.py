@@ -708,7 +708,7 @@ def _dispatch(args, parser):
         T_end_MeV = params.get("T_end_MeV", DEFAULT_PARAMS["T_end_MeV"])
         # "-" where the console codec cannot carry U+2500 (cp1252, the
         # Windows default), same guard as main.py's banner.
-        sep = ("─" if console_encodable("─") else "-") * 52
+        sep = ("─" if console_encodable("─", sys.stdout) else "-") * 52
         header = f"PRIMAT results at T = {T_end_MeV:g} MeV"
         print(sep)
         print(f"{header:^52}")

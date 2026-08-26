@@ -1,7 +1,30 @@
+# Makefile -- builds the standalone `primat-c` executable and everything used to
+# check it. Nothing here is needed to use primat from Python: `pip install`
+# compiles this same source through setup.py at the repository root.
+#
+#   make               build/primat-c, optimised
+#   make clean         remove build/ entirely
+#   make debug         the executable again, -O0 -g with ASan+UBSan
+#   make test          build and run the 27 unit programs in tests/unit
+#   make debug-test    the same, instrumented with ASan+UBSan
+#   make leak-test     the memory-stress workload under leaks(1) or valgrind
+#   make bench         time the two reference runs against the Python baseline
+#   make fuzz [RUNS=N] fuzz every parser that reads a user-supplied file
+#   make fuzz-coverage report what the evolved corpora actually reached
+#
+# CC/CFLAGS/LDFLAGS are overridable; CFLAGS_EXTRA is appended to CFLAGS, which
+# is how CI adds -Werror without restating the list and drifting from it.
+
 CC ?= cc
-# -MMD/-MP emit a per-object .d file listing the headers it #includes, so a
-# header edit (e.g. config.h, only #included transitively) correctly marks
-# every .o that depends on it stale 
+# -std=c11        the language this port is written in; nothing newer is used.
+# -Wall -Wextra   the build is kept warning-free under both; CI adds -Werror.
+# -Iinclude       so sources say #include "config.h", not a relative path.
+# -MMD -MP        emit a per-object .d file listing the headers it #includes, so
+#                 a header edit (e.g. config.h, only #included transitively)
+#                 correctly marks every .o that depends on it stale.
+# -pthread        mc.c runs its Monte-Carlo samples on worker threads.
+# -D_GNU_SOURCE   exposes the POSIX/GNU declarations glibc hides under a strict
+#                 -std=c11 (strtok_r, realpath, M_PI, ...).
 CFLAGS ?= -std=c11 -Wall -Wextra -O2 -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
 LDFLAGS ?= -lm -pthread
 # Appended, not replacing CFLAGS: lets CI add -Werror without having to
@@ -15,7 +38,7 @@ OBJ := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
 UNIT_SRC := $(wildcard tests/unit/*.c)
 UNIT_BIN := $(patsubst tests/unit/%.c,$(BUILD)/unit/%,$(UNIT_SRC))
 
-.PHONY: all debug test debug-test bench clean
+.PHONY: all debug test debug-test bench clean leak-test
 
 all: $(BUILD)/primat-c
 

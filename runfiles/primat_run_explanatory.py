@@ -36,7 +36,7 @@ cfg = dict(
     # All 95 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- General behaviour and numerical settings ----
-    # verbose=False,  # print primat's own progress messages
+    # verbose=False,  # print primat's own progress messages on stderr (stdout carries the results, so `--json` stays pipeable)
     # debug=False,  # print extra debug messages
     # show_progress=True,  # print compact stderr progress indicators (HT./MT./LT./done., MC counter) when verbose=False
     # numerical_precision=1e-07,  # rtol for all solve_ivp/ODE calls

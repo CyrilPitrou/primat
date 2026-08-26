@@ -1,4 +1,15 @@
-/* neutrino_history.c -- see neutrino_history.h. */
+/* neutrino_history.c -- see neutrino_history.h. What the neutrinos are doing
+ * while the plasma cools, in whichever of the three modes the configuration
+ * selects: read from a tabulated non-instantaneous-decoupling history, assumed
+ * instantaneous, or given a closed-form spectral distortion.
+ *
+ * The file opens with the path resolution and table loading that mode 1 needs
+ * (including the spectral table and its momentum grid), then the mode-2 and
+ * mode-3 constructors, then the query functions all three share -- temperature
+ * ratios, the heating rate that drives the scale-factor ODE, and the
+ * distortion correction the weak-rate integrands fold into their neutrino
+ * occupation.
+ */
 #include "neutrino_history.h"
 #include "xalloc.h"
 #include "constants.h"

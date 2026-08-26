@@ -3,7 +3,7 @@
  * Implements the core of Lepage's VEGAS algorithm (G.P. Lepage, J. Comput.
  * Phys. 27 (1978) 192): per-dimension adaptive importance sampling, with
  * the grid in each dimension refined after every iteration from that
- * iteration's f^2-weighted histogram, damped by ALPHA and equal-mass
+ * iteration's f^2-weighted histogram, damped by VEGAS_DAMPING and equal-mass
  * rebinned (the textbook formulation, as in Numerical Recipes' `vegas` or
  * GSL's `gsl_monte_vegas`).
  *
@@ -24,86 +24,86 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NDIM 2
-#define NG 50           /* bins per dimension */
+#define VEGAS_NDIM 2
+#define VEGAS_NBINS 50           /* bins per dimension */
 /* Grid-refinement damping exponent. 1.5 is the GSL / Numerical Recipes
  * default; Lepage's own `vegas` Python package -- the one
  * weak_rates/corrections.py imports -- defaults to alpha=0.5 instead, so the
  * two backends adapt their grids at different rates. That affects how fast
  * each converges, not what it converges to, and the CCRTh caches are
- * fingerprinted per backend; ALPHA is deliberately NOT in that fingerprint,
+ * fingerprinted per backend; VEGAS_DAMPING is deliberately NOT in that fingerprint,
  * so changing it here would silently stale the shipped tables. */
-#define ALPHA 1.5
-#define TINY 1.0e-300
+#define VEGAS_DAMPING 1.5
+#define VEGAS_TINY 1.0e-300
 
 typedef struct {
-    double edges[NDIM][NG + 1];   /* bin edges in real (domain) coordinates */
-    double hist[NDIM][NG];        /* per-iteration f^2-weight accumulator */
+    double edges[VEGAS_NDIM][VEGAS_NBINS + 1];   /* bin edges in real (domain) coordinates */
+    double hist[VEGAS_NDIM][VEGAS_NBINS];        /* per-iteration f^2-weight accumulator */
 } CPRVegasGrid;
 
-static void grid_init(CPRVegasGrid *g, const double lo[NDIM], const double hi[NDIM])
+static void grid_init(CPRVegasGrid *g, const double lo[VEGAS_NDIM], const double hi[VEGAS_NDIM])
 {
-    for (int d = 0; d < NDIM; d++) {
-        for (int i = 0; i <= NG; i++)
-            g->edges[d][i] = lo[d] + (hi[d] - lo[d]) * ((double)i / NG);
+    for (int d = 0; d < VEGAS_NDIM; d++) {
+        for (int i = 0; i <= VEGAS_NBINS; i++)
+            g->edges[d][i] = lo[d] + (hi[d] - lo[d]) * ((double)i / VEGAS_NBINS);
         memset(g->hist[d], 0, sizeof(g->hist[d]));
     }
 }
 
 /* Equal-mass rebin of one dimension's grid from its accumulated histogram,
  * following the standard VEGAS smoothing + damping + rebinning recipe. */
-static void refine_dim(double edges[NG + 1], const double hist_in[NG])
+static void refine_dim(double edges[VEGAS_NBINS + 1], const double hist_in[VEGAS_NBINS])
 {
-    double d[NG];
+    double d[VEGAS_NBINS];
 
     /* Smooth the raw f^2 histogram (three-point running average, with
      * two-point averages at the two edge bins) -- damps single-bin noise
      * spikes that would otherwise overreact the next grid refinement. */
-    if (NG == 1) {
+    if (VEGAS_NBINS == 1) {
         d[0] = hist_in[0];
     } else {
         d[0] = (hist_in[0] + hist_in[1]) / 2.0;
-        for (int i = 1; i < NG - 1; i++)
+        for (int i = 1; i < VEGAS_NBINS - 1; i++)
             d[i] = (hist_in[i - 1] + hist_in[i] + hist_in[i + 1]) / 3.0;
-        d[NG - 1] = (hist_in[NG - 2] + hist_in[NG - 1]) / 2.0;
+        d[VEGAS_NBINS - 1] = (hist_in[VEGAS_NBINS - 2] + hist_in[VEGAS_NBINS - 1]) / 2.0;
     }
 
     double sum = 0.0;
-    for (int i = 0; i < NG; i++) sum += d[i];
+    for (int i = 0; i < VEGAS_NBINS; i++) sum += d[i];
     if (sum <= 0.0) return;  /* f was exactly 0 everywhere this iteration: keep the old grid */
-    for (int i = 0; i < NG; i++) d[i] /= sum;  /* normalise to a probability per bin */
+    for (int i = 0; i < VEGAS_NBINS; i++) d[i] /= sum;  /* normalise to a probability per bin */
 
     /* Damped importance weight per old bin: rc[i] grows with how far above
-     * (or below) uniform (1/NG) that bin's probability mass is, raised to
-     * ALPHA -- bins seeing more of the integrand's f^2 mass get more of the
-     * NG new bins allocated to them next iteration. */
-    double rc[NG], sum_rc = 0.0;
-    for (int i = 0; i < NG; i++) {
-        if (d[i] < TINY) {
-            rc[i] = TINY;
+     * (or below) uniform (1/VEGAS_NBINS) that bin's probability mass is, raised to
+     * VEGAS_DAMPING -- bins seeing more of the integrand's f^2 mass get more of the
+     * VEGAS_NBINS new bins allocated to them next iteration. */
+    double rc[VEGAS_NBINS], sum_rc = 0.0;
+    for (int i = 0; i < VEGAS_NBINS; i++) {
+        if (d[i] < VEGAS_TINY) {
+            rc[i] = VEGAS_TINY;
         } else if (d[i] == 1.0) {
             rc[i] = 1.0;  /* (d-1)/log(d) -> 1 in this limit */
         } else {
-            rc[i] = pow((d[i] - 1.0) / log(d[i]), ALPHA);
+            rc[i] = pow((d[i] - 1.0) / log(d[i]), VEGAS_DAMPING);
         }
         sum_rc += rc[i];
     }
 
     /* Equal-mass rebin: walk the old bins accumulating rc, placing each new
-     * edge where the cumulative rc mass crosses a multiple of sum_rc/NG,
+     * edge where the cumulative rc mass crosses a multiple of sum_rc/VEGAS_NBINS,
      * linearly interpolating the edge position within whichever old bin
      * that crossing falls in. */
-    double old_edges[NG + 1];
+    double old_edges[VEGAS_NBINS + 1];
     memcpy(old_edges, edges, sizeof(old_edges));
-    double target = sum_rc / NG;
+    double target = sum_rc / VEGAS_NBINS;
     int old_i = 0;
     double acc = 0.0;  /* rc mass of bin old_i already consumed */
-    double new_edges[NG + 1];
+    double new_edges[VEGAS_NBINS + 1];
     new_edges[0] = old_edges[0];
-    new_edges[NG] = old_edges[NG];
-    for (int new_i = 1; new_i < NG; new_i++) {
+    new_edges[VEGAS_NBINS] = old_edges[VEGAS_NBINS];
+    for (int new_i = 1; new_i < VEGAS_NBINS; new_i++) {
         double needed = target;
-        while (old_i < NG - 1 && rc[old_i] - acc < needed) {
+        while (old_i < VEGAS_NBINS - 1 && rc[old_i] - acc < needed) {
             needed -= (rc[old_i] - acc);
             old_i++;
             acc = 0.0;
@@ -116,20 +116,20 @@ static void refine_dim(double edges[NG + 1], const double hist_in[NG])
     memcpy(edges, new_edges, sizeof(new_edges));
 }
 
-/* Draws one sample point, returning its domain coordinates in x[NDIM] and
+/* Draws one sample point, returning its domain coordinates in x[VEGAS_NDIM] and
  * the Jacobian |dx/dy| of the grid mapping at that point (the product,
- * over dimensions, of NG * (local bin width) -- see vegas.h). */
-static double sample_point(const CPRVegasGrid *g, CPRRng *rng, double x[NDIM], int iy[NDIM])
+ * over dimensions, of VEGAS_NBINS * (local bin width) -- see vegas.h). */
+static double sample_point(const CPRVegasGrid *g, CPRRng *rng, double x[VEGAS_NDIM], int iy[VEGAS_NDIM])
 {
     double jac = 1.0;
-    for (int d = 0; d < NDIM; d++) {
-        double u = cpr_rng_uniform(rng) * NG;
+    for (int d = 0; d < VEGAS_NDIM; d++) {
+        double u = cpr_rng_uniform(rng) * VEGAS_NBINS;
         int i = (int)u;
-        if (i >= NG) i = NG - 1;
+        if (i >= VEGAS_NBINS) i = VEGAS_NBINS - 1;
         double frac = u - i;
         double lo = g->edges[d][i], hi = g->edges[d][i + 1];
         x[d] = lo + frac * (hi - lo);
-        jac *= NG * (hi - lo);
+        jac *= VEGAS_NBINS * (hi - lo);
         iy[d] = i;
     }
     return jac;
@@ -142,20 +142,20 @@ static void run_iteration(CPRVegasGrid *g, CPRVegasFunc f, void *ctx, CPRRng *rn
                            int n_eval, int adapt, double *mean_out, double *var_out)
 {
     if (adapt) {
-        for (int d = 0; d < NDIM; d++) memset(g->hist[d], 0, sizeof(g->hist[d]));
+        for (int d = 0; d < VEGAS_NDIM; d++) memset(g->hist[d], 0, sizeof(g->hist[d]));
     }
 
     double sum = 0.0, sum_sq = 0.0;
     for (int n = 0; n < n_eval; n++) {
-        double x[NDIM];
-        int iy[NDIM];
+        double x[VEGAS_NDIM];
+        int iy[VEGAS_NDIM];
         double jac = sample_point(g, rng, x, iy);
         double g_val = f(x, ctx) * jac;
         sum += g_val;
         sum_sq += g_val * g_val;
         if (adapt) {
             double w = g_val * g_val;
-            for (int d = 0; d < NDIM; d++) g->hist[d][iy[d]] += w;
+            for (int d = 0; d < VEGAS_NDIM; d++) g->hist[d][iy[d]] += w;
         }
     }
 
@@ -164,7 +164,7 @@ static void run_iteration(CPRVegasGrid *g, CPRVegasFunc f, void *ctx, CPRRng *rn
     if (var_of_mean < 0.0) var_of_mean = 0.0;  /* guards a tiny negative from FP cancellation */
 
     if (adapt) {
-        for (int d = 0; d < NDIM; d++) refine_dim(g->edges[d], g->hist[d]);
+        for (int d = 0; d < VEGAS_NDIM; d++) refine_dim(g->edges[d], g->hist[d]);
     }
 
     *mean_out = mean;
@@ -194,7 +194,7 @@ CPRVegasResult cpr_vegas_integrate(CPRVegasFunc f, void *ctx,
     for (int it = 0; it < n_itn_measure; it++) {
         double mean, var;
         run_iteration(&grid, f, ctx, &rng, n_eval, 1, &mean, &var);
-        double w = 1.0 / (var > TINY ? var : TINY);
+        double w = 1.0 / (var > VEGAS_TINY ? var : VEGAS_TINY);
         sum_w += w;
         sum_w_mean += w * mean;
     }

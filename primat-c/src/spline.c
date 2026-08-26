@@ -1,4 +1,11 @@
-/* spline.c -- see spline.h. */
+/* spline.c -- see spline.h. Interpolation, in three layers: segment lookup
+ * (plain and hinted), piecewise-linear evaluation, and not-a-knot cubic
+ * splines -- fit, evaluate, free.
+ *
+ * The rate-table resampler at the end is the one caller that combines them:
+ * it interpolates in log10-log10 where it can and falls back to linear where a
+ * zero makes the logarithm undefined.
+ */
 #include "spline.h"
 #include "log.h"
 #include "xalloc.h"

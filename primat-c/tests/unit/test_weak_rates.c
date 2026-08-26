@@ -17,7 +17,7 @@
  * The from-scratch thermal computation (L_CCRTh_compute in weak_rates.c)
  * is intentionally not exercised here via
  * cpr_weak_rates_init: that path builds a full T-grid up to a *fixed*
- * 10 MeV boundary (cpr_T_start_nucl(), independent of any PyPRConfig field),
+ * 10 MeV boundary (cpr_T_start_nucl(), independent of any PRIMATConfig field),
  * where the (E,k) integration domain genuinely widens to E_max~390 (see
  * L_thermal_2d's docstring) -- a real physics-driven cost that Python's
  * own dblquad-based implementation pays too (multi-minute per from-scratch

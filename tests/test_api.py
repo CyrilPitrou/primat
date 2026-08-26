@@ -125,7 +125,7 @@ def test_solve_cached():
     assert res1["YPBBN"] == res2["YPBBN"]
 
 
-def test_PyPRresults_returns_dict(solved_small):
+def test_primat_results_returns_dict(solved_small):
     """primat_results() returns the documented result dict, with the headline
     observables present."""
     res = solved_small.primat_results()
@@ -223,20 +223,55 @@ def test_banner_falls_back_to_ascii_on_a_legacy_console(monkeypatch):
     box-drawing or block-element characters. ``print(_banner())`` raised
     ``UnicodeEncodeError`` there and aborted every verbose run, including
     ``runfiles/primat_run.py``.
+
+    The banner is written to stderr, so stderr's codec is what must decide
+    which rendering it gets. Redirecting stdout alone must not change it.
     """
     import io
     import sys
 
     from primat.main import _banner, console_encodable
 
-    legacy = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
-    monkeypatch.setattr(sys, "stdout", legacy)
-    assert not console_encodable("┏")
+    def wrapper(encoding):
+        return io.TextIOWrapper(io.BytesIO(), encoding=encoding)
+
+    legacy = wrapper("cp1252")
+    monkeypatch.setattr(sys, "stderr", legacy)
+    monkeypatch.setattr(sys, "stdout", wrapper("utf-8"))
+    assert not console_encodable("┏", sys.stderr)
     banner = _banner()
     banner.encode("cp1252")            # the point: this must not raise
     assert "PRIMAT" in banner
 
-    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(),
-                                                        encoding="utf-8"))
-    assert console_encodable("┏")
+    monkeypatch.setattr(sys, "stderr", wrapper("utf-8"))
+    monkeypatch.setattr(sys, "stdout", wrapper("cp1252"))
+    assert console_encodable("┏", sys.stderr)
     assert "┏" in _banner()
+
+
+def test_console_encodable_asks_the_stream_it_is_given(monkeypatch):
+    """``console_encodable`` must judge the stream named, not always stdout.
+
+    GOAL: stdout and stderr are redirected independently, so one stream's codec
+    says nothing about the other's. Before this was fixed, the check always
+    read ``sys.stdout``, which left ``configure_console`` reconfiguring stderr
+    on the strength of stdout's encoding -- so a Windows run with stdout piped
+    to a file and stderr on a cp1252 console kept the unprotected stderr the
+    function exists to protect.
+    """
+    import io
+    import sys
+
+    from primat.main import console_encodable
+
+    utf8 = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    legacy = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+
+    assert console_encodable("┏", utf8)
+    assert not console_encodable("┏", legacy)
+
+    # Omitting the stream still means stdout, the documented default.
+    monkeypatch.setattr(sys, "stdout", legacy)
+    assert not console_encodable("┏")
+    monkeypatch.setattr(sys, "stdout", utf8)
+    assert console_encodable("┏")

@@ -180,7 +180,7 @@ void cpr_rxnmap_free(CPRRxnMap *map)
 }
 
 /* ===========================================================================
- * nuclides.csv loader (mirrors PyPRConfig._load_nuclide_data).
+ * nuclides.csv loader (mirrors PRIMATConfig._load_nuclide_data).
  * ===========================================================================
  */
 static int load_nuclides(CPRConfig *cfg, char **errmsg)

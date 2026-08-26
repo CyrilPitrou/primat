@@ -1,5 +1,13 @@
-/* api.c -- see api.h. Port of primat/main.py's PyPR.__init__ +
- * PyPR.solve().
+/* api.c -- see api.h. The run: build every stage in dependency order
+ * (plasma -> nuclear rates -> background -> nuclear network), integrate, then
+ * read the observables off the final state.
+ *
+ * Two halves. cprimat_run owns setup, integration, the optional output files
+ * and the teardown of everything it built. cpr_assemble_results owns only the
+ * last step -- turning a solved network into a CPRResults -- and is separate
+ * because the Monte-Carlo driver re-solves thousands of networks against one
+ * setup and needs that step alone. The verbose banner, options recap and
+ * reaction listing are the file's remaining contents.
  */
 #include "api.h"
 #include "xalloc.h"
@@ -16,65 +24,9 @@
 #include <string.h>
 #include <time.h>       /* clock() for the "Initialisation complete" timing */
 
-/* Mirrors main.py's _banner(): no version number resolution dance needed
- * here (CPRIMAT_VERSION is a compile-time macro, see config.h's top
- * comment on keeping it in sync with pyproject.toml). */
-static void print_banner(void)
-{
-    if (!cpr_console_takes_utf8()) {
-        /* ASCII rendition for a legacy-code-page Windows console; mirrors
-         * main.py's _BANNER_ASCII. */
-        fprintf(stderr,
-"\n"
-"+----------------------------------------------+\n"
-"|                                              |\n"
-"|                   P R I M A T                |\n"
-"|                                              |\n"
-"|    Welcome to PRIMAT (C backend) v%-8s   |\n"
-"|                                              |\n"
-"+----------------------------------------------+\n"
-"\n", CPRIMAT_VERSION);
-        return;
-    }
-    fprintf(stderr,
-"\n"
-"\xe2\x94\x8f\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x93\n"
-"\xe2\x94\x83                                              \xe2\x94\x83\n"
-"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x84\xe2\x96\x91\xe2\x96\x80\xe2\x96\x88\xe2\x96\x80\xe2\x96\x91\xe2\x96\x88\xe2\x96\x84\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x80\xe2\x96\x88\xe2\x96\x80             \xe2\x94\x83\n"
-"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x80\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x84\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91             \xe2\x94\x83\n"
-"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x91\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x80\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91             \xe2\x94\x83\n"
-"\xe2\x94\x83                                              \xe2\x94\x83\n"
-"\xe2\x94\x83    Welcome to PRIMAT (C backend) v%-8s   \xe2\x94\x83\n"
-"\xe2\x94\x83                                              \xe2\x94\x83\n"
-"\xe2\x94\x97\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x9b\n"
-"\n", CPRIMAT_VERSION);
-}
-
-/* Mirrors main.py's _options_recap(): one line per item, same content and
- * tag wording (modulo the -c suffix) as the Python side, so a verbose run
- * of either backend on the same config is diffable tag-for-tag. */
-static void print_options_recap(const CPRConfig *cfg)
-{
-    char amax_buf[16];
-    if (cfg->amax < 0) snprintf(amax_buf, sizeof(amax_buf), "None");
-    else snprintf(amax_buf, sizeof(amax_buf), "%d", cfg->amax);
-
-    cpr_log(cfg, "opts", "backend              = c");
-    /* Quoted, matching Python's f"{cfg.network!r}" (main.py's _options_recap):
-     * the recap is meant to be diffable line-for-line between backends, so the
-     * one string-valued line must be formatted the same way on both sides. */
-    cpr_log(cfg, "opts", "network              = '%s' (amax=%s)", cfg->network, amax_buf);
-    cpr_log(cfg, "opts", "numerical_precision  = %.3g", cfg->numerical_precision);
-    cpr_log(cfg, "opts", "radiative_corrections    = %s", cfg->radiative_corrections ? "True" : "False");
-    cpr_log(cfg, "opts", "finite_mass_corrections  = %s", cfg->finite_mass_corrections ? "True" : "False");
-    cpr_log(cfg, "opts", "thermal_corrections      = %s", cfg->thermal_corrections ? "True" : "False");
-    cpr_log(cfg, "opts", "spectral_distortions     = %s", cfg->spectral_distortions ? "True" : "False");
-    cpr_log(cfg, "opts", "tau_n_normalization      = %s", cfg->tau_n_normalization ? "True" : "False");
-    cpr_log(cfg, "opts", "tau_n                = %.4g s", cfg->tau_n);
-    cpr_log(cfg, "opts", "Omegabh2             = %.8g (eta0b=%.6g)",
-             cpr_config_get_Omegabh2(cfg), cfg->eta0b);
-    cpr_log(cfg, "opts", "DeltaNeff            = %.8g", cfg->DeltaNeff);
-}
+/* ======================================================================== */
+/* Reading the observables off a solved network.                            */
+/* ======================================================================== */
 
 /* Mirrors main.py's local `_ratio` helper: 0/0 -> nan (nothing produced,
  * nothing expected), x/0 -> inf (something produced, nothing to divide by;
@@ -229,6 +181,71 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
     }
 }
 
+/* ======================================================================== */
+/* Verbose-mode console output. All three are called only by cprimat_run     */
+/* below, and only when cfg->verbose; all three write to stderr.             */
+/* ======================================================================== */
+
+/* Mirrors main.py's _banner(): no version number resolution dance needed
+ * here (CPRIMAT_VERSION is a compile-time macro, see config.h's top
+ * comment on keeping it in sync with pyproject.toml). */
+static void print_banner(void)
+{
+    if (!cpr_console_takes_utf8(stderr)) {
+        /* ASCII rendition for a legacy-code-page Windows console; mirrors
+         * main.py's _BANNER_ASCII. */
+        fprintf(stderr,
+"\n"
+"+----------------------------------------------+\n"
+"|                                              |\n"
+"|                   P R I M A T                |\n"
+"|                                              |\n"
+"|    Welcome to PRIMAT (C backend) v%-8s   |\n"
+"|                                              |\n"
+"+----------------------------------------------+\n"
+"\n", CPRIMAT_VERSION);
+        return;
+    }
+    fprintf(stderr,
+"\n"
+"\xe2\x94\x8f\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x93\n"
+"\xe2\x94\x83                                              \xe2\x94\x83\n"
+"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x84\xe2\x96\x91\xe2\x96\x80\xe2\x96\x88\xe2\x96\x80\xe2\x96\x91\xe2\x96\x88\xe2\x96\x84\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x80\xe2\x96\x88\xe2\x96\x80             \xe2\x94\x83\n"
+"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x80\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x84\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91             \xe2\x94\x83\n"
+"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x91\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x80\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91             \xe2\x94\x83\n"
+"\xe2\x94\x83                                              \xe2\x94\x83\n"
+"\xe2\x94\x83    Welcome to PRIMAT (C backend) v%-8s   \xe2\x94\x83\n"
+"\xe2\x94\x83                                              \xe2\x94\x83\n"
+"\xe2\x94\x97\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x9b\n"
+"\n", CPRIMAT_VERSION);
+}
+
+/* Mirrors main.py's _options_recap(): one line per item, same content and
+ * tag wording (modulo the -c suffix) as the Python side, so a verbose run
+ * of either backend on the same config is diffable tag-for-tag. */
+static void print_options_recap(const CPRConfig *cfg)
+{
+    char amax_buf[16];
+    if (cfg->amax < 0) snprintf(amax_buf, sizeof(amax_buf), "None");
+    else snprintf(amax_buf, sizeof(amax_buf), "%d", cfg->amax);
+
+    cpr_log(cfg, "opts", "backend              = c");
+    /* Quoted, matching Python's f"{cfg.network!r}" (main.py's _options_recap):
+     * the recap is meant to be diffable line-for-line between backends, so the
+     * one string-valued line must be formatted the same way on both sides. */
+    cpr_log(cfg, "opts", "network              = '%s' (amax=%s)", cfg->network, amax_buf);
+    cpr_log(cfg, "opts", "numerical_precision  = %.3g", cfg->numerical_precision);
+    cpr_log(cfg, "opts", "radiative_corrections    = %s", cfg->radiative_corrections ? "True" : "False");
+    cpr_log(cfg, "opts", "finite_mass_corrections  = %s", cfg->finite_mass_corrections ? "True" : "False");
+    cpr_log(cfg, "opts", "thermal_corrections      = %s", cfg->thermal_corrections ? "True" : "False");
+    cpr_log(cfg, "opts", "spectral_distortions     = %s", cfg->spectral_distortions ? "True" : "False");
+    cpr_log(cfg, "opts", "tau_n_normalization      = %s", cfg->tau_n_normalization ? "True" : "False");
+    cpr_log(cfg, "opts", "tau_n                = %.4g s", cfg->tau_n);
+    cpr_log(cfg, "opts", "Omegabh2             = %.8g (eta0b=%.6g)",
+             cpr_config_get_Omegabh2(cfg), cfg->eta0b);
+    cpr_log(cfg, "opts", "DeltaNeff            = %.8g", cfg->DeltaNeff);
+}
+
 /* Mirrors NetworkDefinition.reaction_equation/print_reactions: renders
  * reaction `i`'s stoichiometry as "a + b <-> c + d   [source]" and dumps
  * the whole LT network.  The source label comes from CPRNetworkDef.sources,
@@ -284,6 +301,10 @@ static void print_reactions(const CPRNetworkDef *lt)
     }
     free(equations);
 }
+
+/* ======================================================================== */
+/* The run itself, and the accessors on its result.                         */
+/* ======================================================================== */
 
 int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
                   CPRResults *results, char **errmsg)

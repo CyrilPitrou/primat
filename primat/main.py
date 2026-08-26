@@ -93,20 +93,31 @@ def configure_console() -> None:
         if reconfigure is None:          # not a TextIOWrapper (pytest capture)
             continue
         try:
-            if not console_encodable("Ω┏"):
+            # Each stream is asked about itself: they can be redirected
+            # independently, so stdout's codec says nothing about stderr's.
+            if not console_encodable("Ω┏", stream):
                 reconfigure(errors="replace")
         except (OSError, ValueError):    # detached or unsupported stream
             pass
 
 
-def console_encodable(text: str) -> bool:
-    """True if ``text`` survives a round trip through stdout's own codec.
+def console_encodable(text: str, stream=None) -> bool:
+    """True if ``text`` survives a round trip through ``stream``'s own codec.
 
     Guards the decorative output: a console whose encoding is cp1252 (the
     Windows default outside UTF-8 mode) raises ``UnicodeEncodeError`` on the
     banner's box-drawing characters, aborting the run before any physics.
+
+    Args:
+        text  : the characters about to be written.
+        stream: the stream they are about to be written to; ``sys.stdout``
+            when omitted. Pass the real destination -- the banner goes to
+            stderr and the results rule to stdout, and either can be
+            redirected without the other.
     """
-    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    if stream is None:
+        stream = sys.stdout
+    enc = getattr(stream, "encoding", None) or "utf-8"
     try:
         text.encode(enc)
     except (UnicodeEncodeError, LookupError):
@@ -124,7 +135,10 @@ def _banner() -> str:
     reinstalling an editable checkout).
     """
     from . import __version__
-    template = (_BANNER_TEMPLATE if console_encodable(_BANNER_TEMPLATE)
+    # The banner is printed to stderr (see the two call sites), so that is the
+    # stream whose codec decides between the box-drawing and ASCII renderings.
+    template = (_BANNER_TEMPLATE
+                if console_encodable(_BANNER_TEMPLATE, sys.stderr)
                 else _BANNER_ASCII)
     return template.format(version=__version__)
 

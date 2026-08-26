@@ -1,5 +1,11 @@
-/* mc.c -- see mc.h. Threaded port of primat/main.py's
- * mc_uncertainty/_mc_run_batch/_mc_collect_samples.
+/* mc.c -- see mc.h. Sampling the nuclear rates and the neutron lifetime, one
+ * pthread per block of samples.
+ *
+ * The order below is the order the work happens in: the cancellation flag, the
+ * progress reporter, the per-thread setup that builds everything a sample does
+ * NOT change (plasma, background, weak rates), the single sample, the worker
+ * loop, and finally cpr_mc_uncertainty, which splits the samples into blocks,
+ * joins, and reduces to per-quantity mean and standard deviation.
  */
 #include "mc.h"
 #include "xalloc.h"
@@ -94,7 +100,7 @@ typedef struct {
 } CPRMCWorker;
 
 /* Builds one worker's own CPRConfig + Plasma + CPRNuclearRates +
- * CPRBackground -- the part of PyPR's setup that does *not* depend on the
+ * CPRBackground -- the part of PRIMAT's setup that does *not* depend on the
  * sampled p_<rxn>/tau_n values, built once per worker and reused across
  * every sample in its seed range (mirrors _mc_run_batch's docstring). */
 static int worker_setup(const CPRMCWorker *w, CPRConfig *cfg, CPRPlasma *pl,

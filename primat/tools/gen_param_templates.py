@@ -52,7 +52,8 @@ _DOCS_PARAMS = os.path.join(REPO_ROOT, "docs", "parameters.md")
 # human's attention on review, same as any other doc.
 # ---------------------------------------------------------------------------
 _TEMPLATE_DESCRIPTIONS = {
-    "verbose": "print primat's own progress messages",
+    "verbose": "print primat's own progress messages on stderr (stdout carries "
+               "the results, so `--json` stays pipeable)",
     "debug": "print extra debug messages",
     "show_progress": "print compact stderr progress indicators (HT./MT./LT./done., MC counter) when verbose=False",
     "numerical_precision": "rtol for all solve_ivp/ODE calls",

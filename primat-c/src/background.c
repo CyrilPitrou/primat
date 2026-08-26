@@ -1,4 +1,19 @@
-/* background.c -- see background.h.
+/* background.c -- see background.h. The expanding Universe the nuclear network
+ * runs inside: how temperature, scale factor and cosmic time relate, how fast
+ * the expansion goes, and what the neutrinos are doing.
+ *
+ * The centre of the file is one 2D ODE in ln(T_gamma) solved once at setup: it
+ * carries the scale factor (from entropy conservation) and cosmic time (from
+ * the Friedmann equation) together, so `a` is exact at every right-hand-side
+ * evaluation instead of being recovered from an inverse. Everything before it
+ * assembles what that ODE needs -- the extra energy densities (cold dark
+ * matter, Lambda, early dark energy, a caller-supplied table), the neutrino
+ * history; everything after it turns the solution into the interpolants the
+ * query functions read, and computes the n<->p weak rates over the resulting
+ * temperature grid.
+ *
+ * The custom-background path skips all of that and reads (T, t, a) from a file
+ * instead, which is why its arrays and its query branches are separate.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095),
  * cited below as "Phys. Rep.".
@@ -17,12 +32,6 @@
 #include "compat_posix.h"  /* sys/stat.h + mkdir + strtok_r, portable */
 #include <sys/types.h>
 #include <time.h>
-
-/* Riemann zeta(3) (Apery's constant) -- see constants.c's identical
- * literal for cpr_n0CMB(); duplicated here (rather than exposed from
- * constants.h) since it is needed only by the two small Omeganuh2_*
- * closures below. */
-#define ZETA3 1.2020569031595942854
 
 /* Noise floor for the raw n<->p weak rates, in 1/tau_n units -- mirrors
  * background.py's _WEAK_RATE_FLOOR. Below this scale the rate is
@@ -1243,7 +1252,7 @@ int cpr_bg_Omeganuh2_nrnu(const CPRBackground *bg, double *out)
     if (bg->kind != CPR_BG_STANDARD) return 1;
     size_t i = bg->n_bg - 1;
     double Tnu0 = bg->Tnu_vec[i] / bg->Tg_vec[i] * bg->cfg->consts.T0CMB / cpr_MeV_to_Kelvin();
-    *out = (1.5 * ZETA3 / (M_PI * M_PI) * pow(Tnu0, 3.0)) / cpr_config_rhocOverh2(bg->cfg);
+    *out = (1.5 * CPR_ZETA3 / (M_PI * M_PI) * pow(Tnu0, 3.0)) / cpr_config_rhocOverh2(bg->cfg);
     return 0;
 }
 

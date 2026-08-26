@@ -1,6 +1,6 @@
 /* test_config.c -- checks cpr_config_init_defaults/cpr_config_set_by_name's
  * generic override dispatch, the C equivalent of
- * ../../tests/test_config.py's PyPRConfig checks: sane defaults, that a
+ * ../../tests/test_config.py's PRIMATConfig checks: sane defaults, that a
  * named override actually lands on the right typed field (bool/int/double/
  * string), that an unknown key is reported as an error (mirrors Python's
  * "unknown key" warning -- the C port makes it a hard error via *errmsg

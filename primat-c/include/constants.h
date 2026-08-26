@@ -24,6 +24,12 @@
 #ifndef CPRIMAT_CONSTANTS_H
 #define CPRIMAT_CONSTANTS_H
 
+/* Riemann zeta(3), Apery's constant. Appears in every Bose-gas number density
+ * (n_gamma = 2 zeta(3) T^3 / pi^2) and so in three separate modules here;
+ * defined once, with more digits than a double can hold, because libm has no
+ * zeta function to call. */
+#define CPR_ZETA3 1.2020569031595942854
+
 typedef struct {
     /* ---- CGS base units (dimensionless by convention: natural units) ---- */
     double Kelvin, second, cm, gram;

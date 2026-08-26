@@ -1,4 +1,16 @@
-/* plasma.c -- see plasma.h. */
+/* plasma.c -- see plasma.h. The thermodynamics of what the Universe is made of
+ * during BBN: photons, electron-positron pairs, neutrinos, and the QED
+ * correction to the pressure of the charged plasma.
+ *
+ * Photons and neutrinos are closed forms and sit at the top as plain
+ * functions. The e+- integrals are not, and are too expensive to evaluate per
+ * call, so cpr_plasma_init tabulates them once on a log-temperature grid --
+ * from a fingerprinted cache file when one matches, otherwise by quadrature --
+ * and every later query is a spline lookup. The QED correction follows the
+ * same pattern with its own tables. The rest of the file sums these into the
+ * total density, pressure and entropy the Friedmann equation and the
+ * scale-factor ODE read.
+ */
 #include "plasma.h"
 #include "xalloc.h"
 #include "constants.h"

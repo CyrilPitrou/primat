@@ -86,7 +86,7 @@ int main(void)
     cpr_plasma_free(&pl);
 
     /* InstantaneousDecoupling: incomplete_decoupling=False, spectral_distortions
-     * must be False too (PyPRConfig forbids the full-NEVO distortion outside
+     * must be False too (PRIMATConfig forbids the full-NEVO distortion outside
      * incomplete_decoupling mode -- the analytic decorator that would be legal
      * here is out of scope). */
     CPRConfig cfg2;

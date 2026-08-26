@@ -4,23 +4,20 @@
  * rate (Born/CCR + finite-nucleon-mass + spectral-distortion corrections),
  * computed from scratch via fixed Gauss-Legendre quadrature when no cache
  * file matches the current configuration's fingerprint, or loaded directly
- * from data/weak/nTOp_<hash>.txt otherwise (cache.c already ports the
+ * from data/cache_plasma_weak/weak/nTOp_<hash>.txt otherwise (cache.c already ports the
  * fingerprint/hash/cache-file machinery, see cache.h). The finite-
  * temperature radiative correction (CCRTh, Brown & Sawyer 2001) is S7b:
  * cpr_weak_rates_init *loads* its cache file
- * (data/weak/nTOp_thermal_<hash>.txt) when cfg->thermal_corrections is set
+ * (data/cache_plasma_weak/weak/nTOp_thermal_<hash>.txt) when cfg->thermal_corrections is set
  * and a matching file exists, and otherwise recomputes it from scratch via
  * the same algorithm Python's `corrections.py` uses -- VEGAS adaptive
  * Monte Carlo (vegas.h) for the three 2D sub-integrals, deterministic 1D
  * quadrature for the one 1D sub-integral -- see weak_rates.c's CCRTh
  * section.
  *
- * The SD-FM correction terms (_L_SD_FMCCR/_L_SD_FMNoCCR in the Python
- * source) are analytic-distortion-mode only (cfg->analytic_distortions)
- * and ARE ported: see chi_func_sd_fm_v and the L_SD_FMCCR/L_SD_FMNOCCR
- * LKind cases in weak_rates.c, wired in nonthermal_rate_term whenever
- * cfg->analytic_distortions && cfg->spectral_distortions &&
- * cfg->finite_mass_corrections.
+ * The combined spectral-distortion / finite-mass terms apply only in
+ * analytic-distortion mode, i.e. when cfg->analytic_distortions,
+ * cfg->spectral_distortions and cfg->finite_mass_corrections are all set.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018
  * (arXiv:1806.11095), cited below as "Phys. Rep.".
@@ -96,7 +93,7 @@ typedef struct {
  * weak_rates.RecomputeWeakRates([Tg_vec, Tnu_vec], cfg, dFDneu_func=...).
  *
  * Tg_MeV/Tnu_MeV (length n_bg): photon and (electron-flavour) neutrino
- * temperatures in MeV, e.g. PRIMAT._setup_background_and_cosmo's Tg_vec/
+ * temperatures in MeV, e.g. StandardBackground._setup_background_and_cosmo's Tg_vec/
  * Tnue_vec -- despite ComputeWeakRates's Python docstring saying "Kelvin",
  * background.py actually passes MeV arrays (_build_rate_context converts
  * via cfg.MeV_to_Kelvin); confirmed by reading the caller in background.py.
@@ -107,11 +104,11 @@ typedef struct {
  * spectral-distortion correction dFDneu when cfg->spectral_distortions.
  *
  * On a fingerprint cache hit (cfg->weak_rate_cache and a matching
- * data/weak/nTOp_<hash>.txt exists), the nonthermal table is loaded
+ * data/cache_plasma_weak/weak/nTOp_<hash>.txt exists), the nonthermal table is loaded
  * directly (no integration). Otherwise it is computed via the
  * Gauss-Legendre rate integrals (Born/CCR/FM/SD) and, if cfg->save_nTOp,
  * written to that cache file. The thermal correction is loaded from
- * data/weak/nTOp_thermal_<hash>.txt when cfg->thermal_corrections is set
+ * data/cache_plasma_weak/weak/nTOp_thermal_<hash>.txt when cfg->thermal_corrections is set
  * and that file exists (`has_thermal` is then 1), and otherwise computed
  * from scratch by L_CCRTh_compute.
  *

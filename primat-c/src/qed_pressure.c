@@ -1,4 +1,12 @@
-/* qed_pressure.c -- see qed_pressure.h. */
+/* qed_pressure.c -- see qed_pressure.h. The two closed-form QED corrections to
+ * the plasma pressure, their shared phase-space integrals, and the tabulation
+ * that turns them into something the solver can query cheaply.
+ *
+ * Order: the two Fermi-Dirac integrals I01 and I2m1 first, since both
+ * corrections are built from them; then dP_a and dP_e3 themselves; then the
+ * grid evaluation, which differentiates by spline fit rather than by more
+ * quadrature; then the fingerprint and the file writer.
+ */
 #include "qed_pressure.h"
 #include "xalloc.h"
 #include "quad.h"

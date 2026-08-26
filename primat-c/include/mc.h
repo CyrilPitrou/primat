@@ -68,15 +68,15 @@ typedef struct {
  * `mc_uncertainty`, which checks internally. See `primat/backend.py`'s
  * `run_mc`.
  *
+ * `show_progress`: when non-zero, print a \r-updated sample counter to stderr
+ * as workers complete each sample, with a final newline when done. The counter
+ * starts at `n_prev` (the reused samples) and advances to `num_mc`. Pass 0 in
+ * tests or non-interactive contexts to suppress it entirely.
+ *
  * Fills `out` (zeroed first; caller must cpr_mc_result_free). Returns 0 on
  * success, nonzero with *errmsg set (caller frees) on any config/init/
  * solve failure (the first one encountered, possibly from any worker --
  * remaining workers are still joined before returning). */
-/* ``show_progress``: when non-zero, print a ``\r``-updated sample counter to
- * stderr as workers complete each sample, with a final newline when done.
- * The counter starts at ``n_prev`` (already-reused samples) and advances to
- * ``num_mc`` as new samples are solved.  Set to 0 in tests or non-interactive
- * contexts to suppress all progress output. */
 int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quantities,
                         const char *data_dir,
                         const CPRParamSet *base_params, size_t n_base_params,

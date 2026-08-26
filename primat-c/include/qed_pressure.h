@@ -24,7 +24,7 @@
  * scipy.interpolate.CubicSpline's default in qed_pressure.py) on a log-
  * spaced T grid -- this is the "analytic fallback"/"recompute" path of
  * plasma.Plasma._load_tables; the normal "file mode" path instead reads
- * the pre-saved data/plasma/QED_*.txt files directly via table_io.c (no
+ * the pre-saved data/cache_plasma_weak/plasma/QED_*.txt files directly via table_io.c (no
  * qed_pressure.c involvement at all in that path, matching Python).
  */
 #ifndef CPRIMAT_QED_PRESSURE_H
@@ -119,7 +119,7 @@ void cpr_qed_tables_free(CPRQEDTables *t);
 size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
                             const char *consts_hash, CPRFPField *out);
 
-/* Writes data/plasma/QED_pressure_correction_e2.txt and QED_pressure_correction_e3.txt: two 4-column
+/* Writes data/cache_plasma_weak/plasma/QED_pressure_correction_e2.txt and QED_pressure_correction_e3.txt: two 4-column
  * files, one per order in e, each with columns
  *   T [MeV]  dP [MeV^4]  d(dP)/dT [MeV^3]  d2(dP)/dT2 [MeV^2]
  * (QED_pressure_correction_e2.txt holds dP_a [O(e^2)], QED_pressure_correction_e3.txt holds dP_e3
@@ -131,7 +131,7 @@ size_t cpr_qed_fingerprint(double T_min, double T_max, size_t n_pts,
  * makes the cache shared between the two backends rather than merely
  * compatible. `T_min`/`T_max`/`n_pts` are the grid the tables were computed on
  * and must be the same values passed to cpr_qed_compute_tables, since they are
- * fingerprint fields. `plasma_dir` is the path to data/plasma/ (no trailing
+ * fingerprint fields. `plasma_dir` is the path to the plasma cache directory (no trailing
  * slash required). Returns 0 on success, nonzero with *errmsg set (caller
  * frees) on a file-write failure. */
 int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir,

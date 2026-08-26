@@ -50,7 +50,7 @@ static void test_standard(void)
     CHECK(cpr_bg_init_standard(&bg, &cfg, &pl, &err) == 0, "cpr_bg_init_standard succeeds");
     CHECK(bg.has_scale_factor, "has_scale_factor is set");
 
-    /* Reference: live StandardBackground(PyPRConfig(), Plasma(cfg)). */
+    /* Reference: live StandardBackground(PRIMATConfig(), Plasma(cfg)). */
     CHECK(close_rel(cpr_bg_a_of_T(&bg, 1.0), 1.688507212004612e-10, 1e-2),
           "a_of_T(1 MeV) matches Python");
     CHECK(close_rel(cpr_bg_a_of_T(&bg, 0.01), 2.348654180710699e-08, 1e-6),

@@ -1,12 +1,11 @@
-/* nuclear_network.h -- the nuclear-reaction-network ODE integration across
- * the HT/MT/LT temperature eras (port of primat/nuclear_network.py's
- * NuclearNetwork class).
+/* nuclear_network.h -- integrating the reaction network down the three
+ * temperature eras, which is where the abundances come from.
  *
- * CPRNuclearNetwork is driven purely through the *compulsory* interface of
- * a CPRBackground (cpr_bg_T_of_t/t_of_T/rhoB_BBN/weak_nTOp/bkwrd,
- * background.h) and a CPRNuclearRates (the compiled MT/LT RHS/Jacobian
- * kernels, network_data.h) -- it knows nothing about *how* the
- * background or the rate tables were built.
+ * CPRNuclearNetwork is driven purely through the query surface of a
+ * CPRBackground (cpr_bg_T_of_t/t_of_T/rhoB_BBN/weak_nTOp/pTOn, background.h)
+ * and a CPRNuclearRates (the compiled MT/LT RHS/Jacobian kernels,
+ * network_data.h) -- it knows nothing about *how* the background or the rate
+ * tables were built, which is what lets a caller substitute either.
  *
  * cpr_nuclear_network_solve integrates:
  *   HT  (T > T_weak ~ 1 MeV):        n <-> p only, non-stiff RK45 (ode_rk.h).
@@ -19,14 +18,10 @@
  *   LT  (T_nucl -> T_end ~ 0.001 MeV): the chosen network
  *                                       (nr->lt_net/lt_compiled), stiff BDF.
  *
- * The Decay-Time (DT) era (_build_decay_matrix/_integrate_decay_era/
- * _write_decay_evolution -- long-lived-isotope decay propagation past T_end
- * via matrix exponentiation, gated by cfg->decay_era) *is* now ported: see
- * cpr_nuclear_network_decay_era below. The per-reaction flux columns
- * of write_time_evolution (cfg->output_rates_time_evolution, network=
- * "small" only) are still not ported -- a niche debugging aid, not needed
- * by any reference-number check; cpr_nuclear_network_write_time_evolution
- * always omits them (documented there).
+ * A fourth, optional stage runs past T_end: the Decay-Time era, which
+ * propagates the long-lived isotopes forward under a constant decay matrix.
+ * It changes no BBN observable and exists only to produce its own output file
+ * -- see cpr_nuclear_network_decay_era below.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095).
  */
