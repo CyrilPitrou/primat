@@ -1235,7 +1235,7 @@ def test_reproduction_bundle_carries_uploaded_rate_table(tmp_path):
 # `large`+amax. This matrix is a regression guard for three separate bugs that
 # each broke it by ~1e-6:
 #   * MT-era reaction ordering keyed on the base name (ORDER_MT alignment);
-#   * the LT solver's atol keyed on `is_large` (now a universal atol);
+#   * the LT solver's atol keyed on the literal network name (now universal);
 #   * uploaded tables pre-resampled+rounded at export instead of written
 #     verbatim on their original grid (custom_rates.verbatim_table_text).
 # `run_bbn(base, custom_network=...)` is exactly the call the GUI makes;

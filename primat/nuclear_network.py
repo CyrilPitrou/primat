@@ -488,10 +488,10 @@ class NuclearNetwork:
         _t_lt0 = time.time()
         # Universal LT absolute tolerance (cfg.atol_LT) for *every*
         # network, not just "large". Previously this was
-        # `cfg.atol_LT if cfg.is_large else 1e-20`, i.e. keyed on the
-        # literal network name -- which meant a custom network reproduced under
-        # a renamed `user_nuclear_dir` overlay (is_large=False) silently used a
-        # looser atol than the same network run as "large" in the GUI, breaking
+        # keyed on the network being *literally named* "large" -- which meant a
+        # custom network reproduced under a renamed `user_nuclear_dir` overlay
+        # silently used a looser atol than the same network run under the name
+        # "large" in the GUI, breaking
         # bit-for-bit reproduction of the GUI's numbers (~1e-6). Using one atol
         # everywhere removes that name dependence. It only tightens `small`
         # (1e-20 -> 1e-26): ~8% slower, its abundances shift by ~1e-6 (a
@@ -660,7 +660,7 @@ class NuclearNetwork:
         # reactions in the LT network (see _build_decay_matrix).
         #
         # Gated on the network *actually carrying* a decay reaction, not on the
-        # literal name "large" (cfg.is_large).  Name-keying was the same trap
+        # literal name "large".  Name-keying was the same trap
         # the LT atol above was de-named to escape: a large-equivalent network
         # reproduced under a renamed user_nuclear_dir overlay carries exactly
         # the same decays.txt reactions, yet silently got no DT era at all.
