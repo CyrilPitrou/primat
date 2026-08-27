@@ -570,3 +570,43 @@ def test_export_custom_network_py_and_ini_use_overlay():
     ini = ini_export_text({"network": "small"}, custom_network_name="mynet")
     assert 'network = "mynet"' in ini
     assert 'user_nuclear_dir = "nuclear"' in ini
+
+
+def test_physics_group_opens_on_the_weak_rates_subheading():
+    """The "Physics" expander renders in ``_FORM_METADATA`` insertion order, so
+    that order must put the six n<->p toggles first -- the subject the group is
+    named for -- and leave the single nuclear-rate rescaling last, as
+    ``_SUBHEADING`` and ``docs/howto/gui.md`` both describe it."""
+    physics = [key for key, (group, _label, _help) in
+               params_form._FORM_METADATA.items() if group == "Physics"]
+    subheadings = [params_form._SUBHEADING[k] for k in physics
+                   if k in params_form._SUBHEADING]
+    assert subheadings == ["Weak rates", "Plasma physics", "Nuclear QED"]
+
+
+def test_every_curated_widget_has_a_help_text():
+    """Every parameter the sidebar offers explains itself: a label alone leaves
+    a reader guessing what the flag does, which is the whole point of a curated
+    form over the 95-key ``DEFAULT_PARAMS`` dict."""
+    entries = {key: help_text for key, (_g, _l, help_text)
+               in params_form._FORM_METADATA.items()}
+    entries.update({key: help_text for key, (_l, help_text)
+                    in params_form._CONSTANTS_METADATA.items()})
+    missing = sorted(k for k, h in entries.items() if not h or not h.strip())
+    assert not missing, f"no help text for {missing}"
+
+
+def test_output_tab_downloads_say_what_is_in_the_file():
+    """Each "Output tables" download is labelled with a bare filename, so its
+    tooltip is the only thing telling a reader what the file holds and in what
+    units. A download with no tooltip is a filename and nothing else."""
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    _run_bbn(at)
+    assert not at.exception
+
+    for label in ("output_final.txt", "output_time_evolution.tsv",
+                  "output_background.tsv", "nTOp_total.tsv"):
+        button = _download_button(at, label)
+        assert button is not None, f"{label} download missing"
+        assert button.proto.help.strip(), f"{label} download has no help text"

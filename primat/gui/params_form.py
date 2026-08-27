@@ -9,7 +9,7 @@ Builds the sidebar parameter form from
 
 Design
 ------
-``DEFAULT_PARAMS`` has ~50 keys, most of which are caching/debug knobs that a
+``DEFAULT_PARAMS`` has 95 keys, most of which are caching/debug knobs that a
 typical user never touches (e.g. ``save_nTOp``, ``recompute_qed_corrections``,
 ``use_numba``).  We therefore split the form in two:
 
@@ -29,6 +29,56 @@ convention (``primat/cli.py``) -- :func:`render_sidebar_form` returns a
 dict containing only the entries whose value differs from
 ``DEFAULT_PARAMS``, so unset flags keep relying on ``PRIMATConfig``'s own
 defaults.
+
+``GROUP_ORDER``'s names are the sidebar's own, chosen for a physicist reading
+a form. They are deliberately *not* ``config.PARAM_GROUPS``, which orders all
+of ``DEFAULT_PARAMS`` for the generated templates
+(``runfiles/primat_run_explanatory.py``, ``primat-c/examples/run_basic.ini``)
+under names of its own ("Cosmological inputs", "n <-> p weak rates", ...).
+The two lists share no code and need not agree.
+
+Map of this file
+----------------
+The module is two regions with one entry point at the bottom. Read the one
+you need; they touch each other only through ``params`` and ``SessionKeys``.
+
+===============  ==========================================================
+Region           What lives there
+===============  ==========================================================
+"Curated         ``_FORM_METADATA``, ``GROUP_ORDER``, ``_EXPANDED_GROUPS``,
+metadata"        ``_SUBHEADING``, ``_CONSTANTS_METADATA``, ``_CONDITIONAL``
+                 -- what the sidebar shows and in what order.
+"Form            ``_cfg``/``_root``/``_available_networks``/
+plumbing"        ``_network_label``/``_float_format``/``_display_default``/
+                 ``_widget_for`` -- turning one key into one widget.
+"Manage          ``_DialogState`` and everything named ``_dialog_*`` or
+networks"        ``_render_*`` down to ``_explain_forced_flag_dialog``: the
+                 two ``@st.dialog`` popups that build, import, rename and
+                 remove custom networks. Nothing here is needed to add a
+                 parameter.
+"The form        ``render_sidebar_form`` and the four ``_render_*_group`` /
+itself"          ``_reconcile_*`` functions it calls, in call order.
+===============  ==========================================================
+
+**To add a parameter group** touch exactly three places, all outside the
+"Manage networks" region: add its keys to ``_FORM_METADATA`` with the new
+group name; add that name to ``GROUP_ORDER`` (and to ``_EXPANDED_GROUPS`` if
+it should start open); and, only if the group needs behaviour ``_widget_for``
+does not already give it, extend :func:`_render_curated_groups`.
+
+Naming conventions
+------------------
+* ``_render_*`` and the three ``@st.dialog`` functions **draw**; everything
+  else **computes**. A ``_render_*`` function is never called for its return
+  value.
+* ``_reconcile_*`` and ``_request_*`` **write** ``st.session_state`` before a
+  widget is created, which is the only window Streamlit allows (see
+  :mod:`primat.gui.session_keys`).
+* A helper that **reads** ``st.session_state`` is not pure and cannot be
+  called outside a script run: ``_available_networks``, ``_network_label``,
+  ``_current_table_text``, ``_dialog_base_selection_and_tables`` and
+  ``_kept_count``. Everything else in the plumbing region is a plain
+  function of its arguments.
 
 Custom networks
 ----------------
@@ -84,7 +134,8 @@ _FORM_METADATA = {
         "Cosmology", r"$\xi_\nu = \mu_\nu/T_\nu$",
         "Reduced neutrino chemical potential (the common default for all three "
         "flavours). Non-zero values are physically consistent only with "
-        "incomplete_decoupling=False, since the NEVO table assumes it vanishes. "
+        "\"Incomplete neutrino decoupling\" off, since the NEVO "
+        "neutrino-evolution table it reads assumes this vanishes. "
         "For per-flavour scans (only xi_e shifts the n<->p weak rates, while "
         "xi_mu/xi_tau gravitate) set munuOverTnu_e / munuOverTnu_mu / "
         "munuOverTnu_tau from a script or the CLI; they default to this value.",
@@ -95,31 +146,31 @@ _FORM_METADATA = {
         "Nuclear reactions", "Reaction network",
         "Nuclear reaction network used in the low-temperature (LT) era: "
         "'small' (12 reactions), 'small_parthenope' (12 reactions, Parthenope "
-        "3.0 rate tables, for comparison runs), or 'large' (~429 reactions, "
-        "~59 nuclides, optionally restricted via 'Limit max mass number' "
-        "below). The HT era is unaffected (always n<->p) and the MT era uses "
-        "this network's subset of a fixed 18-reaction list. Manually "
-        "changing this clears any active custom "
-        "network built via \"Create custom network\".",
+        "3.0 rate tables, for comparison runs), or 'large' (428 reactions, "
+        "~59 nuclides, optionally restricted via the mass-number limit "
+        "below). "
+        "The bracketed count is the network's own; the solver adds the n<->p "
+        "weak rate on top, which is the count the Reactions summary shows. "
+        "The high-temperature (HT) era is unaffected (always n<->p) and the "
+        "middle (MT) era uses this network's subset of a fixed 18-reaction "
+        "list. Manually "
+        "changing this deselects any custom network built or imported this "
+        "session (\"Manage networks\" below); it is not deleted, and picking "
+        "its name here again re-selects it.",
     ),
     "amax": (
-        "Nuclear reactions", "Max mass number A",
-        "Drop reactions involving any nuclide with mass number A > amax "
-        "(must be an integer >= 2). Applies to any network above. Leave "
-        "unchecked to keep every reaction.",
-    ),
-    "nuclear_qed_corrections": (
-        "Physics", "Nuclear QED rate corrections",
-        "True (default): apply a T9-dependent QED rescaling (Pitrou & "
-        "Pospelov 2020) to the forward rates of n_p__d_g, d_p__He3_g, t_p__a_g, "
-        "t_a__Li7_g, He3_a__Be7_g.",
+        "Nuclear reactions", "Max mass number A (amax)",
+        "Drop every reaction involving a nuclide heavier than this mass "
+        "number A (integer >= 2, dimensionless). Applies to any network "
+        "above, custom ones included.",
     ),
 
     # ---- Physics: weak rates ---------------------------------------------------
     "incomplete_decoupling": (
         "Physics", "Incomplete neutrino decoupling",
-        "True (default): non-instantaneous decoupling using the precomputed "
-        "NEVO table (ν flavour temperatures differ slightly due to "
+        "True (default): non-instantaneous decoupling read from the "
+        "precomputed NEVO tables (ν flavour temperatures differ slightly "
+        "due to "
         "partial reheating by e+e- annihilation). False: instantaneous "
         "decoupling, Tν/Tγ = (4/11)^(1/3).",
     ),
@@ -132,9 +183,8 @@ _FORM_METADATA = {
     "finite_mass_corrections": (
         "Physics", "Finite-mass corrections (n↔p)",
         "Include the Fokker-Planck finite-nucleon-mass correction to the n↔p rate "
-        "(Phys. Rep. §III.G, Eqs. 115a/115b).  Uses FMCCR when "
-        "radiative_corrections=True, "
-        "FMNoCCR otherwise.",
+        "(Phys. Rep. §III.G, Eqs. 115a/115b). Uses the FMCCR variant when "
+        "\"Radiative corrections\" above is on, FMNoCCR when it is off.",
     ),
     "thermal_corrections": (
         "Physics", "Thermal radiative corrections (n↔p)",
@@ -148,15 +198,19 @@ _FORM_METADATA = {
     ),
     "analytic_distortions": (
         "Physics", "→ analytic distortion model",
-        "Parameterise the distortion analytically as y-type (y_SZ) and/or "
-        "gray-type (y_gray) instead of reading the full NEVO spectrum file. "
-        "Requires incomplete_decoupling=False. (A neutrino chemical potential "
-        "is not a spectral distortion -- use munuOverTnu for that.)",
+        "Parameterise the distortion analytically instead of reading the "
+        "full NEVO spectrum file. The y-type amplitude y_SZ is the widget "
+        "below; the gray-type amplitude y_gray has no widget -- set it from "
+        "a script or the CLI (--set y_gray=...). Requires \"Incomplete "
+        "neutrino decoupling\" off, which this form turns off "
+        "for you. (A neutrino chemical potential is not a spectral "
+        "distortion -- use the Cosmology group's chemical potential for "
+        "that.)",
     ),
     "y_SZ": (
         "Physics", "→ y_SZ (y-type distortion)",
         "Amplitude of the y-type (Sunyaev-Zel'dovich-like) spectral "
-        "distortion.",
+        "distortion (dimensionless).",
     ),
 
     # ---- Physics: plasma physics ----------------------------------------------
@@ -164,6 +218,15 @@ _FORM_METADATA = {
         "Physics", "QED plasma corrections",
         "Include QED interaction corrections to the electromagnetic plasma "
         "equation of state (electron/positron pressure and density).",
+    ),
+
+    # ---- Physics: nuclear QED ---------------------------------------------------
+    "nuclear_qed_corrections": (
+        "Physics", "Nuclear QED rate corrections",
+        "True (default): apply a temperature-dependent (in T9, units of "
+        "10^9 K) QED rescaling (Pitrou & "
+        "Pospelov 2020) to the forward rates of n_p__d_g, d_p__He3_g, t_p__a_g, "
+        "t_a__Li7_g, He3_a__Be7_g.",
     ),
 }
 
@@ -226,10 +289,10 @@ _CONSTANTS_METADATA = {
     "Vud": (r"$V_{ud}$  (CKM matrix element)",
             "Absolute weak-rate normalisation only; inert when "
             "tau_n_normalization=True (the default)."),
-    "kappa_p": (r"$\kappa_p$  (proton anomalous magnetic moment)",
-                "Enters the finite-nucleon-mass correction through "
-                "κ_p − κ_n."),
-    "kappa_n": (r"$\kappa_n$  (neutron anomalous magnetic moment)",
+    "kappa_p": (r"$\kappa_p$  (proton anomalous magnetic moment) [μ_N]",
+                "In nuclear magnetons. Enters the finite-nucleon-mass "
+                "correction through κ_p − κ_n."),
+    "kappa_n": (r"$\kappa_n$  (neutron anomalous magnetic moment) [μ_N]",
                 "See κ_p. Negative by nature."),
     "radproton": (r"$r_p$  (proton charge radius) [cm]",
                   "Enters the Coulomb (Fermi) function of the n<->p rates."),
@@ -252,6 +315,12 @@ _CONDITIONAL = {
     "analytic_distortions": ("spectral_distortions", True),
     "y_SZ": ("spectral_distortions", True),
 }
+
+
+# ---------------------------------------------------------------------------
+# Form plumbing: catalog lookups and the one-key-to-one-widget helpers shared
+# by every group renderer at the bottom of this file.
+# ---------------------------------------------------------------------------
 
 
 @st.cache_data(show_spinner=False)
@@ -533,24 +602,38 @@ def _widget_for(key, label, help_text):
         return st.selectbox(label, options, help=help_text, key=key,
                              format_func=_network_label, **kwargs)
 
+    # `value` only on the very first render, for the same reason `index` is
+    # above: once the key has a session_state entry that entry wins, and
+    # passing both makes Streamlit log a stack trace ("created with a default
+    # value but also had its value set via the Session State API") in the
+    # terminal the user launched primat-gui from. That happens on ordinary
+    # use, since _reconcile_distortion_decoupling_flags deliberately writes
+    # `incomplete_decoupling` before its widget is created.
+    # The seed is `_display_default`, not the raw default: Streamlit used to
+    # do that rounding itself as a side effect of `value=`, and
+    # `_render_curated_groups` compares the widget's value against
+    # `_display_default(key)` to decide whether the user touched it.
+    seed = {} if key in st.session_state else {"value": _display_default(key)}
+
     if isinstance(default, bool):
-        return st.toggle(label, value=default, help=help_text, key=key)
+        return st.toggle(label, help=help_text, key=key, **seed)
 
     if isinstance(default, int):
-        return int(st.number_input(label, value=default, step=1, help=help_text, key=key))
+        return int(st.number_input(label, step=1, help=help_text, key=key, **seed))
 
     if isinstance(default, float):
         return st.number_input(
-            label, value=default, format=_float_format(key), help=help_text,
-            key=key,
+            label, format=_float_format(key), help=help_text, key=key, **seed,
         )
 
     # Fallback for string-valued parameters (e.g. output_file paths).
-    return st.text_input(label, value=str(default), help=help_text, key=key)
+    if seed:
+        seed["value"] = str(default)
+    return st.text_input(label, help=help_text, key=key, **seed)
 
 
 # ---------------------------------------------------------------------------
-# "Create custom network" / "Import custom network" buttons + dialogs
+# "Manage networks" button + the two dialogs behind it
 # ---------------------------------------------------------------------------
 
 _RESERVED_NETWORK_NAMES = {"small", "small_parthenope", "large"}
@@ -705,7 +788,7 @@ class _DialogState:
                 # A custom network's own "kept" list was built against *its
                 # own* amax (or none at all); re-applying the dialog's
                 # current amax here too is what actually shrinks the kept
-                # set when the user lowers "Limit A" while a custom network
+                # set when the user lowers "Limit A (amax)" while a custom network
                 # is the base -- without this, every one of its reactions
                 # stayed "kept" regardless of amax, while the rows shown
                 # above (filtered by amax) and the totals caption below
@@ -796,7 +879,7 @@ class _DialogState:
 
         ``removed`` is computed against the *full, unfiltered* large-network
         reaction list, not the dialog's own ``amax``-filtered view: the
-        dialog's "Limit A" only narrows which rows are shown/toggleable in
+        dialog's "Limit A (amax)" only narrows which rows are shown/toggleable in
         the popup, it does not express an intent to keep every reaction
         above that cutoff. Using the filtered view here would silently leave
         every reaction the user never even saw (anything above the dialog's
@@ -1122,7 +1205,7 @@ def _render_reaction_row(name):
                 raw = custom_rates.decode_upload_text(up.getvalue())
                 custom_rates.parse_rate_upload(raw, cfg=_cfg())
             except Exception as exc:
-                st.error(f"`{name}`: {exc}")
+                st.error(f"Rate table for `{name}`: {exc}")
                 custom_rates.show_rate_format_help()
             else:
                 # "<name>_custom_<uploaded filename>" rather than the bare
@@ -1283,7 +1366,11 @@ def _render_dialog_footer(params, title, base_network, dialog_amax):
         )
 
     if cols[1].button("Create this network", type="primary", use_container_width=True,
-                      key=SessionKeys.dialog_apply, disabled=title_reserved):
+                      key=SessionKeys.dialog_apply, disabled=title_reserved,
+                      help="Save this network under the title above and return "
+                           "to \"Manage networks\". Nothing is solved yet -- "
+                           "select it there, then click \"Run BBN\". An "
+                           "existing network of the same title is replaced."):
         # Only *saves* the network (into known_custom_networks) and returns
         # to "Manage networks" -- it no longer runs BBN itself. The user
         # picks it from there (or from the sidebar's "network" dropdown
@@ -1361,7 +1448,7 @@ def _custom_network_dialog(params):
     if st.session_state.get(SessionKeys.dialog_base_network) not in options:
         st.session_state[SessionKeys.dialog_base_network] = options[0]
     base_network = col1.selectbox(
-        "Network", options, key=SessionKeys.dialog_base_network,
+        "Reaction network", options, key=SessionKeys.dialog_base_network,
         format_func=_dialog_network_label, label_visibility="collapsed",
         help="Starting point: selects which reactions below start toggled "
              "on (every reaction is still individually editable below, "
@@ -1369,7 +1456,7 @@ def _custom_network_dialog(params):
     )
     # Whenever the base network just changed *to* a previously built/
     # imported custom one (e.g. via "Manage networks" -> "Modify"), default
-    # "Limit A" to that network's own highest mass number rather than the
+    # "Limit A (amax)" to that network's own highest mass number rather than the
     # leftover/initial value -- a stale, lower amax would otherwise silently
     # hide some of its reactions the moment the dialog opens. Done here,
     # right after the selectbox returns and *before* the amax checkbox/
@@ -1386,8 +1473,11 @@ def _custom_network_dialog(params):
         st.session_state[SessionKeys.dialog_prev_base_network] = base_network
     amax_col, value_col = col2.columns(2)
     amax_enabled = amax_col.checkbox(
-        "Limit A", key=SessionKeys.dialog_amax_enabled,
-        help="Restrict to reactions with A <= amax, to reduce the network size.",
+        "Limit A (amax)", key=SessionKeys.dialog_amax_enabled,
+        help="Drop every reaction involving a nuclide heavier than this mass "
+             "number A, to keep the list below short. It narrows what this "
+             "dialog shows and offers, not what the saved network keeps above "
+             "the cutoff -- those reactions are simply not kept.",
     )
     dialog_amax = None
     if amax_enabled:
@@ -1493,7 +1583,7 @@ def _manage_networks_dialog(params):
     the just-created network pre-selected (``SessionKeys.last_created_network``).
     "Close" stages the dialog's current selection for the sidebar via the
     same ``pending_network_label`` mechanism used elsewhere in this module
-    (the sidebar's "Limit max mass number" then auto-unchecks itself, on
+    (the sidebar's "Limit max mass number A (amax)" then auto-unchecks itself, on
     detecting the network change, the next time ``render_sidebar_form``
     runs -- see its own "amax" branch), then actually running BBN on it is
     left to the main "Run BBN" button -- this dialog never solves anything
@@ -1519,8 +1609,9 @@ def _manage_networks_dialog(params):
     selected = st.radio(
         "Select a network", all_names, key=SessionKeys.manage_selected_network,
         format_func=_network_label, label_visibility="collapsed",
-        help="The network \"Close\" applies to the sidebar -- you can still "
-             "change it later from the sidebar's own \"network\" dropdown.",
+        help="Every network this session can run: the built-in ones, any "
+             "extra file under data/nuclear/networks/, and anything built or "
+             "loaded here. The count in brackets is the reaction count.",
     )
 
     if selected in known:
@@ -1543,7 +1634,10 @@ def _manage_networks_dialog(params):
                  "\"Create new network\"'s own download button.",
         )
         if row1[1].button("Modify", key=SessionKeys.manage_modify_btn(selected),
-                           use_container_width=True):
+                           use_container_width=True,
+                           help="Open the network builder on this network. "
+                                "Saving there replaces this entry, under the "
+                                "same title -- rename it first to keep both."):
             # Same hand-off as "Create new network" below, except the title
             # is preset to the network's own name -- so "Create this
             # network" there overwrites this entry in place instead of
@@ -1556,7 +1650,12 @@ def _manage_networks_dialog(params):
 
         row2 = st.columns([1, 1])
         if row2[0].button("Remove", key=SessionKeys.manage_remove_btn(selected),
-                           use_container_width=True):
+                           use_container_width=True,
+                           help="Forget this network for the rest of the "
+                                "session (immediately, without asking again) "
+                                "and fall back to \"small\". Already-computed "
+                                "results are untouched, and a downloaded .zip "
+                                "can be loaded back below."):
             known.pop(selected, None)
             active = st.session_state.get(SessionKeys.active_custom_network)
             if active and active["title"] == selected:
@@ -1577,7 +1676,10 @@ def _manage_networks_dialog(params):
             st.session_state[SessionKeys.last_created_network] = "small"
             st.rerun()
         if row2[1].button("Rename", key=SessionKeys.manage_rename_apply,
-                           use_container_width=True):
+                           use_container_width=True,
+                           help="Give this network a different title. The "
+                                "network itself is unchanged; only the name "
+                                "it is listed and exported under moves."):
             st.session_state[SessionKeys.manage_rename_open] = not st.session_state.get(
                 SessionKeys.manage_rename_open, False)
         if st.session_state.get(SessionKeys.manage_rename_open, False):
@@ -1610,7 +1712,10 @@ def _manage_networks_dialog(params):
         st.caption("Built-in network -- cannot be removed or renamed.")
 
     st.divider()
-    if st.button("Create new network", key=SessionKeys.btn_create_new_network):
+    if st.button("Create new network", key=SessionKeys.btn_create_new_network,
+                 help="Open the network builder, starting from the network "
+                      "selected above. It saves the result back here; running "
+                      "it is a separate \"Run BBN\" click."):
         # Pre-select the dialog's current selection as the new dialog's
         # "Network to modify" starting point -- set directly (not via the
         # _pending_*-style workaround) because this happens *before* that
@@ -1658,7 +1763,11 @@ def _manage_networks_dialog(params):
                 st.rerun()
 
     st.divider()
-    if st.button("Close", type="primary", key=SessionKeys.btn_manage_close):
+    if st.button("Close", type="primary", key=SessionKeys.btn_manage_close,
+                 help="Apply the network selected above to the sidebar and "
+                      "close. Nothing is solved until you click \"Run BBN\"; "
+                      "you can also change the network from the sidebar's own "
+                      "dropdown afterwards."):
         st.session_state[SessionKeys.pending_network_label] = selected
         st.session_state[SessionKeys.show_manage_dialog] = False
         st.rerun()
@@ -1671,7 +1780,10 @@ def _render_network_management_button(params):
     """
     st.session_state.setdefault(SessionKeys.known_custom_networks, {})
     if st.button("Manage networks", use_container_width=True,
-                key=SessionKeys.btn_manage_networks):
+                key=SessionKeys.btn_manage_networks,
+                help="List, select, build, import, rename or remove a "
+                     "reaction network. Nothing is solved from there -- come "
+                     "back and click \"Run BBN\"."):
         st.session_state[SessionKeys.show_manage_dialog] = True
         st.session_state[SessionKeys.show_custom_dialog] = False
 
@@ -1696,6 +1808,13 @@ def _explain_forced_flag_dialog(title, body):
     st.markdown(body)
     if st.button("OK", type="primary"):
         st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# The form itself: the module's entry point and the group renderers it calls,
+# in call order. Adding a parameter group touches only this region and the
+# curated metadata at the top of the file.
+# ---------------------------------------------------------------------------
 
 
 def render_sidebar_form():
@@ -1835,8 +1954,10 @@ def _render_curated_groups(params):
                         st.session_state[SessionKeys.amax_enabled] = False
                     st.session_state[SessionKeys.amax_prev_network] = current_network
                     enabled = st.checkbox(
-                        "Limit max mass number", value=False,
-                        help=help_text, key=SessionKeys.amax_enabled,
+                        "Limit max mass number A (amax)", value=False,
+                        help="Unchecked (default): keep every reaction. "
+                             "Checked: reveals the cutoff below.",
+                        key=SessionKeys.amax_enabled,
                     )
                     if enabled:
                         value = int(st.number_input(
