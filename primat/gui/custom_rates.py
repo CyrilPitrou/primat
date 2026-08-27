@@ -318,7 +318,7 @@ def stamp_upload(name, raw_text):
     Called right where a user's uploaded file is first accepted as a custom
     rate table (the "New rate table for <name>" and "Add a new rate"
     uploaders in ``params_form``), so that *every* later view of this text --
-    the "Show rate table" preview popup (:func:`primat.gui.params_form
+    the "Show rate table" view (:func:`primat.gui.params_form
     ._current_table_text`), the per-reaction "Source" column
     (:func:`primat.network_data._reaction_source_from_lines`, which reads
     this very header back), and a re-exported zip -- carries an unambiguous

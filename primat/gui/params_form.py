@@ -1133,16 +1133,20 @@ def _render_decay_category(names, decay_rates):
             _render_decay_row(name, decay_rates[name])
 
 
-def _render_rate_table_popover(name):
-    """Read-only viewer for one reaction's rate table.
+def _render_rate_table_view(name):
+    """Read-only viewer for one reaction's rate table, shown when its row's
+    "Show rate table" is toggled on.
 
-    Stays a ``st.popover`` (not ``st.dialog``) because every caller of
-    ``_render_reaction_row`` is already inside the "Create custom network"
-    ``st.dialog`` -- Streamlit forbids nesting a dialog inside another
-    dialog, so a dialog's built-in close "X" isn't an option here; the
-    click-outside-to-dismiss behaviour both widgets share is what we get.
+    A flag-controlled container rather than an ``st.popover`` because a
+    popover's body is executed on every rerun whether or not it is open: one
+    per reaction row meant the dialog read every table off disk and pushed it
+    into the page on every click (16.85 MB across 390 rows with ``large`` as
+    the base network). Only the rows the user actually opened are read here.
+    ``st.dialog`` is not an option either -- every caller is already inside
+    the "Create custom network" dialog, and Streamlit forbids nesting one
+    dialog in another.
     """
-    with st.popover("Show rate table", use_container_width=True):
+    with st.container(border=True):
         st.markdown(f"**{name}**")
         st.code(_current_table_text(name), language=None)
 
@@ -1189,8 +1193,11 @@ def _render_reaction_row(name):
         # Fold/unfold: a second click on the same reaction folds the upload
         # region back up again, e.g. if the user changed their mind.
         st.session_state[show_uploader_key] = not st.session_state.get(show_uploader_key, False)
-    with cols[4]:
-        _render_rate_table_popover(name)
+    show_table_key = SessionKeys.dialog_show_table(name)
+    if cols[4].button("Show rate table", key=SessionKeys.dialog_showtable_widget(gen, name),
+                      use_container_width=True):
+        # Fold/unfold, same as the uploader button above.
+        st.session_state[show_table_key] = not st.session_state.get(show_table_key, False)
 
     if st.session_state.get(show_uploader_key, False):
         # Rendered on its own full-width line below the row (not squeezed
@@ -1223,6 +1230,10 @@ def _render_reaction_row(name):
                 # whatever it displayed before this upload.
                 _DialogState().bump_gen()
                 st.rerun()
+
+    if st.session_state.get(show_table_key, False):
+        # Full-width below the row, like the uploader above.
+        _render_rate_table_view(name)
 
 
 def _render_decay_row(name, info):
@@ -1266,10 +1277,10 @@ def _render_add_rate_section(dialog_amax, all_entries):
     dialog's active ``amax`` -- checked in that order (cheap/no-upload-needed
     check first) before requiring the rate-table upload.
 
-    Uses a plain toggled container rather than ``st.popover``: a popover's
-    open/closed state cannot be set programmatically, so a successful
-    "Add reaction" click could not dismiss it; this flag-controlled container
-    can be collapsed (and is, on success) like any other widget.
+    Uses a flag-controlled container, like the reaction rows' rate-table
+    view: an ``st.popover``'s open/closed state cannot be set
+    programmatically, so a successful "Add reaction" click could not dismiss
+    it; this one can be collapsed (and is, on success) like any other widget.
     """
     st.divider()
     if st.button("Add new rate", key=SessionKeys.dialog_add_rate_open_btn):
@@ -1802,7 +1813,7 @@ def _explain_forced_flag_dialog(title, body):
     Called mid-script, before the sidebar's own widgets are instantiated --
     not nested inside any other dialog at that point, so this is safe (an
     ``st.dialog`` cannot nest inside another ``st.dialog``, see
-    ``_render_rate_table_popover``'s docstring for the case where it isn't).
+    ``_render_rate_table_view``'s docstring for the case where it isn't).
     """
     st.markdown(f"**{title}**")
     st.markdown(body)

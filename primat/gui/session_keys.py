@@ -202,6 +202,17 @@ class SessionKeys:
         return f"_dialog_show_uploader_{name}"
 
     @staticmethod
+    def dialog_showtable_widget(gen, name):
+        return f"_dialog_showtable_{gen}_{name}"
+
+    @staticmethod
+    def dialog_show_table(name):
+        # Bookkeeping, not a widget key: whether this row's rate-table view is
+        # unfolded. Reading a table costs a file read and megabytes of page
+        # text, so a folded row does neither.
+        return f"_dialog_show_table_{name}"
+
+    @staticmethod
     def dialog_decay_rate_widget(gen, name):
         return f"_dialog_decay_rate_{gen}_{name}"
 

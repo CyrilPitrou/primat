@@ -1507,3 +1507,35 @@ def test_export_zip_cached_matches_export_zip():
         "export_zip_cached collapsed two different networks onto one cache "
         "entry -- cfg.network is missing from the cache key"
     )
+
+
+def test_rate_tables_are_read_only_for_the_rows_the_user_opened():
+    """A reaction row's rate table is read and put on the page only once its
+    "Show rate table" is toggled on.
+
+    The viewer used to be an ``st.popover``, whose body Streamlit executes on
+    every rerun whether or not it is open -- so every row read its table off
+    disk and shipped it into the page on every click of anything in the
+    dialog: 16.85 MB across the 390 rows of a ``large`` base network, on the
+    ~1 GB Streamlit Cloud demo. Folded rows must cost nothing.
+    """
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    _open_create_dialog(at)
+
+    show_buttons = [b for b in at.button
+                    if b.key and b.key.startswith("_dialog_showtable_")]
+    assert show_buttons, "no 'Show rate table' buttons in the dialog"
+    assert not list(at.code), "a folded row put its rate table on the page"
+
+    show_buttons[0].click()
+    at.run(timeout=60)
+    codes = list(at.code)
+    assert len(codes) == 1, "exactly the opened row's table should be shown"
+    assert "n + p > d + g" in str(codes[0].value)
+
+    # Folding it back costs nothing again.
+    [btn] = [b for b in at.button if b.key == show_buttons[0].key]
+    btn.click()
+    at.run(timeout=60)
+    assert not list(at.code)
