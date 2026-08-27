@@ -291,7 +291,7 @@ def test_time_evolution_download_available_for_large_network():
 
 
 def test_quick_mc_uncertainty_adds_sigma_column():
-    """The "Quick MC uncertainty" toggle (Item 14) adds a "+/- 1 sigma (quick
+    """The "Quick MC uncertainty" toggle adds a "+/- 1 sigma (quick
     MC)" column to the "Standard ratios" table, with a positive sigma for
     YPBBN -- mirroring ``tests/test_mc.py::test_std_positive``."""
     at = AppTest.from_file(APP_PATH)

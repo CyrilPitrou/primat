@@ -77,7 +77,7 @@ def test_gn_and_taun_come_from_defaults():
 
 
 # ---------------------------------------------------------------------------
-# §6.1 — pluggable extra energy density (extra_rho)
+# Pluggable extra energy density (extra_rho)
 # ---------------------------------------------------------------------------
 
 def test_extra_rho_is_additive_in_hubble():

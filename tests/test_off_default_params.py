@@ -1,10 +1,16 @@
 """Guards for parameter values that are accepted but dangerous.
 
-A sweep of every ``DEFAULT_PARAMS`` key off its default, on both backends,
-turned these up. Guarded here: a configuration whose weak rates come out NaN,
-a ``GN`` override that must reach the baryon-to-photon ratio, the bool/int
-strictness the two parameter setters have to share, and the two caches that
-were re-keyed by values that cannot change their contents.
+The happy path is every other file's job; this one covers ``DEFAULT_PARAMS``
+keys pushed off their defaults, where a number still comes out and is wrong.
+Four promises:
+
+* a configuration whose n<->p rates come out NaN stops the run, on either
+  backend, and never leaves the NaN table in a cache file;
+* a ``GN`` override reaches the baryon-to-photon ratio identically on both
+  backends, whatever order the params dict is written in;
+* the two parameter setters agree on types, bool against int included;
+* a value that cannot change a cached table does not rename its cache file,
+  and one that can, does.
 """
 import os
 import warnings

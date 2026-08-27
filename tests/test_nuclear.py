@@ -1,6 +1,6 @@
 """
 Tests for the auto-derivation fallback in ``reaction_stoichiometry`` and the
-duplicate-entry check in ``load_network`` (Item 4).
+duplicate-entry check in ``load_network``.
 
 ``reaction_stoichiometry`` normally locates the reactant/product split via the
 detailed-balance exponent ``beta`` looked up in ``detailed_balance.csv``.  For a

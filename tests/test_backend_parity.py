@@ -1074,9 +1074,9 @@ CONVERGED_YPBBN_ATOL = 1e-7
 def test_backend_agreement_at_converged_tolerance(params):
     """With both backends' ODEs converged, only structural divergences remain.
 
-    This is the test that would catch a new one: at ``numerical_precision=1e-9``
-    the controller noise that dominates the default-precision gap is gone, so
-    the budget is ~50x tighter than the headline ``rel=5e-5``.
+    This is the test that would catch a new one: at ``CONVERGED_PRECISION`` the
+    controller noise that dominates the default-precision gap is gone, so the
+    budget is ~50x tighter than the headline ``rel=5e-5``.
     """
     p = dict(params, numerical_precision=CONVERGED_PRECISION)
     r_c = run_bbn(dict(p), force_backend="c")

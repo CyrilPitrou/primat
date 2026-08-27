@@ -370,7 +370,7 @@ def test_mc_large_network_varies_heavy_elements():
 
 
 # ---------------------------------------------------------------------------
-# tau_n variation (Item 14)
+# tau_n variation
 # ---------------------------------------------------------------------------
 
 def test_tau_n_alone_gives_nonzero_spread_in_YPBBN():
