@@ -6,11 +6,12 @@ routine default-parameter tweak (e.g. ``rate_grid_npts``, commit ``e00f062``)
 only needs a tolerance check here, not a hunt for every literal pin scattered
 across the suite.
 
-Three groups live here:
+Three groups live here, each with its own tolerances:
 
 1. the **default-precision** small-network observables
-   (``NEFF_REFERENCE`` … ``HE4_REFERENCE``) — what ``primat.cli.main([])``,
-   ``primat-gui``'s "Run BBN" and ``runfiles/primat_run.py`` actually print;
+   (``NEFF_REFERENCE``/``YPBBN_REFERENCE``/``DOH_REFERENCE``) — what
+   ``primat.cli.main([])``, ``primat-gui``'s "Run BBN" and
+   ``runfiles/primat_run.py`` actually print;
 2. the **high-precision** observables (``REF_SMALL_*``/``REF_LARGE8_*``)
    produced by ``runfiles/primat_reference_run.py``, which
    ``tests/test_regression.py``'s ``reference`` tier reproduces and
@@ -53,13 +54,6 @@ DOH_ABS_TOL   = 3e-9
 # constants above.
 PY_YPBBN_REFERENCE = 0.24699896
 PY_DOH_REFERENCE   = 2.4358605e-5
-
-# Per-nuclide final abundances per baryon, small network (primat.cli.main() default,
-# auto backend). Kept as scalars for the two callers that predate
-# NUCLIDE_REFERENCE below; they are the same numbers as its "small" column.
-P_REFERENCE   = 7.529408e-01
-HE4_REFERENCE = 6.174977e-02
-NUCLIDE_ABS_TOL = 1e-4  # mirrors the table's own documented precision
 
 # ---------------------------------------------------------------------------
 # 2. High-precision reference observables

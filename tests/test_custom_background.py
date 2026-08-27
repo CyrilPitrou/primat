@@ -204,10 +204,10 @@ def test_custom_background_warns_spectral_distortions(ref_run, tmp_path):
 def test_custom_background_warns_that_extra_rho_is_dropped(ref_run, tmp_path):
     """An extra energy component cannot act once the expansion history is given.
 
-    Both are silently discarded -- a supplied table already fixes the
-    expansion, so there is nothing for them to change -- and the run used to
-    report its abundances as if they had been included (R21/F4.5). The C
-    backend prints the same two messages from ``api.c``.
+    ``extra_rho`` and ``fEDE`` are discarded here -- a supplied table already
+    fixes the expansion, so there is nothing for them to change -- and each
+    must say so, or the run reports its abundances as if they had been
+    included. The C backend prints the same two messages from ``api.c``.
     """
     from primat.main import PRIMAT
 

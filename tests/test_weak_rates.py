@@ -516,7 +516,7 @@ def test_fingerprint_changes_with_y_SZ():
 
 
 # ---------------------------------------------------------------------------
-# Custom NEVO table overrides (Item 1: nevo_file/nevo_spectral_file/nevo_grid_file)
+# Custom NEVO table overrides (nevo_file/nevo_spectral_file/nevo_grid_file)
 # ---------------------------------------------------------------------------
 
 def test_fingerprint_changes_with_nevo_file(tmp_path):

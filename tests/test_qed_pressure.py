@@ -95,7 +95,7 @@ def test_I2m1_pinned_at_x1():
 
 
 def test_dPa_pinned_values():
-    """δP_a at T = 1, 10, 100 MeV matches expected values to 1 ppm.
+    """δP_a at T = 1, 10, 100 MeV matches expected values to 10 ppm.
 
     Reference values computed at epsabs=epsrel=1e-13.  Units: MeV⁴.
     At T=100 MeV (ultra-relativistic): δP_a ≈ -(α/π)(7π²/60)T⁴
@@ -111,7 +111,7 @@ def test_dPa_pinned_values():
 
 
 def test_dPe3_pinned_values():
-    """δP_{{e3}} at T = 1, 10, 100 MeV matches expected values to 1 ppm.
+    """δP_{{e3}} at T = 1, 10, 100 MeV matches expected values to 10 ppm.
 
     Units: MeV⁴.  At T=100 MeV the ring/plasmon term should be ≈ 8.9% of
     |δP_a|, consistent with δP_{{e3}}/|δP_a| ∝ (α^{{1/2}}) being ~1/12.

@@ -2,7 +2,7 @@
 """
 Tests for radioactive-decay treatment in the `large` network.
 
-Section 3.3 — decay_reverse_rates flag:
+The ``decay_reverse_rates`` flag:
     By default decay reactions are treated as irreversible (abg = (0,0,0)).
     The ``decay_reverse_rates=True`` flag asks ``load_network`` to compute
     detailed-balance reverse rates from nuclide data.  However, for any β-decay
@@ -19,7 +19,7 @@ Section 3.3 — decay_reverse_rates flag:
     The reverse channel is therefore numerically inert across the entire BBN
     integration window.
 
-    We verify this with a fast unit test: check that the ``bwd_cap`` array
+    A fast unit test suffices: check that the ``bwd_cap`` array
     computed by ``load_network`` is zero for every decay reaction, even when
     ``decay_reverse_rates=True``.  The cap is evaluated at T_nucl (the
     nucleosynthesis onset, the *highest* temperature in the LT era) and the
@@ -28,7 +28,7 @@ Section 3.3 — decay_reverse_rates flag:
     full ODE solve.  Since all caps are zero, no full-solve cross-check is
     needed.
 
-Section 4 — Decay Time (DT) era:
+The decay (DT) era:
     After BBN ends at T_end ≈ 0.001 MeV (t_end ≈ 1.3×10^6 s ≈ 15 days),
     long-lived isotopes continue to decay on timescales of years to Myr.
     The DT era propagates the abundance vector via the constant decay matrix
@@ -56,7 +56,7 @@ _needs_ac2024 = pytest.mark.skipif(
 )
 
 # ---------------------------------------------------------------------------
-# §3.3a  bwd_cap is zero for all decay reactions (fast unit test)
+# bwd_cap is zero for all decay reactions (fast unit test)
 # ---------------------------------------------------------------------------
 
 @_needs_ac2024
@@ -105,7 +105,7 @@ def test_decay_reverse_bwd_cap_is_zero():
 
 
 # ---------------------------------------------------------------------------
-# §4  Decay Time (DT) era: TSV output + column layout
+# Decay (DT) era: TSV output + column layout
 # ---------------------------------------------------------------------------
 
 @_needs_ac2024
@@ -175,7 +175,7 @@ def test_decay_era_tsv(tmp_path, solved_large):
 
 
 # ---------------------------------------------------------------------------
-# §4  Decay Time (DT) era: known decay physics
+# Decay (DT) era: known decay physics
 # ---------------------------------------------------------------------------
 
 @_needs_ac2024
@@ -254,7 +254,7 @@ def test_decay_era_physics(solved_large):
 
 
 # ---------------------------------------------------------------------------
-# §4  DT era: expm_multiply cross-check vs Radau (slow)
+# Decay (DT) era: expm_multiply cross-check vs Radau (slow)
 # ---------------------------------------------------------------------------
 
 @_needs_ac2024
