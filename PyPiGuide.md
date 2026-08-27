@@ -22,13 +22,22 @@ do — every release from now on follows the same recurring path below.
 
 ## Step 1 — 🟢 Bump the version everywhere
 
-1. Bump `version` in `pyproject.toml`.
-2. Bump `CPRIMAT_VERSION` in `primat-c/include/config.h` to match (checked
-   by `tests/test_docs_consistency.py::test_cprimat_version_matches_pyproject`,
-   but the update itself is manual).
-3. Update `CHANGELOG.md`: turn the `[Unreleased]`/in-progress section into
-   the new `## [X.Y.Z] - <date>` section (actual date, not a placeholder),
-   double-check every user-visible change since the last release is listed.
+`pyproject.toml` is the single source of truth; every other place repeats it
+and none of them updates itself. This table is the whole list — if a file is
+not here, it does not carry the version.
+
+| # | File | What to change | Checked by |
+|---|---|---|---|
+| 1 | `pyproject.toml` | `version` | — (source of truth) |
+| 2 | `primat-c/include/config.h` | `CPRIMAT_VERSION` | `test_cprimat_version_matches_pyproject` |
+| 3 | `CITATION.cff` | `version` **and** `date-released` (the real date) | `test_citation_cff_version_matches_pyproject` |
+| 4 | `manual/` | rename `primat_documentation_vX.Y.Z.tex`/`.pdf`, update the `.tex` title page and intro, and `manual/README.md`'s four references | `test_manual_declares_the_current_version` |
+| 5 | `CHANGELOG.md` | turn `[Unreleased]` into `## [X.Y.Z] - <date>` (the real date), and check every user-visible change since the last release is listed | its **date** is cross-checked against row 3; its contents are not machine-checkable |
+| 6 | `wheels/` + `requirements.txt` | rebuild and re-point the Streamlit wheel — **Step 3**, not here | `test_streamlit_wheel_matches_pyproject_version` |
+
+Rows 2–4 fail a test if you skip them, so `pytest tests/test_docs_consistency.py`
+is the check for this step. Row 6 is Step 3 rather than here because it needs a
+CI run. Only row 5's *contents* are left to you.
 
 All of this is a normal commit — reversible.
 
@@ -127,8 +136,8 @@ Irreversible because:
   the first wheel finishes uploading. There is no "private" undo.
 
 Pre-flight checklist (everything above must already be true):
-- [ ] Step 1: version bumped in `pyproject.toml` + `CPRIMAT_VERSION`,
-      `CHANGELOG.md` dated and complete.
+- [ ] Step 1: every row of its table done — `pytest tests/test_docs_consistency.py`
+      green, `CHANGELOG.md` dated and complete.
 - [ ] Step 2: local build + `twine check` clean.
 - [ ] Step 3: Streamlit demo wheel rebuilt and committed (or explicitly
       deferred — see Step 3's note, not a release blocker).

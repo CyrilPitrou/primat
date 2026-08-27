@@ -11,9 +11,9 @@ that breaks them fails a test instead of just leaving stale prose.
 
 Scope note: `CLAUDE.md` is deliberately *not* read here. It is a local,
 gitignored file (`.gitignore`), so it is not present in a public clone or in
-CI and cannot be asserted against. Anything that must be enforced has to live
-in a tracked file -- which is why the "Validation reference" numbers were
-moved into `tests/README.md` and `tests/reference_values.py`, where the two
+CI and cannot be asserted against. Anything that must be enforced lives in a
+tracked file instead: the "Validation reference" numbers are in
+`tests/README.md` and `tests/reference_values.py`, where the two
 `*_matches_reference_constants` tests below pin them.
 
 Every test in this module is a static file read -- no solve -- so the whole
@@ -67,6 +67,84 @@ def test_cprimat_version_matches_pyproject():
         f"CPRIMAT_VERSION ({config_h_version!r}) in primat-c/include/config.h "
         f"is out of sync with pyproject.toml's version ({pyproject_version!r}); "
         "update both in the same commit."
+    )
+
+
+def _pyproject_version():
+    """pyproject.toml's version -- the single source of truth for the release."""
+    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"',
+                      _read_text(os.path.join(REPO_ROOT, "pyproject.toml")))
+    assert match, "version field not found in pyproject.toml"
+    return match.group(1)
+
+
+def test_citation_cff_version_matches_pyproject():
+    """CITATION.cff's version is what GitHub's "Cite this repository" and Zenodo
+    report, so a bump that misses it hands out the wrong release number.
+
+    The release date is checked against CHANGELOG.md's heading for the same
+    version rather than asserted literally: the two are written in different
+    commits and drifted once, leaving a 0.3.1 date on a 0.3.2 record.
+    """
+    cff_text = _read_text(os.path.join(REPO_ROOT, "CITATION.cff"))
+    version = _pyproject_version()
+
+    cff_version = re.search(r'(?m)^version:\s*(\S+)\s*$', cff_text)
+    assert cff_version, "version field not found in CITATION.cff"
+    assert cff_version.group(1).strip('"\'') == version, (
+        f"CITATION.cff's version ({cff_version.group(1)}) is out of sync with "
+        f"pyproject.toml's ({version!r}); update it in the same commit "
+        "(see PyPiGuide.md, Step 1)."
+    )
+
+    cff_date = re.search(r'(?m)^date-released:\s*"?([0-9]{4}-[0-9]{2}-[0-9]{2})"?',
+                         cff_text)
+    assert cff_date, "date-released field not found in CITATION.cff"
+
+    changelog = _read_text(os.path.join(REPO_ROOT, "CHANGELOG.md"))
+    heading = re.search(r'(?m)^## \[%s\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})\s*$'
+                        % re.escape(version), changelog)
+    if heading is None:
+        # The version is still unreleased (no dated CHANGELOG heading yet);
+        # nothing to compare the date against.
+        return
+    assert cff_date.group(1) == heading.group(1), (
+        f"CITATION.cff says {version} was released on {cff_date.group(1)}, "
+        f"CHANGELOG.md says {heading.group(1)}."
+    )
+
+
+def test_manual_declares_the_current_version():
+    """manual/ declares the version it documents in four tracked places plus its
+    own filenames, none of which a version bump touches automatically.
+
+    The .tex title page and the intro paragraph are the ones a reader sees; the
+    two filenames and manual/README.md's four references to them are what a bump
+    has to rename. A stale manual claims to describe a release it predates.
+    """
+    version = _pyproject_version()
+    manual_dir = os.path.join(REPO_ROOT, "manual")
+
+    tex_name = "primat_documentation_v%s.tex" % version
+    pdf_name = "primat_documentation_v%s.pdf" % version
+    for name in (tex_name, pdf_name):
+        assert os.path.isfile(os.path.join(manual_dir, name)), (
+            f"manual/{name} does not exist -- rename the manual's .tex/.pdf to "
+            f"the current version {version!r} and update manual/README.md "
+            "(see PyPiGuide.md, Step 1)."
+        )
+
+    tex_text = _read_text(os.path.join(manual_dir, tex_name))
+    assert f"Documentation for primat version {version}" in tex_text, (
+        f"manual/{tex_name}'s title page does not declare version {version!r}."
+    )
+
+    readme_text = _read_text(os.path.join(manual_dir, "README.md"))
+    assert f"**primat version {version}**" in readme_text, (
+        f"manual/README.md does not declare version {version!r}."
+    )
+    assert tex_name in readme_text and pdf_name in readme_text, (
+        f"manual/README.md does not reference {tex_name} and {pdf_name}."
     )
 
 
@@ -337,9 +415,9 @@ def test_param_templates_match_generator():
 
 
 def test_param_count_comments_match_default_params():
-    """Every prose copy of the parameter count must quote len(DEFAULT_PARAMS)
-    exactly. (Any '(currently NN keys)' count in the untracked CLAUDE.md is
-    NOT asserted -- see this module's docstring; keep it updated by hand.)"""
+    """Every tracked prose copy of the parameter count must quote
+    len(DEFAULT_PARAMS) exactly -- see this module's docstring for why only
+    tracked files are asserted."""
     from primat.config import DEFAULT_PARAMS
     n = len(DEFAULT_PARAMS)
     assert f"All {n} DEFAULT_PARAMS keys are listed" in _read_text(_TEMPLATE_PY)

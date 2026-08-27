@@ -9,9 +9,7 @@ from *either* backend's output without caring which one ran.
 This module docstring is the **authoritative contract** for that schema
 (column names, order, and semantics): both backends' writers must conform to
 it, and any new column must be added to both before it is considered part of
-the schema. It supersedes the now-removed ``PRIMAT.md`` design note (whose
-§7 is still recoverable for historical context via
-``git show a140bab^:PRIMAT.md``).
+the schema.
 
 ``EvolutionResult`` is the in-memory primary artifact -- populated by
 ``NuclearNetwork.solve()`` as ``self.evolution`` (and surfaced as

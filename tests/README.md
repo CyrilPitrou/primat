@@ -157,14 +157,14 @@ fails there and nowhere here.
 | `test_spectral_distortions.py` | Non-thermal neutrino spectra, each pinned as a *difference* between two full solves (`solve` tier): `spectral_distortions` on/off (small but non-zero on D/H, zero distortion energy in NEVO by construction); the analytic y-type (`y_SZ`) and gray (`y_gray`) distortions shifting Neff, and `finite_mass_corrections` genuinely gating the SD-FM term; and neutrino chemical potentials (`munuOverTnu`, per-flavour `xi_*`) — Neff even in the sign, per-flavour knobs reducing to the common one, and the discriminating case that `xi_mu` alone gravitates but must *not* shift the n↔p rates. |
 | `backend_divergence.py` | (helper, not a test) The cross-backend divergence harness: measures each link of the chain — background, nuclear rate tables, CCRTh interpolation, per-nuclide abundances — so a widened total can be attributed. Runnable as `python -m tests.backend_divergence`; the terms it measures are pinned at the end of `test_backend_parity.py` and explained under "Known cross-backend divergences" below. |
 | `strip_prose.py` | (helper, not a test) Proves a comment/docstring edit changed no code: writes a comment-stripped copy of every `primat/`, `primat-c/` and `tests/` source file, so snapshots taken before and after an editing session can be diffed. An empty `diff -r` means the edit was prose-only. Run as `python tests/strip_prose.py . <outdir>`. |
+| `message_probes.py` | (helper, not a test) Dumps what both command-line tools tell the user for 30 conditions — rejected settings, warnings, `--help`, the JSON and plain-text reports — with exit status, stdout and stderr kept apart, so stream discipline and wording parity can be read off one file. `test_verbose_parity.py` pins the verbose narration; this covers the rest, which is too open-ended to assert. Run `python tests/message_probes.py > probes.txt` before and after a change that touches messages and diff the two. Needs the standalone C CLI built. |
 | `reference_values.py` | (helper, not a test) Centralised default-run reference observables shared by test_cli/test_gui/test_regression, and the validation-reference constants (single source, see test_docs_consistency). |
 | `_oracles.py` | (helper, not a test) Test-only reference RHS/Jacobian oracle implementations the nuclear-network tests compare against. |
 
 ## Validation reference (authoritative copy)
 
-(This section moved here from the untracked CLAUDE.md so that CI and public
-clones carry it; tests parse THESE tables — see
-`tests/test_docs_consistency.py`, which fails if they drift from
+(This is the copy CI and a public clone read. The tests parse THESE tables —
+see `tests/test_docs_consistency.py`, which fails if they drift from
 `tests/reference_values.py`.)
 
 The values below hold at the defaults `Omegabh2=0.02242`,
@@ -312,3 +312,19 @@ did), and every thermodynamic quantity — `Neff` is bit-identical.
 
 Everything else that round-1 review found divergent between the two backends
 was closed rather than documented; `git log` is the record of those.
+
+## One test has failed once, unreproducibly
+
+`test_backend_parity.py::test_ccrth_interpolation_scheme_spread_is_pinned`
+failed once in a full slow-lane run and passed in the next one, with only
+comment and prose edits in between. It also passes on its own and passes with
+its own module. It has not been reproduced since, and the cause was never
+established, so it is recorded here rather than fixed.
+
+Its bound is `1e-12` against a measured `3.5e-19`, so a genuine regression
+would have to be seven orders of magnitude — which points at state shared
+between tests in one process rather than at the physics. The two candidates
+are the process-wide numba rebinding (`test_state_and_cache_robustness.py`
+flips it) and the lazily built Gauss-Legendre node table. If you see it fail,
+try to reproduce it under `-p no:randomly` with the numba-flipping test forced
+to run first, and record what you find here.

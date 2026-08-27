@@ -25,7 +25,7 @@ abstract: >-
   of H, D, He3, He4, Li7 and heavier nuclides.
 type: software
 version: 0.3.2
-date-released: "2026-07-02"
+date-released: "2026-07-11"
 license: GPL-3.0-or-later
 repository-code: "https://github.com/CyrilPitrou/primat"
 url: "https://primat.readthedocs.io"

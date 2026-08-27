@@ -244,9 +244,9 @@ int main(void)
     /* ---- Absurdly long data_dir/user_nuclear_dir/cache_dir: every
      * path-building helper must truncate safely (NUL-terminated, never
      * write past the caller's buffer) rather than overflow, and warn on
-     * stderr instead of silently handing back a mangled path (CODE_REVIEW.md
-     * item 6: "verify each caller checks the return or that truncation is
-     * detected once centrally"). data_dir is a fixed CPR_DATA_DIR_LEN
+     * stderr instead of silently handing back a mangled path: truncation
+     * has to be detected once, centrally, rather than at each of the
+     * callers. data_dir is a fixed CPR_DATA_DIR_LEN
      * buffer (the tightest case); user_nuclear_dir/cache_dir are malloc'd
      * char* with no length cap at cpr_config_set_by_name time, so they are
      * the more realistic way a user could supply an oversized path. ---- */

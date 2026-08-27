@@ -645,20 +645,11 @@ class StandardBackground(Background):
             Calling this earlier raises ``NotImplementedError`` from the base
             ``a_of_T`` stub, which is the intended loud failure.
 
-            This used to be preceded by a ``rho_CDM_approx`` bootstrap that
-            anchored ``a ≈ T0CMB_MeV / Tγ`` at today (a = 1, T = T0CMB) and was
-            swapped out only *after* the background solve, so both ODEs ran on
-            the approximation. That anchor is wrong in the BBN era by the e⁺e⁻
-            reheating factor: a(T)·T is not constant across annihilation, it
-            rises by (11/4)^{1/3}, so ``(a_approx/a_exact)³`` was 2.73 at
-            Tγ = 10 MeV and 2.69 at 1 MeV, falling to 1.000 only below
-            ~0.01 MeV. (The old comment justified it via matter-radiation
-            equality, T ≫ T_eq -- the wrong mechanism, and one that made the
-            approximation look best exactly where it was worst.) With
-            ρ_CDM/ρ_γ ≈ 1.1e-6 at 1 MeV the 2.7× error biased ρ_tot by ~4e-7
-            and H by ~2e-7 -- below the ±3e-9 D/H pin, but a needless
-            divergence from primat-c, whose cpr_bg_Hubble always had the exact
-            ``a`` available (it carries x = ln(a·T) in the ODE state).
+            The exact ``a(T)`` is required here, not the radiation-domination
+            anchor ``a ≈ T0CMB_MeV / Tγ``: ``a·T`` is not constant across
+            e⁺e⁻ annihilation but rises by (11/4)^{1/3}, so that anchor
+            overstates ``a³`` by the cube of that factor anywhere above
+            ~0.01 MeV.
             """
             a = self.a_of_T(Tg)
             return rhocdm_a3 / a**3
