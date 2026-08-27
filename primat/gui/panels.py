@@ -195,6 +195,11 @@ def render_results_panel(run, mc=None, run_params=None, backend_used=None):
         for name in run.abundance_names
     ]
     st.markdown("\n".join(lines))
+    st.caption(
+        "Y is the abundance per baryon, $Y_i = n_i/n_b$ -- a number fraction, "
+        "not a mass fraction. The mass fraction is $A_i Y_i$, and "
+        "$\\sum_i A_i Y_i = 1$."
+    )
 
 
 def final_abundances_text(run, mc=None):
@@ -297,8 +302,10 @@ def render_reactions_panel(run):
 
     st.subheader(f"{len(reactions)} reactions")
     st.caption(
-        "Full reaction set of the low-temperature solver. The MT era uses the "
-        "subset of these that appears in its own fixed 18-reaction list."
+        "Full reaction set of the low-temperature solver: the network's own "
+        "reactions plus the n<->p weak rate, which is why this count is one "
+        "above the network's. The MT era uses the subset of these that "
+        "appears in its own fixed 18-reaction list."
     )
 
     # Content-sized HTML table with collapsed borders -> crisp grid lines and no
@@ -377,10 +384,10 @@ def _render_reaction_downloads(run):
             mime="application/zip",
             key="dl_custom_network",
             help=f"networks/{title}.txt + tables/<name>/<filename> for every "
-                 "reaction in this run, re-importable from the sidebar's "
-                 "\"Import custom network\" button -- even for an unmodified "
-                 "network, this is a self-contained snapshot of exactly the "
-                 "reactions/tables used.",
+                 "reaction in this run, re-importable through the sidebar's "
+                 "\"Manage networks\" -> \"Load a network from file\" -- even "
+                 "for an unmodified network, this is a self-contained "
+                 "snapshot of exactly the reactions/tables used.",
         )
 
 
@@ -487,6 +494,9 @@ def render_downloads_panel(run, mc=None, background=None):
         "Final abundances", "output_final.txt",
         data=final_abundances_text(run, mc=mc), file_name="output_final.txt",
         mime="text/plain", key="dl_final",
+        help="One row per nuclide: name and final abundance per baryon "
+             "Y = n/n_b (dimensionless), plus a sigma column when a quick MC "
+             "covered that nuclide. Same format as output_final_result=True.",
     )
     if mc is not None:
         from primat.backend import (dump_mc_correlation, dump_mc_covariance,
@@ -520,6 +530,9 @@ def render_downloads_panel(run, mc=None, background=None):
         "Abundances time evolution", "output_time_evolution.tsv",
         data=dump_evolution(run.evolution), file_name="output_time_evolution.tsv",
         mime="text/tab-separated-values", key="dl_evolution",
+        help="Tab-separated: t_s [s], a, the photon and three neutrino "
+             "temperatures [MeV], then Y_<nuclide> per baryon for every "
+             "tracked nuclide.",
     )
     if background is not None:
         _file_download(
@@ -527,6 +540,10 @@ def render_downloads_panel(run, mc=None, background=None):
             data=background.time_evolution_text(run.cfg.output_n_points),
             file_name="output_background.tsv",
             mime="text/tab-separated-values", key="dl_background",
+            help="The cosmological background alone, with no nuclides: "
+                 "T [MeV], t [s], scale factor, H [1/s], the three neutrino "
+                 "temperatures [MeV], the NEVO heating function and four "
+                 "energy densities [MeV^4].",
         )
         _file_download(
             "Weak rates", "nTOp_total.tsv",
@@ -550,9 +567,12 @@ def render_downloads_panel(run, mc=None, background=None):
                 "Decay rates", "decays.txt",
                 data=decays_data, file_name="decays.txt",
                 mime="text/plain", key="dl_decays",
+                help="The large network's beta-decay and electron-capture "
+                     "table as shipped: one constant rate [1/s] per decay, "
+                     "with its half-life and reference.",
             )
-        except OSError:
-            st.warning("`decays.txt` is unavailable.")
+        except OSError as exc:
+            st.warning(f"Decay rates: could not read {decays_path} ({exc}).")
 
 
 # ---------------------------------------------------------------------------
@@ -631,8 +651,8 @@ def render_evolution_panel(run):
     Notes
     -----
     Mirrors ``notebooks/AbundanceEvolution.ipynb``: for each selected nuclide
-    ``name``, plots ``A_i Y_i(t)`` (the mass fraction weighted by mass number,
-    i.e. the per-baryon abundance) on a log-log Plotly figure, using
+    ``name``, plots ``A_i Y_i(t)`` -- the mass fraction, the abundance per
+    baryon ``Y_i`` weighted by mass number -- on a log-log Plotly figure, using
     :func:`primat.plotting.abundance_evolution_curves` -- the same
     backend-agnostic curve-computation helper the notebooks use, built on
     ``run.evolution`` (an ``EvolutionResult``, populated on either backend)
@@ -709,7 +729,7 @@ def render_evolution_panel(run):
     y_floor = -50 if run.cfg.network == "large" else -36
     fig.update_layout(
         xaxis_title=x_title,
-        yaxis_title="Aᵢ Yᵢ  (per-baryon abundance)",
+        yaxis_title="Aᵢ Yᵢ  (mass fraction)",
         xaxis_type="log",
         yaxis_type="log",
         yaxis_range=[y_floor, 0],

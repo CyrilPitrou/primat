@@ -3,12 +3,14 @@
 primat.gui.export_params
 =========================
 
-"Download params as .py / .ini" support for the Streamlit GUI: serialise
-the params dict a GUI session has actually run into a
+Builds the "Download reproduction bundle (.zip)" of the GUI's Final
+abundances tab: the params a session has actually run, serialised into a
 standalone Python script (mirroring ``runfiles/primat_run_explanatory.py``'s
-layout) and into a ``primat-c`` ``.ini`` file (mirroring
-``primat-c/examples/run_basic.ini``), so a configuration explored in the
-browser can be reproduced from a script or the C CLI without the browser.
+layout), into a ``primat-c`` ``.ini`` file (mirroring
+``primat-c/examples/run_basic.ini``) and into a ``README.txt``, plus a
+``nuclear/`` overlay when the run used a custom network -- so a configuration
+explored in the browser can be reproduced from a script or the C CLI without
+the browser.
 
 Only the keys the user actually changed are emitted (``params`` is already
 that "changed subset", see ``params_form.render_sidebar_form``'s return-value

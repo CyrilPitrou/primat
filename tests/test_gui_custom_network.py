@@ -28,7 +28,7 @@ and fixed by hand-testing the popup:
   returning to "Manage networks" (the old "Apply and run BBN" behaviour);
 * re-editing a previously built/imported custom network mislabelling every
   one of its unmodified, shipped-default tables as "_custom" (``reset``);
-* the sidebar's "Limit max mass number" filter silently carrying an
+* the sidebar's "Limit max mass number A (amax)" filter silently carrying an
   unrelated previous network's choice over onto a freshly chosen custom
   network (``amax_prev_network``); it stays clickable (amax does filter a
   custom network's own kept-list too) but starts unchecked again on every
@@ -537,7 +537,7 @@ def test_pending_network_selection_runs_bbn_with_the_custom_network():
 
 
 def test_amax_auto_unchecked_on_close_but_stays_clickable():
-    """Regression guard: "Limit max mass number" must be
+    """Regression guard: "Limit max mass number A (amax)" must be
     unchecked automatically once a custom network is applied via "Close",
     rather than silently carrying an unrelated previous network's value
     over onto the freshly chosen one -- but it must stay clickable (not

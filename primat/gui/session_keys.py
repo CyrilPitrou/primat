@@ -10,7 +10,7 @@ Why this exists
 ``st.session_state`` is a plain ``dict[str, Any]`` shared across the whole
 Streamlit script run; a key typo'd in one place (or renamed in one place but
 not another) fails silently -- ``st.session_state.get("typo")`` just returns
-``None``/the fallback, it never raises. With ~50 keys read and written across
+``None``/the fallback, it never raises. With ~70 keys read and written across
 ``params_form.py`` (the custom-network dialog), ``app.py`` and ``panels.py``,
 that risk is real. Centralising every key as a named constant here turns a
 typo into a ``NameError``/``AttributeError`` at import time instead of a
@@ -29,6 +29,27 @@ Most keys are static (module-level string constants). A handful are
 and/or its remount generation counter (see :data:`SessionKeys.dialog_gen`'s
 docstring on the file's own ``_DialogState.bump_gen``) -- those are exposed as
 ``staticmethod`` key-builders instead of constants.
+
+Two kinds of key
+----------------
+The distinction that matters when reading a caller is not the leading
+underscore (``_dialog_title`` is a widget key, ``_tabs_gen`` is not) but who
+owns the value:
+
+* **Widget keys** are passed to a ``st.*`` call as ``key=``; Streamlit owns
+  the value and forbids writing it once the widget exists this script run.
+  Each block below says which of its keys are widget keys.
+* **Bookkeeping keys** are the GUI's own. They can be written at any point.
+
+Everything a caller does with the first kind follows from that one rule:
+a value that must change *after* its widget was drawn is stashed under a
+bookkeeping key and applied at the top of the next run. Four such deferrals
+exist -- :data:`pending_network_label` (sidebar "network" selectbox),
+:data:`dialog_pending_open` (a category expander's open state),
+:data:`last_created_network` ("Manage networks"' radio) and
+:data:`manage_load_upload_gen` (remounting the zip uploader, which cannot be
+cleared any other way). They are four instances of one pattern, not four
+mechanisms.
 """
 
 
@@ -38,6 +59,7 @@ class SessionKeys:
     # ---- Cross-module contract (app.py / panels.py / params_form.py) ------
     # The result of the sidebar form / custom-network dialog, consumed by
     # app.py's run/solve step and by panels.py's Reactions tab.
+    # Bookkeeping, except `network`, which is the sidebar selectbox's own key.
     params = "params"
     quick_mc = "quick_mc"
     mc_samples = "mc_samples"
@@ -57,14 +79,18 @@ class SessionKeys:
     tabs_up_to_date = "_tabs_up_to_date"
 
     # ---- Abundance-evolution panel (panels.render_evolution_panel) ---------
-    # The multiselect's chosen nuclides, plus the option set it was seeded
-    # from -- the latter so a network change (different nuclide set) re-seeds
-    # the selection instead of silently keeping the previous network's, which
-    # Streamlit would then intersect down without any visible signal.
+    # The multiselect's own widget key (the chosen nuclides), plus a
+    # bookkeeping record of the option set it was seeded from -- the latter so
+    # a network change (different nuclide set) re-seeds the selection instead
+    # of silently keeping the previous network's, which Streamlit would then
+    # intersect down without any visible signal.
     evolution_selection = "evolution_selection"
     evolution_options = "_evolution_options"
 
     # ---- Sidebar form (params_form.render_sidebar_form) --------------------
+    # Widget keys except the three underscored ones, which are bookkeeping.
+    # Every curated parameter's own widget key is the DEFAULT_PARAMS key
+    # itself (`_widget_for` passes `key=key`), so it needs no constant here.
     amax_enabled = "amax_enabled"
     amax_value = "amax_value"
     quick_mc_uncertainty = "quick_mc_uncertainty"
@@ -78,6 +104,9 @@ class SessionKeys:
 
     # ---- "Manage networks" dialog (lists/removes/loads/renames, and is the
     # sole entry point into the "Create custom network" dialog) -------------
+    # Widget keys except `_show_manage_dialog`, `_manage_rename_open`,
+    # `_manage_load_upload_gen` and `_last_created_network`, which are the
+    # dialog's own bookkeeping.
     show_manage_dialog = "_show_manage_dialog"
     btn_manage_networks = "_btn_manage_networks"
     manage_selected_network = "_manage_selected_network"
@@ -112,6 +141,11 @@ class SessionKeys:
         return f"_manage_download_{name}"
 
     # ---- "Create custom network" dialog: per-session, not per-reaction -----
+    # Widget keys except `_dialog_gen`, `_dialog_pending_open`,
+    # `_dialog_prev_base_network`, `_dialog_signature` and the five state dicts
+    # (`_dialog_added`/`_dialog_keep`/`_dialog_table_choice`/
+    # `_dialog_uploaded_tables`/`_dialog_decay_override`), which back the
+    # widgets rather than being ones.
     dialog_title = "_dialog_title"
     dialog_gen = "_dialog_gen"
     dialog_decay_override = "_dialog_decay_override"
