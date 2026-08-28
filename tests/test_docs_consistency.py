@@ -16,8 +16,9 @@ tracked file instead: the "Validation reference" numbers are in
 `tests/README.md` and `tests/reference_values.py`, where the two
 `*_matches_reference_constants` tests below pin them.
 
-Every test in this module is a static file read -- no solve -- so the whole
-file stays in the fast (`-m "not slow"`) lane.
+No test in this module runs a solve -- most are static file reads, the rest
+load a network or collect the suite -- so the whole file stays in the fast
+(`-m "not slow"`) lane.
 """
 import ast
 import os
@@ -612,3 +613,121 @@ def test_development_notes_only_point_at_files_that_exist():
         os.path.join(REPO_ROOT, "README.md"))
     assert "Known cross-backend divergences" in _read_text(
         os.path.join(REPO_ROOT, "tests", "README.md"))
+
+
+# --- The methods paper's citation, and two counts nothing used to pin ------
+
+# Every place that prints the Physics Reports reference for a human to copy.
+# The manual's own front matter and README use the "volume (year) first-page"
+# short form instead, so they are not in this list.
+_CITATION_PAGES = ("README.md", "docs/index.md", "docs/citing.md",
+                   "docs/physics.md", "docs/extending.md",
+                   "manual/EXTENDING.md")
+
+
+def _citation_cff_reference():
+    """(volume, start, end) of CITATION.cff's `preferred-citation` entry."""
+    text = _read_text(os.path.join(REPO_ROOT, "CITATION.cff"))
+    block = text.split("preferred-citation:", 1)[1]
+    grab = lambda k: re.search(rf'^\s+{k}:\s*"?(\d+)"?\s*$', block, re.M).group(1)
+    return grab("volume"), grab("start"), grab("end")
+
+
+@pytest.mark.parametrize("page", _CITATION_PAGES)
+def test_paper_citation_matches_citation_cff(page):
+    """Every human-readable citation of the methods paper gives the volume and
+    pages CITATION.cff gives.
+
+    GOAL: the one reference this project asks a reader to copy must resolve.
+    These pages once printed "Physics Reports 04 (2018) 005" -- the DOI suffix
+    read as a volume and a page -- next to a BibTeX block saying 754 (2018)
+    1-66.
+    """
+    volume, start, end = _citation_cff_reference()
+    # Collapsed to one line first: docs/extending.md wraps its citation
+    # mid-reference, so a line-by-line scan would see only half of it.
+    text = " ".join(_read_text(os.path.join(REPO_ROOT, *page.split("/"))).split())
+    cites = re.findall(r"Physics Reports[^.]{0,80}?\(2018\)[^.]{0,20}", text)
+    assert cites, f"{page} no longer carries a Physics Reports citation"
+    for cite in cites:
+        assert volume in cite, f"{page}: citation lacks volume {volume}: {cite}"
+        assert re.search(rf"{start}[-\u2013]{end}", cite), (
+            f"{page}: citation lacks pages {start}-{end}: {cite}")
+
+
+def test_no_document_prints_the_doi_suffix_as_a_volume():
+    """"04 (2018) 005" is the DOI's month and article number, not a citation.
+
+    GOAL: guard the whole prose tree, not only the pages listed above, against
+    the mis-rendering `test_paper_citation_matches_citation_cff` fixed.
+    """
+    bad = re.compile(r"\b04\b[^\n]{0,4}\(2018\)[^\n]{0,4}\b005\b")
+    # CHANGELOG.md quotes the mis-rendering in the entry that records fixing
+    # it, which is what a changelog is for.
+    paths = [os.path.join(REPO_ROOT, f) for f in os.listdir(REPO_ROOT)
+             if f.endswith(".md") and f != "CHANGELOG.md"]
+    for sub in ("docs", "manual", "primat"):
+        for dirpath, dirnames, filenames in os.walk(os.path.join(REPO_ROOT, sub)):
+            dirnames[:] = [d for d in dirnames
+                           if d not in ("_build", "__pycache__", "data")]
+            paths += [os.path.join(dirpath, n) for n in filenames
+                      if n.endswith((".md", ".py", ".tex"))]
+    offenders = [os.path.relpath(p, REPO_ROOT) for p in paths
+                 if bad.search(_read_text(p))]
+    assert not offenders, (
+        f"these files print the DOI suffix as a volume/page: {sorted(set(offenders))}")
+
+
+def test_documented_rate_column_counts_match_the_networks():
+    """README and the C header quote the real `<reaction>_frwrd` column count.
+
+    GOAL: the block has one column per LT reaction *except* n<->p, which has
+    no rate table, so the count is `n_reac - 1` -- 12 / 67 / 428, not the LT
+    network sizes 13 / 68 / 429 that both documents used to quote.
+    """
+    from primat.network_data import load_network
+
+    counts = {}
+    for label, params in (("small", {"network": "small"}),
+                          ("amax8", {"network": "large", "amax": 8}),
+                          ("large", {"network": "large"})):
+        counts[label] = load_network(PRIMATConfig(dict(params))).n_reac - 1
+    assert counts == {"small": 12, "amax8": 67, "large": 428}, counts
+
+    readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
+    header = _read_text(os.path.join(
+        REPO_ROOT, "primat-c", "include", "nuclear_network.h"))
+    for text, where in ((readme, "README.md"),
+                        (header, "primat-c/include/nuclear_network.h")):
+        # Both documents state the exception, then the three counts.
+        assert "no rate table" in text, f"{where}: no column-count sentence found"
+        window = text[text.index("no rate table"):][:220]
+        quoted = [int(n) for n in re.findall(r"\b\d{2,3}\b", window)[:3]]
+        assert quoted == [counts["small"], counts["amax8"], counts["large"]], (
+            f"{where} quotes {quoted} as the column counts, "
+            f"but they are {[counts['small'], counts['amax8'], counts['large']]}")
+
+
+def test_tests_readme_test_counts_match_the_collected_suite():
+    """tests/README.md's two totals are what pytest actually collects.
+
+    GOAL: those totals are the only numbers in that file nothing checked, and
+    they drifted three tests behind the suite. One collection reports both --
+    "<fast>/<total> tests collected (<slow> deselected)".
+    """
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/", "--collect-only", "-q",
+         "-m", "not slow"],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=600).stdout
+    m = re.search(r"(\d+)/(\d+) tests collected \((\d+) deselected\)", out)
+    assert m, f"could not parse the collection summary from:\n{out[-2000:]}"
+    total, deselected = m.group(2), m.group(3)
+
+    readme = _read_text(os.path.join(REPO_ROOT, "tests", "README.md"))
+    assert f"everything: {total} tests" in readme, (
+        f"tests/README.md's total is stale; the suite collects {total} tests")
+    assert f"marker excludes {deselected} tests" in readme, (
+        f"tests/README.md's slow count is stale; `slow` excludes {deselected}")

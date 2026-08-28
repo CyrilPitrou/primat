@@ -2,7 +2,7 @@
 
 If you use primat in published work, please cite the Physics Reports paper:
 
-> Pitrou, Coc, Uzan, Vangioni, *Physics Reports* **04** (2018) 005
+> Pitrou, Coc, Uzan, Vangioni, *Physics Reports* **754** (2018) 1–66
 > ([arXiv:1801.08023](https://arxiv.org/abs/1801.08023)).
 
 ```bibtex

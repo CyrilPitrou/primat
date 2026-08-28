@@ -109,9 +109,10 @@ def run_network(label, network, amax=None):
     # force_backend="python": tests/reference_values.py is the source of truth
     # this script regenerates, and the two backends do not agree to the
     # precision those values are quoted at -- the residual is a genuine method
-    # difference, not noise (F7.2: the HT era integrates with LSODA on Python
-    # and RK45 in C; measured cross-backend D/H spread 5.32e-06 relative on
-    # `small`, see tests/test_backend_parity.py). The reference values must
+    # difference, not noise: the HT era integrates with LSODA on Python and
+    # RK45 in C, and the two background solvers use different time
+    # coordinates (see tests/README.md, "Known cross-backend divergences",
+    # and tests/test_backend_parity.py for the measured spread). The reference values must
     # therefore stay pinned to one backend, regardless of whether a compiled C
     # extension happens to be available.
     res = backend.run_bbn({**MyOptions, **extra}, force_backend="python")

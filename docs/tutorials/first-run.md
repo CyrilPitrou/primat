@@ -92,9 +92,10 @@ measures the expansion rate. {doc}`../howto/sensitivity` turns this into a
 table of ∂ln(observable)/∂ln(parameter) for every input at once, and
 {doc}`PosteriorBaryons` into a posterior on Ω_b h².
 
-Every parameter can be set the same way, from the API, the CLI
+Every parameter can be set the same way, from the API or the CLI
 (`primat --Omegabh2 0.021`, or `--set KEY=VALUE` for anything without a
-flag) or an INI file. {doc}`../parameters` lists them all.
+flag); the standalone C CLI additionally reads them from an INI file.
+{doc}`../parameters` lists them all.
 
 ## 5. Look inside the run
 

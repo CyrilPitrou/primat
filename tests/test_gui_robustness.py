@@ -5,8 +5,8 @@ Goal: every hostile or careless upload the GUI accepts -- a malformed rate
 table, a zip bomb, an archive whose manifest disagrees with its contents --
 surfaces as a clean ``ValueError`` the dialogs already render as an
 ``st.error``, never as a traceback and never as a plausible-looking wrong
-number. Pass 20's headline was that an unsorted T9 column ran to completion
-and reported YP = 0.00000711 against a true 0.24699907.
+number. The failure this guards against: an unsorted T9 column once ran to
+completion and reported YP = 0.00000711 against a true 0.24699907.
 
 These exercise ``primat.gui.custom_rates`` directly rather than through
 ``AppTest``: the checks are pure functions of the upload, so a unit test pins

@@ -27,9 +27,10 @@ reads it dynamically rather than assuming a fixed column count.
 
 Per-reaction forward-rate columns (``<reaction>_frwrd``) are an **optional**
 trailing block, appended after the ``Y_<nuclide>`` block when
-``cfg.output_rates_time_evolution=True`` -- one column per reaction in the
-active LT network (~12 for ``small``/``small_parthenope``, 68 for
-``large``+``amax=8``, ~429 for full ``large``). They carry the forward
+``cfg.output_rates_time_evolution=True`` -- one column per LT reaction
+except n<->p, which has no rate table (12 for
+``small``/``small_parthenope``, 67 for ``large``+``amax=8``, 428 for full
+``large``). They carry the forward
 reaction-rate interpolant [same table units as the shipped nuclear rates]
 evaluated at each row's photon temperature, and live in
 :attr:`EvolutionResult.rates` (``None`` when the flag is off). Both backends

@@ -164,7 +164,7 @@ A `None` default means the feature is off or the path is unset.
 | Parameter | Default | What it does |
 |---|---|---|
 | `output_time_evolution` | `False` | write the unified time-evolution TSV (see `evolution.py`'s module docstring for the schema) |
-| `output_rates_time_evolution` | `False` | append per-reaction forward-rate columns (&lt;reaction&gt;_frwrd) to the time-evolution TSV; one per reaction in the active LT network (~12 small, ~429 full large) |
+| `output_rates_time_evolution` | `False` | append per-reaction forward-rate columns (&lt;reaction&gt;_frwrd) to the time-evolution TSV; one per LT reaction except n&lt;-&gt;p (12 small, 428 full large) |
 | `output_n_points` | `500` | number of points in the time-evolution TSV |
 | `output_file` | `"results/output_tables.tsv"` | path for output_time_evolution |
 | `output_final_result` | `False` | write a two-column (nuclide, Y) final-abundances file |

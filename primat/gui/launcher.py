@@ -72,8 +72,22 @@ def main(argv=None):
 
     # Peel off our own --backend flag before handing the rest of argv to
     # Streamlit's CLI, which would otherwise reject an unrecognised option.
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--backend", choices=["auto", "c", "python"], default="auto")
+    # add_help is on so that `primat-gui --help` documents --backend; without
+    # it argparse forwards -h to Streamlit, whose help never mentions the one
+    # flag this command actually owns.
+    parser = argparse.ArgumentParser(
+        prog="primat-gui",
+        description="Launch the primat Streamlit GUI in a browser.",
+        epilog="Any other option is forwarded verbatim to `streamlit run` "
+               "(e.g. --server.port 8502, --server.headless true); run "
+               "`streamlit run --help` for that list.",
+    )
+    parser.add_argument(
+        "--backend", choices=["auto", "c", "python"], default="auto",
+        help="Which BBN backend every solve started from this GUI uses: "
+             "'auto' (default) picks the compiled C extension when available, "
+             "'c' forces it, 'python' forces the pure-Python implementation.",
+    )
     known, streamlit_argv = parser.parse_known_args(argv)
     os.environ["PRIMAT_GUI_BACKEND"] = known.backend
 

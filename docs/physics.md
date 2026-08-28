@@ -14,7 +14,7 @@ Two documents describe that physics in full. Neither is reproduced here.
 **The Physics Reports paper** is the primary reference for every formula in
 the code, and what to cite:
 
-> Pitrou, Coc, Uzan, Vangioni, *Physics Reports* **04** (2018) 005
+> Pitrou, Coc, Uzan, Vangioni, *Physics Reports* **754** (2018) 1–66
 > ([arXiv:1801.08023](https://arxiv.org/abs/1801.08023)).
 
 Source comments cite it by equation number; an annotated copy lives at
