@@ -25,7 +25,7 @@ few parts in 1e5. The suite is built in layers so that:
 From the repository root:
 
 ```bash
-pytest tests/                          # everything: 770 tests, ~11 min
+pytest tests/                          # everything: 771 tests, ~11 min
 pytest tests/ -m "not slow"            # fast lane: config/plasma/structural unit tests, ~50 s
 pytest tests/ -m "not slow or solve"   # fast lane + default-precision solves (CI: every push/PR, .github/workflows/tests.yml), ~8 min
 pytest tests/ -m "not reference"       # everything but the high-precision runs (which cost only ~10 s: skipping them saves nothing)
@@ -35,7 +35,7 @@ pytest tests/test_plasma.py -v         # a single file, verbose
 
 Timings measured 2026-08-28 on the C backend; the pure-Python fallback is
 slower on every tier that solves. The CI lane is most of the suite: the `slow`
-marker excludes 352 tests, but 298 of them come back with `or solve`. Both
+marker excludes 353 tests, but 298 of them come back with `or solve`. Both
 counts are pinned by `test_docs_consistency.py`.
 
 CI (`.github/workflows/tests.yml`) runs `-m "not slow or solve"` on every

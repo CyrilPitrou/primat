@@ -18,7 +18,6 @@ These tests verify:
 4. The derivative tables satisfy d(δP)/dT ≈ Δ(δP)/ΔT from finite differences.
 """
 import numpy as np
-import pytest
 
 from primat.qed_pressure import (_I01, _I2m1, _dPa, _dPe3,
                                 compute_qed_pressure_tables, save_qed_tables)

@@ -111,7 +111,6 @@ def test_abundances_never_go_negative(network):
     ``_solve_LT`` hides any excursion.
     """
     store = _solve_capturing_eras({"network": network})
-    net = store["net"]
     for era in ("HT", "MT", "LT"):
         worst = float(store[era].y.min())
         assert worst > NEGATIVE_FLOOR, (

@@ -47,12 +47,12 @@ from scipy.interpolate import interp1d, RegularGridInterpolator
 
 
 def resolve_nevo_path(cfg, override, default_filename):
-    """Resolve a ``rates/NEVO/`` data file, honouring a config override.
+    """Resolve a ``data/NEVO/`` data file, honouring a config override.
 
     ``override`` is one of ``cfg.nevo_file``, ``cfg.nevo_spectral_file`` or
     ``cfg.nevo_grid_file`` (each ``None`` by default).  When set, it names the
     file to use instead of ``default_filename`` -- either an absolute path, or
-    a filename resolved relative to ``rates/NEVO/`` (so a custom table can sit
+    a filename resolved relative to ``data/NEVO/`` (so a custom table can sit
     alongside the shipped ones without copying the whole directory).  When
     ``None``, ``default_filename`` (itself already chosen based on
     ``cfg.QED_corrections``, see :class:`NEVOTable`) is used unchanged.
@@ -167,7 +167,7 @@ class NEVOTable(NeutrinoHistory):
     """Incomplete (non-instantaneous) neutrino decoupling from the NEVO tables.
 
     Reads the pre-computed NEVO neutrino-decoupling table
-    (``rates/NEVO/NEVOPRIMAT_col_1_7.csv`` with QED corrections, or the
+    (``data/NEVO/NEVOPRIMAT_col_1_7.csv`` with QED corrections, or the
     ``_NoQED`` variant without).  The three flavour temperatures are
     interpolated from the table and the NEVO heating function N(T_gamma) — the
     extra entropy injected into neutrinos during e+e- annihilation — drives the
@@ -551,9 +551,8 @@ class AnalyticDistortion(NeutrinoHistory):
         :meth:`_build_dFDneu_func`/:meth:`_build_dFDneu_moments` -- stays
         array-vectorised: the SD-FM correction (_L_SD_FMCCR/_NoCCR in
         weak_rates/corrections.py) evaluates these over O(1e4-1e5)-point
-        quadrature grids, and a scalar-only _fd previously forced
-        np.vectorize to fall back to a million-plus individual Python calls
-        (~20 s; see git log for the profiling that found this).
+        quadrature grids, where a scalar-only ``_fd`` would drop
+        ``np.vectorize`` into a million-plus individual Python calls.
         """
         arg = np.asarray(arg)
         return np.where(arg > _EXP_CUTOFF, 0., 1. / (np.exp(np.minimum(arg, _EXP_CUTOFF)) + 1.))

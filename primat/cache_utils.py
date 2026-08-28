@@ -5,18 +5,16 @@ cache_utils.py — fingerprinted self-validating cache files
 
 Several expensive precomputations (n<->p weak rates, their finite-temperature
 radiative corrections, the e+- thermodynamic tables) are written to plain-text
-``np.savetxt`` files under ``rates/`` and reloaded on the next run instead of
-being recomputed.  Historically these caches were trusted unconditionally:
-whatever was on disk was used, even if the configuration that produced it
-(neutrino-decoupling treatment, spectral distortions, sampling density, ...)
-no longer matches the current run.  This silently makes flags such as
-``spectral_distortions`` a no-op.
+``np.savetxt`` files under ``data/cache_plasma_weak/`` and reloaded on the next
+run instead of being recomputed.
 
-The fix is a *fingerprint*: a dict of every configuration entry that affects
-the cached numbers, serialised as canonical (sorted-key, whitespace-free) JSON
-and hashed with sha256 (truncated to 16 hex digits -- short enough to read,
-long enough that two different configurations colliding by accident is
-astronomically unlikely).  The hash and the JSON dict are written as
+Each is keyed by a *fingerprint*, so a cache written under one configuration
+can never be served to another -- which would silently make a flag such as
+``spectral_distortions`` a no-op.  The fingerprint is a dict of every
+configuration entry that affects the cached numbers, serialised as canonical
+(sorted-key, whitespace-free) JSON and hashed with sha256, truncated to 16 hex
+digits: short enough to read, long enough that an accidental collision is
+astronomically unlikely.  The hash and the JSON dict are written as
 ``#``-comment header lines of the cache file:
 
     # fingerprint_hash: a3f9c1b2e4d5f607
@@ -44,18 +42,13 @@ def _json_scalar(obj):
     """``json.dumps(default=...)`` hook: unwrap a numpy scalar to its Python
     equivalent, and let anything else raise as before.
 
-    A config value can perfectly well arrive as a numpy scalar -- a parameter
-    scan built with ``np.arange``/``np.linspace``, or an external driver such as
-    the Cobaya wrapper handing over an element of a sampled array.  ``np.float64``
-    happened to survive ``json.dumps`` (it subclasses ``float``) while
-    ``np.int64``/``np.float32``/``np.bool_`` did not, so an ``np.int64`` for e.g.
-    ``sampling_nTOp_per_decade`` aborted the whole run with an opaque
-    ``TypeError: Object of type int64 is not JSON serializable`` raised from deep
-    inside the weak-rate cache.
-
-    ``.item()`` yields the exact Python scalar (``np.int64(80) -> 80``), whose
-    canonical JSON is byte-identical to what a plain ``80`` produces -- so
-    hardening this is hash-preserving: no existing cache file is invalidated.
+    A config value can arrive as a numpy scalar -- a parameter scan built with
+    ``np.arange``/``np.linspace``, or an external driver such as the Cobaya
+    wrapper handing over an element of a sampled array -- and only
+    ``np.float64`` is JSON-serialisable on its own.  ``.item()`` yields the
+    exact Python scalar (``np.int64(80) -> 80``), whose canonical JSON is
+    byte-identical to a plain ``80``, so accepting these leaves every existing
+    cache file's hash unchanged.
     """
     if isinstance(obj, np.generic):
         return obj.item()

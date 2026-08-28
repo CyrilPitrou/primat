@@ -219,9 +219,9 @@ def _normalise_nevo_override(cfg, field):
     """Return ``None`` when a NEVO override names the file the default selects.
 
     ``nevo_file=None`` resolves to ``<prefix>[_NoQED]_col_1_7.csv``; passing
-    that name explicitly is the same physics, but the raw field value used to
-    enter the fingerprint, re-keying the n<->p cache *and* the multi-minute
-    vegas thermal cache for a byte-identical table.
+    that name explicitly is the same physics, so the raw field value must not
+    reach the fingerprint -- it would re-key the n<->p cache *and* the
+    multi-minute vegas thermal cache for a byte-identical table.
 
     Args:
         cfg: PRIMATConfig instance.

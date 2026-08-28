@@ -766,7 +766,7 @@ class StandardBackground(Background):
 
         *Incomplete decoupling* (``True``, default):
             Reads the pre-computed NEVO neutrino-decoupling table
-            (``rates/NEVO/NEVOPRIMAT_col_1_7.csv``).  The three neutrino
+            (``data/NEVO/NEVOPRIMAT_col_1_7.csv``).  The three neutrino
             flavour temperatures T_νe, T_νμ, T_ντ are interpolated from the
             table, and the NEVO heating function N(T_γ) — representing the
             extra entropy injected into neutrinos during e+e- annihilations —
@@ -817,7 +817,6 @@ class StandardBackground(Background):
         cfg    = self.cfg
 
         Tstartcosmo  = cfg.T_start_cosmo / cfg.MeV_to_Kelvin
-        Tstart = cfg.T_start_nucl / cfg.MeV_to_Kelvin   # [MeV]
         Tend   = cfg.T_end   / cfg.MeV_to_Kelvin   # [MeV]
 
         # Step 1 - Neutrino-sector background (temperatures, heating,
@@ -992,13 +991,12 @@ class StandardBackground(Background):
             # Tolerances. The state variable is ln a, which is O(-20) over the
             # whole solve, so atol=1e-10 is some ten orders below it and never
             # binds: this integration is under pure relative control, and rtol
-            # is the only knob that matters. The extra decade over
-            # numerical_precision is a margin against this solve's own
-            # discretisation error reaching D/H: at the default
-            # numerical_precision, dropping the factor costs a noticeable
-            # fraction of the routine D/H tolerance, while at reference
-            # precision it is immaterial either way. The decade is free -- the
-            # a(T) solve is nowhere near where the run spends its time.
+            # is the only knob that matters. The decade tighter than
+            # numerical_precision is a deliberate margin, not a stray factor:
+            # a(T) is solved once and then read by every later stage, so its
+            # own discretisation error would reach D/H with nothing to oppose
+            # it. The decade is free -- the a(T) solve is nowhere near where
+            # the run spends its time.
             sol_lna = solve_ivp(_dlnadlnT_NEVO,
                                 [np.log(Tend), np.log(Tstartcosmo)],
                                 [lna_end],
@@ -1248,7 +1246,7 @@ class StandardBackground(Background):
         self.N_NEVO_of_Tg = N_NEVO_of_Tg
 
         # Whether N_NEVO_of_Tg is a *real* heating table (NEVOTable, read from
-        # rates/NEVO/) or just the N=0 stub used by InstantaneousDecoupling to
+        # data/NEVO/) or just the N=0 stub used by InstantaneousDecoupling to
         # close the a(T) ODE under EM entropy conservation.  Consumed by
         # _background_columns to decide whether the "Nheating" column carries
         # physical information or would just be a column of zeros.

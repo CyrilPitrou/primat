@@ -282,11 +282,10 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
      * is not "fixed" by accident. Both run at the same rtol
      * (cfg->numerical_precision) and atol (1e-10), and the era is n <-> p
      * only, so neither method is more accurate: sweeping numerical_precision
-     * has LSODA, RK45 and BDF converging to the same YPBBN. Aligning them was
-     * tried (both on BDF with the exact analytic 2x2 Jacobian, the HT system
-     * being linear in Y) and made cross-backend YP parity worse. Its
-     * contribution to the cross-backend gap is measured by
-     * tests/backend_divergence.py. */
+     * has LSODA, RK45 and BDF converging to the same YPBBN, and aligning them
+     * (both on BDF with the exact analytic 2x2 Jacobian, the HT system being
+     * linear in Y) made cross-backend YP parity worse. What the choice costs
+     * is recorded in tests/README.md's cross-backend divergence table. */
     CPRRKOpts rk_opts = cpr_ode_rk_default_opts();
     rk_opts.rtol = cfg->numerical_precision; rk_opts.atol = CPR_ATOL_HT;
     if (cfg->show_progress && !cfg->verbose) {

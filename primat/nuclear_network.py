@@ -95,9 +95,8 @@ def _bdf_method():
             # Decline unless BDF still owns all three attributes replaced
             # below, and scipy still offers the two LAPACK wrappers.  The
             # import above only proves ``BDF`` exists; a scipy that keeps the
-            # class but renames its LU bookkeeping used to raise
-            # AttributeError from inside the solve instead of falling back,
-            # which is what this function promises not to do.
+            # class but renames its LU bookkeeping must fall back here rather
+            # than raise AttributeError from inside the solve.
             if not all(hasattr(self, a) for a in ("nlu", "lu", "solve_lu")):
                 return
             try:
@@ -364,11 +363,12 @@ class NuclearNetwork:
         # HT integrator: LSODA here, Dormand-Prince RK45 in the C backend. A
         # KNOWN, accepted divergence -- recorded on both sides so it is not
         # "fixed" by accident. Same rtol (cfg.numerical_precision) and atol
-        # (:data:`_ATOL_HT`) on both, and the era is n <-> p only, so neither method is
-        # more accurate: sweeping numerical_precision has LSODA, RK45 and BDF
-        # converging to the same YPBBN. Aligning both backends on BDF was
-        # tried and made cross-backend YP parity worse. Its contribution to
-        # the cross-backend gap is measured by tests/backend_divergence.py.
+        # (:data:`_ATOL_HT`) on both, and the era is n <-> p only, so neither
+        # method is more accurate: sweeping numerical_precision has LSODA,
+        # RK45 and BDF converging to the same YPBBN, and aligning both on BDF
+        # was tried and made cross-backend YP parity worse. What the choice
+        # costs is recorded in tests/README.md's cross-backend divergence
+        # table.
         sol_HT = solve_ivp(Y_prime_HT, [t_start, t_weak], [Yn_i, Yp_i],
                            method='LSODA', rtol=cfg.numerical_precision, atol=_ATOL_HT)
         _check_solver(sol_HT, "HT",
@@ -486,18 +486,12 @@ class NuclearNetwork:
         Yi_LT = [mt_final_raw.get(s, 0.0) for s in species_L]
 
         _t_lt0 = time.time()
-        # Universal LT absolute tolerance (cfg.atol_LT) for *every*
-        # network, not just "large". Previously this was
-        # keyed on the network being *literally named* "large" -- which meant a
-        # custom network reproduced under a renamed `user_nuclear_dir` overlay
-        # silently used a looser atol than the same network run under the name
-        # "large" in the GUI, breaking
-        # bit-for-bit reproduction of the GUI's numbers (~1e-6). Using one atol
-        # everywhere removes that name dependence. It only tightens `small`
-        # (1e-20 -> 1e-26): ~8% slower, its abundances shift by ~1e-6 (a
-        # tolerance artifact, not physics), and it never loosens `large`'s
-        # heavy-nuclide tracking. Keep in lockstep with primat-c's
-        # nuclear_network.c (bdf_opts_lt.atol).
+        # One LT absolute tolerance (cfg.atol_LT) for *every* network, keyed on
+        # nothing but the config: keying it on the network's literal name would
+        # make the same network solve differently under a `user_nuclear_dir`
+        # overlay that renames it, which is a reproducibility trap rather than
+        # a physics choice. Keep in lockstep with primat-c's nuclear_network.c
+        # (bdf_opts_lt.atol).
         atol = cfg.atol_LT
         sol_LT = solve_ivp(Y_prime_LT, [t_nucl, t_end], Yi_LT,
                            method=_BDF, jac=Jacobian_LT,
@@ -580,9 +574,6 @@ class NuclearNetwork:
         # Suppressed when verbose=True (the verbose prints are more informative)
         # and when progress=False (set by _mc_run_batch to avoid per-sample spam).
         _show = progress and not cfg.verbose
-
-        if cfg.verbose:
-            _t0 = time.time()
 
         # ------------------------------------------------------------------
         # Temperature era boundaries [s]
@@ -802,15 +793,14 @@ class NuclearNetwork:
         Before the nuclear network starts integrating a given species (the
         HT era for everything but n/p, and the time before ``T_start_cosmo``
         for n/p too), its ``Y_<species>`` column is **exactly 0** -- the
-        value ``_embed``/``Y_of_t`` produce there.  A previous version of
-        this method filled that region with the Nuclear Statistical
-        Equilibrium (Saha) prediction ``YA(name, Yn, Yp, T)`` for a smoother
-        log-log plot; this was removed because the fill is *often wrong*:
-        NSE need not hold for every nuclide all the way down to
-        ``T_start_cosmo`` (e.g. for non-standard backgrounds with extra
-        entropy injection or a non-thermal neutrino sector), and a
-        silently-injected equilibrium value is worse than an honest 0 that a
-        plotting tool can choose to mask. Consumers that want a smooth
+        value ``_embed``/``Y_of_t`` produce there.  The region is deliberately
+        left at 0 rather than filled with the Nuclear Statistical Equilibrium
+        (Saha) prediction that would make a log-log plot smoother: NSE need not
+        hold for every nuclide all the way down to ``T_start_cosmo`` (e.g. for
+        non-standard backgrounds with extra entropy injection or a non-thermal
+        neutrino sector), and a silently-injected equilibrium value is worse
+        than an honest 0 that a plotting tool can choose to mask. Consumers
+        that want a smooth
         pre-MT curve can compute the Saha value themselves from the ``t_s``/
         ``T_gamma_MeV`` columns.
 
@@ -932,18 +922,14 @@ class NuclearNetwork:
             D[X_idx, X_idx] -= rate_X × mult_X        (loss term for parent X)
             D[P_idx, X_idx] += rate_X × mult_P        (gain term per product P)
 
-        **Convention (important).**  ``Y`` is the *number* abundance per baryon,
-        ``Y_s = n_s / n_B``, normalised so that ``Σ_s A_s Y_s = 1`` — the mass
-        fraction is ``A_s Y_s``.  That is the convention the LT/MT right-hand
-        side itself uses: ``network_builder._rhs_kernel`` applies the bare
-        integer stoichiometry ``af_co = c_prod − c_react`` with no mass
-        weighting, and ``network_builder.check_conservation`` verifies exactly
-        ``Σ_s A_s ΔY_s = 0``.
-
-        The gain term is therefore the bare multiplicity ``mult_P``, with **no**
-        ``A_P / A_X`` factor: adding one would break baryon conservation for
-        every decay whose products differ in mass number from the parent, while
-        leaving ordinary β decays (``A_P = A_X``, e.g. ``C14 → N14``) intact.
+        ``Y`` is the number abundance per baryon (``Σ_s A_s Y_s = 1``), the
+        convention the LT/MT right-hand side uses, so the gain term is the bare
+        multiplicity ``mult_P`` with **no** ``A_P / A_X`` factor.  Adding one
+        would break baryon conservation for every decay whose products differ
+        in mass number from the parent — ``Li8 → α + α`` gives
+        ``D[Li8, Li8] = -λ``, ``D[He4, Li8] = +2λ`` and
+        ``8×(-λ) + 4×(+2λ) = 0`` only with the bare multiplicity — while
+        leaving ordinary β decays (``A_P = A_X``) intact.
 
         Photons and leptons (Bm/Bp) are excluded from the ODE state vector; only
         nuclear species (those in ``net.species``) appear in D.
@@ -966,32 +952,6 @@ class NuclearNetwork:
         D : np.ndarray, shape (N, N)
             Decay-rate matrix in [s^-1].  Off-diagonal entries are ≥ 0;
             diagonal entries are ≤ 0.
-
-        Notes
-        -----
-        Baryon-number conservation: ``Σ_s A_s D[s, X] = 0`` for every parent
-        column X.  This holds *exactly* (not approximately): the emitted
-        leptons and photons carry A = 0, so they remove no baryon number, and
-        every decay in ``decays.txt`` balances A between its parent and its
-        nuclear products.  ``tests/test_nuclear.py`` pins it for the whole
-        ``large`` network.
-
-        Example
-        -------
-        ``C14 → N14 + Bm`` with rate λ (a mass-preserving β decay):
-
-            D[C14, C14] = -λ      (C14 is lost)
-            D[N14, C14] = +λ      (N14 is gained)
-
-        ``Σ_s A_s D[s, C14] = 14×(-λ) + 14×(+λ) = 0`` ✓
-
-        ``Li8 → α + α + Bm``, where the multiplicity — not any mass ratio — is
-        what closes the budget:
-
-            D[Li8,  Li8] = -λ     (one Li8 lost)
-            D[He4,  Li8] = +2λ    (two alphas gained: mult_P = 2)
-
-        ``Σ_s A_s D[s, Li8] = 8×(-λ) + 4×(+2λ) = 0`` ✓
         """
         N = len(net.species)
         D = np.zeros((N, N))
@@ -1003,7 +963,6 @@ class NuclearNetwork:
         for rxn_idx in net.weak_indices:
             if rxn_idx == 0:
                 continue   # n__p handled by the HT/MT/LT eras, not the DT era
-            name = net.names[rxn_idx]
             # The decay rate is constant (T9-independent), stored as a
             # uniform array.  Read from _fwd_median at grid index 0.
             # rate_table_idx is rxn_idx - 1 because _fwd_median excludes n__p.

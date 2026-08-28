@@ -803,12 +803,12 @@ class Plasma:
         integrands and the grid's lower edge; see
         :func:`primat.cache_utils.constants_hash`).  Carrying it in the
         *filename* rather than only in the header is what lets configurations
-        coexist: one run with ``T_start_cosmo_MeV=40`` and another with
-        ``100`` keep two separate files instead of overwriting each other's,
-        which previously left the git-tracked shipped copy modified after any
-        run that differed from it and forced a rebuild on every alternation.
-        The header still carries the same fingerprint, and is still checked --
-        cheap insurance against a hand-edited or truncated file.
+        coexist: one run with ``T_start_cosmo_MeV=40`` and another with ``100``
+        keep two separate files instead of overwriting each other's, so
+        alternating between them costs no rebuild and leaves the git-tracked
+        shipped copy untouched. The header carries the same fingerprint and is
+        still checked -- cheap insurance against a hand-edited or truncated
+        file.
 
         Set ``cfg.recompute_electron_thermo = True`` to force a fresh
         computation regardless of the fingerprint.  Whenever the table is
@@ -853,13 +853,12 @@ class Plasma:
         fp_hash = fingerprint_hash(fp)
 
         # The hash goes in the FILENAME, not just the header, mirroring the
-        # weak tree's nTOp_<hash>.txt. With a single fixed name, two
-        # configurations could not coexist: each run whose fingerprint differed
-        # from the file on disk overwrote it, so a test suite (or simply a user
-        # comparing two T_start_cosmo_MeV values) left the git-tracked shipped
-        # copy modified and made every alternation pay the ~0.7 s rebuild.
-        # Hash-named files just accumulate instead -- and `primat --cache-info`
-        # / `--cache-clear` now cover plasma/ so they can be pruned.
+        # weak tree's nTOp_<hash>.txt, so that two configurations coexist. Under
+        # a single fixed name each run whose fingerprint differed from the file
+        # on disk would overwrite it, leaving the git-tracked shipped copy
+        # modified and making every alternation pay the rebuild. Hash-named
+        # files accumulate instead, and `primat --cache-info`/`--cache-clear`
+        # cover plasma/ so they can be pruned.
         #
         # There is deliberately NO fallback to a fixed, unhashed filename: a
         # miss costs ~0.7 s of quad calls, cheaper than carrying compatibility
@@ -1039,15 +1038,12 @@ class Plasma:
 
         That is deliberate, not an oversight.  σ_∞ is exactly the choice that
         makes the reported ``Neff`` come out as ``Neff_SM + ΔNeff`` to machine
-        precision (verified: 8.9e-16 for ΔNeff = 1), because at ``T_end`` the
-        plasma is photons-only and ``T_dec/T_γ → (4/11)^{1/3}`` identically —
-        i.e. ΔNeff means what its name says.  Switching to ``_sbar_ref`` would
-        make the species physically flush with the SM neutrinos but turn the
-        knob into ``Neff_SM + 1.0032·ΔNeff`` (measured: ``Neff`` 4.04397730 →
-        4.04719236, ``YPBBN`` 0.25948638 → 0.25952420, ``D/H`` 2.7629646e-05 →
-        2.7640142e-05 at ΔNeff = 1).  Both conventions are defensible; primat
-        picks Neff-additivity.  Mirrored in ``primat-c/src/plasma.c``
-        (``cpr_plasma_rho_nu_extra`` → ``cpr_plasma_T_nu_decoupling``).
+        precision, because at ``T_end`` the plasma is photons-only and
+        ``T_dec/T_γ → (4/11)^{1/3}`` identically — i.e. ΔNeff means what its
+        name says.  Switching to ``_sbar_ref`` would make the species
+        physically flush with the SM neutrinos but turn the knob into
+        ``Neff_SM + 1.0032·ΔNeff``, shifting every observable with it.  Both
+        conventions are defensible; primat picks Neff-additivity.
 
         Parameters
         ----------

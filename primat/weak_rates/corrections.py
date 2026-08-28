@@ -25,7 +25,7 @@ The physical correction terms applied in sequence to the Born n<->p rate
                Eq. 108 = Eqs. 109 + 112 + 113, plus the bremsstrahlung
                correction Eq. 107; Brown & Sawyer 2001, Eqs. 5.10-5.15).
                Active when cfg.thermal_corrections=True; uses vegas or
-               scipy.dblquad; results cached to rates/weak/*.txt.
+               scipy.dblquad; results cached to data/cache_plasma_weak/weak/*.txt.
   _L_SD      — Spectral-distortion correction (Born-level chi): replaces the
                Fermi-Dirac g_nu with the actual distribution f_nu from NEVO.
                Active when dFDneu_func is supplied and
@@ -1378,7 +1378,7 @@ def _compute_or_load_L_CCRTh_grid(ctx):
     """Compute the L_CCRTh grid ``(T_th, L_nTOpCCRTh, L_pTOnCCRTh)`` via the
     four physics sub-terms of :func:`_L_CCRTh_compute` (a multi-minute
     Monte-Carlo/quadrature integration), or load it from the fingerprinted
-    cache in rates/weak/ when present -- see :func:`_L_CCRTh_interpolants`'s
+    cache in data/cache_plasma_weak/weak/ when present -- see :func:`_L_CCRTh_interpolants`'s
     docstring for the caching policy.
     """
     cfg = ctx.cfg
@@ -1474,7 +1474,7 @@ def _L_CCRTh_interpolants(ctx):
     (sgnq=-1) respectively.  When ``ctx.cfg.thermal_corrections`` is False,
     both are the zero function.
 
-    Loaded from the fingerprinted cache in rates/weak/ when
+    Loaded from the fingerprinted cache in data/cache_plasma_weak/weak/ when
     cfg.thermal_corrections=True and a cache file is present (see the
     module docstring and cache_utils).  The fingerprint is enforced through
     the *filename* (``nTOp_thermal_<hash>.txt``): a configuration whose hash

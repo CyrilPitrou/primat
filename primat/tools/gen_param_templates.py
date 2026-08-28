@@ -2,8 +2,8 @@
 """
 primat.tools.gen_param_templates
 =================================
-Generator for the three user-facing parameter listings that used to require
-hand-editing on every ``DEFAULT_PARAMS`` change:
+Generator for the three user-facing parameter listings, so no
+``DEFAULT_PARAMS`` change needs them hand-edited:
 
 - ``runfiles/primat_run_explanatory.py`` -- Python template
 - ``primat-c/examples/run_basic.ini``    -- INI template for the C backend

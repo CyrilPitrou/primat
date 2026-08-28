@@ -120,7 +120,7 @@ def main():
                 f"explicitly to write elsewhere.")
         os.makedirs(plasma_dir, exist_ok=True)
 
-    print(f"Computing QED plasma-pressure tables:")
+    print("Computing QED plasma-pressure tables:")
     print(f"  T grid: {args.T_min:.2e}–{args.T_max:.2e} MeV, {args.n_pts} points")
     print(f"  include δP_b (O(e^4)): {args.include_dPb}")
     print(f"  output: {plasma_dir}/")
