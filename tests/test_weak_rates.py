@@ -993,3 +993,86 @@ def test_correction_terms_includes_sd_fm_only_with_finite_mass_corrections():
     names_without_moments = [name for name, _ in
                       wr._correction_terms(ctx, T_arr, +1, hist.dFDneu_func, None)]
     assert "SD_FM" not in names_without_moments
+
+
+# --- The vegas-less fallback tells the user what it costs -------------------
+
+def test_dblquad_fallback_records_its_own_non_convergence():
+    """``_dblquad_checked`` reads quadpack's error estimate instead of dropping it.
+
+    GOAL: without vegas the thermal integrals go through
+    ``scipy.integrate.dblquad``, which stops at its subdivision limit on these
+    integrands rather than at ``epsrel``. The value was taken and the error
+    estimate discarded, so a table built below the requested accuracy looked
+    exactly like one built at it.
+    """
+    opts = corrections._ThermalIntegOpts(False, None, None, 1e-2)
+
+    easy = corrections._dblquad_checked(lambda y, x: x * y, 0., 1., 0., 1., opts)
+    assert easy == pytest.approx(0.25, rel=1e-9)
+    assert (opts.n_dblquad, opts.n_unconverged) == (1, 0)
+
+    # Wildly oscillatory near x -> 0: quadpack gives up rather than converging,
+    # and says so with its own IntegrationWarning, which is not what is
+    # under test here.
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        corrections._dblquad_checked(
+            lambda y, x: np.sin(1e4 / (x + 1e-9)) * np.cos(1e4 * y),
+            1e-9, 1., 0., 1., opts)
+    assert opts.n_dblquad == 2
+    assert opts.n_unconverged == 1
+    assert opts.worst_rel > opts.epsrel
+
+
+def test_missing_vegas_warning_states_the_cost_and_both_ways_out(monkeypatch):
+    """The vegas-less warning says what the fallback costs, not just that it is slower.
+
+    GOAL: the message used to read "Install vegas for better performance",
+    which does not convey that a cold thermal cache goes from minutes to hours.
+    The integrals themselves are stubbed here: this pins the message, and a
+    real vegas-less grid build is hours by construction.
+    """
+    import builtins
+    import warnings
+
+    real_import = builtins.__import__
+
+    def no_vegas(name, *args, **kwargs):
+        if name == "vegas":
+            raise ImportError("No module named 'vegas'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_vegas)
+    # Stub the integral, and make it report one unconverged evaluation so both
+    # messages fire from their real emission sites.
+    def fake_compute(ctx, T, sgnq, opts):
+        opts.n_dblquad += 1
+        opts.n_unconverged += 1
+        opts.worst_rel = 1.7
+        return 0.0
+
+    monkeypatch.setattr(corrections, "_L_CCRTh_compute", fake_compute)
+
+    cfg = PRIMATConfig({"thermal_corrections": True, "save_nTOp_thermal": False,
+                        "sampling_nTOp_thermal_per_decade": 1})
+    monkeypatch.setattr(corrections, "resolve_cache_file",
+                        lambda *a, **k: os.path.join("no", "such", "cache.txt"))
+    ctx = wr._build_rate_context([np.array([1e9, 2e9]), np.array([0.7e9, 1.4e9])], cfg)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        corrections._compute_or_load_L_CCRTh_grid(ctx)
+    messages = [str(w.message) for w in caught]
+
+    missing = [m for m in messages if "vegas not found" in m]
+    assert missing, f"no vegas-not-found warning in {messages}"
+    text = missing[0]
+    assert "hours" in text and "minutes" in text, text
+    assert "primat[recommended]" in text, text
+    assert "thermal_corrections" in text, text
+
+    unconverged = [m for m in messages if "did not reach epsrel" in m]
+    assert unconverged, f"no non-convergence summary in {messages}"
+    assert "subdivision limit" in unconverged[0], unconverged[0]

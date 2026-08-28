@@ -280,6 +280,17 @@ in this repository is the authoritative source.
   `_PARAM_CHOICES` machinery it was the last user of.
 
 ### Fixed
+- **The vegas-less thermal fallback now says what it costs, and admits when
+  it has not converged.** Without `vegas`, the finite-temperature radiative
+  corrections fall back to `scipy.integrate.dblquad`. The answer stays well
+  inside the reference tolerances, but it is hundreds of times slower per grid
+  point — a cold thermal cache is hours rather than minutes — and the warning
+  said only "Install vegas for better performance". It now states the cost and
+  names both ways out (install the `recommended` extra, or set
+  `thermal_corrections=False`). quadpack also stops at its subdivision limit
+  on these integrands rather than at the requested `epsrel`, and its error
+  estimate was being discarded; it is now read, and one summary at the end
+  reports how many integrals fell short and by how much.
 - **`primat-gui --help` describes `primat-gui`.** It used to fall through to
   `streamlit run`'s own help, several hundred lines that never mention
   `--backend` — the one flag the command owns, and the one the README tells

@@ -963,13 +963,45 @@ class _ThermalIntegOpts:
     :func:`_L_ThermalDiffBremsstrahlung`, :func:`_L_Thermal_2_3`) so each
     stays a short, self-contained integral without re-deriving this choice.
     """
-    __slots__ = ("use_vegas", "n_eval", "n_itn", "epsrel")
+    __slots__ = ("use_vegas", "n_eval", "n_itn", "epsrel",
+                 "n_dblquad", "n_unconverged", "worst_rel")
 
     def __init__(self, use_vegas, n_eval, n_itn, epsrel):
         self.use_vegas = use_vegas
         self.n_eval = n_eval
         self.n_itn = n_itn
         self.epsrel = epsrel
+        # Tally of the dblquad fallback's own accuracy, summarised once by
+        # the caller. Per-call warnings would fire hundreds of times over the
+        # temperature grid and say nothing the summary does not.
+        self.n_dblquad = 0
+        self.n_unconverged = 0
+        self.worst_rel = 0.0
+
+
+def _dblquad_checked(f, a, b, gfun, hfun, opts):
+    """``scipy.integrate.dblquad`` with its error estimate actually read.
+
+    quadpack returns ``(value, abserr)`` and reports "the integral is probably
+    divergent, or slowly convergent" on these integrands -- it stops at its
+    subdivision limit rather than at ``epsrel``. Taking ``[0]`` and discarding
+    ``abserr`` hid that, so record it on ``opts`` for one summary at the end.
+
+    Args:
+        f, a, b, gfun, hfun : as scipy.integrate.dblquad.
+        opts : _ThermalIntegOpts; supplies ``epsrel`` and collects the tally.
+
+    Returns:
+        float: the integral's value (the same number as before).
+    """
+    from scipy.integrate import dblquad
+    val, abserr = dblquad(f, a, b, gfun, hfun, epsrel=opts.epsrel)
+    opts.n_dblquad += 1
+    rel = abserr / abs(val) if val else (np.inf if abserr else 0.0)
+    if rel > opts.epsrel:
+        opts.n_unconverged += 1
+        opts.worst_rel = max(opts.worst_rel, rel)
+    return val
 
 
 def _ccrth_A(E, k):
@@ -1206,10 +1238,9 @@ def _L_ThermalTruePhoton(ctx, T, sgnq, opts):
         result = integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval, adapt=True)
         return result['myres'].mean
     else:
-        from scipy.integrate import dblquad
-        return dblquad(
+        return _dblquad_checked(
             lambda k, E: float(_int(np.atleast_1d(E), np.atleast_1d(k))[0]),
-            1.001, E_max, 0.001, k_max, epsrel=opts.epsrel)[0]
+            1.001, E_max, 0.001, k_max, opts)
 
 
 def _L_ThermalDiffBremsstrahlung(ctx, T, sgnq, opts):
@@ -1241,10 +1272,9 @@ def _L_ThermalDiffBremsstrahlung(ctx, T, sgnq, opts):
         result = integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval, adapt=True)
         return result['myres'].mean
     else:
-        from scipy.integrate import dblquad
-        return dblquad(
+        return _dblquad_checked(
             lambda k, E: float(_int(np.atleast_1d(E), np.atleast_1d(k))[0]),
-            1.001, E_max, 0.001, k_max, epsrel=opts.epsrel)[0]
+            1.001, E_max, 0.001, k_max, opts)
 
 
 def _L_Thermal_1_int(E, ctx, T, sgnq):
@@ -1298,11 +1328,10 @@ def _L_Thermal_2_3(ctx, T, sgnq, opts):
             result = integ(f_batch, nitn=opts.n_itn, neval=opts.n_eval, adapt=True)
             val = result['myres'].mean
         else:
-            from scipy.integrate import dblquad
-            val = dblquad(
+            val = _dblquad_checked(
                 lambda e1me2, e1pe2: float(_int(
                     np.atleast_1d(e1pe2), np.atleast_1d(e1me2))[0]),
-                lims[0], lims[1], min_e1me2, max_e1me2, epsrel=opts.epsrel)[0]
+                lims[0], lims[1], min_e1me2, max_e1me2, opts)
         if min_e1me2 < 0:
             res_2 = val
         else:
@@ -1379,8 +1408,12 @@ def _compute_or_load_L_CCRTh_grid(ctx):
         import warnings
         warnings.warn(
             "vegas not found: falling back to scipy.integrate.dblquad for thermal "
-            "radiative corrections (epsrel={:.0e}).  Install vegas for better "
-            "performance.".format(cfg.epsrel_thermal),
+            "radiative corrections (epsrel={:.0e}). The answer is still correct "
+            "to well within the reference tolerances, but this fallback is "
+            "hundreds of times slower per grid point, so building a cold thermal "
+            "cache takes hours rather than minutes. Install vegas "
+            "(pip install \"primat[recommended]\"), or set thermal_corrections="
+            "False to skip this term.".format(cfg.epsrel_thermal),
             ImportWarning, stacklevel=2)
     opts = _ThermalIntegOpts(use_vegas, n_eval, n_itn, cfg.epsrel_thermal)
 
@@ -1401,6 +1434,21 @@ def _compute_or_load_L_CCRTh_grid(ctx):
     _T_th      = np.logspace(np.log10(_T_CCRTH_MIN), np.log10(cfg.T_start_nucl), _n_th_pts)
     L_nTh_data = np.vectorize(lambda T: _L_CCRTh_compute(ctx, T, +1, opts))(_T_th)
     L_pTh_data = np.vectorize(lambda T: _L_CCRTh_compute(ctx, T, -1, opts))(_T_th)
+
+    # One summary, not one warning per grid point: quadpack stops at its
+    # subdivision limit on these integrands, so a table built without vegas
+    # may not have reached the epsrel it was asked for anywhere.
+    if opts.n_unconverged:
+        import warnings
+        warnings.warn(
+            "scipy.integrate.dblquad did not reach epsrel={:.0e} on {} of {} "
+            "thermal-correction integrals (worst estimated relative error "
+            "{:.1e}); quadpack stopped at its subdivision limit. The cached "
+            "table is still well inside the reference tolerances, but install "
+            "vegas for the accuracy this term was tuned for."
+            .format(opts.epsrel, opts.n_unconverged, opts.n_dblquad,
+                    opts.worst_rel),
+            RuntimeWarning, stacklevel=2)
 
     if cfg.save_nTOp_thermal:
         # write_cache_with_fingerprint creates the dir and degrades to a
