@@ -280,6 +280,32 @@ in this repository is the authoritative source.
   `_PARAM_CHOICES` machinery it was the last user of.
 
 ### Fixed
+- **`primat-gui --help` describes `primat-gui`.** It used to fall through to
+  `streamlit run`'s own help, several hundred lines that never mention
+  `--backend` — the one flag the command owns, and the one the README tells
+  you about. Every other option is still forwarded to Streamlit verbatim.
+- **The citation to copy is a citation again.** Five pages —
+  `docs/index.md`, `docs/citing.md`, `docs/physics.md`, `docs/extending.md`
+  and `manual/EXTENDING.md` — printed the methods paper as "*Physics Reports*
+  **04** (2018) 005", which is the DOI's month and article number, not a
+  volume and a page, while the BibTeX block two lines below said volume 754,
+  pages 1–66. All five now agree with `CITATION.cff`, and so does the README,
+  which had a third page range. A test pins them to `CITATION.cff`.
+- **The documented count of per-reaction rate columns was the network size.**
+  `output_rates_time_evolution` writes one `<reaction>_frwrd` column per LT
+  reaction *except* n↔p, which has no rate table: 12 / 67 / 428 for `small` /
+  `large, amax=8` / `large`, not the 12 / 68 / 429 the README, the C header
+  and four docstrings quoted. Also pinned by a test.
+- **Two pages offered the `primat` CLI an INI file it cannot read.** INI
+  files are read by the C backend and the standalone C CLI; `docs/index.md`
+  and the first-run tutorial now say so, as `docs/parameters.md` already did.
+- **`make test` in `primat-c/` does not build the standalone executable**, and
+  the Python suite's CLI tests need it — without it they skipped silently at
+  `-q`. Both READMEs now say to run plain `make` as well.
+- **The README's network table counted two ways at once.** `small` was listed
+  as 12 reactions (n↔p excluded) beside `large, amax=8` as 68 (n↔p included).
+  It now uses the "nuclear + n↔p" form `docs/howto/networks.md` uses, and
+  says which number is which.
 - **A nonsensical proton or neutron mass no longer produces a confident wrong
   answer, or a crash.** Move the proton mass to within about 0.5 MeV of the
   neutron's — 0.1 % is enough, and both backends accepted it — and every n↔p

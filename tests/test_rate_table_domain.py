@@ -3,10 +3,10 @@
 
 Goal: the library door agrees with the GUI door (``tests/test_gui_robustness.py``)
 on what a valid rate table is, and both backends refuse the same tables with the
-same message. Pass 21's headline was that an unsorted ``T9`` column supplied
-through a ``user_nuclear_dir`` overlay ran to completion and reported YP =
-0.00000741 (Python) / 0.00000711 (C) against a true 0.24699907, while an empty
-table file crashed the C backend with SIGSEGV.
+same message. The two failures this guards against: an unsorted ``T9`` column
+supplied through a ``user_nuclear_dir`` overlay once ran to completion and
+reported YP = 0.00000741 (Python) / 0.00000711 (C) against a true 0.24699907,
+and an empty table file crashed the C backend with SIGSEGV.
 
 The domain rules are pinned against ``validate_rate_table`` directly (fast); the
 two end-to-end tests confirm they actually fire on the real loader path, on the

@@ -3,8 +3,8 @@
 A short guide to the three supported extension points. For the full physics
 formalism (rate evaluation, background equations, weak-rate corrections),
 the primary reference is the Physics Reports paper linked from
-{doc}`physics` (Pitrou, Coc, Uzan, Vangioni, *Physics Reports* 04 (2018)
-005); see also the other PDFs in the repository's `biblio/` directory.
+{doc}`physics` (Pitrou, Coc, Uzan, Vangioni, *Physics Reports* 754 (2018)
+1–66); see also the other PDFs in the repository's `biblio/` directory.
 
 ## Add a nuclear reaction
 

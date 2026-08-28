@@ -255,7 +255,7 @@ DEFAULT_PARAMS: dict = {
     # fewer for large with an amax cutoff) plus the n<->p weak rates; see
     # nuclear_network.NuclearNetwork._write_time_evolution.
     "output_time_evolution":      False,
-    "output_rates_time_evolution": False, #whether to append per-reaction forward-rate columns (<reaction>_frwrd, e.g. n_p__d_g_frwrd) to the time-evolution output, after the Y_<nuclide> block. One column per reaction in the active LT network (~12 for small/small_parthenope, 68 for large+amax=8, ~429 for full large). Only useful to inspect the rate evolution; keep False otherwise to save disk space. Both backends emit the identical columns.
+    "output_rates_time_evolution": False, #whether to append per-reaction forward-rate columns (<reaction>_frwrd, e.g. n_p__d_g_frwrd) to the time-evolution output, after the Y_<nuclide> block. One column per LT reaction except n<->p, which has no rate table (12 for small/small_parthenope, 67 for large+amax=8, 428 for full large). Only useful to inspect the rate evolution; keep False otherwise to save disk space. Both backends emit the identical columns.
     "output_n_points":            500, # number of time samples written to the time-evolution output (log-spaced over the integration range)
     "output_file":                "results/output_tables.tsv", # destination of the time-evolution TSV; None still fills results["evolution"] in memory but writes nothing to disk
     # Two-column dump (nuclide name, final abundance per baryon Y) at the end of BBN.

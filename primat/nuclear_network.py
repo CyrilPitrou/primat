@@ -816,9 +816,10 @@ class NuclearNetwork:
 
         Per-reaction forward-rate columns (``<reaction>_frwrd``) are appended
         after the ``Y_<species>`` block when
-        ``cfg.output_rates_time_evolution=True`` -- one column per reaction in
-        the active LT network (~12 for ``small``/``small_parthenope``, 68 for
-        ``large``+``amax=8``, ~429 for full ``large``). Each column is the
+        ``cfg.output_rates_time_evolution=True`` -- one column per LT reaction
+        except n<->p, which has no rate table (12 for
+        ``small``/``small_parthenope``, 67 for ``large``+``amax=8``, 428 for
+        full ``large``). Each column is the
         active forward reaction-rate interpolant (same units as the shipped
         rate tables) at the row's temperature, populated into
         ``EvolutionResult.rates`` and serialised by ``dump_evolution``. The
@@ -862,8 +863,9 @@ class NuclearNetwork:
 
         # Optional per-reaction forward-rate columns. One
         # <reaction>_frwrd column per reaction actually in the active LT
-        # network (whatever the network / amax cutoff selects: ~12 for
-        # small/small_parthenope, 68 for large+amax=8, ~429 for full large),
+        # network, n<->p excepted -- it has no rate table (whatever the
+        # network / amax cutoff selects: 12 for small/small_parthenope,
+        # 67 for large+amax=8, 428 for full large),
         # value = the active forward-rate interpolant at each output
         # temperature (plain rate, not a flux). Sorted by column name so the C
         # backend can emit the identical names in the identical order.

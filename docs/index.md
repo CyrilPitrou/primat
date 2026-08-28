@@ -47,7 +47,7 @@ tolerance that applies to each, live in
 available backend (fast C engine by default, pure-Python fallback if
 needed). Pass an optional parameter dict to override defaults; {doc}`parameters`
 lists all 95 keys with their defaults, and every one of them can equally be set
-on the command line or in an INI file.
+on the command line (or in an INI file read by the standalone C CLI).
 
 ## Four ways to use primat
 
@@ -77,7 +77,7 @@ in {doc}`api/backend`).
 
 If you use primat in published work, please cite:
 
-> Pitrou, Coc, Uzan, Vangioni, *Physics Reports* **04** (2018) 005
+> Pitrou, Coc, Uzan, Vangioni, *Physics Reports* **754** (2018) 1–66
 > ([arXiv:1801.08023](https://arxiv.org/abs/1801.08023)).
 
 See {doc}`citing` for the BibTeX entry.

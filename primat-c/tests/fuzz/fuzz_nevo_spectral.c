@@ -1,5 +1,5 @@
-/* NEVO spectral table + y-grid: the pair whose width mismatch was F6.2's
- * out-of-bounds read. One fuzzed byte string drives both files, split at the
+/* NEVO spectral table + y-grid: a width mismatch between the two is an
+ * out-of-bounds read if the loader trusts either width. One fuzzed byte string drives both files, split at the
  * first "%%%" marker. */
 #include "fuzz.h"
 #include "config.h"

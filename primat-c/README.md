@@ -44,7 +44,9 @@ This produces the `primat-c` executable in the `build/` directory.
 - `make` or `make all` - Build the standalone executable (optimized, `-O2` by default)
 - `make clean` - Remove build artifacts
 - `make debug` - Build with debug symbols and sanitizers instead
-- `make test` - Build and run the unit test suite (27 programs)
+- `make test` - Build and run the unit test suite (27 programs). This does
+  *not* build the standalone executable; the Python suite's CLI tests need
+  it, so run plain `make` too
 - `make debug-test` - The same, instrumented with ASan and UBSan
 - `make bench` - Build and run the timing benchmark
 - `make leak-test` - Build and run the memory-leak check under a sanitizer
