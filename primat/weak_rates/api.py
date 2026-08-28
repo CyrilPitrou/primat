@@ -185,9 +185,8 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     ctx = _build_rate_context(Tvec, cfg)
 
     # Single grid spanning the whole BBN temperature range (T_end -> T_start).
-    # cfg.sampling_nTOp_per_decade is points per decade of T (formerly
-    # sampling_nTOp was the *total* point count, and before that the
-    # per-era count when the network used three separate HT/MT/LT grids).
+    # cfg.sampling_nTOp_per_decade is points *per decade* of T, not a total,
+    # so the point count follows the span the era boundaries ask for.
     n_pts = n_points_per_decade(cfg.sampling_nTOp_per_decade, cfg.T_end, cfg.T_start_nucl)
     T_all = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start_nucl), n_pts)
 

@@ -128,7 +128,7 @@ _TEMPLATE_DESCRIPTIONS = {
     "rate_grid_T9_max": "maximum T9 [GK] of the master rate grid",
     "network": '"small" / "small_parthenope" / "large" / custom network filename',
     "amax": "filter any network to reactions with A <= amax",
-    "atol_LT": "solve_ivp absolute tolerance for the LT era of every network (the name is historical)",
+    "atol_LT": "solve_ivp absolute tolerance for the LT era, for every network",
     "mc_rate_rescale_cap": "clamp the MC rate variation factor to [1/cap, cap]; None disables the cap",
     "nuclear_qed_corrections": "QED correction to select radiative-capture rates (Pitrou & Pospelov 2020)",
     "Omegabh2": "baryon density Omega_b h^2 (Planck 2018 default)",

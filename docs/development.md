@@ -23,8 +23,8 @@ use at least this many decimals:
 
 This is not pedantry. Flags such as `incomplete_decoupling` and
 `QED_corrections` move Neff at the level of 1e-2 to 1e-3, and the two backends
-agree on D/H only to about 1e-5 — a number quoted to three decimals cannot
-show either.
+agree on D/H only to a budget of 5e-5 — a number quoted to three decimals
+cannot show either.
 
 No example values are given here on purpose: they would go stale. The live
 ones are in `tests/reference_values.py`, the single source that both
@@ -96,7 +96,7 @@ find out immediately — but knowing they exist saves you the surprise.
 | Both backends produce the same result-dict keys and the same time-evolution columns | `tests/test_backend_parity.py`; the schema contract is `primat/evolution.py`'s module docstring |
 | Both backends compute the same cache fingerprints, so they share cache files instead of evicting each other's | `tests/test_cache_parity.py` |
 | The two parameter templates match `DEFAULT_PARAMS` | `tests/test_docs_consistency.py`; regenerate with `python -m primat.tools.gen_param_templates` |
-| `CPRIMAT_VERSION` matches `pyproject.toml`'s version | `tests/test_docs_consistency.py` |
+| The version matches `pyproject.toml` everywhere it is repeated — `CPRIMAT_VERSION`, `CITATION.cff`, `manual/`, the Streamlit wheel | `tests/test_docs_consistency.py`; the full bump procedure is `PyPiGuide.md`'s Step 1 table |
 | The documented validation numbers match a live run | `tests/test_runfiles.py`, `tests/test_regression.py` |
 | A rate table is valid before it reaches the solver | `tests/test_rate_table_domain.py` |
 
@@ -127,10 +127,15 @@ deuterium regression bound has been that tight since the first commit; only
 its central value has moved, for a documented physics change each time. The
 cross-backend budget has only ever been tightened. Keep it that way.
 
-**`rate_grid_npts = 1000` is converged.** Measured against 8000: deuterium to
-4e-6, He3/H to 8e-6, Li7/H to 8e-5. Neff does not move at 8 decimals. The one
-caveat worth knowing is that Li7/H's sixth decimal is *not* grid-converged.
-Dropping to 500 is visibly under-resolved.
+**`rate_grid_npts = 1000` is converged enough, and the residual is known.**
+Past about `numerical_precision = 1e-8` the answer is set not by the solver
+but by two fixed sampling grids, and both backends carry the same error, so no
+cross-backend test can see it. `docs/performance.md`'s "What the default grids
+cost" is the authoritative table — quote it rather than re-measuring. The
+caveat worth carrying in your head: the last **two** of the six decimals
+`Li7/H` is reported to are grid artefacts, not physics, so compare `Li7/H`
+only between runs at the same grid settings. Dropping to 500 is visibly
+under-resolved.
 
 **`--cache-clear` clears the shipped cache files too, not only a user
 overlay.** This is deliberate: recomputing them reproduces the shipped values
@@ -143,12 +148,57 @@ That is what makes an export/import round trip reproduce the run exactly.
 Resampling at export would round the values and stretch a coarse upload across
 a wider grid, which re-importing would then resample a second time.
 
+**Parameter renames were a clean break, with no compatibility aliases.**
+`numba_installed` became `use_numba`, `atol_large_LT` became `atol_LT`, and
+`rescale_nuclear_rates` — accepted but read by nothing — was deleted. An old
+spelling is now an unknown key: a warning normally, an error under
+`strict_params`, with the usual "did you mean …?" hint. The judgement behind
+that was that this package has virtually no outside users, so a shim would
+cost more in confusion than the break costs in migration. Weigh the same
+question the same way, or decide it differently on new evidence — but do not
+add aliases on the assumption nobody thought about it.
+
+**Do not merge `_ccrth_FD2_vec` into `integrands.FD2`.** They compute the same
+thing and look like an obvious duplication. They are not interchangeable: the
+two differ by about e^-300 in the far tail, so the merge cannot be promised to
+leave every digit unchanged, and a rename alone buys too little to be worth
+re-pinning anything.
+
+**The README is deliberately self-contained**, and about two-thirds of it
+restates nine `docs/` pages. Splitting it was proposed with the duplication
+measured, and declined: a single file that answers a new reader end to end is
+worth maintaining twice. The cost is real — keep both copies right when you
+change either.
+
+**`primat/gui/params_form.py` is two modules interleaved in one file**, and
+that was priced and left alone rather than split: the sidebar form's metadata
+and helpers, then the whole custom-network dialog layer, then the form's entry
+point and group renderers. What costs a contributor time is that adding one
+parameter group means editing three sites on either side of that dialog layer
+— `_FORM_METADATA`, then `GROUP_ORDER`/`_EXPANDED_GROUPS`/`_SUBHEADING`, then
+`_render_curated_groups` — with nothing in the file saying so.
+
+**The shipped NEVO table's `T_numu` and `T_nutau` are not identical**, and
+that is an input, not a defect. They differ by up to 1.6e-05, alternating sign
+at 14 of the table's 2761 nodes, which is NEVO solver noise; the two flavours
+are physically degenerate below the muon mass. Both backends read the same
+table and the difference is far below the sensitivity of any observable.
+
+**Two off-default nucleon masses look like a hang and are not.** Setting `mn`
+about 1 % high (or `mp` 1 % low) puts the neutron–proton mass difference far
+from its physical value, which forces a full Monte-Carlo (`vegas`) rebuild of
+the finite-temperature correction table: over 26 minutes on the pure-Python
+backend before the first observable appears. The same configuration with
+`thermal_corrections=False` finishes in seconds. If a parameter sweep appears
+to stall, check whether it moved a nucleon mass.
+
 **The Streamlit deployment chain is not legacy and must not be tidied away.**
 The public demo installs primat from the repo-root `requirements.txt`, whose
 last line points at a committed wheel under `wheels/`, built by
 `.github/workflows/build_linux.yml`. Deleting any of the three breaks the
 website. When the version is bumped, rebuild the wheel, commit it, and update
-the filename in `requirements.txt` in the same change.
+the filename in `requirements.txt` in the same change — this is one row of
+`PyPiGuide.md`'s Step 1 table, which is the complete list.
 
 ## Before you commit
 

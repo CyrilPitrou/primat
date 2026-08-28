@@ -320,9 +320,9 @@ DEFAULT_PARAMS: dict = {
     # positive integer when set.
     "amax":                       None,
 
-    # Absolute solve_ivp tolerance for the LT era of EVERY network (not just
-    # "large" -- despite the legacy name). It must be tight enough for the
-    # large network's heavy nuclides, which reach very small abundances.
+    # Absolute solve_ivp tolerance for the LT era of EVERY network, not just
+    # "large". It must be tight enough for the large network's heavy
+    # nuclides, which reach very small abundances.
     "atol_LT":              1.e-26,
 
     # Cap applied to the MC rate rescaling factor during Monte Carlo runs.

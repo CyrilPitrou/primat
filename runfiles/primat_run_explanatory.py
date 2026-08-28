@@ -139,7 +139,7 @@ cfg = dict(
     # rate_grid_T9_max=10.0,  # maximum T9 [GK] of the master rate grid
     # network="small",  # "small" / "small_parthenope" / "large" / custom network filename
     # amax=None,  # filter any network to reactions with A <= amax
-    # atol_LT=1e-26,  # solve_ivp absolute tolerance for the LT era of every network (the name is historical)
+    # atol_LT=1e-26,  # solve_ivp absolute tolerance for the LT era, for every network
     # mc_rate_rescale_cap=30,  # clamp the MC rate variation factor to [1/cap, cap]; None disables the cap
     # nuclear_qed_corrections=True,  # QED correction to select radiative-capture rates (Pitrou & Pospelov 2020)
 

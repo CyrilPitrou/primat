@@ -312,6 +312,33 @@ def test_small_amax2_collapses_to_deuterium_channel():
     assert r["DoH"] > 0.0
 
 
+def test_every_forward_rate_is_extrapolated_past_the_top_of_its_table():
+    """The MT era starts above the master T9 grid, so every run extrapolates.
+
+    `rate_grid_T9_max = 10` GK sits below the mid-temperature era's start at
+    T_weak = 11.6045 GK, and the rate buffer continues the last cell's slope
+    linearly rather than refusing to answer. The distance is what makes that
+    matter, so it is pinned here: widening the grid, moving the era boundary or
+    changing `rate_grid_npts` all move it, and none of them would otherwise
+    show up anywhere. What it costs is in `docs/performance.md`; the guard that
+    the extrapolation cannot go negative is in `tests/test_invariants.py`.
+    """
+    import numpy as np
+    from primat.config import PRIMATConfig
+    cfg = PRIMATConfig(params={"network": "small"})
+    grid = np.logspace(np.log10(cfg.rate_grid_T9_min),
+                       np.log10(cfg.rate_grid_T9_max), cfg.rate_grid_npts)
+    T9_weak = cfg.T_weak / 1e9          # cfg.T_weak is in Kelvin, the grid in GK
+    assert T9_weak > grid[-1], (
+        "the master grid now covers the MT era's start, so nothing is "
+        "extrapolated -- this test and the performance note it points at are "
+        "both stale")
+    cells = (T9_weak - grid[-1]) / (grid[-1] - grid[-2])
+    assert cells == pytest.approx(17.48, rel=0.02), (
+        f"the forward rates are extrapolated {cells:.2f} cells past the end of "
+        "every table, not 17.48; re-measure what that costs before re-pinning")
+
+
 @pytest.mark.slow
 @pytest.mark.solve
 def test_default_rate_grid_leaves_a_known_error_in_Li7():
