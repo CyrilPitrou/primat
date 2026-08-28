@@ -136,36 +136,66 @@ static int is_cache_name(const char *name, const char *prefix)
         && nlen > 4 && strcmp(name + nlen - 4, ".txt") == 0;
 }
 
+/* The cache tree's overlay bases, first-wins on read: the cache_dir redirect
+ * if one is set, then the package tree, always last so the shipped caches stay
+ * reachable. Mirror of primat.cache_utils._cache_bases. Returns how many were
+ * written into `bases`. */
+static int cache_bases(const CPRConfig *cfg, char bases[2][CPR_PATH_BUF_LEN2])
+{
+    int n = 0;
+    if (cfg->cache_dir && cfg->cache_dir[0])
+        snprintf(bases[n++], CPR_PATH_BUF_LEN2, "%s", cfg->cache_dir);
+    snprintf(bases[n++], CPR_PATH_BUF_LEN2, "%s/cache_plasma_weak", cfg->data_dir);
+    return n;
+}
+
 /* Counts (and optionally deletes) the hash-named cache files of ONE family:
  * `subdir` is "weak" or "plasma", `prefix` the matching basename prefix.
  * Mirrors primat.cache_utils.list_cache_files/clear_cache restricted to a
- * single subdir, which is how cli.py reports the two counts separately. */
+ * single subdir, which is how cli.py reports the two counts separately.
+ *
+ * Every overlay base is swept, not only the writable one, so a redirected
+ * install still sees and clears the shipped copies -- the behaviour
+ * docs/development.md records as the deliberate one. A basename present in
+ * both bases counts once and is deleted from the redirect only, which is what
+ * first-wins resolution means: the shipped copy under it was never the file
+ * a run would have loaded. */
 static int list_or_clear_cache(const CPRConfig *cfg, const char *subdir,
                                 const char *prefix, int clear)
 {
-    /* Overlay-aware: the writable cache dir is cache_dir/<subdir> if set,
-     * else <data_dir>/cache_plasma_weak/<subdir>. */
-    char dir_path[CPR_PATH_BUF_LEN2];
-    cpr_config_cache_write_dir(cfg, subdir, dir_path, sizeof(dir_path));
-
-    DIR *d = opendir(dir_path);
-    if (!d) {
-        fprintf(stderr, "cannot open cache directory '%s'\n", dir_path);
-        return 0;
-    }
+    char bases[2][CPR_PATH_BUF_LEN2];
+    int n_bases = cache_bases(cfg, bases);
     int n = 0;
-    struct dirent *ent;
-    while ((ent = readdir(d)) != NULL) {
-        if (!is_cache_name(ent->d_name, prefix))
-            continue;
-        n++;
-        if (clear) {
+    /* Last base first, so the shadow test below still finds the winning copy:
+     * cli.py enumerates every base before deleting anything, and deleting the
+     * redirect first would make a shadowed shipped file look unshadowed and
+     * be removed too. */
+    for (int b = n_bases - 1; b >= 0; b--) {
+        char dir_path[CPR_PATH_BUF_LEN2];
+        snprintf(dir_path, sizeof(dir_path), "%s/%s", bases[b], subdir);
+        DIR *d = opendir(dir_path);
+        if (!d)
+            continue;      /* a base without this subdir contributes nothing */
+        struct dirent *ent;
+        while ((ent = readdir(d)) != NULL) {
+            if (!is_cache_name(ent->d_name, prefix))
+                continue;
             char file_path[CPR_PATH_BUF_LEN2];
-            snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, ent->d_name);
-            remove(file_path);
+            if (b > 0) {   /* already counted under an earlier (winning) base? */
+                struct stat st;
+                snprintf(file_path, sizeof(file_path), "%s/%s/%s",
+                         bases[0], subdir, ent->d_name);
+                if (stat(file_path, &st) == 0)
+                    continue;
+            }
+            n++;
+            if (clear) {
+                snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, ent->d_name);
+                remove(file_path);
+            }
         }
+        closedir(d);
     }
-    closedir(d);
     return n;
 }
 
@@ -1129,7 +1159,17 @@ int cpr_cli_main(int argc, char **argv)
      * order as cli.py: defaults, then .ini, then named flags, then --set
      * (later wins). */
     int data_dir_given = 0;   /* only announce an override the user asked for */
+    /* --cache-info/--cache-clear run before the second pass applies --set, so
+     * the one --set key they depend on is picked up here: without it they
+     * would inspect the default tree, not the redirect the user named.
+     * Mirrors cli.py, which builds its cache-command PRIMATConfig from
+     * --data_dir plus the path-valued --set keys. */
+    const char *cache_dir_set = NULL;
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--set") == 0 && i + 1 < argc
+            && strncmp(argv[i + 1], "cache_dir=", 10) == 0) {
+            cache_dir_set = argv[i + 1] + 10;
+        }
         if (strcmp(argv[i], "--data_dir") == 0 && i + 1 < argc) {
             data_dir = argv[++i];
             data_dir_given = 1;
@@ -1210,22 +1250,31 @@ int cpr_cli_main(int argc, char **argv)
     }
 
     if (cache_info || cache_clear) {
+        if (cache_dir_set) {
+            char *serr = NULL;
+            CPRParam v = {CPR_STRING, .v.s = cache_dir_set};
+            if (cpr_config_set_by_name(&cfg, "cache_dir", v, &serr)) {
+                fprintf(stderr, "error: %s\n", serr);
+                free(serr);
+                cpr_config_free(&cfg);
+                return CLI_EXIT_CONFIG;
+            }
+        }
         /* Both hash-named families, broken down per tree so the user can see
          * which one is accumulating -- same wording as cli.py. */
         int n_weak = list_or_clear_cache(&cfg, "weak", "nTOp_", cache_clear);
         int n_plasma = list_or_clear_cache(&cfg, "plasma", "electron_thermo_",
                                             cache_clear);
-        char wdir[CPR_PATH_BUF_LEN2], pdir[CPR_PATH_BUF_LEN2];
-        cpr_config_cache_write_dir(&cfg, "weak", wdir, sizeof(wdir));
-        cpr_config_cache_write_dir(&cfg, "plasma", pdir, sizeof(pdir));
+        char bases[2][CPR_PATH_BUF_LEN2];
+        int n_bases = cache_bases(&cfg, bases);
         if (cache_clear)
-            printf("Removed %d cached file(s): %d weak-rate from %s/, "
-                   "%d electron-thermo from %s/.\n",
-                   n_weak + n_plasma, n_weak, wdir, n_plasma, pdir);
-        else {
-            printf("%d cached weak-rate file(s) in %s/.\n", n_weak, wdir);
-            printf("%d cached electron-thermo file(s) in %s/.\n", n_plasma, pdir);
-        }
+            printf("Removed %d cached file(s): %d weak-rate, %d electron-thermo, in:\n",
+                   n_weak + n_plasma, n_weak, n_plasma);
+        else
+            printf("%d cached weak-rate file(s) and %d cached electron-thermo "
+                   "file(s) in:\n", n_weak, n_plasma);
+        for (int b = 0; b < n_bases; b++)
+            printf("  %s/\n", bases[b]);
         cpr_config_free(&cfg);
         return 0;
     }

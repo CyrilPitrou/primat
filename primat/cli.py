@@ -41,13 +41,12 @@ import sys
 import time
 import warnings
 
-from . import PRIMAT, __version__
+from . import __version__
 from .credits import cli_credits_text
 from .main import configure_console, console_encodable
 from .backend import (HAS_C_BACKEND, dump_mc_correlation, dump_mc_covariance,
                       dump_mc_samples, run_bbn, run_mc)
-from .cache_utils import (clear_cache, list_cache_files, plasma_cache_dir,
-                           weak_cache_dir)
+from .cache_utils import _cache_bases, clear_cache, list_cache_files
 from .config import (DEFAULT_PARAMS, PARAM_GROUPS, PRIMATConfig,
                      _default_params_comments)
 from .constants import OVERRIDABLE_CONSTANTS
@@ -603,13 +602,16 @@ def _dispatch(args, parser):
         n_plasma = len(list_cache_files(cfg, subdirs=("plasma",)))
         if args.cache_clear:
             n = clear_cache(cfg)
-            print(f"Removed {n} cached file(s): {n_weak} weak-rate from "
-                  f"{weak_cache_dir(cfg)}/, {n_plasma} electron-thermo from "
-                  f"{plasma_cache_dir(cfg)}/.")
+            print(f"Removed {n} cached file(s): {n_weak} weak-rate, "
+                  f"{n_plasma} electron-thermo, in:")
         else:
-            print(f"{n_weak} cached weak-rate file(s) in {weak_cache_dir(cfg)}/.")
-            print(f"{n_plasma} cached electron-thermo file(s) in "
-                  f"{plasma_cache_dir(cfg)}/.")
+            print(f"{n_weak} cached weak-rate file(s) and {n_plasma} cached "
+                  "electron-thermo file(s) in:")
+        # Every overlay base, not just the writable one: the counts above are
+        # swept across all of them, so naming one directory would misreport
+        # where the files are.
+        for base in _cache_bases(cfg):
+            print(f"  {base}/")
         return 0
 
     # Only forward options the user actually set, so unset flags fall back

@@ -25,7 +25,6 @@ nuclides are keyed by a canonical name (``n``, ``p``, ``H2``, ``H3``, ``He3``,
 ``He4``, ``Be9``, ...) chosen to match primat's existing ``Nuclides`` keys.
 """
 import re
-from collections import Counter
 
 # Element symbol -> atomic number Z.  The BBN+ network reaches Na (Z=11); we
 # list through Ca (Z=20) so the table comfortably covers any token that appears.

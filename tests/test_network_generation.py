@@ -43,7 +43,7 @@ _AC2024_DIR = os.path.join(_ROOT, "primat", "data", "csv")
 sys.path.insert(0, _GEN_DIR)
 
 from nuclide_table import (resolve_token, conservation_residual,   # noqa: E402
-                           build_nuclide_table, canonical_name)
+                           canonical_name)
 
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),

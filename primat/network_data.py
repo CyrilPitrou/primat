@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import os
 import re
-import csv
 import sys
 import io
 import warnings
@@ -63,7 +62,6 @@ __all__ = [
     "available_rate_tables",
     "reaction_category",
     "group_reactions_by_category",
-    "AMAX_LARGE",
     "nuclide_latex",
     "phase_network",
     "reaction_stoichiometry",
@@ -2344,14 +2342,6 @@ def group_reactions_by_category(names, data_dir=None) -> dict:
     for name in names:
         groups.setdefault(reaction_category(name, data_dir), []).append(name)
     return dict(sorted(groups.items()))
-
-
-# True maximum nuclide mass number reachable in the large network's catalog
-# (measured: the heaviest nuclide referenced by any data/nuclear/networks/
-# large.txt reaction is Na23, A=23). Used by the GUI popup to detect
-# "this kept-reaction list used every reaction up to the
-# top of the catalog", i.e. equivalent to "no amax filter" (amax=None).
-AMAX_LARGE = 23
 
 
 class UpdateNuclearRates:

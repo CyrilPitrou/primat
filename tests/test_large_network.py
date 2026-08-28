@@ -89,7 +89,6 @@ def test_large_solve_conserves_baryon_and_matches_amax8():
 
     # Baryon number: sum_s A_s Y_s = 1 to high precision.
     from primat.config import PRIMATConfig
-    A = {s: sum(PRIMATConfig.Nuclides.get(s, [0, 0])) for s in big.nuclear.Y_final}
     # Build A for every large-network species from its (N,Z) in nuclides.csv.
     from primat.network_data import load_network
     ln = load_network(PRIMATConfig({"network": "large", "verbose": False}))

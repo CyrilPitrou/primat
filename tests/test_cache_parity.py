@@ -60,8 +60,6 @@ once and is shared by the tests that need it; giving every test its own pair of
 runs cost ~30 s, which is the point at which this would have had to move behind
 an opt-in marker instead of running by default.
 """
-import os
-
 import numpy as np
 import pytest
 

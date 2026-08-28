@@ -581,9 +581,6 @@ class NuclearNetwork:
         # and when progress=False (set by _mc_run_batch to avoid per-sample spam).
         _show = progress and not cfg.verbose
 
-        if cfg.verbose:
-            _t0 = time.time()
-
         # ------------------------------------------------------------------
         # Temperature era boundaries [s]
         # ------------------------------------------------------------------
@@ -1003,7 +1000,6 @@ class NuclearNetwork:
         for rxn_idx in net.weak_indices:
             if rxn_idx == 0:
                 continue   # n__p handled by the HT/MT/LT eras, not the DT era
-            name = net.names[rxn_idx]
             # The decay rate is constant (T9-independent), stored as a
             # uniform array.  Read from _fwd_median at grid index 0.
             # rate_table_idx is rxn_idx - 1 because _fwd_median excludes n__p.

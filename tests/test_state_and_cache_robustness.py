@@ -11,7 +11,6 @@ These guard three promises that only break off the happy path:
 """
 import glob
 import os
-import shutil
 import subprocess
 import sys
 import threading

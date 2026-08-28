@@ -817,7 +817,6 @@ class StandardBackground(Background):
         cfg    = self.cfg
 
         Tstartcosmo  = cfg.T_start_cosmo / cfg.MeV_to_Kelvin
-        Tstart = cfg.T_start_nucl / cfg.MeV_to_Kelvin   # [MeV]
         Tend   = cfg.T_end   / cfg.MeV_to_Kelvin   # [MeV]
 
         # Step 1 - Neutrino-sector background (temperatures, heating,

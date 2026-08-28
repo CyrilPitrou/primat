@@ -194,7 +194,6 @@ def test_genuine_chemical_potential_shifts_rates_and_energy():
        flavours (plasma.rho_nu_chempot_excess). This pins the absolute Neff
        shift to ~1e-7, and is O(xi^2) (positive for either sign of xi).
     """
-    import numpy as np
     from primat.plasma import rho_nu_chempot_excess
 
     xi = 0.05
