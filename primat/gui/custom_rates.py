@@ -623,8 +623,9 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
     decay_table = _load_decay_table(os.path.join(cfg.resolved_data_dir, "nuclear", "tables"))
     # Which on-disk table each *uncustomised* reaction actually uses, per
     # cfg.network's own list -- e.g. "*_parthenope3.0.txt" for
-    # small_parthenope. Assuming "<name>_primat.txt" here used to silently
-    # export the wrong rates for any such network.
+    # small_parthenope. Read, never assumed from the reaction name: a network
+    # pinning anything other than "<name>_primat.txt" would otherwise export
+    # rates it does not run.
     pinned_filenames = _base_network_filenames(cfg)
 
     # Decay-reaction overrides are pulled out of custom_tables here: they get
@@ -987,14 +988,10 @@ def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None, filenames=
     already imports from ``panels``).
 
     ``removed`` is computed against the *full, unfiltered* large-network
-    reaction list -- not some amax-restricted view -- so that every
-    catalog reaction absent from ``kept`` is actually excluded from the
-    solved network. (An earlier version derived an "implied amax" from the
-    heaviest category among ``kept`` and only marked reactions *within* that
-    band as removed; every reaction above it was then neither removed nor
-    kept, so ``UpdateNuclearRates`` silently treated "not removed" as "keep"
-    and the imported network solved with hundreds of unwanted extra
-    reactions -- this is why that derivation is gone.)
+    reaction list -- never an ``amax``-restricted view -- because
+    ``UpdateNuclearRates`` reads "not removed" as "keep": a reaction left out
+    of both lists is solved, so anything short of the whole catalog silently
+    admits reactions the user excluded.
 
     Parameters
     ----------

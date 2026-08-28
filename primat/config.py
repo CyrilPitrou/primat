@@ -83,9 +83,9 @@ DEFAULT_PARAMS: dict = {
     # ENERGY density shifts linearly, integral{y^3 delta_f dy} = y_gray * 7*pi**4/120 exactly -- a distinct, independent third distortion shape.
 
     # ---- custom NEVO tables ------------------------------------------------
-    # Override the shipped rates/NEVO/ tables with custom ones (e.g. a
+    # Override the shipped data/NEVO/ tables with custom ones (e.g. a
     # higher-resolution or non-standard neutrino-decoupling history).  Each is
-    # a filename resolved relative to rates/NEVO/, or an absolute path; None
+    # a filename resolved relative to data/NEVO/, or an absolute path; None
     # uses the shipped file selected by QED_corrections (see
     # neutrino_history.NEVOTable / resolve_nevo_path).
     "nevo_file":                  None, # 6/7-column thermo table (replaces NEVOPRIMAT[_NoQED]_col_1_7.csv)
@@ -133,9 +133,8 @@ DEFAULT_PARAMS: dict = {
     # ---- fundamental constants (overridable for sensitivity studies) --------
     # CODATA-tabulated value, kept as the exact 5-significant-figure literal.
     # Do NOT replace with the result of converting some natural-units value
-    # through CONST.GN_MeV2_to_SI -- that round-trips to a spurious 16-digit
-    # float (6.674299257609439e-11, off from the tabulated constant at the
-    # ~1e-7 relative level) which previously crept in here this way. Mirror
+    # through CONST.GN_MeV2_to_SI -- that round trip yields a spurious 16-digit
+    # float, off from the tabulated constant at the ~1e-7 relative level. Mirror
     # this literal digit-for-digit in primat-c/src/config.c's
     # cpr_config_set_GN default.
     "GN":                         6.6743e-11,   # Newton's constant, SI units [m^3 kg^-1 s^-2]
@@ -626,10 +625,10 @@ def _default_params_comments():
     2. Failing that, the **first sentence of the contiguous comment block
        immediately above the key**, with decorative section rules/headings
        skipped (:func:`_is_decorative_comment`).  A dozen keys are documented
-       that way -- ``network``, ``amax``, ``atol_LT``, the ``output_*``
-       group, the ``decay_*`` group -- and used to print with no description at
-       all, even though ``--list-params`` is the documented way to discover
-       parameters (``--set`` being hidden from ``--help``).
+       only that way -- ``network``, ``amax``, ``atol_LT``, the ``output_*``
+       group, the ``decay_*`` group -- and ``--list-params`` is the documented
+       way to discover parameters (``--set`` being hidden from ``--help``), so
+       they cannot be left without a description.
 
     Only the block's first *sentence* is taken, not the whole block: the rest is
     multi-paragraph prose for a human reading the dict, not a one-liner (a full
@@ -674,10 +673,7 @@ def _default_params_comments():
     # Map each source line number to the comment token that starts on it, by
     # re-tokenizing the same file (comments aren't part of the AST).
     line_comments = {}
-    # Explicit UTF-8: config.py contains non-ASCII physics characters in its
-    # comments (ν, ↔, →, …); the default locale encoding is cp1252 on Windows
-    # and would raise UnicodeDecodeError re-reading this very file.
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:      # UTF-8 for the same reason as above
         for tok in tokenize.generate_tokens(f.readline):
             if tok.type == tokenize.COMMENT:
                 line_comments[tok.start[0]] = tok.string.lstrip("#").strip()
@@ -813,8 +809,8 @@ _POSITIVE_INT = (lambda v: v >= 1, "must be a positive integer (>= 1)")
 _AT_LEAST_TWO = (lambda v: v >= 2,
                  "must be >= 2 (a one-point grid has no interval to interpolate on)")
 # The electron-thermo tables are fitted with a not-a-knot cubic, which needs
-# four knots. Below that the run used to die inside the spline fitter with a
-# message naming neither the parameter nor the minimum.
+# four knots. Rejected here so the message names the parameter and the
+# minimum, which the spline fitter's own failure does not.
 _AT_LEAST_FOUR = (lambda v: v >= 4,
                   "must be >= 4 (the electron-thermo tables are fitted with a "
                   "not-a-knot cubic spline, which needs four knots)")
@@ -1666,8 +1662,8 @@ class PRIMATConfig:
         :data:`_PARAM_RANGE` table.
 
         Each of these is accepted by the per-key checks yet leaves the solver
-        with an impossible request, and each used to surface far downstream as
-        an opaque integrator failure (or, worse, silently):
+        with an impossible request, and each would otherwise surface far
+        downstream as an opaque integrator failure, or silently:
 
         - ``rate_grid_T9_min >= rate_grid_T9_max`` -- ``np.logspace`` then
           builds a *descending* master T9 grid, breaking ``fill_buffer``'s
@@ -1714,9 +1710,9 @@ class PRIMATConfig:
             )
         # Three SM flavours carry rho_nu each, and DeltaNeff adds
         # DeltaNeff * rho_nu(one flavour): below -3 the neutrino sector's total
-        # energy density is negative, sqrt() in the Friedmann equation returns
-        # NaN, and the failure used to surface as "All components of the initial
-        # state y0 must be finite" from inside the ODE.
+        # energy density is negative and sqrt() in the Friedmann equation
+        # returns NaN, which the ODE reports as a non-finite initial state
+        # without naming the parameter responsible.
         if self.DeltaNeff < -3.:
             raise ValueError(
                 f"DeltaNeff={_fmt_value(self.DeltaNeff)} must be >= -3: it "
@@ -1893,13 +1889,11 @@ class PRIMATConfig:
             n_grid_nodes = ncols - 6
 
         # Resolve the y-grid actually in play: the override if given, else the
-        # shipped NEVOGrid.csv.  Checking the *shipped* grid too closes the
-        # case where only nevo_spectral_file is overridden -- previously
-        # n_grid_nodes was computed and then never compared against anything,
-        # so a custom spectral table of the wrong width sailed past this method
-        # and failed later inside NEVOTable's RegularGridInterpolator, which is
-        # exactly the confusing deep-shape-mismatch this method exists to
-        # prevent.
+        # shipped NEVOGrid.csv.  The shipped grid is checked too, which is what
+        # covers the case where only nevo_spectral_file is overridden: a custom
+        # spectral table of the wrong width would otherwise reach NEVOTable's
+        # RegularGridInterpolator and fail there as the deep shape mismatch
+        # this method exists to prevent.
         if self.nevo_grid_file is not None:
             grid_path = resolve_nevo_path(self, self.nevo_grid_file, "")
             grid_desc = f"nevo_grid_file={self.nevo_grid_file!r}"

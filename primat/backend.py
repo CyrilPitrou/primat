@@ -300,19 +300,15 @@ def _unwrap_numpy_params(params: dict[str, Any]) -> dict[str, Any]:
     Python equivalent (``np.int64(80) -> 80``), leaving everything else
     untouched.
 
-    Why both backends need this, at the dispatch boundary rather than in
-    ``PRIMATConfig``: numpy scalars arrive naturally from a parameter scan
+    Numpy scalars arrive naturally from a parameter scan
     (``for n in np.arange(40, 200, 20): run_bbn({"sampling_nTOp_per_decade": n})``)
     or from an external driver such as the Cobaya wrapper indexing a sampled
-    array, and *neither* backend used to accept all of them. ``np.float64``
-    passed (it subclasses ``float``) but ``np.int64``/``np.float32``/
-    ``np.bool_`` failed -- the C path with a clear
-    ``TypeError: unsupported parameter value type numpy.int64`` from the
-    extension wrapper, the Python path with an opaque
-    ``TypeError: Object of type int64 is not JSON serializable`` raised from
-    inside the weak-rate cache fingerprint. Unwrapping here fixes both at once
-    and keeps their accepted input identical, which is the point: a config a
-    user can run on one backend must run on the other.
+    array, and only ``np.float64`` is accepted downstream on its own (it
+    subclasses ``float``): ``np.int64``/``np.float32``/``np.bool_`` are
+    rejected by the C extension wrapper and by the Python weak-rate
+    fingerprint. Unwrapping at the dispatch boundary rather than inside
+    ``PRIMATConfig`` is what keeps the two backends' accepted input identical:
+    a config a user can run on one must run on the other.
 
     Value-preserving and therefore fingerprint-preserving: ``.item()`` returns
     the exact same number, so no cache file is invalidated (see
@@ -564,14 +560,9 @@ def run_mc(num_mc: int, quantities: str | list[str] | None = None,
         custom_network: supported on both backends (forwarded to
             ``cpr_mc_uncertainty``'s ``CPRCustomNetwork*``); never forces a
             fallback.
-        log_backend: bool, default False. Print which backend actually ran
-            and why (module docstring); also triggered by setting the
-            ``PRIMAT_BACKEND_LOG`` environment variable.
-        progress: bool, optional. ``None`` (default) defers to
-            ``params['show_progress']`` (``DEFAULT_PARAMS`` default ``True``);
-            pass an explicit ``True``/``False`` to override it for this call.
-            Controls the ``[MC] Running N samples...`` banner and the
-            ``N/total (XX%)`` counter on both backends.
+        log_backend, progress: same semantics as :func:`run_bbn`; here
+            ``progress`` controls the ``[MC] Running N samples...`` banner and
+            the ``N/total (XX%)`` counter.
 
     Returns:
         primat.main.MCResult
@@ -586,11 +577,10 @@ def run_mc(num_mc: int, quantities: str | list[str] | None = None,
 
     # num_mc must be a positive count, checked here so BOTH backends reject the
     # same input: the C sampler allocates num_mc doubles per quantity, so a
-    # negative value used to underflow size_t and abort the process with a
-    # "primat: out of memory (18446744073709551576 bytes)" from mc.c, while the
-    # Python path silently produced an empty sample set reported as
-    # "value +/- 0". (cpr_mc_uncertainty now rejects it too, for callers that
-    # reach the C API without passing through here.)
+    # negative count underflows size_t and aborts on an absurd allocation,
+    # while the Python path would silently produce an empty sample set
+    # reported as "value +/- 0". cpr_mc_uncertainty rejects it as well, for
+    # callers reaching the C API without passing through here.
     if not isinstance(num_mc, numbers.Integral) or isinstance(num_mc, bool):
         raise TypeError(f"run_mc: num_mc must be an int, got {num_mc!r} of type "
                          f"{type(num_mc).__name__}.")

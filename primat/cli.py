@@ -691,8 +691,7 @@ def _dispatch(args, parser):
         out = dict(results)
         # results["evolution"] is an EvolutionResult of numpy arrays (both
         # backends attach it whenever output_time_evolution=True) and is not
-        # JSON-serialisable -- `primat --json --output_time_evolution` used to
-        # die with "Object of type EvolutionResult is not JSON serializable".
+        # JSON-serialisable.
         # The time series has its own dedicated TSV writer (--output_file), so
         # it is dropped from the JSON payload rather than inlined: a 500-point
         # x ~60-nuclide table would swamp the handful of observables this

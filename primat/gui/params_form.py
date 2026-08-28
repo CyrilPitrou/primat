@@ -609,8 +609,7 @@ def _widget_for(key, label, help_text):
     # terminal the user launched primat-gui from. That happens on ordinary
     # use, since _reconcile_distortion_decoupling_flags deliberately writes
     # `incomplete_decoupling` before its widget is created.
-    # The seed is `_display_default`, not the raw default: Streamlit used to
-    # do that rounding itself as a side effect of `value=`, and
+    # The seed is `_display_default`, not the raw default, because
     # `_render_curated_groups` compares the widget's value against
     # `_display_default(key)` to decide whether the user touched it.
     seed = {} if key in st.session_state else {"value": _display_default(key)}
@@ -1103,20 +1102,16 @@ def _render_decay_category(names, decay_rates):
     """Dedicated category for analytic Bm/Bp decay reactions.
 
     These have no per-reaction rate-table folder (their rate is a single
-    T9-independent row in the shared ``decays.txt``), so they are pulled out
-    of the mass-number categories (where they used to show a misleading
-    "(no table)") into their own group with an editable decay-rate field.
+    T9-independent row in the shared ``decays.txt``), so listing them among the
+    mass-number categories would mark each one "(no table)".  They get their
+    own group with an editable decay-rate field instead.
     """
     keep_map = _DialogState().keep
     n_kept = _kept_count(names, keep_map)
     label = f"Decays -- {n_kept}/{len(names)} kept"
     expander_key = SessionKeys.dialog_expander_decay
     with st.expander(label, key=expander_key):
-        # Narrow, content-sized columns + a trailing spacer keep the two
-        # buttons right next to each other instead of "Select all" sitting
-        # at the far left of a half-width column and "Unselect all" at the
-        # far left of the other half (i.e. visually far apart).
-        c1, c2, _spacer = st.columns([1, 1, 4])
+        c1, c2, _spacer = st.columns([1, 1, 4])   # spacer: see _render_category
         if c1.button("Select all", key=SessionKeys.dialog_selall_decay):
             for n in names:
                 _DialogState().keep[n] = True

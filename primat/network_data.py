@@ -272,13 +272,13 @@ def _resample_rate_table(T9_src, rate_src, T9_dst, label=None):
     log-log, i.e. by continuing the table's own end slope, and a
     :class:`UserWarning` is raised naming the reaction and both spans.  This
     matters only for user-supplied tables: the shipped ones cover the whole
-    master grid and take the exact-identity fast path below.  An earlier version
-    extrapolated with the **cubic** spline (``fill_value="extrapolate"``), which
-    is unbounded — a table truncated to T9 ∈ [0.05, 5] resampled onto the
-    default [1e-3, 10] grid came out a factor 3.2 low at the bottom end, and a
-    cubic can equally diverge upward, silently either way.  Continuing the end
-    slope is the tamest defensible choice and keeps a partial upload usable;
-    the warning is what makes the extrapolation visible.
+    master grid and take the exact-identity fast path below.  Linear, not the
+    cubic spline itself (``fill_value="extrapolate"``): a cubic continued past
+    its last knot is unbounded and can run far off in either direction, so a
+    table truncated well inside the master grid would be resampled into
+    nonsense.  Continuing the end slope is the tamest defensible choice and
+    keeps a partial upload usable; the warning is what makes the extrapolation
+    visible.
 
     The master grid is built from cfg.rate_grid_{npts,T9_min,T9_max} in
     load_network.  This makes load_network grid-agnostic: tables generated with
@@ -1649,14 +1649,12 @@ def _parse_network_entries(reaction_names, network_label):
     rejected rather than silently dropped, since a duplicate is far more
     likely to be a copy-paste mistake than an intentional no-op.
 
-    The check is keyed on the **bare reaction name**, not on the raw entry.
-    Keying it on the raw entry (as an earlier version did) let a repeat slip
-    through whenever the two lines differed only in their ``", filename"``
-    suffix -- e.g. ``"n_p__d_g"`` together with
-    ``"n_p__d_g, n_p__d_g_primat.txt"``.  Those are the *same* reaction, so the
-    network ended up carrying two identical rows and double-counting its flux,
-    with no warning; ``bare_to_file`` meanwhile silently kept only the last
-    filename, so the two rows did not even use different tables.
+    The check is keyed on the **bare reaction name**, not on the raw entry, so
+    that two lines differing only in their ``", filename"`` suffix -- e.g.
+    ``"n_p__d_g"`` together with ``"n_p__d_g, n_p__d_g_primat.txt"`` -- are
+    caught.  They are the *same* reaction: the network would carry two
+    identical rows and double-count its flux, and ``bare_to_file`` keeps only
+    the last filename, so the two rows would not even use different tables.
 
     Args:
         reaction_names: sequence[str], the raw entries (one per network-file
@@ -1877,7 +1875,7 @@ def _parse_reaction_sides(selected, bare_to_file, rxn_map):
 def _extend_mt_species(era, cfg, bare_names, rxn_map, nuc_NZ, amax, active_nuclides):
     """Add the fixed MT-era species set (SPECIES_MT) to active_nuclides.
 
-    The MT era historically carries a fixed set of nuclides through the
+    The MT era carries a fixed set of nuclides through the
     solver even when only a subset of reactions is active. For standard
     networks this is all of SPECIES_MT (12 nuclides). For custom networks we
     only add SPECIES_MT members that actually appear in the file's full

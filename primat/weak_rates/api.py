@@ -260,7 +260,7 @@ def validate_weak_rates_finite(T_all, frwrd, bkwrd, cfg, source):
 def InterpolateWeakRates(cfg):
     """Load n↔p weak rates from the hash-named cache file and return interpolants.
 
-    Reads ``rates/weak/nTOp_<hash>.txt`` (three columns: T in Kelvin,
+    Reads ``data/cache_plasma_weak/weak/nTOp_<hash>.txt`` (three columns: T in Kelvin,
     Gamma_{n→p} in units of 1/tau_n, Gamma_{p→n} in units of 1/tau_n) where
     ``<hash>`` is the 16-hex fingerprint of the current configuration.
     Raises FileNotFoundError if the file does not exist (it has not been
@@ -278,8 +278,8 @@ def InterpolateWeakRates(cfg):
     path    = resolve_cache_file(cfg, "weak", "nTOp_" + fp_hash + ".txt")
     tab     = _read_weak_cache_table(path)
     validate_weak_rates_finite(tab[:, 0], tab[:, 1], tab[:, 2], cfg, repr(path))
-    # log10-log10 cubic (matching the C backend and the nuclear rate tables);
-    # see _weak_rate_loglog_interp for why linear-space quadratic was replaced.
+    # log10-log10 cubic, matching the C backend and the nuclear rate tables;
+    # see _weak_rate_loglog_interp for the scheme and why it is shared.
     frwrd   = _weak_rate_loglog_interp(tab[:, 0], tab[:, 1])
     bkwrd   = _weak_rate_loglog_interp(tab[:, 0], tab[:, 2])
     return [frwrd, bkwrd]
@@ -343,7 +343,7 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
 
     1. Compute the fingerprint hash of the current configuration
        (:func:`weak_rate_fingerprint`).
-    2. If `cfg.weak_rate_cache` is True and `rates/weak/nTOp_<hash>.txt`
+    2. If `cfg.weak_rate_cache` is True and `data/cache_plasma_weak/weak/nTOp_<hash>.txt`
        exists, load and interpolate it directly (cheap: no integration at
        all).  The fingerprint is enforced by the *filename*: a different
        configuration hashes to a different name and therefore misses.  The
@@ -357,7 +357,7 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
        loaded, never written).  Analytic distortions are continuous knobs
        (`y_SZ`, `y_gray`) typically scanned point-by-point in an MCMC;
        caching them would write one file per parameter point and pollute
-       rates/weak/.  The same rule applies to any future user-supplied
+       data/cache_plasma_weak/weak/.  The same rule applies to any future user-supplied
        `dFDneu_func` that cannot be fingerprinted.
     5. Build the finite-temperature CCRTh correction with
        :func:`_thermal_correction_interpolants` (its own
@@ -368,11 +368,6 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     the stored rates are in units of 1/τ_n (Fn already applied inside
     ComputeWeakRates), so they need only multiplying by 1/tau_n after loading
     — the cached values themselves are tau_n-independent.
-
-    The hash is embedded in the filename (``nTOp_<hash>.txt``), so different
-    configurations coexist in ``rates/weak/`` without overwriting each other.
-    ``cfg.save_nTOp`` defaults to True: every newly computed configuration is
-    saved automatically so subsequent runs reuse it without recomputing.
 
     Parameters
     ----------

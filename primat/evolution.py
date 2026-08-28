@@ -202,9 +202,9 @@ def t_of_T_interpolator(result: EvolutionResult) -> Callable[[float | NDArray[np
 
     The counterpart of :func:`T_gamma_interpolator`, useful e.g. to add a
     secondary x-axis labelled in ``T_gamma`` on a plot whose primary axis is
-    cosmic time ``t`` (see ``notebooks/AbundanceEvolution.ipynb``). Backend-
-    agnostic replacement for ``primat.main.PRIMAT.t_of_T``, the live-instance,
-    Python-only method this used to require.
+    cosmic time ``t`` (see ``notebooks/AbundanceEvolution.ipynb``). Works from
+    a loaded ``EvolutionResult``, so unlike ``primat.main.PRIMAT.t_of_T`` it
+    needs neither a live instance nor the Python backend.
 
     ``T_gamma`` decreases monotonically with ``t`` over a BBN run, so the
     ``(T_gamma, t)`` pairs are reversed into ascending order and interpolated

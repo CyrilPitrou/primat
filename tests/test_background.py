@@ -110,3 +110,25 @@ def test_neutrino_sector_getters_are_positive_finite():
     om_nr = bg.Omeganuh2_nrnu()
     assert np.isfinite(om_rel) and om_rel > 0
     assert np.isfinite(om_nr) and om_nr >= 0
+
+
+# ---------------------------------------------------------------------------
+# DeltaNeff additivity
+# ---------------------------------------------------------------------------
+
+def test_DeltaNeff_shifts_Neff_by_exactly_DeltaNeff():
+    """``DeltaNeff = x`` must raise the reported ``Neff`` by exactly ``x``.
+
+    That additivity is the reason ``Plasma.T_nu_decoupling`` normalises the
+    extra species on sigma_inf rather than ``_sbar_ref``: the other choice is
+    equally defensible physically but turns the knob into
+    ``Neff_SM + 1.0032 x DeltaNeff``, which the docstring there claims and
+    nothing pinned. Bare backgrounds, so no nuclear solve is needed.
+    """
+    bg0 = _build_background(DeltaNeff=0.0)
+    base = bg0.N_eff(*bg0.rho_nu_total_final())
+
+    for delta in (1.0, 2.5):
+        bg = _build_background(DeltaNeff=delta)
+        Tg_d, rho_d = bg.rho_nu_total_final()
+        assert bg.N_eff(Tg_d, rho_d) - base == pytest.approx(delta, abs=1e-12)
