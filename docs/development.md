@@ -106,9 +106,11 @@ find out immediately — but knowing they exist saves you the surprise.
 what it writes.
 
 **Changing physics** means changing it twice — once in `primat/`, once in
-`primat-c/src/`. Purely cosmetic changes (renames, comments, restructuring
-with no numerical effect) need no mirroring. If you are unsure which kind you
-have, treat it as numerical and mirror it.
+`primat-c/src/`, where the mirror of a module carries the same name
+(`background.py`/`background.c`, `weak_rates/`/`weak_rates.c`, and so on;
+`primat-c/README.md`'s "Code structure" lists them). Purely cosmetic changes
+(renames, comments, restructuring with no numerical effect) need no mirroring.
+If you are unsure which kind you have, treat it as numerical and mirror it.
 
 ## Decisions already made
 
@@ -170,10 +172,15 @@ measured, and declined: a single file that answers a new reader end to end is
 worth maintaining twice. The cost is real — keep both copies right when you
 change either.
 
-**`primat/gui/params_form.py` is two modules interleaved in one file**, and
-that was priced and left alone rather than split: the sidebar form's metadata
-and helpers, then the whole custom-network dialog layer, then the form's entry
-point and group renderers. What costs a contributor time is that adding one
+**Three large files stay single files**, and that was priced rather than
+assumed: `network_data.py`, `config.py` and `primat/gui/params_form.py`. The
+job on each is to make it readable where it stands — section headers, a module
+header saying what lives where — not to split it.
+
+`params_form.py` is the one that costs a reader: **it is two modules
+interleaved in one file**, priced and left alone rather than split: the
+sidebar form's metadata and helpers, then the whole custom-network dialog
+layer, then the form's entry point and group renderers. What costs a contributor time is that adding one
 parameter group means editing three sites on either side of that dialog layer
 — `_FORM_METADATA`, then `GROUP_ORDER`/`_EXPANDED_GROUPS`/`_SUBHEADING`, then
 `_render_curated_groups` — with nothing in the file saying so.
@@ -199,6 +206,44 @@ last line points at a committed wheel under `wheels/`, built by
 website. When the version is bumped, rebuild the wheel, commit it, and update
 the filename in `requirements.txt` in the same change — this is one row of
 `PyPiGuide.md`'s Step 1 table, which is the complete list.
+
+**A numba BDF integrator was measured and declined.** The projection was about
+3.5x further on the pure-Python backend for roughly 600 lines of new numba
+following `primat-c/src/ode_bdf.c`. The objection that decided it is
+structural, not numerical: numba is optional here, every njit kernel has a
+pure-numpy fallback, so a numba BDF would have to keep scipy's BDF as its own
+fallback — two integrators giving slightly different numbers, with the
+regression pins holding on only one. The cheaper middle option, fusing the
+whole RHS chain into one njit call and keeping scipy's BDF, buys about a third
+of that and was not taken either, for the same reason.
+
+**INI files are a C-side feature by decision.** `primat-c` reads a run
+configuration from `--ini`; the Python CLI has no equivalent and is not missing
+one — `--set KEY=VALUE` and a `params` dict cover the same ground from Python.
+Do not describe `--ini` as available on both: two docs pages once promised it
+and had to be corrected.
+
+**The vegas-less thermal fallback stays slow.** Without `vegas`, the
+finite-temperature correction falls back to `dblquad`, which is correct but
+turns a cold thermal cache from minutes into hours. Making it fast means
+reimplementing the integral; what was done instead is the warning, which now
+states the cost and names both ways out. That is the honest fix, and it stands
+until someone wants to write the integrator.
+
+**The C unit suite is not built under MSVC.** `primat-c/Makefile` is
+POSIX-only, so `make test` does not run on Windows. The same sources are
+compiled under MSVC through the Python extension and exercised by the Python
+suite there, so the code is covered; what is missing is only the standalone C
+programs. Closing it means a second build file (CMake or nmake), which has not
+been judged worth maintaining.
+
+**`debug` is retired at the next version cut, and the other 94 settings stay.**
+Every parameter, CLI flag and GUI control was audited once and eleven were put
+up for retirement; ten were kept, each earning its place. `debug` is the
+exception: `verbose` does the same job on both backends and is pinned by
+`tests/test_verbose_parity.py`. Removing a key is a breaking change of the same
+class as a rename, so it waits for the version cut rather than landing on its
+own.
 
 ## Before you commit
 
