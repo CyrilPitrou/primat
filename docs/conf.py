@@ -9,7 +9,7 @@ Stack (all pinned in the ``docs`` extra of ``pyproject.toml``):
 
 * ``furo``              -- clean, responsive, light/dark HTML theme.
 * ``myst-parser``       -- lets us author pages in Markdown (the repo's existing
-                           README/EXTENDING/notebook-README content is all .md),
+                           README and notebook-README content is all .md),
                            so migration is copy-paste rather than reStructuredText
                            rewriting.
 * ``myst-nb``           -- renders the ``notebooks/`` gallery as tutorial pages.

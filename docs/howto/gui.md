@@ -44,8 +44,10 @@ Two controls are the GUI's own rather than parameters:
   order-of-magnitude estimate, not a publication error bar — use
   {doc}`rate-variation-mc` for that.
 
-The sidebar footer names the backend in use. To force one, set
-`PRIMAT_GUI_BACKEND=c` or `=python` in the environment before launching.
+The sidebar footer names the backend in use. To force one for the whole
+session, launch with `primat-gui --backend c` or `primat-gui --backend python`
+— the launcher hands the choice to the app itself, so setting the environment
+variable it reads has no effect.
 
 **Run BBN** starts the solve. The button turns primary again whenever an edit
 makes the displayed results out of date, so what you are looking at is always

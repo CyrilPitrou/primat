@@ -499,6 +499,128 @@ def test_readme_result_dict_table_is_complete():
         assert f"`{key}`" in readme, f"README result-dict table is missing {key}"
 
 
+# --- The README's two console blocks -------------------------------------
+#
+# The README prints two blocks of real console output that nothing used to
+# compare against: the CLI summary under "Command-line interface" and the
+# --mc block under "Computing the uncertainty". Both are pinned below.
+
+
+def _block_with(text, needle, offset=0):
+    """The fenced code block containing ``needle``, or ``offset`` blocks later.
+
+    ``offset=1`` picks up a command block's output block, which the README
+    prints as the next fence down.
+    """
+    blocks = re.findall(r"^```[^\n]*\n(.*?)^```", text, re.S | re.M)
+    for i, body in enumerate(blocks):
+        if needle in body:
+            return blocks[i + offset]
+    raise AssertionError(f"no fenced block contains {needle!r}")
+
+
+def _summary_labels_and_values(block):
+    """``{label: value}`` for every ``LABEL = VALUE`` line of a CLI summary.
+
+    Reads the block as printed, tolerating the leading ``# `` the README puts
+    on the --mc block's lines (it sits inside a ``bash`` fence). The label must
+    start the line, which is what leaves out the centred banner.
+    """
+    out = {}
+    for line in block.splitlines():
+        m = re.match(r"^(?:# )?([A-Za-z0-9][A-Za-z0-9 ()/]*?)\s+=\s+(\S+)",
+                     line)
+        if m:
+            out[m.group(1).strip()] = m.group(2)
+    return out
+
+
+def _cli_summary_labels():
+    """The observable labels ``primat`` prints, in the order it prints them."""
+    src = _read_text(os.path.join(REPO_ROOT, "primat", "cli.py"))
+    return re.findall(r'print\(f"([A-Za-z0-9 ()/]+?)\s*= \{results\[', src)
+
+
+def test_readme_cli_summary_block_matches_the_cli_and_the_constants():
+    """README's `--network large --amax 8` output block is a real run.
+
+    GOAL: the block is copied console output, so it goes stale silently. Its
+    labels are checked against the ones primat/cli.py actually prints, and its
+    two published observables against tests/reference_values.py -- which
+    test_regression.py's reference tier pins to a live solve, so a physics
+    change moves the constants and fails this too. Static on purpose: this
+    file stays in the fast lane (see the module docstring).
+    """
+    from reference_values import (REF_LARGE8_DOH, REF_LARGE8_YPBBN,
+                                  ROUTINE_RUN_DOH_ABS_TOL,
+                                  ROUTINE_RUN_YPBBN_ABS_TOL)
+
+    readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
+    block = _block_with(readme, "primat --Omegabh2 0.02242 --network large "
+                                "--amax 8", offset=1)
+    documented = _summary_labels_and_values(block)
+    printed = _cli_summary_labels()
+    assert printed, ("could not read any observable label out of "
+                     "primat/cli.py -- its print idiom changed, so this test "
+                     "is no longer reading the contract it thinks it is")
+
+    # Every label the block shows must be one the CLI prints, in the CLI's
+    # order. The block omits "CNO (mass)", which this network does not report.
+    assert set(documented) <= set(printed), (
+        f"README's CLI block shows labels primat never prints: "
+        f"{sorted(set(documented) - set(printed))}")
+    assert [lb for lb in printed if lb in documented] == list(documented), (
+        "README's CLI block lists the observables in a different order than "
+        "primat/cli.py prints them")
+    for required in ("Neff", "YP (BBN)", "D/H", "Li7/H"):
+        assert required in documented, f"README's CLI block lost {required!r}"
+
+    # The block runs `large, amax=8` at the default precision, so it is held
+    # to the routine bound, not the reference run's tighter one.
+    assert abs(float(documented["YP (BBN)"]) - REF_LARGE8_YPBBN) < \
+        ROUTINE_RUN_YPBBN_ABS_TOL
+    assert abs(float(documented["D/H"]) - REF_LARGE8_DOH) < \
+        ROUTINE_RUN_DOH_ABS_TOL
+
+
+def test_readme_mc_block_matches_the_cli_and_the_constants():
+    """README's `--mc 300` block quotes real central values and a real matrix.
+
+    GOAL: same reason as the CLI block above, plus one claim of its own -- the
+    README states that the value before each `+/-` is the unperturbed central
+    solve and so does not depend on N or the seed. That makes those two
+    numbers the default-run constants, and pins them exactly; the sigmas and
+    the correlations are finite-sample and are checked for shape, not digits.
+    """
+    from reference_values import DOH_REFERENCE, YPBBN_REFERENCE
+
+    readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
+    block = _block_with(readme, "primat --Omegabh2 0.02242 --mc 300")
+    documented = _summary_labels_and_values(block)
+
+    # Exact strings: both sides are tracked files, so a mismatch means one was
+    # edited without the other (the idiom of the quick-start test above).
+    assert documented["YP (BBN)"] == f"{YPBBN_REFERENCE:.8f}"
+    assert documented["D/H"] == f"{DOH_REFERENCE:.7e}"
+    assert "+/-" in block, "README's MC block lost the +/- sigma column"
+
+    # The correlation matrix: the four main products the CLI pairs, in the
+    # CLI's order, with a unit diagonal and symmetric off-diagonals.
+    from primat.cli import _MC_MAIN_PRODUCTS
+    rows = re.findall(r"^#\s*(" + "|".join(_MC_MAIN_PRODUCTS) + r")\s+"
+                      r"([-\d. ]+)$", block, re.M)
+    assert [name for name, _ in rows] == list(_MC_MAIN_PRODUCTS), (
+        "README's correlation matrix does not list primat --mc's four main "
+        f"products in order; found {[n for n, _ in rows]}")
+    matrix = [[float(x) for x in cells.split()] for _, cells in rows]
+    n = len(_MC_MAIN_PRODUCTS)
+    for i in range(n):
+        assert matrix[i][i] == 1.0, "correlation diagonal is not 1"
+        for j in range(n):
+            assert matrix[i][j] == matrix[j][i], "correlation is not symmetric"
+            assert -1.0 <= matrix[i][j] <= 1.0, "correlation outside [-1, 1]"
+
+
 def test_readme_gui_is_not_called_source_only():
     """primat.gui ships in the wheel ([tool.setuptools] packages); only
     runfiles/ is source-only."""
@@ -621,8 +743,7 @@ def test_development_notes_only_point_at_files_that_exist():
 # The manual's own front matter and README use the "volume (year) first-page"
 # short form instead, so they are not in this list.
 _CITATION_PAGES = ("README.md", "docs/index.md", "docs/citing.md",
-                   "docs/physics.md", "docs/extending.md",
-                   "manual/EXTENDING.md")
+                   "docs/physics.md", "docs/extending.md")
 
 
 def _citation_cff_reference():

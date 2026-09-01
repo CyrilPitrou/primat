@@ -72,35 +72,15 @@ install cell (`importlib.util.find_spec("primat") is None`) that
 
 ---
 
-## Parallelization and backend choices
+## Backends and parallel Monte Carlo
 
-### Python vs. C backend parallelization
+`MonteCarloRates.ipynb` and the parameter-scan notebooks run Monte-Carlo
+uncertainty propagation, which both backends parallelise — the Python one
+across joblib worker processes, the C one across pthreads inside one process.
+The two draw from different random streams, so their samples are
+statistically equivalent rather than identical: compare means, standard
+deviations and correlations, never individual sample values.
 
-Both backends support Monte Carlo uncertainty propagation with parallel acceleration, but they use different strategies:
-
-**Python backend** (`primat.main.mc_uncertainty`):
-- Parallelizes MC samples across worker processes using **joblib.Parallel**.
-- The `n_jobs` parameter controls the number of workers: `-1` uses all available CPU cores, or specify an integer (e.g. `n_jobs=8`).
-- Each worker draws independent rate/τ_n samples and runs a full PRIMAT solve; results are aggregated in the main process.
-- Uses NumPy's `default_rng` for the per-sample RNG.
-
-**C backend** (`cpr_mc_uncertainty`):
-- Parallelizes internally using **POSIX threads (pthread)** within a single process.
-- The `n_jobs` parameter is passed to the C extension and controls the thread count.
-- Uses xoshiro256** (a fast parallel RNG) for per-thread sample generation.
-- Typically faster than joblib for small-to-moderate sample counts (N < a few thousand) due to lower inter-process overhead.
-
-### Equivalence and statistical comparisons
-
-The two backends produce **statistically equivalent but not bit-for-bit identical** MC samples:
-- They use different RNG streams (NumPy's `default_rng` vs. xoshiro256**), so individual samples differ.
-- Mean and standard deviation converge to the same values as N_MC increases (within numerical precision ~1e-7 to 1e-8).
-- When comparing MC results across backends, verify that *statistics* (mean, std, correlations) agree rather than expecting exact sample values.
-
-### Which backend to use
-
-- **Auto** (default, `force_backend=None` or `"auto"`): Uses the C backend if available (faster), else falls back to Python.
-- **Force Python** (`force_backend="python"`): Always use joblib parallelization; useful for debugging or if custom-network features are not supported yet by the C backend.
-- **Force C** (`force_backend="c"`): Always use pthread; raises if the C extension is not available.
-
-See `primat.backend`'s module docstring (or `primat.cli --help`) for more details.
+`docs/howto/rate-variation-mc.md`'s "Backend parallelisation strategies" is
+the full account, and `README.md`'s "Backend selection" says which backend a
+run gets and how to force one.

@@ -25,7 +25,7 @@ few parts in 1e5. The suite is built in layers so that:
 From the repository root:
 
 ```bash
-pytest tests/                          # everything: 771 tests, ~11 min
+pytest tests/                          # everything: 772 tests, ~11 min
 pytest tests/ -m "not slow"            # fast lane: config/plasma/structural unit tests, ~50 s
 pytest tests/ -m "not slow or solve"   # fast lane + default-precision solves (CI: every push/PR, .github/workflows/tests.yml), ~8 min
 pytest tests/ -m "not reference"       # everything but the high-precision runs (which cost only ~10 s: skipping them saves nothing)
@@ -298,10 +298,16 @@ tracked list of them, so that a future reviewer neither re-discovers them nor
 and kept current in `tests/test_backend_parity.py`'s module docstring — this
 section states the causes and the decisions.
 
-Each divergence is measured term by term by `tests/backend_divergence.py`
-(`python -m tests.backend_divergence`), and the individual magnitudes are
-pinned in `tests/test_backend_parity.py`, so this section can state causes and
-decisions without quoting numbers that go stale.
+`tests/backend_divergence.py` (`python -m tests.backend_divergence`) measures
+three of the four rows. Its four stages — observables, the background at
+matched temperature, the nuclear rate columns and the CCRTh interpolant —
+cover the first two rows, and the fourth when the harness is run with
+`external_scale_factor` set. The HT-era row has no stage there; its share was
+measured separately and its own row states it.
+
+The individual magnitudes are pinned in `tests/test_backend_parity.py`, so
+this section can state causes and decisions without quoting numbers that go
+stale.
 
 | Divergence | Status |
 |---|---|
