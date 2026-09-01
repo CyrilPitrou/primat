@@ -41,8 +41,8 @@ Detailed balance               ``compute_detailed_balance_coefficients``: the
                                reverse rate from spins, masses and Q-values
 Stoichiometry                  parsing a reaction name into coefficients, and
                                ``phase_network``'s index form
-Network objects                ``_LinearRate`` and ``NetworkDefinition`` --
-                               one era's solver-ready network
+Network objects                ``NetworkDefinition``: one era's
+                               solver-ready network
 Catalog and sources            the CSV catalog, decay table, nuclear-QED
                                rescaling, rate-table provenance
 Building a network             ``load_network`` and its helper chain (entry
@@ -85,7 +85,6 @@ __all__ = [
     "SPECIES_MT",
     "SPECIES_SMALL",
     "UpdateNuclearRates",
-    "_LinearRate",
     "_REACTIONS_LARGE",
     "_KEY12_REACTIONS",
     "check_conservation",
@@ -1088,56 +1087,6 @@ def phase_network(order, species, data_dir=None):
 # ---------------------------------------------------------------------------
 # Network objects: one era's solver-ready network
 # ---------------------------------------------------------------------------
-class _LinearRate:
-    """Fast equivalent of ``interp1d(kind='linear', fill_value='extrapolate')``.
-
-    .. note::
-       No longer on any solver path -- ``fill_buffer`` interpolates through
-       ``_fill_buffer_core`` and ``_make_frwrd`` inlines its own grid lookup.
-       Kept as a small, self-contained utility (and exercised by
-       ``tests/test_refactor_invariants.py``) for code that wants a fast
-       drop-in for the scipy call above.
-
-    Appends one synthetic knot on each side of the grid whose value is obtained
-    by projecting the edge slope, then delegates to ``np.interp`` (a fast C
-    loop).  Any query point within ``[xlo, xhi]`` — a range twice as wide as
-    the original grid — gets exact linear extrapolation; beyond that the value
-    is clamped (which never occurs in practice for BBN T9 grids).
-
-    Parameters
-    ----------
-    x : 1-D array
-        Grid knots (e.g. T9 values), strictly increasing.
-    y : 1-D array, same length as *x*
-        Tabulated values at the knots.
-
-    Example
-    -------
-    >>> f = _LinearRate(np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]))
-    >>> f(1.5)
-    15.0
-    """
-
-    __slots__ = ("xp", "fp")
-
-    def __init__(self, x, y):
-        x = np.asarray(x, dtype=float)
-        y = np.asarray(y, dtype=float)
-        # Extend the grid by one span in each direction, projecting the edge
-        # slopes so that np.interp (which clamps at the boundary) gives true
-        # linear extrapolation up to one full data-range width beyond the grid.
-        span = x[-1] - x[0]
-        xlo, xhi = x[0] - span, x[-1] + span
-        ylo = y[0]  + (y[1]  - y[0])  / (x[1]  - x[0])  * (xlo - x[0])
-        yhi = y[-1] + (y[-1] - y[-2]) / (x[-1] - x[-2]) * (xhi - x[-1])
-        self.xp = np.concatenate(([xlo], x, [xhi]))
-        self.fp = np.concatenate(([ylo], y, [yhi]))
-
-    def __call__(self, T):
-        """Evaluate at *T* (scalar or array)."""
-        return np.interp(T, self.xp, self.fp)
-
-
 @dataclass
 class NetworkDefinition:
     """A fully assembled reaction network for one solver era.
