@@ -6,4 +6,4 @@ joblib
 streamlit
 pandas
 plotly
-./wheels/primat-0.3.2-cp312-cp312-linux_x86_64.whl
+./wheels/primat-0.3.3-cp312-cp312-linux_x86_64.whl
