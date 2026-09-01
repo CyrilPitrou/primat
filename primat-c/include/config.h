@@ -35,7 +35,7 @@
 /* MUST be kept in sync with pyproject.toml's `version`; bump this by hand
  * alongside pyproject.toml whenever the package version changes. Checked by
  * tests/test_docs_consistency.py::test_cprimat_version_matches_pyproject. */
-#define CPRIMAT_VERSION "0.3.2"
+#define CPRIMAT_VERSION "0.3.3"
 
 /* Buffer sizes for filesystem paths built by joining cfg->data_dir (see
  * CPRConfig::data_dir below) with one or two relative path components

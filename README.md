@@ -31,7 +31,7 @@ primat --help
 `primat --version` reports which of the two you got:
 
 ```
-primat 0.3.2 (C backend: available)
+primat 0.3.3 (C backend: available)
 ```
 
 **For development, examples, and notebooks:**

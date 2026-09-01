@@ -11,6 +11,8 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-01
+
 ### Added
 
 - **A parameter reference on the documentation site.** `docs/parameters.md`
@@ -1026,7 +1028,8 @@ current two-backend architecture in place:
   `EvolutionResult`/`load_evolution`), implemented identically by both
   backends.
 
-[Unreleased]: https://github.com/CyrilPitrou/primat/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/CyrilPitrou/primat/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/CyrilPitrou/primat/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/CyrilPitrou/primat/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/CyrilPitrou/primat/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/CyrilPitrou/primat/releases/tag/v0.3.0
