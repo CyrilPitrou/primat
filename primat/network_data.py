@@ -18,6 +18,39 @@ detailed-balance coefficient, and each nuclide receives its stoichiometric
 coefficient times ``forward - backward``.  ``compile_network`` and
 ``NetworkKernels`` from :mod:`primat.network_builder` convert that declarative
 stoichiometry into fast RHS/Jacobian evaluators.
+
+Map of this file
+----------------
+Nine regions, in the order a reaction travels through them: from a name in a
+network file to a filled rate buffer.  Each is introduced by a banner comment
+carrying the same title.
+
+=============================  ==============================================
+Region                         What lives there
+=============================  ==============================================
+Rate tables                    ``validate_rate_table``, the file reader and
+                               the master-T9 resampler; the numba buffer-fill
+                               kernel that reads the result
+Names                          nuclide/reaction spelling: ``nuclide_latex``,
+                               ``reaction_display_name``, ``to_filename``
+Data directories               where the shipped tree is, without needing a
+                               ``PRIMATConfig``
+Reaction lists                 reading ``networks/<name>.txt`` and naming the
+                               species of one reaction
+Detailed balance               ``compute_detailed_balance_coefficients``: the
+                               reverse rate from spins, masses and Q-values
+Stoichiometry                  parsing a reaction name into coefficients, and
+                               ``phase_network``'s index form
+Network objects                ``_LinearRate`` and ``NetworkDefinition`` --
+                               one era's solver-ready network
+Catalog and sources            the CSV catalog, decay table, nuclear-QED
+                               rescaling, rate-table provenance
+Building a network             ``load_network`` and its helper chain (entry
+                               selection, custom reactions, ``amax``, era
+                               subsetting, rate-table assembly), then
+                               ``UpdateNuclearRates``, which owns one
+                               ``NetworkDefinition`` per era
+=============================  ==============================================
 """
 
 from __future__ import annotations
@@ -89,6 +122,9 @@ _PHOTONS = {"g"}
 _LEPTONS = {"Bm", "Bp"}
 
 
+# ---------------------------------------------------------------------------
+# Rate tables: validation, file reading, resampling onto the master T9 grid
+# ---------------------------------------------------------------------------
 def _fill_buffer_core(T9, grid, fwd_table, abg, bwd_cap, clamp, r):
     """Numba-friendly inner loop of :meth:`NetworkDefinition.fill_buffer`.
 
@@ -438,6 +474,9 @@ _NUCLIDE_LATEX_SPECIAL = {"n": r"\mathrm{n}", "p": r"\mathrm{p}"}
 _NUCLIDE_NAME_RE = re.compile(r"^([A-Z][a-z]?)(\d+)$")
 
 
+# ---------------------------------------------------------------------------
+# Names: how a nuclide or a reaction is spelled, displayed and filed
+# ---------------------------------------------------------------------------
 def nuclide_latex(name):
     """Return the LaTeX form of a primat nuclide name, e.g. for axis labels.
 
@@ -502,6 +541,9 @@ ORDER_SMALL = [
 _KEY12_REACTIONS = ORDER_SMALL[1:]
 
 
+# ---------------------------------------------------------------------------
+# Data directories: the shipped tree, without needing a PRIMATConfig
+# ---------------------------------------------------------------------------
 def _default_data_dir() -> str:
     """Package-shipped data root (``primat/data/``, containing nuclear/, csv/, etc.).
 
@@ -524,6 +566,9 @@ def _network_dir_from_cwd() -> str:
     return os.path.join(_default_data_dir(), "nuclear", "networks")
 
 
+# ---------------------------------------------------------------------------
+# Reaction lists: reading networks/<name>.txt, and one reaction's species
+# ---------------------------------------------------------------------------
 def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
     """Read a thermonuclear reaction list from ``data/nuclear/networks``.
 
@@ -655,6 +700,9 @@ def reaction_species(name, data_dir=None):
     return expand(react), expand(prod)
 
 
+# ---------------------------------------------------------------------------
+# Detailed balance: the reverse rate from spins, masses and Q-values
+# ---------------------------------------------------------------------------
 def compute_detailed_balance_coefficients(reactants, products, cfg):
     r"""Compute the reverse-rate coefficients (alpha, beta, gamma) of a reaction.
 
@@ -665,10 +713,11 @@ def compute_detailed_balance_coefficients(reactants, products, cfg):
 
     where ``T9`` is the temperature in units of 1e9 K.  This routine derives
     alpha, beta and gamma from nuclide data alone (masses, spins, mass excesses),
-    so the network no longer depends on a hand-tabulated table.  It is a direct
+    so the network depends on no hand-tabulated table.  It is a direct
     Python port of PRIMAT's ``GatherInfoReac`` (functions ``Qreaction``,
-    ``PowerT9`` and ``FactorInverseReaction`` in ``PRIMAT-main.m``) and
-    reproduces the published values to < 0.5%.
+    ``PowerT9`` and ``FactorInverseReaction`` in ``PRIMAT-main.m``).
+    ``tests/test_detailed_balance.py`` pins the derivation against every row of
+    the shipped ``detailed_balance.csv``.
 
     Physics
     -------
@@ -755,6 +804,9 @@ def compute_detailed_balance_coefficients(reactants, products, cfg):
     return alpha, beta, gamma
 
 
+# ---------------------------------------------------------------------------
+# Stoichiometry: a reaction name parsed into coefficients and indices
+# ---------------------------------------------------------------------------
 def _tokenise(name):
     """Split a reaction name into nuclide tokens plus a ``"TO"`` separator.
 
@@ -1033,6 +1085,9 @@ def phase_network(order, species, data_dir=None):
     return net
 
 
+# ---------------------------------------------------------------------------
+# Network objects: one era's solver-ready network
+# ---------------------------------------------------------------------------
 class _LinearRate:
     """Fast equivalent of ``interp1d(kind='linear', fill_value='extrapolate')``.
 
@@ -1312,6 +1367,9 @@ class NetworkDefinition:
 # stops a host that hands out temporary data trees -- a test session, a GUI
 # serving uploads -- from retaining every catalog it ever read.
 @lru_cache(maxsize=8)
+# ---------------------------------------------------------------------------
+# Catalog and sources: the CSVs, the decay table, nuclear-QED rescaling
+# ---------------------------------------------------------------------------
 def _reaction_catalog(data_dir: str):
     """Load nuclide metadata, reaction stoichiometry and detailed balance tables.
 
@@ -1640,6 +1698,9 @@ def available_rate_tables(name: str, cfg) -> list[str]:
     return files
 
 
+# ---------------------------------------------------------------------------
+# Building a network: load_network's helper chain, then UpdateNuclearRates
+# ---------------------------------------------------------------------------
 def _parse_network_entries(reaction_names, network_label):
     """Split raw network-file entries into bare names + alternate-table map.
 

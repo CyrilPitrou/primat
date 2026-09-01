@@ -240,7 +240,7 @@ need not be read to use the library.
 
 ```
 primat-c/
-  include/            # 26 public headers, one per module
+  include/            # 27 headers: one per module, plus the two compat shims
     api.h             # cprimat_run: one full BBN solve, and its CPRResults
     config.h          # CPRConfig: every parameter, and the by-name setter
     cli.h             # the executable's entry point
@@ -253,7 +253,7 @@ primat-c/
     ...               # and the numerics: ode_bdf, ode_rk, spline, linalg,
                       # quad, vegas, rng, cache, table_io, xalloc, ...
 
-  src/                # one .c per header, plus main.c
+  src/                # 26 files: one per module header, plus main.c
     api.c             # cprimat_run, cpr_assemble_results, the verbose banner
     cli.c             # argument parsing, the printed report, --json, --mc
     mc.c              # the MC worker threads
