@@ -13,6 +13,7 @@ The comparison is line for line on the message stream, after normalising the
 three things that are *meant* to differ: the ``-py``/``-c`` tag suffix, the
 name each backend reports for itself, and wall-clock timings.
 """
+import os
 import re
 import subprocess
 import sys
@@ -59,12 +60,21 @@ OFF_DEFAULT_CONFIGS = {
 }
 
 
+# The child is read back as UTF-8, so it must write UTF-8. A Python child
+# encodes a redirected stream in the locale encoding, cp1252 on Windows, where
+# the decay listing's "s⁻¹" becomes the lone byte 0xb9: the parent's
+# read then raises UnicodeDecodeError and loses that whole stream. The C
+# backend writes its bytes straight through and is unaffected.
+_UTF8_ENV = dict(os.environ, PYTHONIOENCODING="utf-8")
+
+
 def _message_stream(backend, args=()):
     """The normalised ``[tag] message`` lines a verbose run prints."""
     proc = subprocess.run(
         [sys.executable, "-m", "primat.cli", "--backend", backend, "--verbose"]
         + list(args),
         capture_output=True, text=True, encoding="utf-8", timeout=600,
+        env=_UTF8_ENV,
     )
     assert proc.returncode == 0, proc.stderr
     lines = []

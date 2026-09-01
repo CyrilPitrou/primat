@@ -861,9 +861,10 @@ void cpr_config_cache_write_dir(const CPRConfig *cfg, const char *sub,
                                 char *out, size_t outsize)
 {
     if (cfg->cache_dir && cfg->cache_dir[0])
-        cpr_snprintf_path(out, outsize, "cache_dir", "%s/%s", cfg->cache_dir, sub);
+        cpr_snprintf_path(out, outsize, "cache_dir", "%s" CPR_SEP "%s", cfg->cache_dir, sub);
     else
-        cpr_snprintf_path(out, outsize, "data_dir", "%s/cache_plasma_weak/%s", cfg->data_dir, sub);
+        cpr_snprintf_path(out, outsize, "data_dir", "%s" CPR_SEP "cache_plasma_weak" CPR_SEP "%s",
+                           cfg->data_dir, sub);
 }
 
 void cpr_config_resolve_cache_file(const CPRConfig *cfg, const char *sub,
@@ -871,17 +872,19 @@ void cpr_config_resolve_cache_file(const CPRConfig *cfg, const char *sub,
 {
     char cand[CPR_PATH_BUF_LEN2];
     if (cfg->cache_dir && cfg->cache_dir[0]) {          /* overlay: redirect first */
-        cpr_snprintf_path(cand, sizeof(cand), "cache_dir", "%s/%s/%s", cfg->cache_dir, sub, file);
+        cpr_snprintf_path(cand, sizeof(cand), "cache_dir", "%s" CPR_SEP "%s" CPR_SEP "%s",
+                           cfg->cache_dir, sub, file);
         if (path_exists(cand)) { cpr_snprintf_path(out, outsize, "resolved cache", "%s", cand); return; }
     }
     /* shipped package copy (always tried, always last) */
-    cpr_snprintf_path(cand, sizeof(cand), "data_dir", "%s/cache_plasma_weak/%s/%s",
+    cpr_snprintf_path(cand, sizeof(cand), "data_dir",
+             "%s" CPR_SEP "cache_plasma_weak" CPR_SEP "%s" CPR_SEP "%s",
              cfg->data_dir, sub, file);
     if (path_exists(cand)) { cpr_snprintf_path(out, outsize, "resolved cache", "%s", cand); return; }
     /* miss -> the write path (where it WILL be written) */
     cpr_config_cache_write_dir(cfg, sub, out, outsize);
     size_t n = strlen(out);  /* always < outsize: snprintf NUL-terminates within outsize */
-    cpr_snprintf_path(out + n, outsize - n, "cache write path", "/%s", file);
+    cpr_snprintf_path(out + n, outsize - n, "cache write path", CPR_SEP "%s", file);
 }
 
 void cpr_config_set_Omegabh2(CPRConfig *cfg, double value)

@@ -238,8 +238,8 @@ int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir,
                          const char *consts_hash, char **errmsg)
 {
     char path_e2[1024], path_e3[1024];
-    snprintf(path_e2, sizeof(path_e2), "%s/QED_pressure_correction_e2.txt", plasma_dir);
-    snprintf(path_e3, sizeof(path_e3), "%s/QED_pressure_correction_e3.txt", plasma_dir);
+    snprintf(path_e2, sizeof(path_e2), "%s" CPR_SEP "QED_pressure_correction_e2.txt", plasma_dir);
+    snprintf(path_e3, sizeof(path_e3), "%s" CPR_SEP "QED_pressure_correction_e3.txt", plasma_dir);
 
     /* Both files describe the same grid, so they share one fingerprint --
      * they are always generated together and summed column-by-column at point
@@ -252,9 +252,9 @@ int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir,
     /* Create the target dir tree on demand: when redirected to a fresh
      * cache_dir the plasma/ subdir may not exist yet. */
     char mkdir_cmd[1024];
-    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", plasma_dir);
+    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s" CPR_SEP, plasma_dir);
     for (char *p = mkdir_cmd + 1; *p; p++) {
-        if (*p == '/') { *p = '\0'; mkdir(mkdir_cmd, 0755); *p = '/'; }
+        if (CPR_IS_SEP(*p)) { char sep = *p; *p = '\0'; mkdir(mkdir_cmd, 0755); *p = sep; }
     }
 
     int rc = write_one_qed_file(path_e2,

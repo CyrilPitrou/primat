@@ -574,12 +574,12 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
         char cache_wdir[CPR_PATH_BUF_LEN];
         cpr_config_cache_write_dir(cfg, "plasma", cache_wdir, sizeof(cache_wdir));
         char cache_write[CPR_PATH_BUF_LEN2];
-        snprintf(cache_write, sizeof(cache_write), "%s/%s", cache_wdir, cache_name);
+        snprintf(cache_write, sizeof(cache_write), "%s" CPR_SEP "%s", cache_wdir, cache_name);
         /* Create the dir tree on demand (a fresh cache_dir has no plasma/). */
         char mkdir_cmd[CPR_PATH_BUF_LEN2];
-        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", cache_wdir);
+        snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s" CPR_SEP, cache_wdir);
         for (char *p = mkdir_cmd + 1; *p; p++) {
-            if (*p == '/') { *p = '\0'; mkdir(mkdir_cmd, 0755); *p = '/'; }
+            if (CPR_IS_SEP(*p)) { char sep = *p; *p = '\0'; mkdir(mkdir_cmd, 0755); *p = sep; }
         }
         if (cpr_cache_write(cache_write, fields, 4, "grid rho_e p_e drho_e_dT dp_e_dT",
                              columns, 5, npts, NULL) != 0) {

@@ -75,7 +75,11 @@ primat-gui = "primat.gui.launcher:main"
 # joblib for parallel Monte-Carlo (``mc_uncertainty(..., n_jobs != 1)``).
 recommended = [
     "numba",
-    "vegas",
+    # vegas 6.4.1 stopped shipping a cp310 wheel while still declaring
+    # requires-python >=3.10, so pip falls back to an sdist whose Cython
+    # sources no longer compile. Cap 3.10 at the last release with a wheel.
+    "vegas; python_version >= '3.11'",
+    "vegas<6.4; python_version < '3.11'",
     "joblib",
 ]
 # Parallel Monte-Carlo only.  ``mc_uncertainty``/``run_mc`` import joblib
