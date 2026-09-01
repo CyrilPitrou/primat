@@ -68,10 +68,19 @@ exists is deleted outright.
 that pins it, not in a comment that goes stale. A comment may name the test;
 it may not quote the number.
 
-**No unverifiable claims about other files.** "Mirrored by `setup_ede` in
-`primat-c/src/background.c`" cannot be checked while reading and decays
-silently. State each cross-file requirement once — here or in
+**No unverifiable claims about other files.** A comment asserting that
+another file behaves some way cannot be checked while reading, and decays
+silently. State each cross-file *requirement* once — here or in
 `tests/README.md` — and let a test enforce it.
+
+One exception, deliberate: a comment **may** name the C symbol that mirrors
+the line it sits on, as in "Mirrored by `cpr_bg_T_of_a` in
+`primat-c/src/background.c`". That is a signpost, not a requirement — someone
+changing physics needs to find the other side, and a symbol name is the
+fastest way to it. The rule above still governs the requirement itself: the
+parity is what a test asserts, never the comment. Keep the pointer to a named
+symbol in a named file, so a rename breaks it visibly at the next `git grep`
+rather than quietly.
 
 **The test suite is documentation too.** Every test says what its goal is, and
 `tests/README.md` explains every test file, under the same 15-second rule.

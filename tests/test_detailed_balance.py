@@ -46,8 +46,12 @@ def test_detailed_balance_consistency():
             # Check beta exactly (it's always 0, 1.5, -1.5, etc.)
             assert beta == pytest.approx(ref_beta), f"Beta mismatch for {name}"
             
-            # Check alpha and gamma to 1% (reproducibility limit of the physics formula vs original PRIMAT tables)
+            # Alpha and gamma to 1e-4 relative. The shipped CSV is written by
+            # this same derivation, so the two agree to the CSV's stored
+            # precision (worst row 4.7e-08); the bound keeps three orders of
+            # margin for a table regenerated from coarser published values,
+            # while still failing on a derivation that has actually broken.
             if ref_alpha != 0:
-                assert abs(alpha - ref_alpha) / abs(ref_alpha) < 0.01, f"Alpha mismatch for {name}: {alpha} vs {ref_alpha}"
+                assert abs(alpha - ref_alpha) / abs(ref_alpha) < 1e-4, f"Alpha mismatch for {name}: {alpha} vs {ref_alpha}"
             if ref_gamma != 0:
-                assert abs(gamma - ref_gamma) / abs(ref_gamma) < 0.01, f"Gamma mismatch for {name}: {gamma} vs {ref_gamma}"
+                assert abs(gamma - ref_gamma) / abs(ref_gamma) < 1e-4, f"Gamma mismatch for {name}: {gamma} vs {ref_gamma}"
