@@ -547,7 +547,7 @@ class NuclearNetwork:
         abundances per baryon by nuclide name).  The BBN observables dict
         (``Neff``, ``YPBBN``, ``DoH``, ...) is built by ``PRIMAT.solve()`` from
         ``self.Y_final`` and from ``background``'s optional neutrino-sector
-        hooks -- it is no longer computed here.
+        hooks.
 
         The three eras are delegated to :meth:`_solve_HT`, :meth:`_solve_MT`
         and :meth:`_solve_LT` (n<->p only / ``ORDER_MT`` subset / chosen
