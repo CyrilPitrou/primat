@@ -280,6 +280,15 @@ in this repository is the authoritative source.
   `_PARAM_CHOICES` machinery it was the last user of.
 
 ### Fixed
+- **The C backend spells cache paths the way Windows does.** It joined every
+  cache and data path with `/`, which Windows opens happily but which made the
+  C backend print a different string from the Python one in the same verbose
+  line and the same error message. Both backends now name the same file the
+  same way on every platform.
+- **`pip install "primat[recommended]"` works again on Python 3.10.** vegas
+  6.4.1 stopped shipping a 3.10 wheel without narrowing its declared Python
+  support, so pip fell back to a source build that no longer compiles. The
+  extra now caps vegas on 3.10 at the last release with a wheel.
 - **The vegas-less thermal fallback now says what it costs, and admits when
   it has not converged.** Without `vegas`, the finite-temperature radiative
   corrections fall back to `scipy.integrate.dblquad`. The answer stays well

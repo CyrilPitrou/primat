@@ -1350,15 +1350,16 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             char wdir[CPR_PATH_BUF_LEN2];
             cpr_config_cache_write_dir(cfg, "weak", wdir, sizeof(wdir));
             char wpath[CPR_PATH_BUF_LEN2];
-            snprintf(wpath, sizeof(wpath), "%s/%s", wdir, fname);
+            snprintf(wpath, sizeof(wpath), "%s" CPR_SEP "%s", wdir, fname);
             /* create directory tree without relying on a shell call */
             char mkdir_cmd[CPR_PATH_BUF_LEN2];
-            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", wdir);
+            snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s" CPR_SEP, wdir);
             for (char *p = mkdir_cmd + 1; *p; p++) {
-                if (*p == '/') {
+                if (CPR_IS_SEP(*p)) {
+                    char sep = *p;
                     *p = '\0';
                     mkdir(mkdir_cmd, 0755);
-                    *p = '/';
+                    *p = sep;
                 }
             }
             if (cpr_cache_write(wpath, fp_fields, n_fp,
@@ -1447,11 +1448,11 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
                 char th_wdir[CPR_PATH_BUF_LEN2];
                 cpr_config_cache_write_dir(cfg, "weak", th_wdir, sizeof(th_wdir));
                 char th_wpath[CPR_PATH_BUF_LEN2];
-                snprintf(th_wpath, sizeof(th_wpath), "%s/%s", th_wdir, th_fname);
+                snprintf(th_wpath, sizeof(th_wpath), "%s" CPR_SEP "%s", th_wdir, th_fname);
                 char mkdir_cmd[CPR_PATH_BUF_LEN2];
-                snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s/", th_wdir);
+                snprintf(mkdir_cmd, sizeof(mkdir_cmd), "%s" CPR_SEP, th_wdir);
                 for (char *p = mkdir_cmd + 1; *p; p++) {
-                    if (*p == '/') { *p = '\0'; mkdir(mkdir_cmd, 0755); *p = '/'; }
+                    if (CPR_IS_SEP(*p)) { char sep = *p; *p = '\0'; mkdir(mkdir_cmd, 0755); *p = sep; }
                 }
                 char provenance[128];
                 snprintf(provenance, sizeof(provenance),

@@ -21,6 +21,7 @@ load a network or collect the suite -- so the whole file stays in the fast
 (`-m "not slow"`) lane.
 """
 import ast
+import importlib.util
 import os
 import re
 
@@ -829,6 +830,18 @@ def test_documented_rate_column_counts_match_the_networks():
             f"but they are {[counts['small'], counts['amax8'], counts['large']]}")
 
 
+# Optional dependencies that gate a whole test module's collection
+# (`pytest.importorskip` at module level: streamlit/plotly for the three GUI
+# files, joblib for test_mc.py). Without them pytest collects fewer tests than
+# the README's totals count, so the comparison would be meaningless rather
+# than stale -- which is what the CI lanes that install no extras hit.
+_FULL_SUITE_IMPORTS = ("streamlit", "plotly", "joblib")
+
+
+@pytest.mark.skipif(
+    any(importlib.util.find_spec(m) is None for m in _FULL_SUITE_IMPORTS),
+    reason="the totals count a full environment: "
+           + ", ".join(_FULL_SUITE_IMPORTS))
 def test_tests_readme_test_counts_match_the_collected_suite():
     """tests/README.md's two totals are what pytest actually collects.
 

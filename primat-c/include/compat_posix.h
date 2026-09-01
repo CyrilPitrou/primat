@@ -85,4 +85,20 @@
 
 #endif /* _WIN32 */
 
+/* Separator used when this backend JOINS a cache or data path. Windows opens
+ * a '/'-joined path happily, but Python joins with os.path.join, so a
+ * '/'-joined C string and the Python one name the same file while reading
+ * differently -- and both backends print those paths verbatim, in the same
+ * verbose line and the same error message. CPR_IS_SEP accepts either
+ * spelling, since a user-supplied cache_dir may carry the other one.
+ * Enforced by tests/test_verbose_parity.py and
+ * tests/test_state_and_cache_robustness.py. */
+#if defined(_WIN32)
+#define CPR_SEP        "\\"
+#define CPR_IS_SEP(c)  ((c) == '/' || (c) == '\\')
+#else
+#define CPR_SEP        "/"
+#define CPR_IS_SEP(c)  ((c) == '/')
+#endif
+
 #endif /* CPRIMAT_COMPAT_POSIX_H */
