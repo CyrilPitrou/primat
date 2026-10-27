@@ -1024,10 +1024,9 @@ def _ccrth_B(E):
 
 def _ccrth_FD2_vec(en, xval):
     """Fermi-Dirac occupation 1/(e^{en x} + 1), vectorised, with the argument
-    saturated at +-``exp_cutoff`` rather than zeroed: unlike the other
-    occupations below this one tends to 1 (not 0) at large negative argument,
-    so clipping is the safe overflow guard.  Mirrors ``FD2`` in
-    ``primat-c/src/weak_rates.c``.
+    saturated at +-``exp_cutoff`` rather than zeroed, so it tends to 1 (not
+    0) at large negative argument.  Every thermal-correction occupation goes
+    through it.  Mirrors ``FD2`` in ``primat-c/src/weak_rates.c``.
     """
     resvec = np.zeros(len(en))
     argvec = en * xval
@@ -1045,11 +1044,8 @@ def _ccrth_chitilde_vec(ctx, en, znuval, sgnq):
     ``primat-c/src/weak_rates.c``.
     """
     q = ctx.Q / ctx.me
-    resvec = np.zeros(len(en))
     argvec = znuval * (en - sgnq * q) - sgnq * ctx.xi_nu
-    my_index = np.where(np.abs(argvec) < exp_cutoff)[0]
-    resvec[my_index] = 1. / (np.exp(argvec[my_index]) + 1.)
-    return resvec * (en - sgnq * q)**2
+    return _ccrth_FD2_vec(argvec, 1.) * (en - sgnq * q)**2
 
 
 def _ccrth_IPENCCRT(ctx, E, k, x, znu, sgnq):
@@ -1179,11 +1175,7 @@ def _ccrth_C2dE1dE2(ctx, e1v, e2v, x, znu, sgnq):
         return resvec
 
     def FD_nu3_vec(en, phi, xval):
-        resvec = np.zeros(len(en))
-        argvec = en * xval - phi
-        idx = np.where(np.abs(argvec) < exp_cutoff)[0]
-        resvec[idx] = 1. / (np.exp(argvec[idx]) + 1.)
-        return resvec
+        return _ccrth_FD2_vec(en * xval - phi, 1.)
 
     def ChiFunc_vec(E, p, x, znu, sgnq):
         return (FD_nu3_vec(E - sgnq * (Q / me), sgnq * xi_nu, znu)
@@ -1345,26 +1337,10 @@ def _L_CCRTh_compute(ctx, T, sgnq, opts):
     (:func:`_L_ThermalDiffBremsstrahlung`), and the single/double-integral
     pieces (:func:`_L_Thermal_1` / :func:`_L_Thermal_2_3`).
 
-    Clamps the finite-temperature correction to 0 below ~10^8.2 K in BOTH
-    directions.  Two independent reasons coincide there:
-     (i) Physics: the e+/e-/photon bath is exp(-m_e/kB T)-dilute, so
-         the thermal radiative correction is negligible (the
-         well-behaved sub-terms are already <1e-7 by ~7e7 K).
-     (ii) Numerics: the differential-bremsstrahlung sub-term
-         (_ccrth_IPENCCRDiffBremsstrahlung) carries an alpha/(2 pi k) infrared
-         pole that is meant to cancel against its soft subtraction.
-         That cancellation breaks once the neutrino Fermi-Dirac
-         threshold width 1/znu (= kB T Tnu/(me T)) shrinks toward the
-         hard-coded lower photon-momentum cutoff k_min=1e-3, leaving an
-         uncancelled ln(k_min) residual that the n->p integral
-         converges to (~ -1.2e-2 at 1.16e7 K, growing logarithmically
-         as k_min is lowered).  Below ~10^8.2 K this residual would
-         otherwise spuriously pull the n->p rate ~0.7% below the free
-         neutron-decay value it must approach as T -> 0.
-    PRIMAT-Main.m already applies this clamp to p->n (sgnq=-1) only
-    (lines 1639/1644/1650); here it is extended to n->p because
-    primat now tabulates the rates down to T_end ~ 1.16e7 K, well
-    into the regime where the unclamped n->p bremsstrahlung misbehaves.
+    Clamps the finite-temperature correction to 0 below 10^8.2 K in both
+    directions: the e+/e-/photon bath is exp(-m_e/kB T)-dilute there, so the
+    correction is negligible (~1e-7 of the rate at the clamp, ~1e-8 at 1 keV)
+    and not worth a multi-minute integration.
     """
     if T < _T_CCRTH_MIN:
         return 0.

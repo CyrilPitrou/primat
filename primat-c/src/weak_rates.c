@@ -26,7 +26,7 @@
 static const double EXP_CUTOFF = 3.0e2; /* integrands.exp_cutoff */
 
 /* Below this temperature the CCRTh thermal correction is clamped to exactly
- * 0 (see L_CCRTh_compute's docstring for the physics/numerics reasons). The
+ * 0 (see L_CCRTh_compute). The
  * nTOp_thermal_<hash>.txt cache grid is built down to this fixed floor
  * rather than down to cfg.T_end (mirrors corrections.py's _T_CCRTH_MIN):
  * the integral is never actually evaluated below it regardless of
@@ -947,17 +947,15 @@ static double th_BE(double EkBT)
     return 1.0 / (exp(EkBT) - 1.0);
 }
 
-/* Chitilde(en) = FD(znu*(en-sgnq*q) - sgnq*xi_nu) * (en-sgnq*q)^2, zeroed
- * (not clamped to the saturated FD value) outside |arg|<EXP_CUTOFF -- this
- * matches corrections.py's local Chitilde_vec exactly (including its
- * asymmetric zeroing of the Pauli-unblocked tail, not just the suppressed
- * one); see this function's module docstring there for context. */
+/* Chitilde(en) = FD(znu*(en-sgnq*q) - sgnq*xi_nu) * (en-sgnq*q)^2. The
+ * occupation saturates to 1 at large negative argument, like FD2.
+ * Mirrors corrections.py's _ccrth_chitilde_vec. */
 static double th_chitilde(const RateCtx *ctx, double en, double znuval, double sgnq)
 {
     double q = ctx->Q / ctx->me;
     double d = en - sgnq * q;
     double arg = znuval * d - sgnq * ctx->xi_nu;
-    if (fabs(arg) >= EXP_CUTOFF) return 0.0;
+    if (arg >= EXP_CUTOFF) return 0.0;
     return (1.0 / (exp(arg) + 1.0)) * d * d;
 }
 
@@ -995,9 +993,7 @@ static double ipen_ccrt(const RateCtx *ctx, double E, double k, double x, double
 /* IPENCCRDiffBremsstrahlung: thermal differential-bremsstrahlung
  * sub-integrand, same (E,k) domain as ipen_ccrt. The infrared pole at
  * k -> 0 is meant to cancel against the explicit soft-photon subtraction
- * below (active only when |k| < |E -+ sgnq*q|); see the CCRTh clamp's
- * docstring at this term's driver (L_CCRTh_compute) for the residual that
- * survives this cancellation below ~10^8.2 K. */
+ * below (active only when |k| < |E -+ sgnq*q|). */
 static double ipen_ccr_diff_brems(const RateCtx *ctx, double E, double k, double x,
                                     double znu, double sgnq)
 {
@@ -1199,11 +1195,9 @@ static double L_thermal_2_3(const RateCtx *ctx, double T_K, double x, double znu
     return res2 + res3;
 }
 
-/* L_CCRTh_compute: the full thermal correction at one (T,sgnq). See
- * corrections.py's _L_CCRTh_compute docstring for the physics/numerics
- * rationale of the T < 10^8.2 K clamp (an uncancelled IR residual in the
- * bremsstrahlung term that would otherwise spuriously pull the low-T rate
- * away from the free neutron-decay value). */
+/* L_CCRTh_compute: the full thermal correction at one (T,sgnq), clamped to
+ * 0 below 10^8.2 K where the e+/e-/photon bath is too dilute for it to
+ * matter. Mirrors corrections.py's _L_CCRTh_compute. */
 static double L_CCRTh_compute(const RateCtx *ctx, double T_K, double sgnq,
                                 const TNuOverTCtx *tnu_ctx)
 {
