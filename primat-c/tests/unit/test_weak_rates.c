@@ -5,10 +5,10 @@
  * finite_mass_corrections=thermal_corrections=spectral_distortions=
  * weak_rate_cache=save_nTOp=tau_n_normalization=True, T_end_MeV=1e-3,
  * T_start_cosmo_MeV=40.0). The default config's weak-rate fingerprint hash
- * is "4a901fa9a22a2694"
- * (cache_plasma_weak/weak/nTOp_4a901fa9a22a2694.txt, confirmed present) and
- * its thermal fingerprint hash is "076f987eab9187c6"
- * (cache_plasma_weak/weak/nTOp_thermal_076f987eab9187c6.txt, confirmed
+ * is "aa3163d9b5e15e39"
+ * (cache_plasma_weak/weak/nTOp_aa3163d9b5e15e39.txt, confirmed present) and
+ * its thermal fingerprint hash is "47bc223b66d48b2b"
+ * (cache_plasma_weak/weak/nTOp_thermal_47bc223b66d48b2b.txt, confirmed
  * present), so
  * this run is a cache hit on both tables -- the from-scratch Gauss-Legendre
  * integration path (cache miss) is exercised by neither this test nor the

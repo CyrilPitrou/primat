@@ -361,8 +361,9 @@ void cpr_constants_hash(const CPRConstants *c, CPRConstsCache which, char out[17
  * sampling_temperature_per_decade fields below; v5 adds constants_hash to both
  * fingerprints, so that editing any physical constant invalidates the caches
  * computed with the old value instead of silently reloading them; v6 narrows
- * that hash to the constants each table actually reads). */
-#define WEAK_RATE_FORMAT_VERSION 6
+ * that hash to the constants each table actually reads; v7 recomputes the
+ * thermal table after the Fermi-Dirac occupation fix in th_chitilde). */
+#define WEAK_RATE_FORMAT_VERSION 7
 
 /* Return NULL when a NEVO override names the very file the default would
  * select, so passing "NEVOPRIMAT_col_1_7.csv" by hand no longer re-keys the

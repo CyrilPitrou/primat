@@ -11,6 +11,13 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+### Changed
+
+- **The shipped thermal n↔p tables were recomputed** for the Fermi-Dirac
+  occupation fix (weak-rate cache format v7). Old cached files are ignored
+  and recomputed on first use. The pinned reference abundances do not
+  change.
+
 ### Fixed
 
 - **The `large` network no longer counts ⁷Be + ³He → 2p + 2α twice.** It

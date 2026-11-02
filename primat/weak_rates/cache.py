@@ -80,7 +80,12 @@ __all__ = ['WEAK_RATE_FORMAT_VERSION', 'WEAK_RATE_BG_FIELDS', 'THERMAL_BG_FIELDS
 # the thermal table meant a multi-minute recompute. The shipped tables were
 # re-keyed in place once more: data rows byte-identical, filenames and headers
 # only.
-WEAK_RATE_FORMAT_VERSION = 6
+# v7: the thermal (CCRTh) integrands' neutrino Fermi-Dirac occupation now tends
+# to 1, not 0, at large negative argument; only the table's lowest-T points
+# feel it. The shipped thermal tables were recomputed, so every row also moves
+# by the VEGAS sampling noise (set by epsrel_thermal); the non-thermal tables
+# were re-keyed in place, data rows byte-identical.
+WEAK_RATE_FORMAT_VERSION = 7
 
 # Config fields entering the weak-rate fingerprint (nTOp_<hash>.txt).
 # DeltaNeff is deliberately NOT listed: it only shifts the time-temperature
