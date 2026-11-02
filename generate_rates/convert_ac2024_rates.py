@@ -1100,7 +1100,7 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir, suffix="_pri
     per-reaction file.
     """
     from nuclide_table import (build_nuclide_table, conservation_residual,
-                               make_detailed_balance, is_decay)
+                               make_detailed_balance, is_decay, resolve_token)
 
     # 1. Nuclide set + properties --------------------------------------------
     nuclides = build_nuclide_table(reactions, nubase_path)
@@ -1115,6 +1115,27 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir, suffix="_pri
         msg = "\n".join(f"  {n}: dA={dA:+d}, dQ={dQ:+d}" for n, dA, dQ in violations)
         raise ValueError(f"{len(violations)} reaction(s) violate A/Q conservation:\n{msg}")
     print(f"formal check OK: all {len(reactions)} reactions conserve A and Q")
+
+    # 2b. No channel listed twice (abort) -------------------------------------
+    # Same reactants and products in any order or direction means one
+    # reaction whose rates would add up. Photons count: (p,g) != (p,a).
+    def side(tokens):
+        out = []
+        for tok in tokens:
+            t = resolve_token(tok)
+            out.append(t.name if t.kind == "nuclide" else
+                       "g" if t.kind == "photon" else tok)
+        return tuple(sorted(out))
+    channels = {}
+    for rxn in reactions:
+        r, p = side(rxn["reactants"]), side(rxn["products"])
+        channels.setdefault(min((r, p), (p, r)), []).append(rxn["name"])
+    duplicates = [names for names in channels.values() if len(names) > 1]
+    if duplicates:
+        msg = "\n".join("  " + ", ".join(names) for names in duplicates)
+        raise ValueError(f"{len(duplicates)} channel(s) listed more than once "
+                         f"(their rates would add up); keep one source each:\n{msg}")
+    print(f"duplicate check OK: {len(channels)} distinct channels")
 
     # 3. Detailed balance + cross-check vs AC2024 tabulated coefficients ------
     db = make_detailed_balance(nuclides)

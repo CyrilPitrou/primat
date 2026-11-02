@@ -118,6 +118,22 @@ _EXP_CAP = 600.0
 # reverse rate.
 _REVERSE_FLOOR = 1.0001e-35
 _PHOTONS = {"g"}
+
+# A reaction name may end in "___<label>" (e.g. "X_p__Y_n___direct") to list a
+# second, deliberately distinct channel with the same reactants and products.
+# The label only names the entry: stoichiometry and detailed balance come from
+# the base name before it. Mirrored by CPR_CHANNEL_LABEL_SEP in
+# primat-c/src/network_data.c.
+CHANNEL_LABEL_SEP = "___"
+
+
+def channel_base(name):
+    """Reaction name with any "___<label>" channel suffix removed.
+
+    >>> channel_base("Li7_p__a_a___direct")
+    'Li7_p__a_a'
+    """
+    return name.split(CHANNEL_LABEL_SEP, 1)[0]
 _LEPTONS = {"Bm", "Bp"}
 
 
@@ -824,6 +840,7 @@ def _tokenise(name):
     The returned token list is the same in both cases, with a literal
     ``"TO"`` entry standing in for whichever separator was actually used.
     """
+    name = channel_base(name)
     if "__" in name:
         react_part, _, prod_part = name.partition("__")
         out = list(react_part.split("_")) if react_part else []
@@ -946,6 +963,7 @@ def reaction_stoichiometry(name, data_dir=None):
         # nuclear species here so that phase_network / compile_network see the
         # correct ODE stoichiometry.
         return {"n": 1}, {"p": 1}
+    name = channel_base(name)
 
     # We use the detailed_balance.csv to determine the split between reactants
     # and products, avoiding the need for the hardcoded tokens and aliases for
@@ -1745,8 +1763,16 @@ def _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg):
         # Re-serialise to the CSV "A+B" field form used by reactions_large.csv
         # so that _side_counts (applied below to every reaction) handles
         # lepton bookkeeping and multiplicities uniformly.
-        rfield = "+".join(s for s, c in react_counts.items() for _ in range(int(c)))
-        pfield = "+".join(s for s, c in prod_counts.items() for _ in range(int(c)))
+        # Photons are dropped by reaction_stoichiometry but kept in the field,
+        # as in reactions_large.csv, so _channel_key can tell (p,g) from (p,a).
+        tokens = _tokenise(n)
+        split = tokens.index("TO")
+        n_g_r = tokens[:split].count("g")
+        n_g_p = tokens[split + 1:].count("g")
+        rfield = "+".join([s for s, c in react_counts.items() for _ in range(int(c))]
+                          + ["g"] * n_g_r)
+        pfield = "+".join([s for s, c in prod_counts.items() for _ in range(int(c))]
+                          + ["g"] * n_g_p)
         rxn_map[n] = (rfield, pfield)
         # Give the new reaction a physical reverse rate via detailed balance
         # when it is purely nuclear (no emitted lepton); weak additions are
@@ -1770,6 +1796,67 @@ def _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg):
                     stacklevel=2,
                 )
     return rxn_map, db
+
+
+def _alias_channel_variants(bare_names, rxn_map, db):
+    """Give each "___<label>" variant its base reaction's catalog entries.
+
+    Args:
+        bare_names: list[str], reaction names selected for this network.
+        rxn_map, db: dicts from :func:`_reaction_catalog`.
+
+    Returns:
+        (rxn_map, db): copies extended with the variants, or the same objects
+        when no name carries a label whose base is catalogued.
+    """
+    variants = [n for n in bare_names
+                if CHANNEL_LABEL_SEP in n and n not in rxn_map
+                and channel_base(n) in rxn_map]
+    if not variants:
+        return rxn_map, db
+    rxn_map, db = dict(rxn_map), dict(db)
+    for n in variants:
+        base = channel_base(n)
+        rxn_map[n] = rxn_map[base]
+        if base in db:
+            db[n] = db[base]
+    return rxn_map, db
+
+
+def _channel_key(fields):
+    """Order-free (reactants, products) key of one reactions_large.csv entry.
+
+    Photons count, so (p,g) and (p,a) channels differ; the two directions of
+    a reaction share one key, since each carries the other's reverse rate.
+    """
+    react = tuple(sorted(fields[0].split("+")))
+    prod = tuple(sorted(fields[1].split("+")))
+    return min((react, prod), (prod, react))
+
+
+def _warn_duplicate_channels(names, rxn_map, network_label):
+    """Warn when two unlabelled reactions share reactants and products.
+
+    Their rates would add up. A name carrying a "___<label>" suffix
+    declares a deliberate extra channel and is never reported. Mirrored by
+    warn_duplicate_channels in primat-c/src/network_data.c.
+    """
+    groups = {}
+    for n in names:
+        if CHANNEL_LABEL_SEP in n or n not in rxn_map:
+            continue
+        groups.setdefault(_channel_key(rxn_map[n]), []).append(n)
+    for (react, prod), members in groups.items():
+        if len(members) < 2:
+            continue
+        warnings.warn(
+            f"reactions {', '.join(members)} of network '{network_label}' are "
+            f"the same channel ({' + '.join(react)} -> {' + '.join(prod)}), so "
+            f"their rates add up. If they are deliberately distinct channels, "
+            f"rename all but one with a '___<label>' suffix, e.g. "
+            f"{members[-1]}___alt (see docs/howto/networks.md).",
+            stacklevel=3,
+        )
 
 
 def _apply_amax_filter(bare_names, rxn_map, nuc_NZ, amax):
@@ -2062,11 +2149,13 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             # Resolved per-file (not via the shared tables_dir) so a single
             # user_nuclear_dir entry can override one reaction's table while
             # every other reaction still falls back to the shipped table --
-            # an additive overlay, not a directory-wide takeover.
+            # an additive overlay, not a directory-wide takeover. A
+            # "___<label>" channel variant shares its base reaction's folder.
+            folder = channel_base(name)
             if hasattr(cfg, "resolve_rates_path"):
-                table_path = cfg.resolve_rates_path("nuclear", "tables", name, filename)
+                table_path = cfg.resolve_rates_path("nuclear", "tables", folder, filename)
             else:
-                table_path = os.path.join(tables_dir, name, filename)
+                table_path = os.path.join(tables_dir, folder, filename)
             sources.append(_read_reaction_source(table_path))
             files.append(table_path)
 
@@ -2154,7 +2243,7 @@ def _apply_nuclear_qed(names, fwd_median, grid, cfg):
     if not cfg.nuclear_qed_corrections:
         return
     for i, rname in enumerate(names[1:]):   # names[0] is n__p, handled separately
-        factor = _qed_nuclear_rescale(rname, grid)
+        factor = _qed_nuclear_rescale(channel_base(rname), grid)
         if factor is not None:
             fwd_median[i] *= factor
 
@@ -2259,6 +2348,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
 
     tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg.resolved_data_dir)
 
+    rxn_map, db = _alias_channel_variants(bare_names, rxn_map, db)
     rxn_map, db = _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg)
 
     amax = cfg.amax
@@ -2269,6 +2359,8 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             f"{subset_file or cfg.network!r}; raise it or choose another network.")
 
     era, selected = _select_era_reactions(era, cfg, bare_names)
+    if era == "LT":     # the MT list is a subset: warn once per network
+        _warn_duplicate_channels(selected, rxn_map, subset_file or cfg.network)
 
     parsed, active_nuclides = _parse_reaction_sides(selected, bare_to_file, rxn_map)
 

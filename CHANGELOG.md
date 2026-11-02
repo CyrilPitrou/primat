@@ -11,6 +11,17 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+### Added
+
+- **A warning for reactions listed twice.** Loading a network in which two
+  reactions have the same reactants and products (in any order or
+  direction) now warns, on both backends, that their rates add up. A
+  deliberate second channel is declared by ending its name with
+  `___<label>`, e.g. `d_p__He3_g___dir`; it then borrows its base
+  reaction's stoichiometry, reverse rate and table folder. The rate-table
+  generator refuses to write a catalog with a duplicate. See
+  `docs/howto/networks.md`.
+
 ### Changed
 
 - **The shipped thermal n↔p tables were recomputed** for the Fermi-Dirac

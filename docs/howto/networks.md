@@ -47,6 +47,49 @@ heavy-nuclide tail (B, C, N, O, …) is approximate (limited by the AC2024
 rate floors). See the {doc}`../tutorials/AbundanceEvolution` notebook for
 evolution plots across networks.
 
+## Two channels with the same reactants and products
+
+Two reactions with the same reactants and products are one channel to the
+solver: their rates add up. Products listed in a different order
+(`Be7_He3__a_a_p_p` vs `Be7_He3__p_p_a_a`) or the reverse direction
+(`d_p__He3_g` vs `He3_g__d_p`) still count as the same channel. Photons do
+count, so `Li7_p__a_a` and `Li7_p__a_a_g` are different channels.
+
+Loading a network that lists a channel twice prints one warning per run on
+both backends, naming the reactions:
+
+```text
+warning: reactions d_p__He3_g, He3_g__d_p of network 'small' are the same channel (H2 + p -> He3 + g), so their rates add up. ...
+```
+
+To list a second channel on purpose (for example a resonant and a direct
+contribution, each with its own table), add a `___<label>` suffix (three
+underscores) to its name in the network file:
+
+```text
+d_p__He3_g,       d_p__He3_g_primat.txt
+d_p__He3_g___dir, d_p__He3_g_direct.txt
+```
+
+The label is free text, and a third channel just takes another label
+(`___dir2`). A labelled reaction is never reported as a duplicate. It
+borrows from the reaction named before `___`:
+
+- its reactants and products;
+- its detailed-balance (reverse-rate) coefficients;
+- its nuclear-QED correction;
+- its table folder: `d_p__He3_g_direct.txt` above is read from
+  `nuclear/tables/d_p__He3_g/`, the base reaction's folder.
+
+So the second column must name a table file in that folder. The labelled
+reaction gets its own `p_<name>`/`delta_<name>` rate-variation parameters,
+e.g. `p_d_p__He3_g___dir`. The base reaction must be in the reaction catalog
+(`csv/reactions_large.csv`) or be added in the same network.
+
+The rate-table generator (`generate_rates/convert_ac2024_rates.py`) is
+stricter: it refuses to write the shipped catalog if any channel appears
+twice, since shipped data must have one source per channel.
+
 ## Related physics-configuration flags
 
 | Flag | Default | Effect |

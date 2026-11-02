@@ -815,6 +815,134 @@ static const CPRCustomTable *custom_find_table(const CPRCustomNetwork *custom, c
 /* Maps PRIMAT's single-letter aliases (d/t/a) to nuclide names; any other
  * token (a full nuclide name, "g", "Bm", "Bp") passes through unchanged
  * (port of network_data.py's _ALIAS). */
+/* A reaction name may end in "___<label>" to list a second, deliberately
+ * distinct channel with the same reactants and products; stoichiometry,
+ * detailed balance and the table folder come from the base name before it.
+ * Mirrors CHANNEL_LABEL_SEP in primat/network_data.py. */
+#define CPR_CHANNEL_LABEL_SEP "___"
+
+/* Copies `name` without its "___<label>" suffix into out[64]. */
+static void channel_base(const char *name, char out[64])
+{
+    const char *sep = strstr(name, CPR_CHANNEL_LABEL_SEP);
+    size_t len = sep ? (size_t)(sep - name) : strlen(name);
+    if (len > 63) len = 63;
+    memcpy(out, name, len);
+    out[len] = '\0';
+}
+
+/* Gives one "___<label>" variant its base reaction's rxn_map/db entries
+ * (port of network_data.py's _alias_channel_variants). */
+static void alias_channel_variant(const char *name, CPRReactionTable *rxn_map,
+                                  CPRDetailedBalanceTable *db)
+{
+    if (!strstr(name, CPR_CHANNEL_LABEL_SEP) || find_reaction_entry(rxn_map, name)) return;
+    char base[64];
+    channel_base(name, base);
+    const CPRReactionEntry *be = find_reaction_entry(rxn_map, base);
+    if (!be) return;
+    size_t bi = (size_t)(be - rxn_map->entries);
+    rxn_map->entries = CPR_XREALLOC(rxn_map->entries, (rxn_map->n + 1) * sizeof(CPRReactionEntry));
+    rxn_map->entries[rxn_map->n] = rxn_map->entries[bi];
+    snprintf(rxn_map->entries[rxn_map->n].name, sizeof(rxn_map->entries[0].name), "%s", name);
+    rxn_map->n++;
+    const CPRDetailedBalanceEntry *bd = find_db_entry(db, base);
+    if (!bd) return;
+    size_t di = (size_t)(bd - db->entries);
+    db->entries = CPR_XREALLOC(db->entries, (db->n + 1) * sizeof(CPRDetailedBalanceEntry));
+    db->entries[db->n] = db->entries[di];
+    snprintf(db->entries[db->n].reaction, sizeof(db->entries[0].reaction), "%s", name);
+    db->n++;
+}
+
+/* Splits one "+"-joined catalog side into sorted tokens (photons kept). */
+static size_t sorted_side_tokens(const char *field, char toks[][16], size_t max)
+{
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s", field);
+    size_t n = 0;
+    char *save = NULL;
+    for (char *t = strtok_r(buf, "+", &save); t && n < max; t = strtok_r(NULL, "+", &save))
+        snprintf(toks[n++], 16, "%s", t);
+    for (size_t i = 1; i < n; i++)          /* insertion sort: n <= 8 */
+        for (size_t j = i; j > 0 && strcmp(toks[j - 1], toks[j]) > 0; j--) {
+            char tmp[16];
+            memcpy(tmp, toks[j], 16); memcpy(toks[j], toks[j - 1], 16); memcpy(toks[j - 1], tmp, 16);
+        }
+    return n;
+}
+
+/* Python's tuple ordering on two sorted token lists. */
+static int cmp_token_lists(char a[][16], size_t na, char b[][16], size_t nb)
+{
+    for (size_t i = 0; i < na && i < nb; i++) {
+        int c = strcmp(a[i], b[i]);
+        if (c) return c;
+    }
+    return (na > nb) - (na < nb);
+}
+
+/* Order-free channel key of one catalog entry, rendered as
+ * "A + B -> C + D" (port of network_data.py's _channel_key): photons count,
+ * and both directions of a reaction give the same key. */
+static void channel_key(const CPRReactionEntry *e, char *out, size_t outsize)
+{
+    char r[CPR_SIDE_MAX][16], p[CPR_SIDE_MAX][16];
+    size_t nr = sorted_side_tokens(e->reactants, r, CPR_SIDE_MAX);
+    size_t np = sorted_side_tokens(e->products, p, CPR_SIDE_MAX);
+    int swap = cmp_token_lists(p, np, r, nr) < 0;
+    char (*first)[16] = swap ? p : r, (*second)[16] = swap ? r : p;
+    size_t n1 = swap ? np : nr, n2 = swap ? nr : np;
+    out[0] = '\0';
+    for (size_t i = 0; i < n1; i++) {
+        if (i) strncat(out, " + ", outsize - strlen(out) - 1);
+        strncat(out, first[i], outsize - strlen(out) - 1);
+    }
+    strncat(out, " -> ", outsize - strlen(out) - 1);
+    for (size_t i = 0; i < n2; i++) {
+        if (i) strncat(out, " + ", outsize - strlen(out) - 1);
+        strncat(out, second[i], outsize - strlen(out) - 1);
+    }
+}
+
+/* Warns when two unlabelled reactions share reactants and products, since
+ * their rates add up; a "___<label>" name declares a deliberate extra
+ * channel and is never reported (port of _warn_duplicate_channels). */
+static void warn_duplicate_channels(char (*names)[64], size_t n,
+                                    const CPRReactionTable *rxn_map, const char *network)
+{
+    char (*keys)[160] = CPR_XMALLOC((n ? n : 1) * sizeof(*keys));
+    int *done = CPR_XCALLOC(n ? n : 1, sizeof(int));
+    for (size_t i = 0; i < n; i++) {
+        const CPRReactionEntry *e = find_reaction_entry(rxn_map, names[i]);
+        if (strstr(names[i], CPR_CHANNEL_LABEL_SEP) || !e) { done[i] = 1; continue; }
+        channel_key(e, keys[i], sizeof(keys[i]));
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (done[i]) continue;
+        char list[1024];
+        snprintf(list, sizeof(list), "%s", names[i]);
+        const char *last = names[i];
+        int count = 1;
+        for (size_t j = i + 1; j < n; j++) {
+            if (done[j] || strcmp(keys[i], keys[j]) != 0) continue;
+            done[j] = 1;
+            strncat(list, ", ", sizeof(list) - strlen(list) - 1);
+            strncat(list, names[j], sizeof(list) - strlen(list) - 1);
+            last = names[j];
+            count++;
+        }
+        if (count > 1)
+            cpr_warn("reactions %s of network '%s' are the same channel (%s), so "
+                     "their rates add up. If they are deliberately distinct "
+                     "channels, rename all but one with a '___<label>' suffix, "
+                     "e.g. %s___alt (see docs/howto/networks.md).",
+                     list, network, keys[i], last);
+    }
+    free(keys);
+    free(done);
+}
+
 static const char *alias_nuclide(const char *tok)
 {
     if (strcmp(tok, "d") == 0) return "H2";
@@ -845,9 +973,11 @@ static void build_side_field(const char *side, char *out, size_t outsize)
  * path, restricted to the "spaced" syntax used by every GUI-generated name
  * -- see network_data.h's docstring). Returns 0 on success, nonzero with
  * *errmsg set if the name has no "__" separator. */
-static int parse_reaction_name(const char *name, char *rfield, size_t rsize,
+static int parse_reaction_name(const char *full_name, char *rfield, size_t rsize,
                                  char *pfield, size_t psize, char **errmsg)
 {
+    char name[64];
+    channel_base(full_name, name);
     const char *sep = strstr(name, "__");
     if (!sep) {
         char buf[160];
@@ -1057,6 +1187,11 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
      * exactly like a shipped one (mirrors UpdateNuclearRates.__init__
      * appending added_names to self._selected_names before calling
      * load_network). ---- */
+    for (size_t i = 0; i < n_bare; i++)
+        alias_channel_variant(bare_names[i], &rxn_map, &db);
+    if (custom)
+        for (size_t t = 0; t < custom->n_tables; t++)
+            alias_channel_variant(custom->tables[t].name, &rxn_map, &db);
     if (inject_custom_reactions(custom, &rxn_map, &db, cfg, errmsg)) {
         cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
         CPR_LN_FREE_SCRATCH(); return 1;
@@ -1136,6 +1271,8 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     } else {
         for (size_t i = 0; i < n_filtered; i++)
             memcpy(selected[n_selected++], filtered[i], sizeof(filtered[i])); /* see kept/i memcpy note above */
+        /* The MT list is a subset: warn once per network. */
+        warn_duplicate_channels(selected, n_selected, &rxn_map, cfg->network);
     }
 
     /* ---- 5. Parse each selected reaction's stoichiometry; collect active species. ---- */
@@ -1343,8 +1480,10 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
         } else {
             char table_path[4500];
             char table_relpath[600];
+            char folder[64]; /* a "___<label>" variant shares its base's folder */
+            channel_base(sel_name, folder);
             snprintf(table_relpath, sizeof(table_relpath), "nuclear/tables/%s/%s",
-                     sel_name, sel_table_file[i]);
+                     folder, sel_table_file[i]);
             cpr_config_resolve_rates_path(cfg, table_relpath, table_path, sizeof(table_path));
             CPRTable tab;
             /* Auto-detect the column count (hint 0) and accept two or three:
@@ -1437,7 +1576,9 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     if (cfg->nuclear_qed_corrections) {
         double *fac = CPR_XMALLOC(n_grid * sizeof(double));
         for (size_t i = 0; i < n_selected; i++) {
-            if (qed_nuclear_rescale(selected[i], out->grid, n_grid, fac)) {
+            char qed_name[64]; /* a "___<label>" variant gets its base's correction */
+            channel_base(selected[i], qed_name);
+            if (qed_nuclear_rescale(qed_name, out->grid, n_grid, fac)) {
                 double *row = &out->fwd_median[i * n_grid];
                 for (size_t g = 0; g < n_grid; g++) row[g] *= fac[g];
             }

@@ -120,6 +120,27 @@ int main(void)
     CHECK(large.lt_net.n_reac == 428, "full large LT network: n__p + 427 reactions");
     cpr_nuclear_rates_free(&large);
 
+    /* ---- A "___<label>" channel variant borrows its base reaction's
+     * stoichiometry, detailed balance and table folder. ---- */
+    const char *variant_names[] = {
+        "d_p__He3_g", "d_p__He3_g___alt, d_p__He3_g_primat.txt"};
+    CPRNetworkDef vnet;
+    if (cpr_load_network(&cfg, "LT", variant_names, 2, NULL, &vnet, &err)) {
+        printf("FAIL cpr_load_network(variant): %s\n", err);
+        return 1;
+    }
+    CHECK(vnet.n_reac == 3 && strcmp(vnet.names[2], "d_p__He3_g___alt") == 0,
+          "variant loads as its own reaction: n__p, base, variant");
+    CHECK(memcmp(&vnet.network[1], &vnet.network[2], sizeof(CPRReaction)) == 0,
+          "variant has the base reaction's stoichiometry");
+    CHECK(memcmp(&vnet.abg[0], &vnet.abg[3], 3 * sizeof(double)) == 0
+          && vnet.abg[0] != 0.0,
+          "variant has the base reaction's detailed-balance coefficients");
+    CHECK(memcmp(&vnet.fwd_median[0], &vnet.fwd_median[vnet.n_grid],
+                 vnet.n_grid * sizeof(double)) == 0,
+          "variant reads the base reaction's table folder");
+    cpr_network_def_free(&vnet);
+
     cpr_config_free(&cfg);
 
     /* ---- custom_network (the GUI "Customise Reactions" override,
