@@ -281,8 +281,8 @@ def _build_parser():
         "--amax", type=int, default=None, metavar="A",
         help="Drop reactions involving any nuclide with mass number > A "
              "(must be a positive integer); applies to any --network, not "
-             "just 'large'. E.g. --network large --amax 8 reproduces the "
-             "old 'medium' network's 68 reactions.",
+             "just 'large'. E.g. --network large --amax 8 keeps the "
+             "67 reactions among nuclides up to A=8.",
     )
     parser.add_argument(
         "--numerical_precision", type=float, default=None, metavar="RTOL",

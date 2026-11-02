@@ -132,7 +132,6 @@ Be12_p__Li9_a,Be12+p,Li9+He4,tabulated,TALYS2
 Be12_t__B14_n,Be12+H3,B14+n,tabulated,TALYS2
 Be12_t__B15_g,Be12+H3,B15+g,tabulated,TALYS2
 Be7_He3__C10_g,Be7+He3,C10+g,tabulated,TALYS2
-Be7_He3__a_a_p_p,Be7+He3,He4+He4+p+p,analytic,CF88&MF89
 Be7_He3__p_p_a_a,Be7+He3,p+p+He4+He4,tabulated,TALYS2
 Be7__Li7_Bp,Be7,Li7+Bp,analytic,Aud03
 Be7_a__C11_g,Be7+He4,C11+g,tabulated,NACRE II

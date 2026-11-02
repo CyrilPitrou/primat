@@ -748,7 +748,7 @@ def export_zip_cached(cfg, custom_network, kept_names, network_filename="custom"
     Streamlit's ``st.download_button`` takes the data up front, it cannot pull
     them lazily at click time -- and the buttons live inside panels/dialogs
     that re-render on every widget interaction. For the large network that is
-    428 rate-table files read off disk and deflated into a 4.3 MB archive,
+    427 rate-table files read off disk and deflated into a 4.3 MB archive,
     measured at ~0.47 s, paid again on every single reaction toggle inside the
     "Create custom network" dialog. Memoising collapses that to once per
     distinct (customisation, kept set, title, network, data root).

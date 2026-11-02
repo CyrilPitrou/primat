@@ -164,8 +164,8 @@ def test_p_rate_keys_count():
     cfg_amax8 = PRIMATConfig({"network": "large", "amax": 8})
     net_amax8 = load_network(cfg_amax8, era="LT")
     n_thermonuclear = len(net_amax8.names) - 1  # exclude the prepended n__p
-    assert len(cfg_amax8.p_rxn) == n_thermonuclear == 67
-    assert len(cfg_amax8.delta_rxn) == n_thermonuclear == 67
+    assert len(cfg_amax8.p_rxn) == n_thermonuclear == 66
+    assert len(cfg_amax8.delta_rxn) == n_thermonuclear == 66
 
 
 def test_physical_constants_positive():

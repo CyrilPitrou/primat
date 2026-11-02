@@ -804,8 +804,8 @@ def test_documented_rate_column_counts_match_the_networks():
     """README and the C header quote the real `<reaction>_frwrd` column count.
 
     GOAL: the block has one column per LT reaction *except* n<->p, which has
-    no rate table, so the count is `n_reac - 1` -- 12 / 67 / 428, not the LT
-    network sizes 13 / 68 / 429 that both documents used to quote.
+    no rate table, so the count is `n_reac - 1` -- 12 / 66 / 427, not the LT
+    network sizes 13 / 67 / 428 that both documents used to quote.
     """
     from primat.network_data import load_network
 
@@ -814,7 +814,7 @@ def test_documented_rate_column_counts_match_the_networks():
                           ("amax8", {"network": "large", "amax": 8}),
                           ("large", {"network": "large"})):
         counts[label] = load_network(PRIMATConfig(dict(params))).n_reac - 1
-    assert counts == {"small": 12, "amax8": 67, "large": 428}, counts
+    assert counts == {"small": 12, "amax8": 66, "large": 427}, counts
 
     readme = _read_text(os.path.join(REPO_ROOT, "README.md"))
     header = _read_text(os.path.join(

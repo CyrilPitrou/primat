@@ -30,8 +30,8 @@ don't match.
 | MC-100 (small, c) | 0.724 s |
 
 - **small** — the 12-reaction default network.
-- **large, amax=8** — the large network's reactions filtered to A <= 8 (68
-  reactions, the old "medium" network's exact equivalent); the low-temperature
+- **large, amax=8** — the large network's reactions filtered to A <= 8 (67
+  reactions); the low-temperature
   (LT, see the {doc}`glossary`) era's solve dominates the extra cost over
   `small`.
 - **MC-100** — `run_mc(100, params={"network": "small"}, force_backend="c")`,
@@ -45,7 +45,7 @@ don't match.
   cost) is roughly independent of the RHS's cost, so it amortises worse as
   the RHS (nuclide count) grows; `numba`-JIT-compiled kernels reduce but
   don't eliminate this gap on the Python side.
-- The full `large` network (~429 reactions, ~59 tracked nuclides) is not
+- The full `large` network (~428 reactions, ~59 tracked nuclides) is not
   included above — it is a further ~5-10x slower than `large, amax=8` on
   either backend (LT-era stiffness scales with reaction count) and is
   primarily useful for including the heavy-nuclide tail, not for

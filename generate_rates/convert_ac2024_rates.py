@@ -775,7 +775,9 @@ def write_decay_file(decay_blocks, outdir, suffix=""):
 # BBNRatesAC2024.dat alone, with no PRIMATreference/ folder. To refresh this
 # table after PRIMAT-Main.m changes, run:
 #     python generate_rates/convert_ac2024_rates.py --dump-analytic <path-to-PRIMAT-Main.m>
-# and paste the printed literal back here.
+# and paste the printed literal back here, then delete its `be7h` entry
+# (Be7 + He3 > 2a + p + p): that channel is the tabulated TALYS2 reaction
+# Be7_He3__p_p_a_a, and keeping both would count it twice.
 # ---------------------------------------------------------------------------
 _ANALYTIC_REACTIONS = [
     ('Nag06', 'd + n  > t + g ; dng', 2.0,
@@ -800,8 +802,6 @@ _ANALYTIC_REACTIONS = [
      'With[{T923=T9^(2/3),T913=T9^(1/3)},(3.02*^8/T9^0.624*Exp[-3.51/T9]+5.82*^11/T923*Exp[-19.72/T913]*(1.0+0.280*T913))]'),
     ('CF88&MF89', 'Be7 + t > a + a + n + p ; be7t', 3.0,
      'With[{T923=T9^(2/3),T913=T9^(1/3)},2.91*^+12/T923*Exp[-13.729/T913]]'),
-    ('CF88&MF89', 'Be7 + He3 > 2a + p + p  ; be7h', 3.0,
-     'With[{T923=T9^(2/3),T913=T9^(1/3)},6.11*^+13/T923*Exp[-21.793/T913]]'),
     ('Wie89', 'C9 + a > N12 + p ; c9an', 3.0,
      'With[{T923=T9^(2/3),T932=T9^(3/2),T913=T9^(1/3),T943=T9^(4/3),T953=T9^(5/3)},(1.668*^+15/T923*Exp[-31.272/T913-(T9/.307)^2]* (1.+1.33*^-2*T913-6.42*T923-.599*T9+14.4*T943+3.42*T953)+56.8/T932*Exp[-5.292/T9]+1.7*^+5/T932*Exp[-14.08/T9]+6.52*^7/T932*Exp[-23.09/T9])]'),
     ('CF88', 'Li6+n>t+a;tan', 3.0,

@@ -1327,7 +1327,7 @@ def _mc_resolve_rate_keys(base_params: dict[str, Any],
       network.
 
     Note that for an ``amax``-restricted network the reaction *file* lists more
-    reactions than the solved network carries (e.g. 428 vs 67 for
+    reactions than the solved network carries (e.g. 427 vs 66 for
     ``large``+``amax=8``), so some returned keys are inert -- ``getattr(cfg,
     "p_<unused>")`` is harmless and every *live* reaction is still covered, so
     this only costs a few wasted ``standard_normal`` draws per sample.

@@ -29,7 +29,7 @@ Per-reaction forward-rate columns (``<reaction>_frwrd``) are an **optional**
 trailing block, appended after the ``Y_<nuclide>`` block when
 ``cfg.output_rates_time_evolution=True`` -- one column per LT reaction
 except n<->p, which has no rate table (12 for
-``small``/``small_parthenope``, 67 for ``large``+``amax=8``, 428 for full
+``small``/``small_parthenope``, 66 for ``large``+``amax=8``, 427 for full
 ``large``). They carry the forward
 reaction-rate interpolant [same table units as the shipped nuclear rates]
 evaluated at each row's photon temperature, and live in

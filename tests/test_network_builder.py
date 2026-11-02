@@ -31,11 +31,11 @@ from primat.network_builder import (compile_network, NetworkKernels,
 from primat.config import PRIMATConfig
 from _oracles import network_rhs, network_jacobian
 
-# ORDER_LT_LARGE is now the *full* large-network order (429 entries spanning nuclides
+# ORDER_LT_LARGE is now the *full* large-network order (428 entries spanning nuclides
 # up to A=23), which does not pair with SPECIES_MT (A<=8 only).  For the
 # kernel/conservation tests below -- which need an order/species pair that's
 # actually self-consistent -- use the large network restricted to amax=8
-# instead -- the 68-reaction subset that replaced the old standalone
+# instead -- the 67-reaction subset that replaced the old standalone
 # "medium" network.
 _ORDER_LT_AMAX8 = load_network(PRIMATConfig({"network": "large", "amax": 8}),
                                 era="LT").names
@@ -163,13 +163,13 @@ def test_buffer_orders_have_expected_lengths():
     ORDER_SMALL includes n__p + 12 nuclear reactions = 13 entries.
     ORDER_MT has 18 entries (n__p + 17).
     ORDER_LT_LARGE is now built from the *full* large network (the old "medium"
-    network no longer exists) and has 429 entries (n__p + 428
+    network no longer exists) and has 428 entries (n__p + 427
     thermonuclear reactions, including all analytic beta-decay/
     electron-capture reactions up to A=23).
     """
     assert len(ORDER_SMALL) == 13, f"Expected 13, got {len(ORDER_SMALL)}"
     assert len(ORDER_MT) == 18,    f"Expected 18, got {len(ORDER_MT)}"
-    assert len(ORDER_LT_LARGE) == 429,   f"Expected 429, got {len(ORDER_LT_LARGE)}"
+    assert len(ORDER_LT_LARGE) == 428,   f"Expected 428, got {len(ORDER_LT_LARGE)}"
 
 
 def test_stoichiometry_conserves_baryon_and_charge():

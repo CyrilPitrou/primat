@@ -393,7 +393,7 @@ static void usage(const char *prog)
            "  --amax A              Drop reactions involving any nuclide with mass\n"
            "                        number > A (positive integer); applies to any\n"
            "                        --network. E.g. --network large --amax 8\n"
-           "                        reproduces the old 'medium' network's 68 reactions.\n"
+           "                        keeps the 67 reactions among nuclides up to A=8.\n"
            "  --numerical_precision RTOL\n"
            "                        Relative tolerance passed to the ODE solver\n"
            "                        (default: 1e-7).\n"

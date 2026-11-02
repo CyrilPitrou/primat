@@ -14,12 +14,11 @@ The tests below check, without re-running the (slow) full generation:
 1. the token resolver and the *formal* baryon/charge conservation check;
 2. that the generated nuclide table is internally consistent and agrees with
    primat's hard-coded 12-nuclide table;
-3. that the deduced reaction list is a superset of the known 12- and 68-reaction
-   networks (the latter being "large" filtered to amax=8, the old "medium"
-   network's exact equivalent) and that *every* listed reaction conserves A
+3. that the deduced reaction list is a superset of the known 12- and 67-reaction
+   networks (the latter being "large" filtered to amax=8) and that *every* listed reaction conserves A
    and Q;
 4. that the detailed-balance coefficients computed from nuclide data reproduce
-   primat's published values for those 68 reactions.
+   primat's published values for those 67 reactions.
 
 The CSV-based tests skip if ``primat/data/csv/`` is absent. That directory is
 git-tracked and ships in the wheel, so the guard is a safety net for a
@@ -197,8 +196,7 @@ def _load_reactions_csv():
 @_needs_ac2024
 def test_reaction_list_is_superset_of_known_networks():
     """The deduced large list must contain every reaction of the 12-key and
-    68-reaction (large, amax=8 -- the old "medium" network's exact
-    equivalent) networks (matched by their <reactants>TO<products> file name)."""
+    67-reaction (large, amax=8) networks (matched by their <reactants>TO<products> file name)."""
     from primat.config import PRIMATConfig
     from primat.network_data import to_filename, _KEY12_REACTIONS, load_network
     names = {r["name"] for r in _load_reactions_csv()}
@@ -443,7 +441,7 @@ def test_generate_qed_tables_writes_fingerprinted_tables(tmp_path):
 def test_convert_ac2024_regenerates_the_shipped_tables_byte_for_byte(tmp_path):
     """GOAL: the shipped rate tables are exactly what the generator produces.
 
-    ``primat/data/nuclear/tables/`` (428 tables + decays.txt), the three CSVs
+    ``primat/data/nuclear/tables/`` (427 tables + decays.txt), the three CSVs
     and ``networks/large.txt`` are all generated artifacts; nothing else checks
     that they can be *re*generated. A drift here means the committed data no
     longer corresponds to the script that claims to produce it -- so the next
@@ -485,9 +483,9 @@ def test_convert_ac2024_regenerates_the_shipped_tables_byte_for_byte(tmp_path):
                 compared += 1
                 if not filecmp.cmp(fresh, shipped, shallow=False):
                     mismatched += 1
-    # 390 per-reaction tables (428 reactions less the 38 decays, which share
-    # decays.txt) + decays.txt + 3 CSVs + networks/large.txt = 395.
-    assert compared >= 390, f"only {compared} generated files found"
+    # 389 per-reaction tables (427 reactions less the 38 decays, which share
+    # decays.txt) + decays.txt + 3 CSVs + networks/large.txt = 394.
+    assert compared >= 389, f"only {compared} generated files found"
     assert mismatched == 0, (
         f"{mismatched} of {compared} regenerated files differ from the "
         f"shipped ones -- the committed data no longer matches the generator")

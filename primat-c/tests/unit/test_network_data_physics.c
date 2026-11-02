@@ -98,8 +98,7 @@ int main(void)
     }
     cpr_nuclear_rates_free(&small);
 
-    /* ---- "large, amax=8" network: must reproduce the old "medium"
-     * network's exact 68-reaction equivalent. ---- */
+    /* ---- "large, amax=8" network: 67 reactions among A <= 8. ---- */
     free(cfg.network);
     cfg.network = strdup("large");
     cfg.amax = 8;
@@ -108,7 +107,7 @@ int main(void)
         printf("FAIL cpr_nuclear_rates_init(large, amax=8): %s\n", err);
         return 1;
     }
-    CHECK(med.lt_net.n_reac == 68, "large+amax8 LT network: n__p + 67 reactions");
+    CHECK(med.lt_net.n_reac == 67, "large+amax8 LT network: n__p + 66 reactions");
     cpr_nuclear_rates_free(&med);
 
     /* ---- full "large" network: just needs to load + conserve N/Z. ---- */
@@ -118,7 +117,7 @@ int main(void)
         printf("FAIL cpr_nuclear_rates_init(large): %s\n", err);
         return 1;
     }
-    CHECK(large.lt_net.n_reac == 429, "full large LT network: n__p + 428 reactions");
+    CHECK(large.lt_net.n_reac == 428, "full large LT network: n__p + 427 reactions");
     cpr_nuclear_rates_free(&large);
 
     cpr_config_free(&cfg);

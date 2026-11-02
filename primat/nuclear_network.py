@@ -808,7 +808,7 @@ class NuclearNetwork:
         after the ``Y_<species>`` block when
         ``cfg.output_rates_time_evolution=True`` -- one column per LT reaction
         except n<->p, which has no rate table (12 for
-        ``small``/``small_parthenope``, 67 for ``large``+``amax=8``, 428 for
+        ``small``/``small_parthenope``, 66 for ``large``+``amax=8``, 427 for
         full ``large``). Each column is the
         active forward reaction-rate interpolant (same units as the shipped
         rate tables) at the row's temperature, populated into
@@ -855,7 +855,7 @@ class NuclearNetwork:
         # <reaction>_frwrd column per reaction actually in the active LT
         # network, n<->p excepted -- it has no rate table (whatever the
         # network / amax cutoff selects: 12 for small/small_parthenope,
-        # 67 for large+amax=8, 428 for full large),
+        # 66 for large+amax=8, 427 for full large),
         # value = the active forward-rate interpolant at each output
         # temperature (plain rate, not a flux). Sorted by column name so the C
         # backend can emit the identical names in the identical order.

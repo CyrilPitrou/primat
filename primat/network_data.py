@@ -2228,8 +2228,8 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     Example
     -------
     >>> net = load_network(PRIMATConfig({"network": "large", "amax": 8}), era="LT")
-    >>> len(net.names)  # n__p + 67 thermonuclear reactions (A <= 8)
-    68
+    >>> len(net.names)  # n__p + 66 thermonuclear reactions (A <= 8)
+    67
 
     Implementation
     --------------

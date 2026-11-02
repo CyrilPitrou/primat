@@ -132,7 +132,7 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
  * Python's EvolutionResult.rates / NuclearNetwork._write_time_evolution).
  * Returns the number of columns: 0 unless cfg->output_rates_time_evolution,
  * else one per LT reaction *except* n<->p, which has no rate table -- 12 for
- * small/small_parthenope, 67 for large+amax=8, 428 for full large. When the
+ * small/small_parthenope, 66 for large+amax=8, 427 for full large. When the
  * return is >0 and `out_names`!=NULL, fills out_names[0..count) with
  * "<reaction>_frwrd" lexicographically sorted -- the IDENTICAL names and order
  * the Python backend produces via sorted().

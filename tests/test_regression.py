@@ -265,7 +265,7 @@ def test_no_numba_small_matches_numba(solved_small):
 @pytest.mark.solve
 def test_no_numba_large_amax8_smoke():
     """Pure-Python large/amax=8 network solve completes and YP is physically
-    reasonable (the old "medium" network's exact 68-reaction equivalent)."""
+    reasonable (the 67-reaction A <= 8 subset of large)."""
     from primat.main import PRIMAT
     r = PRIMAT({"use_numba": False, "network": "large", "amax": 8}).primat_results()
     assert 0.24 < r["YPBBN"] < 0.25

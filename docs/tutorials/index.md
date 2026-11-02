@@ -27,7 +27,7 @@ jupyter lab notebooks/
   (YP, D/H, ³He/⁴He, ⁷Li/H).
 - **{doc}`AbundanceEvolution`** — time evolution of `A_i Y_i(t)` for every
   nuclide from 1 s to 10⁶ s, for the small (12-reaction), `large, amax=8`
-  (68-reaction) and large (~429-reaction) networks.
+  (67-reaction) and large (~428-reaction) networks.
 - **{doc}`CompareSmallNetworks`** — `small` vs. `small_parthenope` head to
   head.
 - **{doc}`AnimatedAbundances`** — animated GIFs of the small-network

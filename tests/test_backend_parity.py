@@ -900,7 +900,7 @@ def test_rates_columns_backend_parity(params, rtol):
     """Both backends emit identical per-reaction rate-column names in the
     identical (sorted) order, and values that agree to the cross-backend
     tolerance. Covers a small network (~12 columns) and a large+amax network
-    (67 columns) -- the rate columns follow whatever the active LT network
+    (66 columns) -- the rate columns follow whatever the active LT network
     carries.
 
     The rate columns are pure functions of the photon temperature, so we

@@ -146,8 +146,7 @@ int main(void)
                   3.995347e-16, 7.529409e-01, 6.174973e-02,
                   1.0e-3);
 
-    /* The "large, amax=8" table (the old "medium" network's exact
-     * 68-reaction equivalent). */
+    /* The "large, amax=8" table (67 reactions). */
     run_and_check("large,amax=8", "large", 8,
                   0.24700363, 2.43571e-5,
                   3.994404e-16, 7.529375e-01, 6.175059e-02,

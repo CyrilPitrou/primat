@@ -13,7 +13,7 @@ PyPRIMAT v0.1.0, back when the code had three named networks ("small",
 "medium", "large"). The "medium" network was later removed in favour of
 `network="large", amax=8` (see primat/config.py's DEFAULT_PARAMS["amax"]
 docstring), which changed the reaction count of that intermediate tier from
-62 to 68 -- so the old table's counts/captions no longer match the code.
+62 to 67 -- so the old table's counts/captions no longer match the code.
 There is no committed generator for these tables, so this script recreates
 one, driven directly by primat.network_data.load_network (the same function
 the solver uses), to guarantee the three tiers documented here

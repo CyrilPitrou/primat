@@ -4,7 +4,7 @@ primat_compare.py
 =================
 Compares primordial abundance predictions between the built-in 12-reaction
 small network, the small_parthenope network, the large network restricted to
-A <= 8 (68 reactions, equivalent to the old "medium" network), and the full
+A <= 8 (67 reactions, the successor of the old "medium" network), and the full
 large network.
 
 Prints Neff, YP, He4/H, D/H, He3/H and Li7/H for each of the four, so the

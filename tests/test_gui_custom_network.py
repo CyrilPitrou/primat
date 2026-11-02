@@ -287,9 +287,9 @@ def test_amax_filtered_reactions_are_actually_removed_on_create():
                  if n not in custom_network.get("added", {})
                  and reaction_category(n) > 8]
     assert above_amax, "no above-amax reaction found in 'removed' -- amax leak regressed"
-    # large+amax8 == the old "medium" network's 68 reactions (67 + n__p);
+    # large+amax8 has 67 LT reactions (66 + n__p);
     # describe_reactions() includes the prepended n__p.
-    assert len(saved["kept"]) == 67
+    assert len(saved["kept"]) == 66
     # Saving must not have run BBN or activated the network in the sidebar.
     assert "params" not in at.session_state
     assert "_active_custom_network" not in at.session_state
@@ -324,9 +324,9 @@ def test_removing_one_reaction_and_creating_drops_it_from_the_network():
 
     saved = at.session_state["_known_custom_networks"]["custom"]
     assert "d_d__t_p" in saved["custom_network"]["removed"]
-    # 67 reactions at amax=8 minus 1 removed = 66 (the dialog's own "kept"
+    # 66 reactions at amax=8 minus 1 removed = 65 (the dialog's own "kept"
     # list never includes the prepended n__p, unlike the solved subheader).
-    assert len(saved["kept"]) == 66
+    assert len(saved["kept"]) == 65
 
 
 # ---------------------------------------------------------------------------
@@ -1477,7 +1477,7 @@ def test_export_zip_cached_matches_export_zip():
     """GOAL: the memoised exporter is byte-identical to the direct one.
 
     Every download button builds its zip eagerly on every rerun (Streamlit
-    takes the bytes up front), which for the large network is 428 table reads
+    takes the bytes up front), which for the large network is 427 table reads
     and a 4.3 MB deflate, ~0.47 s per interaction. ``export_zip_cached``
     collapses that to once per distinct input -- it must not change the
     output, and must key on ``cfg.network`` (which decides *which* table an
@@ -1516,7 +1516,7 @@ def test_rate_tables_are_read_only_for_the_rows_the_user_opened():
     The viewer used to be an ``st.popover``, whose body Streamlit executes on
     every rerun whether or not it is open -- so every row read its table off
     disk and shipped it into the page on every click of anything in the
-    dialog: 16.85 MB across the 390 rows of a ``large`` base network, on the
+    dialog: 16.85 MB across the 389 rows of a ``large`` base network, on the
     ~1 GB Streamlit Cloud demo. Folded rows must cost nothing.
     """
     at = AppTest.from_file(APP_PATH)

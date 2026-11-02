@@ -146,7 +146,7 @@ _FORM_METADATA = {
         "Nuclear reactions", "Reaction network",
         "Nuclear reaction network used in the low-temperature (LT) era: "
         "'small' (12 reactions), 'small_parthenope' (12 reactions, Parthenope "
-        "3.0 rate tables, for comparison runs), or 'large' (428 reactions, "
+        "3.0 rate tables, for comparison runs), or 'large' (427 reactions, "
         "~59 nuclides, optionally restricted via the mass-number limit "
         "below). "
         "The bracketed count is the network's own; the solver adds the n<->p "
@@ -1135,7 +1135,7 @@ def _render_rate_table_view(name):
     A flag-controlled container rather than an ``st.popover`` because a
     popover's body is executed on every rerun whether or not it is open: one
     per reaction row meant the dialog read every table off disk and pushed it
-    into the page on every click (16.85 MB across 390 rows with ``large`` as
+    into the page on every click (16.85 MB across 389 rows with ``large`` as
     the base network). Only the rows the user actually opened are read here.
     ``st.dialog`` is not an option either -- every caller is already inside
     the "Create custom network" dialog, and Streamlit forbids nesting one

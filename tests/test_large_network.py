@@ -1,12 +1,12 @@
 """
-Tests for the large BBN network (``network="large"``): 429 LT reactions over 59
+Tests for the large BBN network (``network="large"``): 428 LT reactions over 59
 nuclides, loaded from the generated CSVs and integrated in the LT era only.
 
 These check the load (species/reaction counts, formal conservation), the
 vectorised rate buffer (finite, bounded), and a full solve: that baryon number
 is conserved and that the light-element abundances the small network predicts
 (n, p, d, t, He4, Li7, Be7) agree with the large network restricted to amax=8
-(its 68-reaction subset) -- they must, since the extra heavy-nuclide channels
+(its 67-reaction subset) -- they must, since the extra heavy-nuclide channels
 are tiny corrections.  The heavy-nuclide tail itself (B, C, N, O, ...) is
 approximate (limited by the AC2024 rate floors) and is not asserted here.
 
@@ -30,7 +30,7 @@ _needs_ac2024 = pytest.mark.skipif(
 
 @_needs_ac2024
 def test_large_network_loads_and_conserves():
-    """Loads 59 nuclides / 429 LT reactions and passes the formal N/Z check."""
+    """Loads 59 nuclides / 428 LT reactions and passes the formal N/Z check."""
     from primat.config import PRIMATConfig
     from primat.network_data import load_network
     from primat.network_builder import compile_network, check_conservation

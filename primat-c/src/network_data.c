@@ -776,7 +776,7 @@ static double reverse_rate_cap_one(const double *grid, size_t n_grid, double alp
 }
 
 /* Generous fixed caps for cpr_load_network's local working arrays: the
- * `large` network has 428 reactions over ~59 species; both margins below
+ * `large` network has 427 reactions over ~59 species; both margins below
  * leave ample room (and amax/era filtering only ever shrinks these
  * counts). */
 #define CPR_MAX_REACTIONS 600
@@ -1538,7 +1538,7 @@ const double *cpr_network_fill_buffer(CPRNetworkDef *net, double T_t_K,
      * calls this millions of times per solve at a T9 that decreases
      * smoothly, so the hinted cpr_find_segment_monotone (net->grid_hint,
      * persistent per-CPRNetworkDef state, see its declaration) turns the
-     * large network's ~429-row repeated full-table linear search into an
+     * large network's ~428-row repeated full-table linear search into an
      * O(1) lookup in the common case, with the exact same result as a cold
      * cpr_find_segment in every case (verified by the find_segment fuzz
      * test in test_spline.c). */

@@ -260,7 +260,7 @@ information for various platforms.
 | `Omegabh2` | 0.02242 | Baryon density Ω_b h² |
 | `DeltaNeff` | 0.0 | Extra relativistic degrees of freedom |
 | `tau_n` | 878.4 | Neutron lifetime [s] |
-| `network` | `"small"` | `"small"` (12 reactions) / `"small_parthenope"` (12, Parthenope 3.0 tables) / `"large"` (~429), optionally restricted via `amax`. |
+| `network` | `"small"` | `"small"` (12 reactions) / `"small_parthenope"` (12, Parthenope 3.0 tables) / `"large"` (~428), optionally restricted via `amax`. |
 | `amax` | None | Maximum mass number A for nuclides in reactions (filters any network) |
 | `radiative_corrections` | True | Coulomb + T=0 resummed radiative corrections to n↔p (CCR) |
 | `finite_mass_corrections` | True | Fokker-Planck finite-nucleon-mass correction (FM) |
@@ -622,8 +622,8 @@ forward-rate columns is appended after the `Y_<nuclide>` block: one
 reaction in the active LT network, holding the forward reaction-rate
 interpolant at each row's photon temperature. The number of columns follows
 the chosen network/`amax`, one short of the LT network's reaction count
-because n↔p has no rate table: 12 for `small`/`small_parthenope`, 67 for
-`large`+`amax=8`, 428 for full `large`. Both backends emit the identical
+because n↔p has no rate table: 12 for `small`/`small_parthenope`, 66 for
+`large`+`amax=8`, 427 for full `large`. Both backends emit the identical
 columns, in memory as `run["evolution"].rates` (a dict keyed by column name,
 `None` when the flag is off) and on disk in the same order, so
 `primat.evolution.load_evolution()` round-trips them.
@@ -715,15 +715,15 @@ A ≤ amax:
 |-----------|---------------------------|----------|-------|
 | `"small"`  | 12 + 1 = 13 | 8  | the key reactions; fastest |
 | `"small_parthenope"` | 12 + 1 = 13 | 8 | same reactions, Parthenope 3.0 rate tables (comparison runs) |
-| `"large"`  | 428 + 1 = 429 | 59 | from the AC2024 compilation; LT era only |
-| `"large"`, `amax=8` | 67 + 1 = 68 | 12 | the old "medium" network's exact equivalent |
+| `"large"`  | 427 + 1 = 428 | 59 | from the AC2024 compilation; LT era only |
+| `"large"`, `amax=8` | 66 + 1 = 67 | 12 | the old "medium" network, less its double-counted ⁷Be+³He→2p+2α |
 | `"large"`, `amax=2` | 2 + 1 = 3 | 3 | the old "deuterium" network's equivalent (n↔p + n_p__d_g + p_p_n__d_p) |
 
 The first number counts the *nuclear* reactions — what a network file lists,
 what `primat --list-reactions` prints, and what survives the `amax` filter;
 the total is what `load_network(...).n_reac` reports, since every network
 additionally carries the n↔p weak reaction, which no file lists. Elsewhere
-`small` is called "the 12-reaction network" and `large` "~429 reactions" — the
+`small` is called "the 12-reaction network" and `large` "~428 reactions" — the
 same two networks, counted the two different ways.
 
 All networks share the HT (n↔p) and MT eras (the MT era intersects the chosen

@@ -11,6 +11,16 @@ in this repository is the authoritative source.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The `large` network no longer counts ⁷Be + ³He → 2p + 2α twice.** It
+  carried the channel both as the CF88/MF89 analytic rate
+  (`Be7_He3__a_a_p_p`) and as the TALYS2 table (`Be7_He3__p_p_a_a`), which
+  are the same reaction with the products listed in a different order. Only
+  the TALYS2 table is kept, so the full `large` network now has 428 LT
+  reactions (427 with a rate table) and `large, amax=8` has 67 (66). The
+  `small` networks are unchanged.
+
 ## [0.3.3] - 2026-09-01
 
 ### Added

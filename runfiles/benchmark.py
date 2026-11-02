@@ -6,8 +6,8 @@ Regenerates the timing table published in ``docs/performance.md``.
 Measures wall-clock time for:
 
 - a single BBN solve, small network, both backends
-- a single BBN solve, large network restricted to A <= 8 (68 reactions,
-  the old "medium" network's exact equivalent), both backends
+- a single BBN solve, large network restricted to A <= 8 (67
+  reactions), both backends
 - an MC uncertainty-propagation run (C backend, small network)
 
 All timings are *warm-cache* (the shipped ``primat/data/cache_plasma_weak/weak/*.txt``

@@ -97,7 +97,7 @@ QED corrections
 amax
   Maximum mass number `A`. Setting it drops every reaction involving a
   nuclide heavier than `A` from *any* network — `network="large", amax=8`
-  gives 68 reactions.
+  gives 67 reactions.
 
 p_&lt;reaction&gt;
   Per-reaction log-normal variation parameter, e.g. `p_n_p__d_g`. The rate
@@ -144,7 +144,7 @@ backend
 network
   The set of nuclear reactions integrated: `small` (12 reactions, 8
   nuclides), `small_parthenope` (the same 12 with Parthenope 3.0 rate
-  tables), or `large` (~429 reactions, ~59 nuclides), optionally restricted
+  tables), or `large` (~428 reactions, ~59 nuclides), optionally restricted
   by `amax`.
 
 AC2024

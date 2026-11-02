@@ -131,7 +131,6 @@ Be12_p__Li9_a, Be12_p__Li9_a_primat.txt
 Be12_t__B14_n, Be12_t__B14_n_primat.txt
 Be12_t__B15_g, Be12_t__B15_g_primat.txt
 Be7_He3__C10_g, Be7_He3__C10_g_primat.txt
-Be7_He3__a_a_p_p, Be7_He3__a_a_p_p_primat.txt
 Be7_He3__p_p_a_a, Be7_He3__p_p_a_a_primat.txt
 Be7__Li7_Bp
 Be7_a__C11_g, Be7_a__C11_g_primat.txt

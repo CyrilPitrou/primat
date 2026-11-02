@@ -1,6 +1,6 @@
 /* test_network_data.c -- loads real rates/nuclear/{networks,data,tables}
  * files and checks counts plus a few known rows, including the small.txt
- * 12-reaction / large.txt 428-reaction counts. */
+ * 12-reaction / large.txt 427-reaction counts. */
 #include "network_data.h"
 
 #include <math.h>
@@ -37,7 +37,7 @@ int main(void)
         printf("FAIL large.txt: %s\n", err);
         return 1;
     }
-    CHECK(large.n == 428, "large.txt has 428 reactions");
+    CHECK(large.n == 427, "large.txt has 427 reactions");
     cpr_network_list_free(&large);
 
     CPRDecayTable decays;
@@ -72,7 +72,7 @@ int main(void)
         printf("FAIL reactions_large.csv: %s\n", err);
         return 1;
     }
-    CHECK(rx.n == 428, "reactions_large.csv has 428 rows");
+    CHECK(rx.n == 427, "reactions_large.csv has 427 rows");
     CHECK(strcmp(rx.entries[0].reactants, "B10+He3") == 0, "reactions_large first reactants");
     cpr_reaction_table_free(&rx);
 

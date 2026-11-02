@@ -30,7 +30,7 @@ install cell (`importlib.util.find_spec("primat") is None`) that
 | Notebook | Description |
 |----------|-------------|
 | `StandardPlots.ipynb` | **Schramm diagram**: primordial abundances vs η_b with 1σ nuclear-rate uncertainty bands and observational constraints (YP, D/H, ³He/⁴He, ⁷Li/H). |
-| `AbundanceEvolution.ipynb` | **Time evolution** of A_i Y_i(t) for all nuclides from 1 s to 10⁶ s, for the 12-reaction (`small`), 68-reaction (`large`, `amax=8`) and ~429-reaction (`large`) networks. |
+| `AbundanceEvolution.ipynb` | **Time evolution** of A_i Y_i(t) for all nuclides from 1 s to 10⁶ s, for the 12-reaction (`small`), 67-reaction (`large`, `amax=8`) and ~428-reaction (`large`) networks. |
 | `AnimatedAbundances.ipynb` | **Animated time evolution**: two GIFs of the small-network A_i Y_i(t) tracks, sweeping ΔNeff and Ω_b h² respectively. |
 | `CompareSmallNetworks.ipynb` | **Network comparison**: `small` vs `small_parthenope` — abundances and time evolution side by side. |
 | `ReactionRates.ipynb` | **Reaction rates vs Hubble**: weak n↔p rates and the main `small`-network nuclear reactions, all as inverse times [s⁻¹], forward solid / backward dashed, with the Hubble rate H(T) in black — visualising weak freeze-out and the deuterium bottleneck. |
